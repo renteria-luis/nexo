@@ -1,6 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 
 import { migrate } from './migrate.ts';
+import { readDatabaseStatus } from './status.ts';
 
 const DATABASE_NAME = 'nexo.db';
 
@@ -19,6 +20,7 @@ export async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
   return db;
 }
 
-export { migrate };
+export { migrate, readDatabaseStatus };
 export type { Migration } from './migrations/index.ts';
+export type { DatabaseStatus } from './status.ts';
 export * from './types.ts';
