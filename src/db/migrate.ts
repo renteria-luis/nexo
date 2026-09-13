@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { migrations } from './migrations';
+import { migrations } from './migrations/index.ts';
 
 type AppliedRow = { id: string };
 

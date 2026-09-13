@@ -1,9 +1,9 @@
-import { sql as core } from './001_core';
-import { sql as trainingGymExercise } from './002_training_gym_exercise';
-import { sql as trainingRoutine } from './003_training_routine';
-import { sql as trainingSession } from './004_training_session';
-import { sql as nutritionFood } from './005_nutrition_food';
-import { sql as nutritionBatch } from './006_nutrition_batch';
+import { sql as core } from './001_core.ts';
+import { sql as trainingGymExercise } from './002_training_gym_exercise.ts';
+import { sql as trainingRoutine } from './003_training_routine.ts';
+import { sql as trainingSession } from './004_training_session.ts';
+import { sql as nutritionFood } from './005_nutrition_food.ts';
+import { sql as nutritionBatch } from './006_nutrition_batch.ts';
 
 export type Migration = {
   id: string;
