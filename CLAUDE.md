@@ -164,9 +164,10 @@ Read this file at the start of any session that has been idle more than a few da
 - Build in thin vertical slices that touch every layer, rather than finishing one layer at a time. A working end-to-end path proves the architecture; three finished layers that have never met each other prove nothing.
 - Commit before starting anything large, so there is a clean point to return to.
 - Run the tests before saying something is done. If there are no tests for the area, say that plainly instead of implying it was verified.
-- **Never commit directly to `main`.** Every PR is a branch, and it lands through a GitHub **squash merge** so that one PR becomes exactly one commit on `main`. The owner's contribution graph counts commits on the default branch: a nine-commit PR merged without squashing registers as nine contributions.
-- Local commits stay granular, one logical change each. The squash happens at merge time, never while working. Do not pre-squash a branch by hand.
-- The squash commit message is composed from the PR title and body, so both must already follow the commit rules above.
+- **Squash before pushing.** Work on a branch with granular local commits, then collapse that branch into a single commit and push that. Never push a branch's individual commits.
+- **The contribution budget is why.** GitHub's graph counts each commit landed on `main`, each PR opened and each PR merged as its own contribution, and the owner does not want the day's square inflated. **Hard ceiling 13 contributions a day. Target 4 to 7.** If a piece of work would blow through that, say so and stop rather than pushing anyway.
+- **Do not open a PR unless the owner asks for one.** Opening one costs a contribution and merging it costs another. The default is to push the squashed commit straight to `main`.
+- Local commits stay small, one logical change each, because that is what makes a change reviewable and revertable. The squash is the last step before pushing, never an excuse to write fewer commits while working.
 - Keep sessions scoped to one PR. Start a new session for a new area of work.
 
 ## Out of scope — do not build
