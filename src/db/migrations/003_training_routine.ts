@@ -26,10 +26,12 @@ CREATE TABLE training_routine_exercise (
     (target_rep_mode = 'range'  AND target_rep_min IS NOT NULL AND target_rep_max IS NOT NULL) OR
     (target_rep_mode <> 'range' AND target_rep_min IS NULL     AND target_rep_max IS NULL)
   ),
-  -- Spec 8.3 rule 4: tier 1 sets never change, at any budget.
+  -- Spec 8.3 rule 4: tier 1 sets never change and tier 1 is never dropped, at any
+  -- budget. IS rather than = so a NULL budget column fails instead of passing the
+  -- check as unknown.
   CHECK (
     tier <> 1 OR
-    (sets_minus_25 = sets_full AND sets_minus_50 = sets_full AND sets_express = sets_full)
+    (sets_minus_25 IS sets_full AND sets_minus_50 IS sets_full AND sets_express IS sets_full)
   )
 ) STRICT;
 

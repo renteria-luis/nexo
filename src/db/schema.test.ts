@@ -193,8 +193,20 @@ test('a rep range needs both bounds and AMRAP needs neither', () => {
   );
   db.exec(
     `INSERT INTO training_routine_exercise
+       (id, routine_id, exercise_id, position, tier, sets_full, sets_minus_25, sets_minus_50, sets_express, target_rep_mode)
+     VALUES ('re-3', 'r-1', 'ex-1', 3, 1, 4, 4, 4, 4, 'amrap');`,
+  );
+});
+
+test('tier 1 cannot be dropped at a budget by leaving the column null', () => {
+  const db = freshDatabase();
+  seedExercise(db);
+  db.exec("INSERT INTO training_routine (id, name) VALUES ('r-1', 'Legs');");
+  rejects(
+    db,
+    `INSERT INTO training_routine_exercise
        (id, routine_id, exercise_id, position, tier, sets_full, target_rep_mode)
-     VALUES ('re-3', 'r-1', 'ex-1', 3, 1, 4, 'amrap');`,
+     VALUES ('re-1', 'r-1', 'ex-1', 1, 1, 3, 'failure');`,
   );
 });
 
