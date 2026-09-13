@@ -12,6 +12,7 @@ SECRET_PATH_PATTERNS = [
     r"(^|/)\.env\.(?!example$)[^/]+$",
     r"\.pem$",
     r"\.p12$",
+    r"\.p8$",
     r"\.pfx$",
     r"\.key$",
     r"\.keystore$",
