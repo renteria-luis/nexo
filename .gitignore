@@ -1,0 +1,92 @@
+# Source of truth, kept local. Contains personal health data and must never be published.
+SPEC.md
+
+# Claude Code config. A global ignore excludes .claude/, but the secret-blocking hook
+# is enforcement and has to be versioned with the code it protects.
+!.claude/
+!.claude/settings.json
+!.claude/hooks/
+!.claude/hooks/*.py
+.claude/settings.local.json
+.claude/pr-plan.md
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+.yarn/cache
+.yarn/unplugged
+.yarn/install-state.gz
+
+# Expo
+.expo/
+.expo-shared/
+dist/
+web-build/
+expo-env.d.ts
+
+# React Native / native build output
+ios/
+android/
+*.ipa
+*.apk
+*.aab
+*.app
+*.xcarchive
+*.hmap
+*.tgz
+DerivedData/
+Pods/
+.gradle/
+build/
+*.jsbundle
+.kotlin/
+
+# Metro
+.metro-health-check*
+metro.config.js.bak
+
+# Credentials and certificates
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
+*.key
+*.keystore
+*.jks
+*.cer
+*.crt
+*.der
+*.mobileprovision
+*.provisionprofile
+*.certSigningRequest
+credentials.json
+google-services.json
+GoogleService-Info.plist
+secrets.json
+.netrc
+
+# Database dumps and local database files
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.dump
+*.sql.gz
+*.bak
+
+# Logs
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Editor and OS
+.DS_Store
+Thumbs.db
+.idea/
+*.swp

@@ -1,0 +1,30 @@
+#!/bin/sh
+# Strip tool attribution from commit messages.
+#
+# CLAUDE.md forbids attribution of any kind. The Claude-Session trailer is injected
+# through the Bash tool description and ignores the attribution settings, so the
+# setting alone does not hold. This hook is the enforcement.
+
+msg="$1"
+[ -f "$msg" ] || exit 0
+
+stripped="$msg.stripped"
+
+grep -v -E -i \
+  -e '^[[:space:]]*Claude-Session:' \
+  -e '^[[:space:]]*Co-Authored-By:[[:space:]]*Claude' \
+  -e '^[[:space:]]*(🤖[[:space:]]*)?Generated with .*Claude Code' \
+  "$msg" > "$stripped"
+
+# Remove trailing blank lines left behind by the removal.
+awk '
+  { line[NR] = $0 }
+  END {
+    last = NR
+    while (last > 0 && line[last] ~ /^[[:space:]]*$/) last--
+    for (i = 1; i <= last; i++) print line[i]
+  }
+' "$stripped" > "$msg"
+
+rm -f "$stripped"
+exit 0
