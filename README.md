@@ -26,17 +26,42 @@ Design system and colour palettes, a generic weighted scoring engine, the heatma
 - A separate Node ingestion service for the Deals module only: scheduled fetchers, a normaliser, and a read-only REST API. It holds no personal data.
 - Builds are produced on GitHub Actions macOS runners and sideloaded.
 
+## Running it locally
+
+Requires Node 20 or newer. Development happens on Linux; the browser is the day to day target.
+
+```
+npm install
+npm run web
+```
+
+That serves the app at `http://localhost:8081`. `npm install` also points git at `.githooks` through a postinstall script, because `core.hooksPath` lives in `.git/config` and is not versioned.
+
+| Script | What it does |
+|---|---|
+| `npm run web` | Dev server in the browser |
+| `npm start` | Dev server with every target offered |
+| `npm run lint` | ESLint, using the Expo config |
+| `npm run format` | Prettier over the source, markdown excluded |
+| `npm run format:check` | The same check, read only |
+
 ## Repository layout
 
 ```
 .claude/          Claude Code config
   hooks/          PreToolUse guard that blocks secrets from reaching disk or git
+.githooks/        commit-msg hook that strips tool attribution
+assets/           App icon, splash and favicon
+scripts/          Repo maintenance run by npm lifecycle hooks
+App.tsx           The one screen that exists so far
+index.ts          Entry point
+app.json          Expo app config
 CLAUDE.md         Working conventions for this repo
 DECISIONS.md      Architectural decisions, one entry each
 README.md         This file
 ```
 
-Application source, database migrations and the ingestion service are added as the modules are built.
+Module source, database migrations and the Deals ingestion service are added as the modules are built.
 
 ## Secrets
 
