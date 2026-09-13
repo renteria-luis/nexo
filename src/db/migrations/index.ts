@@ -2,6 +2,7 @@ import { sql as core } from './001_core';
 import { sql as trainingGymExercise } from './002_training_gym_exercise';
 import { sql as trainingRoutine } from './003_training_routine';
 import { sql as trainingSession } from './004_training_session';
+import { sql as nutritionFood } from './005_nutrition_food';
 
 export type Migration = {
   id: string;
@@ -15,4 +16,5 @@ export const migrations: Migration[] = [
   { id: '002_training_gym_exercise', sql: trainingGymExercise },
   { id: '003_training_routine', sql: trainingRoutine },
   { id: '004_training_session', sql: trainingSession },
+  { id: '005_nutrition_food', sql: nutritionFood },
 ];
