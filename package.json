@@ -20,6 +20,7 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
+    "postinstall": "node scripts/setup-git-hooks.mjs",
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
