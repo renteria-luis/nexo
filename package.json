@@ -28,7 +28,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test 'src/**/*.test.ts'"
   },
   "private": true
 }
