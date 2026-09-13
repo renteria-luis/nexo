@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.expo/
+assets/
+package-lock.json
+
+# Prose docs are hand written; reformatting them only creates diff noise.
+*.md
