@@ -131,3 +131,21 @@ export async function recalculateTargets(
 
   return { from: current, to: next, effectiveFrom: onDate };
 }
+
+/**
+ * Spec 3.6 wants the change on Today until he has seen it. Every write refreshes the
+ * app, and recalculateTargets only reports a change on the load that wrote it, so the
+ * card reads the change back from the two newest snapshots instead. The very first
+ * snapshot is not a change and returns null.
+ */
+export async function latestTargetChange(db: SQLiteDatabase): Promise<TargetChange | null> {
+  const rows = await db.getAllAsync<CoreTargetSnapshotRow>(
+    'SELECT * FROM core_target_snapshot ORDER BY effective_from DESC LIMIT 2;',
+  );
+  if (rows.length < 2) return null;
+  return {
+    from: snapshotToTargets(rows[1]),
+    to: snapshotToTargets(rows[0]),
+    effectiveFrom: rows[0].effective_from,
+  };
+}

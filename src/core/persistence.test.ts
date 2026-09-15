@@ -21,7 +21,12 @@ import {
   upsertDailyLog,
 } from './daily-log.ts';
 import { scoreDay } from './discipline.ts';
-import { recalculateTargets, targetsInForceOn, writeTargetSnapshot } from './snapshots.ts';
+import {
+  latestTargetChange,
+  recalculateTargets,
+  targetsInForceOn,
+  writeTargetSnapshot,
+} from './snapshots.ts';
 import { computeTargets, type TargetProfile } from './targets.ts';
 
 type SqlValue = string | number | null;
@@ -237,4 +242,37 @@ test('a week already at five sessions leaves the following day optional', () => 
 
   // Two more quiet days and the week drops below five, so the days start counting.
   assert.equal(consecutiveMissedBefore(fullWeek, '2026-09-16'), 2);
+});
+
+test('the first snapshot is not a change worth announcing', async () => {
+  const { db } = fresh();
+  await writeTargetSnapshot(db, computeTargets(73, profile, '2026-09-01'), '2026-09-01');
+  assert.equal(await latestTargetChange(db), null);
+});
+
+test('the newest two snapshots are the change spec 3.6 shows', async () => {
+  const { db } = fresh();
+  await writeTargetSnapshot(db, computeTargets(73, profile, '2026-09-01'), '2026-09-01');
+  await writeTargetSnapshot(db, computeTargets(74.5, profile, '2026-09-20'), '2026-09-20');
+
+  const change = await latestTargetChange(db);
+  assert.ok(change);
+  assert.equal(change.from?.weightBasisKg, 73);
+  assert.equal(change.to.weightBasisKg, 74.5);
+  assert.equal(change.effectiveFrom, '2026-09-20');
+});
+
+test('a recalculated change is still there on the next load', async () => {
+  const { db } = fresh();
+  await writeTargetSnapshot(db, computeTargets(73, profile, '2026-09-01'), '2026-09-01');
+  const heavier = ['2026-09-17', '2026-09-18', '2026-09-19', '2026-09-20'].map((date) => ({
+    date,
+    weightKg: 74.5,
+  }));
+
+  assert.ok(await recalculateTargets(db, heavier, profile, '2026-09-20'));
+  // Every write refreshes the app; the second pass writes nothing and returns null,
+  // which is exactly why the card cannot depend on that return value.
+  assert.equal(await recalculateTargets(db, heavier, profile, '2026-09-20'), null);
+  assert.equal((await latestTargetChange(db))?.to.weightBasisKg, 74.5);
 });

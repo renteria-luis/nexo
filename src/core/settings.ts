@@ -23,7 +23,9 @@ export type SettingKey =
   | 'treat_missing_sleep_as_zero'
   | 're_entry_started_on'
   | 're_entry_weeks'
-  | 'weight_unit';
+  | 'weight_unit'
+  | 'targets_change_seen'
+  | 'steps_advice_declined';
 
 export type Settings = ReadonlyMap<string, string>;
 
@@ -98,6 +100,21 @@ export function weightUnitFrom(settings: Settings): WeightUnit {
   return value as WeightUnit;
 }
 
+/** The snapshot date whose change he has already dismissed on Today (spec 3.6). */
+export function stepsTargetFrom(settings: Settings): number {
+  return asNumber(settings, 'steps_target') as number;
+}
+
+/** Spec 14.2: the stage he turned down, so the offer is made once and not daily. */
+export function stepsAdviceDeclinedFrom(settings: Settings): number | null {
+  const value = raw(settings, 'steps_advice_declined');
+  return value === null ? null : Number(value);
+}
+
+export function targetsChangeSeenFrom(settings: Settings): IsoDate | null {
+  return raw(settings, 'targets_change_seen');
+}
+
 export function treatMissingSleepAsZero(settings: Settings): boolean {
   return raw(settings, 'treat_missing_sleep_as_zero') === 'true';
 }
@@ -146,6 +163,7 @@ export function settingProblem(key: SettingKey, value: string): string | null {
       return PHASES.has(trimmed) ? null : 'no es una fase válida';
     case 'birth_date':
     case 're_entry_started_on':
+    case 'targets_change_seen':
       return ISO_DATE.test(trimmed) ? null : 'usa el formato AAAA-MM-DD';
     case 'treat_missing_sleep_as_zero':
       return trimmed === 'true' || trimmed === 'false' ? null : 'solo true o false';
@@ -156,6 +174,7 @@ export function settingProblem(key: SettingKey, value: string): string | null {
     case 'sleep_target_minutes':
       return inRange(trimmed, 240, 720, 'minutos de sueño entre 240 y 720');
     case 'steps_target':
+    case 'steps_advice_declined':
       return inRange(trimmed, 1000, 40000, 'una meta de pasos entre 1000 y 40000');
     case 're_entry_weeks':
       return inRange(trimmed, 1, 12, 'semanas entre 1 y 12');
