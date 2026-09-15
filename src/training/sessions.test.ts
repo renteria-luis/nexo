@@ -11,6 +11,7 @@ import { bestAndWorstE1rm, volumeLoad } from './calculations.ts';
 import { listEquipment, listExercises, listWorkingSets } from './queries.ts';
 import {
   addSet,
+  setSessionDetails,
   deleteSet,
   finishSession,
   getSessionOn,
@@ -274,4 +275,62 @@ test('a weight snaps to the step the machine actually moves in', () => {
   assert.equal(formatWeight(snapToIncrement(toKg(136, 'lb'), tenPounds), 'lb'), '140');
   assert.equal(snapToIncrement(toKg(-50, 'lb'), tenPounds), 0);
   assert.throws(() => snapToIncrement(10, 0), /is not a step/);
+});
+
+test('the rest before a set is measured from the previous set of that exercise', async () => {
+  const db = fresh();
+  const sessionId = await startSession(db, { date: '2026-09-15', timeBudget: 'completo' });
+
+  const realNow = Date.now;
+  try {
+    Date.now = () => 1_700_000_000_000;
+    await addSet(db, { sessionId, exerciseId: 'peck-deck', weightKg: 40, reps: 12 });
+    Date.now = () => 1_700_000_095_000;
+    await addSet(db, { sessionId, exerciseId: 'peck-deck', weightKg: 40, reps: 11 });
+    // A different exercise starts its own count instead of borrowing this one.
+    Date.now = () => 1_700_000_200_000;
+    await addSet(db, { sessionId, exerciseId: 'lateral-raise', weightKg: 10, reps: 15 });
+    // A set typed in after the fact says what the rest was.
+    Date.now = () => 1_700_000_900_000;
+    await addSet(db, {
+      sessionId,
+      exerciseId: 'peck-deck',
+      weightKg: 40,
+      reps: 10,
+      restBeforeSeconds: 240,
+    });
+  } finally {
+    Date.now = realNow;
+  }
+
+  const sets = await listWorkingSets(db, { from: '2026-09-15', to: '2026-09-15' });
+  const peckDeck = sets.filter((set) => set.exerciseId === 'peck-deck');
+
+  assert.equal(peckDeck[0].restBeforeSeconds, null);
+  assert.equal(peckDeck[1].restBeforeSeconds, 95);
+  assert.equal(peckDeck[2].restBeforeSeconds, 240);
+  assert.equal(sets.find((set) => set.exerciseId === 'lateral-raise')?.restBeforeSeconds, null);
+});
+
+test('how busy the gym was belongs to a session he was actually at', async () => {
+  const db = fresh();
+  const live = await startSession(db, { date: '2026-09-15', timeBudget: 'completo' });
+  await setSessionDetails(db, live, { aloneOrPartner: 'with_someone', crowding: 'full' });
+
+  const stored = await getSessionOn(db, '2026-09-15');
+  assert.equal(stored?.alone_or_partner, 'with_someone');
+  assert.equal(stored?.crowding, 'full');
+
+  const remembered = await startSession(db, {
+    date: '2026-09-14',
+    timeBudget: 'completo',
+    isRetroactive: true,
+  });
+  await assert.rejects(
+    () => setSessionDetails(db, remembered, { crowding: 'normal' }),
+    /after the fact/,
+  );
+  // The company he had is still worth recording days later.
+  await setSessionDetails(db, remembered, { aloneOrPartner: 'alone' });
+  assert.equal((await getSessionOn(db, '2026-09-14'))?.alone_or_partner, 'alone');
 });

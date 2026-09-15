@@ -15,6 +15,10 @@ export type LoggedSet = {
   setIndex: number;
   weightKg: number;
   reps: number;
+  /** Spec 9: seconds since the previous set, measured, not timed by hand. */
+  restBeforeSeconds?: number | null;
+  /** When the set was recorded, epoch milliseconds. */
+  timestamp?: number;
 };
 
 /** How much one set of an exercise counts towards a muscle: 1.0 primary, 0.5 secondary. */
@@ -157,4 +161,50 @@ export function bestAndWorstE1rm(
 /** The highest estimated 1RM in the given sets, the top set. Null if none qualify. */
 export function topSetE1rm(sets: readonly LoggedSet[]): number | null {
   return bestAndWorstE1rm(sets)?.best.e1rm ?? null;
+}
+
+/**
+ * Spec 9: rest is measured, never enforced. A gap this long is not a rest interval,
+ * it is a queue for the machine or a phone call, so it stays out of the averages.
+ */
+export const REST_OUTLIER_SECONDS = 900;
+
+/** Spec 9's practical rule: rest long enough to keep 90% of the first set's reps. */
+export const REP_HOLD_RATIO = 0.9;
+
+export function averageRestSeconds(sets: readonly LoggedSet[]): number | null {
+  const measured = sets
+    .map((set) => set.restBeforeSeconds)
+    .filter((rest): rest is number => typeof rest === 'number' && rest > 0)
+    .filter((rest) => rest <= REST_OUTLIER_SECONDS);
+
+  if (measured.length === 0) return null;
+  return measured.reduce((total, rest) => total + rest, 0) / measured.length;
+}
+
+export type RepDropOff = {
+  setIndex: number;
+  reps: number;
+  firstSetReps: number;
+  restSeconds: number;
+};
+
+/**
+ * Sets that fell below 90% of the first set's reps after resting less than this
+ * exercise asks for. A drop after a full rest is fatigue doing its job and says
+ * nothing about the rest, so it is not reported: spec 9 wants the target shown
+ * faintly and never turned into a warning.
+ */
+export function repDropOffs(sets: readonly LoggedSet[], targetSeconds: number): RepDropOff[] {
+  const first = sets.find((set) => set.setIndex === 1) ?? sets[0];
+  if (!first) return [];
+
+  return sets.flatMap((set) => {
+    if (set === first || set.reps >= first.reps * REP_HOLD_RATIO) return [];
+    const rest = set.restBeforeSeconds;
+    if (typeof rest !== 'number' || rest >= targetSeconds || rest > REST_OUTLIER_SECONDS) return [];
+    return [
+      { setIndex: set.setIndex, reps: set.reps, firstSetReps: first.reps, restSeconds: rest },
+    ];
+  });
 }

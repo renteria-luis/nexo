@@ -62,6 +62,46 @@ export async function getSessionOn(
   );
 }
 
+export type SessionDetails = {
+  aloneOrPartner?: TrainingSessionRow['alone_or_partner'];
+  crowding?: TrainingSessionRow['crowding'];
+};
+
+/**
+ * Spec 8.5: how busy the gym was is asked on arrival and not while starting, so it
+ * stays off the critical path. Spec 5.4 keeps it off a session written after the
+ * fact, because crowding recalled days later is not evidence; the schema enforces
+ * that too, and this refuses first so the message says why.
+ */
+export async function setSessionDetails(
+  db: SQLiteDatabase,
+  sessionId: string,
+  details: SessionDetails,
+): Promise<void> {
+  const session = await db.getFirstAsync<TrainingSessionRow>(
+    'SELECT * FROM training_session WHERE id = ?;',
+    [sessionId],
+  );
+  if (!session) throw new Error(`there is no session called ${sessionId}`);
+
+  if (details.crowding !== undefined && session.is_retroactive === 1) {
+    throw new Error('a session written after the fact cannot say how busy the gym was');
+  }
+
+  if (details.aloneOrPartner !== undefined) {
+    await db.runAsync('UPDATE training_session SET alone_or_partner = ? WHERE id = ?;', [
+      details.aloneOrPartner,
+      sessionId,
+    ]);
+  }
+  if (details.crowding !== undefined) {
+    await db.runAsync('UPDATE training_session SET crowding = ? WHERE id = ?;', [
+      details.crowding,
+      sessionId,
+    ]);
+  }
+}
+
 export type NewSet = {
   sessionId: string;
   exerciseId: string;
@@ -71,6 +111,25 @@ export type NewSet = {
   rpe?: number | null;
   restBeforeSeconds?: number | null;
 };
+
+/**
+ * Spec 9. The rest is read off the previous set of the same exercise instead of a
+ * timer he has to remember to start, which is the only way a number this boring
+ * ever gets recorded. Null on the first set of an exercise, where there is nothing
+ * to measure from.
+ */
+async function measureRest(db: SQLiteDatabase, set: NewSet, now: number): Promise<number | null> {
+  const previous = await db.getFirstAsync<{ timestamp: number }>(
+    `SELECT timestamp FROM training_set_entry
+      WHERE session_id = ? AND exercise_id = ?
+   ORDER BY set_index DESC
+      LIMIT 1;`,
+    [set.sessionId, set.exerciseId],
+  );
+
+  if (!previous) return null;
+  return Math.max(0, Math.round((now - previous.timestamp) / 1000));
+}
 
 export async function addSet(db: SQLiteDatabase, set: NewSet): Promise<string> {
   if (!Number.isInteger(set.reps) || set.reps < 1) {
@@ -82,6 +141,13 @@ export async function addSet(db: SQLiteDatabase, set: NewSet): Promise<string> {
 
   const timestamp = Date.now();
   const id = `set-${timestamp}-${Math.floor(Math.random() * 1e6)}`;
+
+  // A set typed in after the fact carries its own rest or none at all: the clock
+  // says nothing about a session that happened hours ago.
+  const restBeforeSeconds =
+    set.restBeforeSeconds !== undefined
+      ? set.restBeforeSeconds
+      : await measureRest(db, set, timestamp);
 
   await db.runAsync(
     `INSERT INTO training_set_entry
@@ -101,7 +167,7 @@ export async function addSet(db: SQLiteDatabase, set: NewSet): Promise<string> {
       set.exerciseId,
       set.weightKg,
       set.reps,
-      set.restBeforeSeconds ?? null,
+      restBeforeSeconds,
       timestamp,
       set.rpe ?? null,
       set.isWarmup ? 1 : 0,
@@ -132,6 +198,8 @@ type LastSetRow = {
   set_index: number;
   weight_kg: number;
   reps: number;
+  rest_before_seconds: number | null;
+  timestamp: number;
 };
 
 /**
@@ -145,7 +213,8 @@ export async function lastSessionSets(
   beforeSessionId: string | null,
 ): Promise<LoggedSet[]> {
   const rows = await db.getAllAsync<LastSetRow>(
-    `SELECT s.session_id, e.date, s.exercise_id, s.set_index, s.weight_kg, s.reps
+    `SELECT s.session_id, e.date, s.exercise_id, s.set_index, s.weight_kg, s.reps,
+            s.rest_before_seconds, s.timestamp
        FROM training_set_entry s
        JOIN training_session e ON e.id = s.session_id
       WHERE s.exercise_id = ?
@@ -172,6 +241,8 @@ export async function lastSessionSets(
     setIndex: row.set_index,
     weightKg: row.weight_kg,
     reps: row.reps,
+    restBeforeSeconds: row.rest_before_seconds,
+    timestamp: row.timestamp,
   }));
 }
 

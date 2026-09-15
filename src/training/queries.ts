@@ -12,6 +12,8 @@ type LoggedSetRow = {
   set_index: number;
   weight_kg: number;
   reps: number;
+  rest_before_seconds: number | null;
+  timestamp: number;
 };
 
 /**
@@ -24,7 +26,8 @@ export async function listWorkingSets(
   exerciseId?: string,
 ): Promise<LoggedSet[]> {
   const rows = await db.getAllAsync<LoggedSetRow>(
-    `SELECT s.session_id, e.date, s.exercise_id, s.set_index, s.weight_kg, s.reps
+    `SELECT s.session_id, e.date, s.exercise_id, s.set_index, s.weight_kg, s.reps,
+            s.rest_before_seconds, s.timestamp
        FROM training_set_entry s
        JOIN training_session e ON e.id = s.session_id
       WHERE s.is_warmup = 0
@@ -41,6 +44,8 @@ export async function listWorkingSets(
     setIndex: row.set_index,
     weightKg: row.weight_kg,
     reps: row.reps,
+    restBeforeSeconds: row.rest_before_seconds,
+    timestamp: row.timestamp,
   }));
 }
 

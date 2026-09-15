@@ -10,6 +10,8 @@ import {
   volumeLoadByExercise,
   volumeLoadByMuscle,
   volumeLoadBySession,
+  averageRestSeconds,
+  repDropOffs,
   type ExerciseMuscles,
   type LoggedSet,
 } from './calculations.ts';
@@ -176,4 +178,46 @@ test('a heavier set at fewer reps can beat a lighter set at more', () => {
   const marks = bestAndWorstE1rm(sets);
   assert.ok(marks);
   assert.equal(marks.best.set.setIndex, 1);
+});
+
+function restSet(setIndex: number, reps: number, restBeforeSeconds: number | null): LoggedSet {
+  return {
+    sessionId: 's1',
+    date: '2026-09-15',
+    exerciseId: 'peck-deck',
+    setIndex,
+    weightKg: 40,
+    reps,
+    restBeforeSeconds,
+  };
+}
+
+test('the rest average leaves out the gaps that were not rest', () => {
+  assert.equal(
+    averageRestSeconds([
+      restSet(1, 12, null),
+      restSet(2, 11, 90),
+      restSet(3, 10, 150),
+      // Half an hour between sets is a queue for the machine, not a rest interval.
+      restSet(4, 10, 1800),
+    ]),
+    120,
+  );
+  assert.equal(averageRestSeconds([restSet(1, 12, null)]), null);
+});
+
+test('a drop in reps only counts against the rest when the rest was short', () => {
+  const drops = repDropOffs(
+    [
+      restSet(1, 12, null),
+      restSet(2, 10, 60),
+      // Above 90% of the first set, so nothing to say.
+      restSet(3, 11, 60),
+      // Below 90%, but he rested the full two minutes: that is fatigue, not rest.
+      restSet(4, 8, 180),
+    ],
+    120,
+  );
+
+  assert.deepEqual(drops, [{ setIndex: 2, reps: 10, firstSetReps: 12, restSeconds: 60 }]);
 });
