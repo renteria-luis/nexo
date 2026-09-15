@@ -13,7 +13,13 @@ CREATE TABLE training_exercise (
   id                   TEXT    PRIMARY KEY,
   name_es              TEXT    NOT NULL,
   name_en              TEXT    NOT NULL,
-  primary_muscle       TEXT    NOT NULL,
+  -- Controlled vocabulary. A typo here does not fail, it silently produces wrong
+  -- weekly set counts, which is the one number spec 13.2 and 13.3 turn on.
+  primary_muscle       TEXT    NOT NULL
+                               CHECK (primary_muscle IN (
+                                 'chest', 'front_delts', 'lateral_delts', 'rear_delts', 'traps', 'back',
+                                  'biceps', 'triceps', 'forearms', 'abs',
+                                  'quads', 'hamstrings', 'glutes', 'adductors', 'calves')),
   equipment_type       TEXT    NOT NULL
                                CHECK (equipment_type IN
                                  ('machine', 'barbell', 'ez_bar', 'dumbbell', 'cable', 'bodyweight')),
@@ -30,7 +36,10 @@ CREATE TABLE training_exercise (
 -- direct forearm work in 13.3 rests on those counts.
 CREATE TABLE training_exercise_muscle (
   exercise_id  TEXT NOT NULL REFERENCES training_exercise (id) ON DELETE CASCADE,
-  muscle       TEXT NOT NULL,
+  muscle       TEXT NOT NULL CHECK (muscle IN (
+                                 'chest', 'front_delts', 'lateral_delts', 'rear_delts', 'traps', 'back',
+                                  'biceps', 'triceps', 'forearms', 'abs',
+                                  'quads', 'hamstrings', 'glutes', 'adductors', 'calves')),
   contribution REAL NOT NULL CHECK (contribution IN (1.0, 0.5)),
   PRIMARY KEY (exercise_id, muscle)
 ) STRICT;

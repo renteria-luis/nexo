@@ -114,6 +114,18 @@ test('contribution 1.0 must be the exercise primary muscle', () => {
   db.exec("INSERT INTO training_exercise_muscle VALUES ('ex-1', 'chest', 0.5);");
 });
 
+test('a muscle name outside the vocabulary is rejected', () => {
+  const db = freshDatabase();
+  rejects(
+    db,
+    `INSERT INTO training_exercise
+       (id, name_es, name_en, primary_muscle, equipment_type, load_increment, default_rest_seconds)
+     VALUES ('ex-9', 'x', 'x', 'pecho', 'machine', 5, 120);`,
+  );
+  seedExercise(db);
+  rejects(db, "INSERT INTO training_exercise_muscle VALUES ('ex-1', 'triceps brachii', 0.5);");
+});
+
 test('the primary muscle cannot also be recorded as a secondary', () => {
   const db = freshDatabase();
   seedExercise(db);
@@ -255,8 +267,8 @@ test('deleting a session takes its sets with it', () => {
 test('a batch cannot have more portions left than it was divided into', () => {
   const db = freshDatabase();
   db.exec(
-    `INSERT INTO nutrition_food (id, name, base_unit, kcal, protein_g, carbs_g, fat_g, source)
-     VALUES ('f-1', 'Pechuga de pollo', '100g', 165, 31, 0, 3.6, 'user_measured');`,
+    `INSERT INTO nutrition_food (id, name, base_unit, unit_kind, kcal, protein_g, carbs_g, fat_g, source)
+     VALUES ('f-1', 'Pechuga de pollo', 'g', 'mass', 1.65, 0.31, 0, 0.036, 'user_measured');`,
   );
   rejects(
     db,
@@ -273,8 +285,8 @@ test('sugar cannot exceed total carbohydrate', () => {
   const db = freshDatabase();
   rejects(
     db,
-    `INSERT INTO nutrition_food (id, name, base_unit, kcal, protein_g, carbs_g, sugar_g, fat_g, source)
-     VALUES ('f-1', 'Leche 1%', '250ml', 100, 9, 12, 14, 2.5, 'user_measured');`,
+    `INSERT INTO nutrition_food (id, name, base_unit, unit_kind, kcal, protein_g, carbs_g, sugar_g, fat_g, source)
+     VALUES ('f-1', 'Leche 1%', 'ml', 'volume', 0.4, 0.036, 0.048, 0.056, 0.01, 'user_measured');`,
   );
 });
 
@@ -282,8 +294,90 @@ test('price is stored in whole cents', () => {
   const db = freshDatabase();
   const message = rejects(
     db,
-    `INSERT INTO nutrition_food (id, name, base_unit, kcal, protein_g, carbs_g, fat_g, source, price_cad_cents)
-     VALUES ('f-1', 'Avena', '40g', 150, 5, 27, 3, 'user_measured', 7.19);`,
+    `INSERT INTO nutrition_food (id, name, base_unit, unit_kind, kcal, protein_g, carbs_g, fat_g, source, price_cad_cents)
+     VALUES ('f-1', 'Avena', 'g', 'mass', 3.75, 0.125, 0.675, 0.075, 'user_measured', 7.19);`,
   );
   assert.match(message, /cannot store .* value in INTEGER column/i);
+});
+
+test('the food catalog seeds the nine owner-verified foods', () => {
+  const db = freshDatabase();
+  const rows = db.prepare('SELECT id, source FROM nutrition_food ORDER BY id;').all() as {
+    id: string;
+    source: string;
+  }[];
+
+  assert.equal(rows.length, 9);
+  for (const row of rows) assert.equal(row.source, 'user_measured');
+});
+
+test('a food the spec leaves blank keeps no carbohydrate figure', () => {
+  const db = freshDatabase();
+  const rows = db
+    .prepare('SELECT id FROM nutrition_food WHERE carbs_g IS NULL ORDER BY id;')
+    .all() as { id: string }[];
+
+  assert.deepEqual(
+    rows.map((row) => row.id),
+    ['oats-quaker', 'wendys-jbc'],
+  );
+});
+
+test('the Chef Woo sodium figure survives the seed intact', () => {
+  const db = freshDatabase();
+  const row = db.prepare("SELECT sodium_mg FROM nutrition_food WHERE id = 'chef-woo';").get() as {
+    sodium_mg: number;
+  };
+  assert.equal(row.sodium_mg, 1130);
+});
+
+test('the exercise catalog seeds the routine the owner trains today', () => {
+  const db = freshDatabase();
+  const row = db.prepare('SELECT COUNT(*) AS count FROM training_exercise;').get() as {
+    count: number;
+  };
+  assert.equal(row.count, 16);
+});
+
+test('every seeded exercise has exactly one primary muscle row', () => {
+  const db = freshDatabase();
+  const rows = db
+    .prepare(
+      `SELECT e.id, COUNT(m.muscle) AS primaries
+         FROM training_exercise e
+         LEFT JOIN training_exercise_muscle m
+           ON m.exercise_id = e.id AND m.contribution = 1.0
+     GROUP BY e.id
+       HAVING primaries <> 1;`,
+    )
+    .all() as { id: string }[];
+
+  assert.deepEqual(
+    rows.map((row) => row.id),
+    [],
+  );
+});
+
+test('direct and weighted set counts are different questions', () => {
+  const db = freshDatabase();
+
+  const direct = db
+    .prepare(
+      `SELECT COUNT(*) AS count FROM training_exercise_muscle
+        WHERE muscle = 'forearms' AND contribution = 1.0;`,
+    )
+    .get() as { count: number };
+
+  const weighted = db
+    .prepare(
+      `SELECT SUM(contribution) AS total FROM training_exercise_muscle
+        WHERE muscle = 'forearms';`,
+    )
+    .get() as { total: number };
+
+  // Spec 13.2 reads "Forearms ~0 direct" and 13.3 point 3 asks for direct work.
+  // Both facts have to be expressible, and they are only different numbers
+  // because the contribution column exists.
+  assert.equal(direct.count, 0);
+  assert.equal(weighted.total, 1);
 });

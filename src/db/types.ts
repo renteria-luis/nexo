@@ -2,10 +2,11 @@
 // 0 or 1 because SQLite has no boolean type, and the tables are STRICT, so
 // nothing else can end up in those columns.
 
+import type { IsoDate } from '../core/dates.ts';
+
 export type SqlBool = 0 | 1;
 
-/** Local calendar day, 'YYYY-MM-DD'. */
-export type IsoDate = string;
+export type { IsoDate };
 
 /** Milliseconds since the Unix epoch, UTC. */
 export type EpochMs = number;
@@ -16,7 +17,12 @@ export type Crowding = 'empty' | 'normal' | 'full';
 export type Company = 'alone' | 'with_someone';
 export type SleepSource = 'apple_health' | 'autosleep' | 'manual' | 'none';
 export type FoodSource = 'user_measured' | 'off' | 'usda' | 'label';
+export type UnitKind = 'mass' | 'volume' | 'count';
 export type TargetRepMode = 'range' | 'amrap' | 'failure';
+export type EquipmentKind =
+  'selectorized' | 'plate_loaded' | 'cable' | 'free_weight' | 'bench' | 'rack' | 'cardio';
+export type PrimaryUse = 'hypertrophy' | 'strength' | 'endurance' | 'mobility';
+export type TrainingLevel = 'beginner' | 'intermediate' | 'advanced';
 
 /** 1.0 for the primary muscle, 0.5 for a secondary one. */
 export type MuscleContribution = 1.0 | 0.5;
@@ -45,6 +51,8 @@ export type CoreDailyLogRow = {
   water_ml: number | null;
   creatine_taken: SqlBool | null;
   alcohol_drinks: number | null;
+  /** Spec 4.2: drinks taken inside six hours of a session cost half again as much. */
+  alcohol_after_training: SqlBool | null;
   cannabis: SqlBool | null;
   sleep_minutes: number | null;
   sleep_source: SleepSource | null;
@@ -82,6 +90,31 @@ export type TrainingExerciseMuscleRow = {
   exercise_id: string;
   muscle: string;
   contribution: MuscleContribution;
+};
+
+export type TrainingEquipmentRow = {
+  id: string;
+  gym_id: string;
+  /** The code stencilled on the frame. */
+  model_code: string | null;
+  brand: string | null;
+  name_es: string;
+  name_en: string;
+  kind: EquipmentKind;
+  /** Smallest real step, in kilograms. */
+  load_increment: number | null;
+  stack_min_kg: number | null;
+  stack_max_kg: number | null;
+  primary_use: PrimaryUse | null;
+  level: TrainingLevel | null;
+  notes_es: string | null;
+  /** 0 until he has checked the step at the machine itself. */
+  increment_confirmed: SqlBool;
+};
+
+export type TrainingExerciseEquipmentRow = {
+  exercise_id: string;
+  equipment_id: string;
 };
 
 export type TrainingExerciseGymRow = {
@@ -143,10 +176,15 @@ export type NutritionFoodRow = {
   name: string;
   brand: string | null;
   store: string | null;
+  /** The unit he logs in: 'g', 'ml', 'huevo', 'unidad'. Not a label serving. */
   base_unit: string;
+  unit_kind: UnitKind;
+  /** Grams in one base unit, when the label states it. Needed for the batch maths. */
+  base_unit_g: number | null;
   kcal: number;
   protein_g: number;
-  carbs_g: number;
+  /** Null where the source gives no figure; spec 16.3 rule 5 forbids inventing one. */
+  carbs_g: number | null;
   sugar_g: number | null;
   fat_g: number;
   fibre_g: number | null;
