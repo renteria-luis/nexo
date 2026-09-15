@@ -5,19 +5,32 @@ import { readDatabaseStatus } from './status.ts';
 
 const DATABASE_NAME = 'nexo.db';
 
-let database: SQLite.SQLiteDatabase | null = null;
+// The promise, not the handle. Several screens ask for the database at the same
+// moment, and a guard on the resolved handle lets all of them through while the
+// first open is still in flight: two connections, two migration runs racing, and
+// SQLite failing to finalize a statement underneath them.
+let opening: Promise<SQLite.SQLiteDatabase> | null = null;
 
-/**
- * Opens the on-device database and brings it up to date. Safe to call more than
- * once; the second call gets the same handle without re-running migrations.
- */
-export async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
-  if (database) return database;
-
+async function open(): Promise<SQLite.SQLiteDatabase> {
   const db = await SQLite.openDatabaseAsync(DATABASE_NAME);
   await migrate(db);
-  database = db;
   return db;
+}
+
+/**
+ * Opens the on-device database and brings it up to date. Safe to call from
+ * anywhere and as often as needed: every caller waits on the same open.
+ */
+export function openDatabase(): Promise<SQLite.SQLiteDatabase> {
+  if (!opening) {
+    opening = open().catch((error: unknown) => {
+      // A failed open must not be remembered, or the app would keep handing out
+      // the same failure for the rest of its life.
+      opening = null;
+      throw error;
+    });
+  }
+  return opening;
 }
 
 export { migrate, readDatabaseStatus };
@@ -34,9 +47,11 @@ export * from './types.ts';
  * only for a fresh start.
  */
 export async function resetDatabase(): Promise<void> {
-  if (database) {
-    await database.closeAsync();
-    database = null;
+  const inFlight = opening;
+  opening = null;
+  if (inFlight) {
+    const db = await inFlight.catch(() => null);
+    if (db) await db.closeAsync();
   }
   await SQLite.deleteDatabaseAsync(DATABASE_NAME);
 }
