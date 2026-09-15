@@ -1,79 +1,209 @@
+import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
+import { NavigationContainer, useNavigation } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { openDatabase, readDatabaseStatus, type DatabaseStatus } from './src/db';
+import { AppDataProvider, useAppData } from './src/shell/AppData.tsx';
+import { enabledTabs, type ModuleRegistry } from './src/modules/registry.ts';
+import { ExperimentsScreen } from './src/ui/screens/ExperimentsScreen.tsx';
+import { NutritionScreen } from './src/ui/screens/NutritionScreen.tsx';
+import { PendingScreen } from './src/ui/screens/PendingScreen.tsx';
+import { ReadingsScreen } from './src/ui/screens/ReadingsScreen.tsx';
+import { RoutineNotesScreen } from './src/ui/screens/RoutineNotesScreen.tsx';
+import { SettingsScreen } from './src/ui/screens/SettingsScreen.tsx';
+import { TodayScreen } from './src/ui/screens/TodayScreen.tsx';
+import { TrainingScreen } from './src/ui/screens/TrainingScreen.tsx';
+import { WeekSummaryScreen } from './src/ui/screens/WeekSummaryScreen.tsx';
 
-type Screen =
-  | { phase: 'opening' }
-  | { phase: 'ready'; status: DatabaseStatus }
-  | { phase: 'failed'; message: string };
+const Tabs = createMaterialTopTabNavigator();
+const RootStack = createNativeStackNavigator();
 
-export default function App() {
-  const [screen, setScreen] = useState<Screen>({ phase: 'opening' });
+/**
+ * Spec 17.3: every module declares its own slot and its own flag. Deals and Finance
+ * have their tabs but not their modules yet, and say so rather than opening empty.
+ */
+const registry: ModuleRegistry = {
+  tabs: [
+    { id: 'today', label: 'Hoy', enabled: true, screen: () => null },
+    { id: 'training', label: 'Entreno', enabled: true, screen: TrainingScreen },
+    { id: 'nutrition', label: 'Comida', enabled: true, screen: NutritionScreen },
+    {
+      id: 'deals',
+      label: 'Ofertas',
+      enabled: true,
+      screen: () => (
+        <PendingScreen
+          title="Ofertas"
+          note="El módulo de ofertas todavía no existe. Necesita un servicio aparte que recoja los precios de Flipp, y eso se construye después."
+        />
+      ),
+    },
+    {
+      id: 'finance',
+      label: 'Finanzas',
+      enabled: true,
+      screen: () => (
+        <PendingScreen
+          title="Finanzas"
+          note="El módulo de finanzas todavía no existe. Entra al final, y compartirá el motor de puntuación y la cuadrícula con el resto."
+        />
+      ),
+    },
+  ],
+};
 
-  useEffect(() => {
-    let cancelled = false;
+function HeaderButton({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable accessibilityLabel={label} onPress={onPress} style={styles.headerButton}>
+      <Text style={styles.headerButtonText}>{label}</Text>
+    </Pressable>
+  );
+}
 
-    openDatabase()
-      .then(readDatabaseStatus)
-      .then((status) => {
-        if (!cancelled) setScreen({ phase: 'ready', status });
-      })
-      .catch((error: unknown) => {
-        // A database that will not open is not a state the app can carry on in,
-        // so it goes on the screen rather than into a swallowed promise.
-        console.error(error);
-        const message = error instanceof Error ? error.message : String(error);
-        if (!cancelled) setScreen({ phase: 'failed', message });
-      });
+/**
+ * The cards on Hoy open tabs, and a tab only exists inside the tab navigator: an
+ * action the stack above does not know cannot reach down into it. From here it goes
+ * the other way, and the weekly summary, which is not a tab, bubbles up to the stack.
+ */
+function TodayTab() {
+  const navigation = useNavigation<{ navigate: (name: string) => void }>();
+  return <TodayScreen onOpen={(name) => navigation.navigate(name)} />;
+}
 
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+function TabsScreen() {
+  const tabs = enabledTabs(registry);
 
   return (
-    <View style={styles.screen}>
-      <Text style={styles.title}>nexo</Text>
+    <Tabs.Navigator
+      // The bar sits at the bottom but the pages still swipe, which bottom tabs
+      // alone cannot do.
+      tabBarPosition="bottom"
+      screenOptions={{
+        tabBarScrollEnabled: true,
+        tabBarLabelStyle: styles.tabLabel,
+        tabBarItemStyle: styles.tabItem,
+        tabBarIndicatorStyle: styles.tabIndicator,
+        tabBarStyle: styles.tabBar,
+        tabBarActiveTintColor: '#111',
+        tabBarInactiveTintColor: '#999',
+      }}
+    >
+      {tabs.map((tab) => (
+        <Tabs.Screen key={tab.id} name={tab.label}>
+          {() => (tab.id === 'today' ? <TodayTab /> : <tab.screen />)}
+        </Tabs.Screen>
+      ))}
+    </Tabs.Navigator>
+  );
+}
 
-      {screen.phase === 'opening' && <ActivityIndicator accessibilityLabel="Abriendo la base" />}
+function SettingsRoute() {
+  const { state, saveSetting, removeSetting, logDay, resetDatabase } = useAppData();
+  if (state.phase !== 'ready') return null;
 
-      {screen.phase === 'ready' && (
-        <Text style={styles.detail}>
-          {screen.status.tableCount} tablas, {screen.status.appliedMigrations.length} migraciones
-          aplicadas
-        </Text>
-      )}
+  return (
+    <SettingsScreen
+      settings={state.loaded.settings}
+      palette={state.loaded.palette}
+      todayWeightKg={state.loaded.today.log?.weight_kg ?? null}
+      onSaveSetting={saveSetting}
+      onClearSetting={removeSetting}
+      onSaveWeight={(weightKg) => logDay({ weightKg })}
+      onSelectPalette={(next) => saveSetting('palette', next)}
+      onResetDatabase={resetDatabase}
+    />
+  );
+}
 
-      {screen.phase === 'failed' && (
-        <Text style={styles.error}>No abrió la base de datos: {screen.message}</Text>
-      )}
-
-      <StatusBar style="auto" />
-    </View>
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppDataProvider>
+        <NavigationContainer>
+          <RootStack.Navigator>
+            <RootStack.Screen
+              name="nexo"
+              component={TabsScreen}
+              options={({ navigation }) => ({
+                headerRight: () => (
+                  <HeaderButton label="Ajustes" onPress={() => navigation.navigate('Ajustes')} />
+                ),
+              })}
+            />
+            <RootStack.Screen
+              name="Ajustes"
+              component={SettingsRoute}
+              options={({ navigation }) => ({
+                presentation: 'modal',
+                // A modal opened from a header needs its own way out; the default
+                // back button here reads "nexo", which says nothing about closing.
+                headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
+              })}
+            />
+            <RootStack.Screen
+              name="Recomendaciones"
+              component={RoutineNotesScreen}
+              options={({ navigation }) => ({
+                presentation: 'modal',
+                headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
+              })}
+            />
+            <RootStack.Screen
+              name="Experimentos"
+              component={ExperimentsScreen}
+              options={({ navigation }) => ({
+                presentation: 'modal',
+                headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
+              })}
+            />
+            <RootStack.Screen
+              name="Lecturas"
+              component={ReadingsScreen}
+              options={({ navigation }) => ({
+                presentation: 'modal',
+                headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
+              })}
+            />
+            <RootStack.Screen
+              name="Resumen semanal"
+              component={WeekSummaryScreen}
+              options={({ navigation }) => ({
+                presentation: 'modal',
+                headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
+              })}
+            />
+          </RootStack.Navigator>
+        </NavigationContainer>
+        <StatusBar style="auto" />
+      </AppDataProvider>
+    </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+  tabBar: {
     backgroundColor: '#fff',
-    padding: 24,
-    gap: 12,
   },
-  title: {
-    fontSize: 20,
+  tabItem: {
+    width: 'auto',
+    paddingHorizontal: 14,
   },
-  detail: {
-    fontSize: 14,
-    color: '#444',
+  tabLabel: {
+    fontSize: 11,
+    textTransform: 'none',
+    fontWeight: '400',
   },
-  error: {
-    fontSize: 14,
-    color: '#8a1f11',
-    textAlign: 'center',
+  tabIndicator: {
+    backgroundColor: '#111',
+    height: 2,
+  },
+  headerButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  headerButtonText: {
+    fontSize: 13,
   },
 });
