@@ -32,6 +32,12 @@ export type NutritionTotals = {
   sodiumMg: number;
   /** Spec 7.5. Null until at least one eaten food carries a glycemic index. */
   glycemicLoad: number | null;
+  /**
+   * Spec 7.5: dairy is shown and never subtracted. His breakfast is 65 g of protein
+   * and milk is a third of it, so the number is here to be looked at, not acted on.
+   * Millilitres only counts the dairy he measures in millilitres.
+   */
+  dairy: { portions: number; millilitresG: number; proteinG: number };
   /** Spec 7.1 and 3.3: flagged, not scored. */
   sodiumOverLimit: boolean;
   /** Every nutrient the catalog could not supply for something eaten today. */
@@ -89,6 +95,18 @@ export function dailyTotals(portions: readonly LoggedPortion[]): NutritionTotals
 
   const sodiumMg = sum('sodium_mg', 'sodium_mg');
 
+  const dairyPortions = portions.filter((portion) => portion.food.is_dairy === 1);
+  const dairy = {
+    portions: dairyPortions.length,
+    millilitresG: dairyPortions
+      .filter((portion) => portion.food.base_unit === 'ml')
+      .reduce((total, portion) => total + portion.quantity, 0),
+    proteinG: dairyPortions.reduce(
+      (total, portion) => total + portion.food.protein_g * portion.quantity,
+      0,
+    ),
+  };
+
   return {
     kcal: sum('kcal', 'kcal'),
     proteinG: sum('protein_g', 'protein_g'),
@@ -98,6 +116,7 @@ export function dailyTotals(portions: readonly LoggedPortion[]): NutritionTotals
     fibreG: sum('fibre_g', 'fibre_g'),
     sodiumMg,
     glycemicLoad,
+    dairy,
     sodiumOverLimit: sodiumMg > SODIUM_FLAG_MG,
     missing: dedupe(gaps),
   };

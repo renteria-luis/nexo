@@ -97,6 +97,162 @@ export async function addFoodEntry(db: SQLiteDatabase, entry: NewFoodEntry): Pro
   return id;
 }
 
+/**
+ * Removing a portion that came out of a batch hands the portion back, so a mistaken
+ * tap does not quietly shrink the batch. Capped at the batch size.
+ */
 export async function deleteFoodEntry(db: SQLiteDatabase, entryId: string): Promise<void> {
-  await db.runAsync('DELETE FROM nutrition_food_entry WHERE id = ?;', [entryId]);
+  await db.withTransactionAsync(async () => {
+    const entry = await db.getFirstAsync<{ batch_id: string | null }>(
+      'SELECT batch_id FROM nutrition_food_entry WHERE id = ?;',
+      [entryId],
+    );
+    await db.runAsync('DELETE FROM nutrition_food_entry WHERE id = ?;', [entryId]);
+    if (entry?.batch_id) {
+      await db.runAsync(
+        `UPDATE nutrition_batch SET portions_remaining = portions_remaining + 1
+          WHERE id = ? AND portions_remaining < portions_count;`,
+        [entry.batch_id],
+      );
+    }
+  });
+}
+
+export type LabelFood = {
+  name: string;
+  store?: string | null;
+  /** The weight the label's figures are quoted for, usually 100 g. */
+  servingG: number;
+  kcal: number;
+  proteinG: number;
+  fatG: number;
+  /** Null when the label he is reading does not give it. */
+  carbsG: number | null;
+};
+
+/**
+ * Spec 7.3 runs on label protein per gram, and the foods it is about (chicken breast,
+ * ground beef, rice) are not in the owner-verified catalogue. This stores a food as
+ * the package states it, per gram, marked source = 'label' so it never passes for a
+ * measured value.
+ */
+export async function addFoodFromLabel(db: SQLiteDatabase, food: LabelFood): Promise<string> {
+  const name = food.name.trim();
+  if (name === '') throw new Error('a food needs a name');
+  if (!(food.servingG > 0))
+    throw new Error(`a label serving of ${food.servingG} g is not a serving`);
+  for (const [label, value] of [
+    ['kcal', food.kcal],
+    ['protein', food.proteinG],
+    ['fat', food.fatG],
+  ] as const) {
+    if (!Number.isFinite(value) || value < 0)
+      throw new Error(`${label} of ${value} is not a figure`);
+  }
+  if (food.carbsG !== null && (!Number.isFinite(food.carbsG) || food.carbsG < 0)) {
+    throw new Error(`carbohydrate of ${food.carbsG} is not a figure`);
+  }
+
+  const id = `food-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  const per = food.servingG;
+
+  await db.runAsync(
+    `INSERT INTO nutrition_food
+       (id, name, brand, store, base_unit, unit_kind, base_unit_g, kcal, protein_g, carbs_g,
+        sugar_g, fat_g, fibre_g, sodium_mg, source, price_cad_cents, package_size,
+        glycemic_index, is_dairy)
+     VALUES (?, ?, NULL, ?, 'g', 'mass', 1, ?, ?, ?, NULL, ?, NULL, NULL, 'label',
+             NULL, NULL, NULL, 0);`,
+    [
+      id,
+      name,
+      food.store ?? null,
+      food.kcal / per,
+      food.proteinG / per,
+      food.carbsG === null ? null : food.carbsG / per,
+      food.fatG / per,
+    ],
+  );
+
+  return id;
+}
+
+export type NewBatch = {
+  foodId: string;
+  rawWeightG: number;
+  portionsCount: number;
+  cookedDate: IsoDate;
+  fatDrained: boolean;
+};
+
+/** Spec 7.3: one weighing per batch. Refuses a food the per-gram arithmetic cannot run on. */
+export async function createBatch(db: SQLiteDatabase, batch: NewBatch): Promise<string> {
+  if (!(batch.rawWeightG > 0)) throw new Error(`a batch of ${batch.rawWeightG} g weighs nothing`);
+  if (!Number.isInteger(batch.portionsCount) || batch.portionsCount < 1) {
+    throw new Error(`${batch.portionsCount} portions is not a way to divide a batch`);
+  }
+
+  const food = await getFood(db, batch.foodId);
+  if (food.base_unit_g === null) {
+    throw new Error(`${food.name} has no weight per unit, so it cannot be batched`);
+  }
+
+  const id = `batch-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  await db.runAsync(
+    `INSERT INTO nutrition_batch
+       (id, food_id, raw_weight_g, portions_count, cooked_date, portions_remaining, fat_drained)
+     VALUES (?, ?, ?, ?, ?, ?, ?);`,
+    [
+      id,
+      batch.foodId,
+      batch.rawWeightG,
+      batch.portionsCount,
+      batch.cookedDate,
+      batch.portionsCount,
+      batch.fatDrained ? 1 : 0,
+    ],
+  );
+  return id;
+}
+
+/**
+ * One tap is one portion (spec 7.3). The entry is logged as a portion's share of the
+ * raw weight, which is exactly the quantity the protein-per-portion arithmetic uses,
+ * and the remaining count drops in the same transaction. An empty batch refuses
+ * instead of going negative.
+ */
+export async function consumeBatchPortion(
+  db: SQLiteDatabase,
+  batchId: string,
+  date: IsoDate,
+  mealSlot: string,
+): Promise<string> {
+  let entryId = '';
+  await db.withTransactionAsync(async () => {
+    const batch = await db.getFirstAsync<NutritionBatchRow>(
+      'SELECT * FROM nutrition_batch WHERE id = ?;',
+      [batchId],
+    );
+    if (!batch) throw new Error(`no batch with id ${batchId}`);
+    if (batch.portions_remaining <= 0) throw new Error(`batch ${batchId} has no portions left`);
+
+    const food = await getFood(db, batch.food_id);
+    if (food.base_unit_g === null) {
+      throw new Error(`${food.name} has no weight per unit, so a portion cannot be sized`);
+    }
+
+    entryId = await addFoodEntry(db, {
+      foodId: food.id,
+      quantity: batch.raw_weight_g / food.base_unit_g / batch.portions_count,
+      unit: food.base_unit,
+      date,
+      mealSlot,
+      batchId,
+    });
+    await db.runAsync(
+      'UPDATE nutrition_batch SET portions_remaining = portions_remaining - 1 WHERE id = ?;',
+      [batchId],
+    );
+  });
+  return entryId;
 }

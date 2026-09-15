@@ -10,6 +10,9 @@ import type { NutritionBatchRow, NutritionFoodRow, UnitKind } from '../db/types.
 import { SPOILAGE_WARNING_DAYS, portionMacros, spoilageWarning } from './batch.ts';
 import {
   addFoodEntry,
+  addFoodFromLabel,
+  consumeBatchPortion,
+  createBatch,
   deleteFoodEntry,
   getFood,
   listFoods,
@@ -30,6 +33,16 @@ function adapt(db: DatabaseSync): SQLiteDatabase {
     runAsync: async (source: string, params: SqlValue[] = []) => {
       db.prepare(source).run(...params);
       return { changes: 0, lastInsertRowId: 0 };
+    },
+    withTransactionAsync: async (task: () => Promise<void>) => {
+      db.exec('BEGIN;');
+      try {
+        await task();
+        db.exec('COMMIT;');
+      } catch (error) {
+        db.exec('ROLLBACK;');
+        throw error;
+      }
     },
   } as unknown as SQLiteDatabase;
 }
@@ -324,7 +337,7 @@ test('every seeded food is stored per a unit he can actually log in', async () =
   const { db } = seeded();
   const foods = await listFoods(db);
 
-  assert.equal(foods.length, 9);
+  assert.equal(foods.length, 10);
   for (const food of foods) {
     assert.ok(
       ['g', 'ml', 'huevo', 'unidad', 'vaso'].includes(food.base_unit),
@@ -432,4 +445,155 @@ test('a food from an older schema fails with something readable, not a crash', (
     () => quickAmounts(undefined as unknown as UnitKind),
     /La base de datos es más vieja que la app/,
   );
+});
+
+function remaining(raw: DatabaseSync, batchId: string): number {
+  return (
+    raw
+      .prepare('SELECT portions_remaining AS n FROM nutrition_batch WHERE id = ?;')
+      .get(batchId) as {
+      n: number;
+    }
+  ).n;
+}
+
+async function chickenBreast(db: SQLiteDatabase): Promise<string> {
+  return addFoodFromLabel(db, {
+    name: 'Pechuga de pollo',
+    store: 'Food Basics',
+    servingG: 100,
+    kcal: 165,
+    proteinG: 31,
+    fatG: 3.6,
+    carbsG: 0,
+  });
+}
+
+test('a food from a package label is stored per gram and marked as label', async () => {
+  const { db } = seeded();
+  const food = await getFood(db, await chickenBreast(db));
+
+  assert.equal(food.base_unit, 'g');
+  assert.equal(food.unit_kind, 'mass');
+  assert.equal(food.source, 'label');
+  assert.ok(Math.abs(food.kcal - 1.65) < 1e-9);
+  assert.ok(Math.abs(food.protein_g - 0.31) < 1e-9);
+});
+
+test('a label without carbohydrate keeps it blank instead of zero', async () => {
+  const { db } = seeded();
+  const id = await addFoodFromLabel(db, {
+    name: 'Carne molida magra',
+    servingG: 113,
+    kcal: 240,
+    proteinG: 22,
+    fatG: 17,
+    carbsG: null,
+  });
+  assert.equal((await getFood(db, id)).carbs_g, null);
+});
+
+test('a nonsense label is refused', async () => {
+  const { db } = seeded();
+  const base = { name: 'x', servingG: 100, kcal: 100, proteinG: 10, fatG: 1, carbsG: 0 };
+  await assert.rejects(() => addFoodFromLabel(db, { ...base, name: '  ' }), /needs a name/);
+  await assert.rejects(() => addFoodFromLabel(db, { ...base, servingG: 0 }), /not a serving/);
+  await assert.rejects(() => addFoodFromLabel(db, { ...base, proteinG: -1 }), /not a figure/);
+});
+
+test('one tap eats one portion: its share of the raw weight, and one less left', async () => {
+  const { db, raw } = seeded();
+  const food = await chickenBreast(db);
+  // Spec 7.3: the whole 1.6 kg pack, divided by eye into 8 containers.
+  const batch = await createBatch(db, {
+    foodId: food,
+    rawWeightG: 1600,
+    portionsCount: 8,
+    cookedDate: '2026-09-13',
+    fatDrained: false,
+  });
+
+  await consumeBatchPortion(db, batch, '2026-09-14', 'mediodía');
+
+  const portions = await listPortions(db, '2026-09-14');
+  assert.equal(portions.length, 1);
+  assert.equal(portions[0].quantity, 200);
+  // 1600 g × 0.31 g/g ÷ 8 portions
+  assert.ok(Math.abs(dailyTotals(portions).proteinG - 62) < 1e-9);
+  assert.equal(remaining(raw, batch), 7);
+});
+
+test('an empty batch refuses another portion instead of going negative', async () => {
+  const { db, raw } = seeded();
+  const batch = await createBatch(db, {
+    foodId: await chickenBreast(db),
+    rawWeightG: 600,
+    portionsCount: 1,
+    cookedDate: '2026-09-13',
+    fatDrained: false,
+  });
+
+  await consumeBatchPortion(db, batch, '2026-09-14', 'cena');
+  await assert.rejects(
+    () => consumeBatchPortion(db, batch, '2026-09-14', 'cena'),
+    /no portions left/,
+  );
+  assert.equal(remaining(raw, batch), 0);
+  assert.equal((await listPortions(db, '2026-09-14')).length, 1);
+});
+
+test('removing a portion eaten from a batch hands it back', async () => {
+  const { db, raw } = seeded();
+  const batch = await createBatch(db, {
+    foodId: await chickenBreast(db),
+    rawWeightG: 1600,
+    portionsCount: 8,
+    cookedDate: '2026-09-13',
+    fatDrained: false,
+  });
+
+  const entry = await consumeBatchPortion(db, batch, '2026-09-14', 'mediodía');
+  assert.equal(remaining(raw, batch), 7);
+
+  await deleteFoodEntry(db, entry);
+  assert.equal(remaining(raw, batch), 8);
+  assert.equal((await listPortions(db, '2026-09-14')).length, 0);
+});
+
+test('a food with no weight per unit cannot become a batch', async () => {
+  const { db } = seeded();
+  const base = { rawWeightG: 500, portionsCount: 4, cookedDate: '2026-09-13', fatDrained: false };
+  await assert.rejects(
+    () => createBatch(db, { ...base, foodId: 'wendys-jbc' }),
+    /cannot be batched/,
+  );
+  await assert.rejects(
+    () => createBatch(db, { ...base, foodId: 'oats-quaker', portionsCount: 0 }),
+    /not a way to divide/,
+  );
+});
+
+test('dairy is counted and shown, never subtracted', async () => {
+  const { db } = seeded();
+  await addFoodEntry(db, {
+    date: '2026-09-15',
+    foodId: 'milk-1',
+    quantity: 450,
+    unit: 'ml',
+    mealSlot: 'desayuno',
+  });
+  await addFoodEntry(db, {
+    date: '2026-09-15',
+    foodId: 'eggs-large',
+    quantity: 6,
+    unit: 'huevo',
+    mealSlot: 'desayuno',
+  });
+
+  const totals = dailyTotals(await listPortions(db, '2026-09-15'));
+
+  assert.equal(totals.dairy.portions, 1);
+  assert.equal(totals.dairy.millilitresG, 450);
+  // The eggs are still in the day's protein, they are simply not dairy.
+  assert.ok(totals.proteinG > totals.dairy.proteinG);
 });

@@ -43,3 +43,6 @@ export function portionLabel(food: NutritionFoodRow, quantity: number): string {
   if (food.unit_kind === 'count') return `${roundAmount(quantity)} × ${food.name}`;
   return `${roundAmount(quantity)} ${food.base_unit} · ${food.name}`;
 }
+
+/** Spec 1.4: the five moments he actually eats at. */
+export const MEAL_SLOTS = ['desayuno', 'media mañana', 'mediodía', 'tarde', 'cena'];
