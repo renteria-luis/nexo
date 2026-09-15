@@ -10,6 +10,11 @@ import { sql as coreSetting } from './009_core_setting.ts';
 import { sql as alcoholTiming } from './010_daily_log_alcohol_timing.ts';
 import { sql as trainingEquipment } from './011_training_equipment.ts';
 import { sql as seedFanshawe } from './012_seed_fanshawe.ts';
+import { sql as techniqueCues } from './013_technique_cues.ts';
+import { sql as coreStudy } from './014_core_study.ts';
+import { sql as seedRoutines } from './015_seed_routines.ts';
+import { sql as seedStarbucks } from './016_seed_starbucks.ts';
+import { sql as coreExperiment } from './017_core_experiment.ts';
 
 export type Migration = {
   id: string;
@@ -31,4 +36,9 @@ export const migrations: Migration[] = [
   { id: '010_daily_log_alcohol_timing', sql: alcoholTiming },
   { id: '011_training_equipment', sql: trainingEquipment },
   { id: '012_seed_fanshawe', sql: seedFanshawe },
+  { id: '013_technique_cues', sql: techniqueCues },
+  { id: '014_core_study', sql: coreStudy },
+  { id: '015_seed_routines', sql: seedRoutines },
+  { id: '016_seed_starbucks', sql: seedStarbucks },
+  { id: '017_core_experiment', sql: coreExperiment },
 ];

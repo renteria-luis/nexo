@@ -170,7 +170,7 @@ test('weekly set volume per muscle weights secondaries at half', () => {
 test('tier 1 keeps its set count at every budget', () => {
   const db = freshDatabase();
   seedExercise(db);
-  db.exec("INSERT INTO training_routine (id, name) VALUES ('r-1', 'Push');");
+  db.exec("INSERT INTO training_routine (id, name) VALUES ('r-1', 'Fixture push');");
 
   rejects(
     db,
@@ -189,7 +189,7 @@ test('tier 1 keeps its set count at every budget', () => {
 test('a rep range needs both bounds and AMRAP needs neither', () => {
   const db = freshDatabase();
   seedExercise(db);
-  db.exec("INSERT INTO training_routine (id, name) VALUES ('r-1', 'Pull');");
+  db.exec("INSERT INTO training_routine (id, name) VALUES ('r-1', 'Fixture pull');");
 
   rejects(
     db,
@@ -213,7 +213,7 @@ test('a rep range needs both bounds and AMRAP needs neither', () => {
 test('tier 1 cannot be dropped at a budget by leaving the column null', () => {
   const db = freshDatabase();
   seedExercise(db);
-  db.exec("INSERT INTO training_routine (id, name) VALUES ('r-1', 'Legs');");
+  db.exec("INSERT INTO training_routine (id, name) VALUES ('r-1', 'Fixture legs');");
   rejects(
     db,
     `INSERT INTO training_routine_exercise
@@ -300,14 +300,14 @@ test('price is stored in whole cents', () => {
   assert.match(message, /cannot store .* value in INTEGER column/i);
 });
 
-test('the food catalog seeds the nine owner-verified foods', () => {
+test('the food catalog seeds the ten owner-verified foods', () => {
   const db = freshDatabase();
   const rows = db.prepare('SELECT id, source FROM nutrition_food ORDER BY id;').all() as {
     id: string;
     source: string;
   }[];
 
-  assert.equal(rows.length, 9);
+  assert.equal(rows.length, 10);
   for (const row of rows) assert.equal(row.source, 'user_measured');
 });
 
@@ -319,7 +319,9 @@ test('a food the spec leaves blank keeps no carbohydrate figure', () => {
 
   assert.deepEqual(
     rows.map((row) => row.id),
-    ['oats-quaker', 'wendys-jbc'],
+    // The Starbucks drink too: spec 7.4 gives protein, calories and fat, and its
+    // carbohydrate was never verified.
+    ['oats-quaker', 'starbucks-protein-latte', 'wendys-jbc'],
   );
 });
 

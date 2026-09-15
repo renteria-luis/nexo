@@ -225,3 +225,48 @@ export type NutritionFoodEntryRow = {
   meal_slot: string;
   batch_id: string | null;
 };
+
+/** Spec 5.12. One topic and at most one criterion each: see migration 014. */
+export type CoreStudyRow = {
+  id: string;
+  topic: string;
+  criterion: string | null;
+  spec_section: string;
+  title: string;
+  authors: string | null;
+  year: number | null;
+  journal: string | null;
+  doi: string | null;
+  pmid: string | null;
+  open_access_url: string | null;
+  summary: string;
+  sort_order: number;
+};
+
+/** Spec 8.3 rule 8: what this session was planned to be, overrides included. */
+export type TrainingSessionPlanRow = {
+  session_id: string;
+  exercise_id: string;
+  position: number;
+  sets_planned: number;
+  rest_seconds: number;
+};
+
+/** Spec 5.11. Null end_date means it is still running. */
+export type CoreExperimentRow = {
+  id: string;
+  name: string;
+  hypothesis: string;
+  variable_changed: string;
+  start_date: IsoDate;
+  end_date: IsoDate | null;
+  outcome_metric: string;
+  notes: string | null;
+};
+
+export type CoreExperimentReadingRow = {
+  experiment_id: string;
+  date: IsoDate;
+  value: number;
+  note: string | null;
+};
