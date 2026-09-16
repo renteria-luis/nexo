@@ -40,6 +40,7 @@ import {
   type ExperimentWithReadings,
   type NewExperiment,
 } from '../core/experiments.ts';
+import type { GymLocation } from '../core/geo.ts';
 import { stepsAdvice, type StepsAdvice } from '../core/steps.ts';
 import { listStudies } from '../core/studies.ts';
 import {
@@ -77,6 +78,7 @@ import {
 import {
   addSet,
   deleteSet,
+  listGyms,
   listRoutines,
   loadRoutinePlan,
   loadSessionPlan,
@@ -91,6 +93,7 @@ import {
 } from '../training/index.ts';
 
 import { assembleDay, exerciseContext, type AssembledDay, type ExerciseContext } from './day.ts';
+import { locateGym, type LocationOutcome } from './location.ts';
 import { loadWeekSummary, type WeekSummary } from './week.ts';
 
 export const WEEKS_SHOWN = 12;
@@ -126,6 +129,7 @@ export type Loaded = {
   /** Spec 14.2: the next step stage, once three weeks have earned it. */
   steps: StepsAdvice | null;
   routines: TrainingRoutineRow[];
+  gyms: GymLocation[];
   /** Spec 8.3 rule 8: what today's session was approved to be, empty before it starts. */
   plan: PlannedSet[];
 };
@@ -170,6 +174,8 @@ async function load(exerciseId: string | null): Promise<Loaded> {
       assembled.session ? loadSessionPlan(db, assembled.session.id) : Promise.resolve([]),
     ]);
 
+  const gyms = await listGyms(db);
+
   const batches: OpenBatch[] = openBatches.map((batch) => {
     const food = foods.find((item) => item.id === batch.food_id);
     if (!food) throw new Error(`batch ${batch.id} points at food ${batch.food_id}, which is gone`);
@@ -203,6 +209,7 @@ async function load(exerciseId: string | null): Promise<Loaded> {
     })(),
     batches,
     routines,
+    gyms,
     plan,
   };
 }
@@ -221,7 +228,10 @@ export type AppData = {
     budget: TimeBudget,
     plan: PlannedExercise[],
     company?: Company,
+    gymId?: string,
   ) => void;
+  /** Spec 5.2: asked for once, by him, never watched. */
+  whereAmI: () => Promise<LocationOutcome>;
   /** The trimmed plan for a routine at a budget, for the screen that asks approval. */
   loadPlan: (routineId: string, budget: TimeBudget) => Promise<RoutinePlan>;
   logSet: (
@@ -301,18 +311,20 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     logDay: (entry) => run((db) => upsertDailyLog(db, { date: todayIso(), ...entry })),
     addFood: (entry) => run((db) => addFoodEntry(db, { ...entry, date: todayIso() })),
     removeFood: (entryId) => run((db) => deleteFoodEntry(db, entryId)),
-    beginSession: (routineId, budget, plan, company) =>
+    beginSession: (routineId, budget, plan, company, gymId) =>
       run(async (db) => {
         const sessionId = await startSession(db, {
           date: todayIso(),
           timeBudget: budget,
           routineId,
+          gymId: gymId ?? null,
           aloneOrPartner: company ?? null,
         });
         // Spec 8.3 rule 7: nothing starts until he has approved the plan, so the
         // approved plan and the session are written together.
         await saveSessionPlan(db, sessionId, plan);
       }),
+    whereAmI: () => locateGym(loaded?.gyms ?? []),
     loadPlan: (routineId, budget) =>
       openDatabase().then((db) => loadRoutinePlan(db, routineId, budget)),
     logSet: (weightKg, reps, extra) => {

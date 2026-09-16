@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import type { GymLocation } from '../core/geo.ts';
 import type { Company, TrainingRoutineRow } from '../db/types.ts';
+import type { LocationOutcome } from '../shell/location.ts';
 import type { PlannedExercise, RoutinePlan, TimeBudget } from '../training/index.ts';
 
 const BUDGETS: { id: TimeBudget; label: string }[] = [
@@ -29,12 +31,16 @@ function reps(exercise: PlannedExercise): string {
 
 export type SessionPlannerProps = {
   routines: TrainingRoutineRow[];
+  gyms: GymLocation[];
+  /** One reading, taken only when he asks for it (spec 5.2). */
+  onLocate: () => Promise<LocationOutcome>;
   onLoadPlan: (routineId: string, budget: TimeBudget) => Promise<RoutinePlan>;
   onStart: (
     routineId: string,
     budget: TimeBudget,
     exercises: PlannedExercise[],
     company?: Company,
+    gymId?: string,
   ) => void;
 };
 
@@ -43,10 +49,19 @@ export type SessionPlannerProps = {
  * approval. Spec 8.3 rule 7 is the reason this screen exists at all: the trim is
  * never applied behind his back. The gym step waits for the geofence (spec 5.2).
  */
-export function SessionPlanner({ routines, onLoadPlan, onStart }: SessionPlannerProps) {
+export function SessionPlanner({
+  routines,
+  gyms,
+  onLocate,
+  onLoadPlan,
+  onStart,
+}: SessionPlannerProps) {
   const [routineId, setRoutineId] = useState<string | null>(null);
   const [budget, setBudget] = useState<TimeBudget>('completo');
   const [company, setCompany] = useState<Company | null>(null);
+  const [gymId, setGymId] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [whereNote, setWhereNote] = useState<string | null>(null);
   const [plan, setPlan] = useState<RoutinePlan | null>(null);
   const [exercises, setExercises] = useState<PlannedExercise[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
@@ -91,6 +106,52 @@ export function SessionPlanner({ routines, onLoadPlan, onStart }: SessionPlanner
     <View style={styles.wrapper}>
       <Text style={styles.heading}>Entreno de hoy</Text>
 
+      <Text style={styles.label}>Dónde</Text>
+      <View style={styles.chips}>
+        {gyms.map((gym) => (
+          <Pressable
+            key={gym.id}
+            accessibilityLabel={`Gimnasio ${gym.name}`}
+            onPress={() => {
+              setGymId(gym.id);
+              setWhereNote(null);
+            }}
+            style={[styles.chip, gym.id === gymId && styles.chipSelected]}
+          >
+            <Text style={styles.chipText}>{gym.name}</Text>
+          </Pressable>
+        ))}
+        <Pressable
+          accessibilityLabel="Usar mi ubicación"
+          disabled={locating}
+          onPress={() => {
+            setLocating(true);
+            setWhereNote('Buscando…');
+            onLocate()
+              .then((outcome) => {
+                if (outcome.kind === 'match') {
+                  setGymId(outcome.fix.gym.id);
+                  setWhereNote(`${outcome.fix.gym.name}, a ${Math.round(outcome.fix.distanceM)} m`);
+                } else if (outcome.kind === 'elsewhere') {
+                  setWhereNote('No estás en ninguno de los dos');
+                } else {
+                  setWhereNote('Sin permiso de ubicación');
+                }
+              })
+              .catch((error: unknown) => {
+                console.error(error);
+                setWhereNote(error instanceof Error ? error.message : String(error));
+              })
+              .finally(() => setLocating(false));
+          }}
+          style={[styles.chip, locating && styles.chipSelected]}
+        >
+          <Text style={styles.chipText}>Usar mi ubicación</Text>
+        </Pressable>
+      </View>
+      {whereNote && <Text style={styles.detail}>{whereNote}</Text>}
+
+      <Text style={styles.label}>Rutina</Text>
       <View style={styles.chips}>
         {routines.map((routine) => (
           <Pressable
@@ -177,7 +238,7 @@ export function SessionPlanner({ routines, onLoadPlan, onStart }: SessionPlanner
         disabled={!selected || exercises.length === 0}
         onPress={() => {
           if (!selected || exercises.length === 0) return;
-          onStart(selected, budget, exercises, company ?? undefined);
+          onStart(selected, budget, exercises, company ?? undefined, gymId ?? undefined);
         }}
         style={[styles.start, exercises.length === 0 && styles.startDisabled]}
       >

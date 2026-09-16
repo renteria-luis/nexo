@@ -129,9 +129,11 @@ export async function exerciseContext(
   db: SQLiteDatabase,
   day: AssembledDay,
   exerciseId: string | null,
-  gymId = 'fanshawe',
+  fallbackGymId = 'fanshawe',
 ): Promise<ExerciseContext> {
-  const exercises = await listExercises(db, gymId);
+  // Spec 5.1: the weight step is the one on the machine in front of him, so the
+  // catalogue is read for the gym this session is actually at.
+  const exercises = await listExercises(db, day.session?.gym_id ?? fallbackGymId);
   if (!exerciseId) return { exercises, todaySets: [], lastSets: [], marks: null };
 
   const settings = await readSettings(db);

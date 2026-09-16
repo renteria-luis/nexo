@@ -17,6 +17,7 @@ export function TrainingScreen() {
     logSet,
     removeSet,
     describeSession,
+    whereAmI,
   } = useAppData();
   const navigation = useNavigation<{ navigate: (name: string) => void }>();
   if (state.phase !== 'ready') return <Screen title="Entreno">{null}</Screen>;
@@ -27,7 +28,13 @@ export function TrainingScreen() {
   return (
     <Screen title="Entreno">
       {loaded.today.session === null ? (
-        <SessionPlanner routines={loaded.routines} onLoadPlan={loadPlan} onStart={beginSession} />
+        <SessionPlanner
+          routines={loaded.routines}
+          gyms={loaded.gyms}
+          onLocate={whereAmI}
+          onLoadPlan={loadPlan}
+          onStart={beginSession}
+        />
       ) : (
         <SessionLog
           exercises={loaded.exercise.exercises}
