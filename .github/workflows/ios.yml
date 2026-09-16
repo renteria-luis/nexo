@@ -58,8 +58,7 @@ jobs:
             -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            | tail -40
+            CODE_SIGN_IDENTITY=""
 
       # An ipa is a zip with the app inside a Payload folder, and that is all the
       # on-device signer needs.
