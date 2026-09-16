@@ -15,6 +15,7 @@ import { sql as coreStudy } from './014_core_study.ts';
 import { sql as seedRoutines } from './015_seed_routines.ts';
 import { sql as seedStarbucks } from './016_seed_starbucks.ts';
 import { sql as coreExperiment } from './017_core_experiment.ts';
+import { sql as gymLocations } from './018_gym_locations.ts';
 
 export type Migration = {
   id: string;
@@ -41,4 +42,5 @@ export const migrations: Migration[] = [
   { id: '015_seed_routines', sql: seedRoutines },
   { id: '016_seed_starbucks', sql: seedStarbucks },
   { id: '017_core_experiment', sql: coreExperiment },
+  { id: '018_gym_locations', sql: gymLocations },
 ];

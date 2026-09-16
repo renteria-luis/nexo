@@ -1,7 +1,8 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { DateRange } from '../core/dates.ts';
-import type { TrainingEquipmentRow, TrainingExerciseRow } from '../db/types.ts';
+import type { GymLocation } from '../core/geo.ts';
+import type { TrainingEquipmentRow, TrainingExerciseRow, TrainingGymRow } from '../db/types.ts';
 
 import type { ExerciseMuscles, LoggedSet, MuscleShare } from './calculations.ts';
 
@@ -77,6 +78,18 @@ export type CatalogExercise = TrainingExerciseRow & {
    */
   stepKg: number;
 };
+
+/** Spec 5.2: the gyms he trains at, with whatever coordinates they have. */
+export async function listGyms(db: SQLiteDatabase): Promise<GymLocation[]> {
+  const rows = await db.getAllAsync<TrainingGymRow>('SELECT * FROM training_gym ORDER BY name;');
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    lat: row.lat,
+    lng: row.lng,
+    radiusM: row.geofence_radius_m,
+  }));
+}
 
 export async function listEquipment(
   db: SQLiteDatabase,
