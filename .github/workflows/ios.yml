@@ -1,0 +1,78 @@
+# Builds an unsigned iOS app and leaves it as a downloadable artifact.
+#
+# Unsigned on purpose: signing needs an Apple account, and the owner signs on the
+# phone itself with his own Apple ID. Nothing secret ever reaches this workflow.
+#
+# Manual only. macOS runners are free on public repositories but slow, and there is
+# no reason to build on every commit for an app with one user.
+name: ios
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check types and run tests
+        run: |
+          npx tsc --noEmit
+          npm test
+
+      # ios/ is generated, never committed: the native project is an output of the
+      # config in app.json, and a committed copy would drift away from it.
+      - name: Generate the native project
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: Install pods
+        run: pod install --project-directory=ios
+
+      - name: Build
+        run: |
+          set -eo pipefail
+          xcodebuild \
+            -workspace ios/nexo.xcworkspace \
+            -scheme nexo \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            | tail -40
+
+      # An ipa is a zip with the app inside a Payload folder, and that is all the
+      # on-device signer needs.
+      - name: Package the ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/nexo.app Payload/
+          zip -qry nexo.ipa Payload
+          ls -lh nexo.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexo-ipa
+          path: nexo.ipa
+          retention-days: 30
+          if-no-files-found: error
