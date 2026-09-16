@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 60
 
     steps:
@@ -37,11 +37,6 @@ jobs:
         run: |
           npx tsc --noEmit
           npm test
-
-      - name: Select Xcode
-        run: |
-          set -eo pipefail
-          sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | head -1)"
 
       # ios/ is generated, never committed: the native project is an output of the
       # config in app.json, and a committed copy would drift away from it.
