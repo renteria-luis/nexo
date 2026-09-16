@@ -67,6 +67,20 @@ If the plan turns out wrong mid-PR, update the file and say so in the status blo
 - No comments explaining what the code does. Comments only for why a non-obvious decision was made.
 - Errors fail loudly. No silent catch blocks, no empty fallbacks that hide a broken state.
 
+## Migrations
+
+**Never edit a migration that has already run anywhere, including the owner's phone.**
+The runner records what it applied and skips it forever, so an edit silently leaves
+that device on an older schema while the code expects the newer one. It does not fail
+at the edit; it fails later as a render error with no obvious cause.
+
+A change to a shipped table needs a new migration. While the schema is still moving
+and the only device is the owner's, the alternative is the reset button in Ajustes,
+which deletes the database and rebuilds it from scratch.
+
+Tests run against a fresh in-memory database every time, so they will never catch
+this. Only the device does.
+
 ## Commits
 
 Conventional Commits. `<type>(<scope>): <subject>`
