@@ -46,3 +46,23 @@ Decision:
 4. `sets_by_budget` is four columns, `sets_full`, `sets_minus_25`, `sets_minus_50` and `sets_express`, not JSON. The budgets are four and fixed by spec section 8.2, and NULL means the exercise is dropped at that budget, which is the dash in the section 8.4 tables.
 5. Day-scoped dates are `TEXT` in `YYYY-MM-DD` in the owner's local timezone, checked by a GLOB pattern. Points in time are integer milliseconds since the Unix epoch in UTC. Money is an integer count of cents, `price_cad_cents`.
 Rejected: JSON columns for the array fields, because weekly volume per muscle has to be aggregated in SQL and JSON cannot be. Storing money as REAL, because rounding error accumulates and the protein per dollar comparison in spec section 16.6 depends on it not doing that. Storing dates as epoch milliseconds only, because a day boundary is a local calendar fact and converting on every read invites off-by-one days. A single `muscle_role` enum instead of a numeric contribution, because the scoring code would then carry the 1.0 and 0.5 constants instead of the data carrying them.
+
+## 2026-09-16 — Apple Health y AutoSleep quedan en espera hasta que haya cuenta de pago
+Context: El dueño quiere que el sueño entre solo, sin escribirlo. AutoSleep escribe en
+Apple Health, así que leer Health cubre ambos. Su condición fue construirlo solo si no
+exige la cuenta de 99 dólares al año.
+Decision: En espera. La tabla oficial de capacidades de Apple da HealthKit al Apple
+Developer Program y al Enterprise Program, y lo deja en blanco para la cuenta gratuita,
+así que la lectura de Health no se puede firmar sin pagar. No se agregó dependencia ni
+código: nada a medias esperando en el repositorio.
+Rejected: Construirlo igual y dejarlo apagado. Arrastraría una dependencia nativa que
+además impide correr en Expo Go, que es como él usa la app hoy.
+
+## 2026-09-16 — La ubicación se lee una sola vez y solo cuando él la pide
+Context: Detectar el gimnasio al llegar (spec 5.2) sin que el GPS quede encendido.
+Decision: Un botón "usar mi ubicación" en la pantalla de empezar entreno, junto a los
+dos gimnasios. Una sola lectura de alta precisión con permiso en uso, sin vigilancia ni
+permiso de segundo plano: la lectura termina y la radio se apaga sola.
+Rejected: Geocerca en segundo plano. Detectaría la llegada sin tocar nada, pero pide el
+permiso "siempre" y mantiene el servicio despierto, que es justo lo que no quiere.
+
