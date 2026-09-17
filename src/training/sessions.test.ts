@@ -334,3 +334,56 @@ test('how busy the gym was belongs to a session he was actually at', async () =>
   await setSessionDetails(db, remembered, { aloneOrPartner: 'alone' });
   assert.equal((await getSessionOn(db, '2026-09-14'))?.alone_or_partner, 'alone');
 });
+
+test('the second gym is seeded with what he recorded at Fit4Less', async () => {
+  const db = fresh();
+  const equipment = await listEquipment(db, 'fit4less-proudfoot');
+
+  assert.equal(equipment.length, 23);
+
+  const byName = new Map(equipment.map((item) => [item.name_es, item]));
+
+  // The machine Fanshawe does not have, and the reason the lateral raise can be
+  // trained there without touching a dumbbell.
+  const deltoid = byName.get('Elevaciones laterales en maquina');
+  assert.equal(deltoid?.model_code, 'IPDR3');
+  assert.equal(deltoid?.kind, 'selectorized');
+
+  // Lock n Load picks the weight with a switch, but the stack still moves 10 lb.
+  for (const name of ['Press de pecho en maquina', 'Remo en maquina', 'Aductores']) {
+    assert.ok(Math.abs(fromKg(byName.get(name)?.load_increment ?? 0, 'lb') - 10) < 1e-9, name);
+  }
+
+  // The Star Trac rows are labelled in pounds, 22 to 165, and every plate is a
+  // round 5 kg: 143 lb is the 65 kg he rowed on the 16th.
+  const row = byName.get('Remo sentado');
+  assert.equal(row?.load_increment, 5);
+  assert.equal(row?.stack_min_kg, 10);
+  assert.equal(row?.stack_max_kg, 75);
+
+  assert.deepEqual(
+    equipment
+      .filter((item) => item.kind === 'plate_loaded')
+      .map((item) => item.name_es)
+      .sort(),
+    ['Prensa inclinada de discos', 'Sentadilla hack'],
+  );
+});
+
+test('the same exercise takes the step of the gym he is standing in', async () => {
+  const db = fresh();
+
+  // At Fit4Less the lateral raise is a machine, so the stack decides the step.
+  const atFit4Less = (await listExercises(db, 'fit4less-proudfoot')).find(
+    (item) => item.id === 'lateral-raise',
+  );
+  assert.ok(Math.abs(fromKg(atFit4Less?.stepKg ?? 0, 'lb') - 10) < 1e-9);
+
+  // At Fanshawe there is no such machine and it is done with dumbbells, which move
+  // in 2.5 lb steps: the same exercise, four times finer, because of where he stands.
+  const atFanshawe = (await listExercises(db, 'fanshawe')).find(
+    (item) => item.id === 'lateral-raise',
+  );
+  assert.equal(atFanshawe?.equipment?.name_es, 'Mancuernas');
+  assert.ok(Math.abs(fromKg(atFanshawe?.stepKg ?? 0, 'lb') - 2.5) < 1e-9);
+});
