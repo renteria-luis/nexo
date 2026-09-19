@@ -339,7 +339,7 @@ test('the second gym is seeded with what he recorded at Fit4Less', async () => {
   const db = fresh();
   const equipment = await listEquipment(db, 'fit4less-proudfoot');
 
-  assert.equal(equipment.length, 23);
+  assert.equal(equipment.length, 27);
 
   const byName = new Map(equipment.map((item) => [item.name_es, item]));
 
@@ -368,6 +368,14 @@ test('the second gym is seeded with what he recorded at Fit4Less', async () => {
       .sort(),
     ['Prensa inclinada de discos', 'Sentadilla hack'],
   );
+
+  // El gimnasio basico esta, pero el salto de las mancuernas no lo ha leido todavia,
+  // y la columna lo dice en vez de fingir una medida suya.
+  const dumbbells = byName.get('Mancuernas');
+  assert.equal(dumbbells?.kind, 'free_weight');
+  assert.equal(dumbbells?.increment_confirmed, 0);
+  assert.ok(byName.has('Bancos'));
+  assert.ok(byName.has('Maquina Smith'));
 });
 
 test('the same exercise takes the step of the gym he is standing in', async () => {
