@@ -395,3 +395,17 @@ test('the same exercise takes the step of the gym he is standing in', async () =
   assert.equal(atFanshawe?.equipment?.name_es, 'Mancuernas');
   assert.ok(Math.abs(fromKg(atFanshawe?.stepKg ?? 0, 'lb') - 2.5) < 1e-9);
 });
+
+test('the Matrix pulley stack is the one he read at the machine', async () => {
+  const db = fresh();
+  const tower = (await listEquipment(db, 'fanshawe')).find(
+    (item) => item.id === 'fan-matrix-cable',
+  );
+
+  // 2.5, 7.5, 12.5 ... 97.5 lb: the first brick weighs 2.5 and the other nineteen
+  // weigh 5, which is why the stack climbs in fives from an odd starting point.
+  assert.ok(Math.abs(fromKg(tower?.stack_min_kg ?? 0, 'lb') - 2.5) < 1e-9);
+  assert.ok(Math.abs(fromKg(tower?.stack_max_kg ?? 0, 'lb') - 97.5) < 1e-9);
+  assert.ok(Math.abs(fromKg(tower?.load_increment ?? 0, 'lb') - 5) < 1e-9);
+  assert.equal(tower?.increment_confirmed, 1);
+});
