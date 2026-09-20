@@ -7,6 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AppDataProvider, useAppData } from './src/shell/AppData.tsx';
 import { enabledTabs, type ModuleRegistry } from './src/modules/registry.ts';
+import { DealsScreen } from './src/ui/screens/DealsScreen.tsx';
 import { ExperimentsScreen } from './src/ui/screens/ExperimentsScreen.tsx';
 import { NutritionScreen } from './src/ui/screens/NutritionScreen.tsx';
 import { PendingScreen } from './src/ui/screens/PendingScreen.tsx';
@@ -33,12 +34,7 @@ const registry: ModuleRegistry = {
       id: 'deals',
       label: 'Ofertas',
       enabled: true,
-      screen: () => (
-        <PendingScreen
-          title="Ofertas"
-          note="El módulo de ofertas todavía no existe. Necesita un servicio aparte que recoja los precios de Flipp, y eso se construye después."
-        />
-      ),
+      screen: DealsScreen,
     },
     {
       id: 'finance',

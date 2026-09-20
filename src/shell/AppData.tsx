@@ -41,6 +41,7 @@ import {
   type NewExperiment,
 } from '../core/experiments.ts';
 import type { GymLocation } from '../core/geo.ts';
+import { listDeals, listDiscounts, listSources, type DealWithContext } from '../deals/index.ts';
 import { stepsAdvice, type StepsAdvice } from '../core/steps.ts';
 import { listStudies } from '../core/studies.ts';
 import {
@@ -54,6 +55,8 @@ import { openDatabase, resetDatabase } from '../db/index.ts';
 import type {
   Company,
   CoreStudyRow,
+  DealsDiscountRow,
+  DealsSourceRow,
   TrainingRoutineRow,
   NutritionBatchRow,
   NutritionContainerRow,
@@ -93,6 +96,7 @@ import {
 } from '../training/index.ts';
 
 import { assembleDay, exerciseContext, type AssembledDay, type ExerciseContext } from './day.ts';
+import { syncDeals, type SyncOutcome } from './deals.ts';
 import { locateGym, type LocationOutcome } from './location.ts';
 import { loadWeekSummary, type WeekSummary } from './week.ts';
 
@@ -130,6 +134,11 @@ export type Loaded = {
   steps: StepsAdvice | null;
   routines: TrainingRoutineRow[];
   gyms: GymLocation[];
+  /** Spec 16.2: read from what is stored, so the tab works with no signal. */
+  deals: DealWithContext[];
+  discounts: DealsDiscountRow[];
+  /** Spec 16.7: el estado se ve aunque no haya una sola oferta. */
+  dealSources: DealsSourceRow[];
   /** Spec 8.3 rule 8: what today's session was approved to be, empty before it starts. */
   plan: PlannedSet[];
 };
@@ -175,6 +184,11 @@ async function load(exerciseId: string | null): Promise<Loaded> {
     ]);
 
   const gyms = await listGyms(db);
+  const [deals, discounts, dealSources] = await Promise.all([
+    listDeals(db, today),
+    listDiscounts(db),
+    listSources(db),
+  ]);
 
   const batches: OpenBatch[] = openBatches.map((batch) => {
     const food = foods.find((item) => item.id === batch.food_id);
@@ -210,6 +224,9 @@ async function load(exerciseId: string | null): Promise<Loaded> {
     batches,
     routines,
     gyms,
+    deals,
+    discounts,
+    dealSources,
     plan,
   };
 }
@@ -254,6 +271,8 @@ export type AppData = {
   eatBatchPortion: (batchId: string, mealSlot: string) => void;
   loadWeek: (date: IsoDate) => Promise<WeekSummary>;
   loadStudies: () => Promise<CoreStudyRow[]>;
+  /** Spec 16.7: the outcome is returned so the screen can say what happened. */
+  refreshDeals: () => Promise<SyncOutcome>;
 };
 
 const Context = createContext<AppData | null>(null);
@@ -392,6 +411,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       run((db) => consumeBatchPortion(db, batchId, todayIso(), mealSlot)),
     loadWeek,
     loadStudies,
+    refreshDeals: async () => {
+      const db = await openDatabase();
+      const outcome = await syncDeals(db);
+      refresh();
+      return outcome;
+    },
   };
 
   return <Context.Provider value={value}>{children}</Context.Provider>;
