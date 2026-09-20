@@ -270,3 +270,63 @@ export type CoreExperimentReadingRow = {
   value: number;
   note: string | null;
 };
+
+/** Spec 16.5. Money is integer cents everywhere in this module. */
+export type DealsSourceRow = {
+  id: string;
+  name: string;
+  auth_type: 'none' | 'oauth' | 'email_pin' | 'scrape';
+  poll_schedule: string | null;
+  last_success_at: EpochMs | null;
+  last_error: string | null;
+  health: 'ok' | 'degraded' | 'down';
+  deep_link_scheme: string | null;
+  web_fallback_url: string | null;
+};
+
+export type DealsRetailerRow = {
+  id: string;
+  name: string;
+  chain: string | null;
+  address: string | null;
+  lat: number | null;
+  lng: number | null;
+  province: string | null;
+  city: string | null;
+};
+
+export type DealsDealRow = {
+  id: string;
+  source_id: string;
+  retailer_id: string | null;
+  title: string;
+  description: string | null;
+  price_cents: number | null;
+  original_price_cents: number | null;
+  savings_pct: number | null;
+  /** What the price is per, as the source worded it. Null when it did not say. */
+  unit: string | null;
+  quantity_available: number | null;
+  best_before: IsoDate | null;
+  valid_from: IsoDate | null;
+  valid_to: IsoDate | null;
+  category: string | null;
+  image_url: string | null;
+  source_url: string | null;
+  deep_link: string | null;
+  fetched_at: EpochMs;
+  expires_at: EpochMs | null;
+  confidence: 'exact' | 'parsed';
+  raw_payload: string | null;
+};
+
+export type DealsDiscountRow = {
+  id: string;
+  retailer_id: string | null;
+  chain: string | null;
+  percent: number;
+  /** ISO weekday numbers, 1 is Monday. Empty means every day. */
+  days_of_week: string;
+  conditions: string | null;
+  active: SqlBool;
+};
