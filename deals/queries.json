@@ -1,0 +1,12 @@
+{
+  "comment": "Spec 16.4: the search list starts from the foods he tracks and grows as he wants. foodId links a result to the nutrition catalogue so protein per dollar can be computed; null means the food is not in the catalogue yet and the deal still shows, just without that number.",
+  "queries": [
+    { "term": "chicken breast", "foodId": null },
+    { "term": "ground beef", "foodId": null },
+    { "term": "eggs", "foodId": "eggs-large" },
+    { "term": "milk", "foodId": "milk-1" },
+    { "term": "oats", "foodId": "oats-quaker" },
+    { "term": "rice", "foodId": null },
+    { "term": "pasta", "foodId": "catelli-pasta" }
+  ]
+}

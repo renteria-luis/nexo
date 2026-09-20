@@ -1,0 +1,55 @@
+# Spec 16.2: the collecting does not run on the phone. It runs here, once a day, and
+# leaves a snapshot the app reads. If Flipp changes an endpoint the fix is a commit
+# here, not a rebuild and a re-sign of the app.
+#
+# Flipp needs no account (spec 16.4), so this workflow holds no credential. The only
+# thing it takes from the outside is the postal code, and that comes from a secret
+# because this repository is public and where he lives is not.
+name: deals
+
+on:
+  schedule:
+    # 11:00 UTC is 07:00 in Toronto. Canadian flyers turn over on Thursdays; daily is
+    # cheap and catches what appears mid week.
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deals
+  cancel-in-progress: true
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Collect the Flipp snapshot
+        env:
+          DEALS_POSTAL_CODE: ${{ secrets.DEALS_POSTAL_CODE }}
+        run: node scripts/fetch-deals.mjs
+
+      # Nothing to commit is a normal outcome: the flyers may not have changed.
+      - name: Publish the snapshot
+        run: |
+          set -eo pipefail
+          if git diff --quiet -- deals/flipp.json; then
+            echo "sin cambios en las ofertas"
+            exit 0
+          fi
+          # El bot, no el. Un commit diario a su nombre le pintaria un cuadrito
+          # cada dia en GitHub, y eso es justo lo que no quiere.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deals/flipp.json
+          git commit -m "chore(deals): refresh the Flipp snapshot"
+          git push
