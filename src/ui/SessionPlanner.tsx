@@ -5,6 +5,7 @@ import type { GymLocation } from '../core/geo.ts';
 import type { Company, TrainingRoutineRow } from '../db/types.ts';
 import type { LocationOutcome } from '../shell/location.ts';
 import type { PlannedExercise, RoutinePlan, TimeBudget } from '../training/index.ts';
+import { mono, theme } from './theme.ts';
 
 const BUDGETS: { id: TimeBudget; label: string }[] = [
   { id: 'completo', label: 'Completo' },
@@ -118,7 +119,9 @@ export function SessionPlanner({
             }}
             style={[styles.chip, gym.id === gymId && styles.chipSelected]}
           >
-            <Text style={styles.chipText}>{gym.name}</Text>
+            <Text style={[styles.chipText, gym.id === gymId && styles.chipTextSelected]}>
+              {gym.name}
+            </Text>
           </Pressable>
         ))}
         <Pressable
@@ -146,7 +149,9 @@ export function SessionPlanner({
           }}
           style={[styles.chip, locating && styles.chipSelected]}
         >
-          <Text style={styles.chipText}>Usar mi ubicación</Text>
+          <Text style={[styles.chipText, locating && styles.chipTextSelected]}>
+            Usar mi ubicación
+          </Text>
         </Pressable>
       </View>
       {whereNote && <Text style={styles.detail}>{whereNote}</Text>}
@@ -160,7 +165,9 @@ export function SessionPlanner({
             onPress={() => setRoutineId(routine.id)}
             style={[styles.chip, routine.id === selected && styles.chipSelected]}
           >
-            <Text style={styles.chipText}>{routine.name}</Text>
+            <Text style={[styles.chipText, routine.id === selected && styles.chipTextSelected]}>
+              {routine.name}
+            </Text>
           </Pressable>
         ))}
       </View>
@@ -179,7 +186,9 @@ export function SessionPlanner({
             onPress={() => setCompany((current) => (current === id ? null : id))}
             style={[styles.chip, company === id && styles.chipSelected]}
           >
-            <Text style={styles.chipText}>{label}</Text>
+            <Text style={[styles.chipText, company === id && styles.chipTextSelected]}>
+              {label}
+            </Text>
           </Pressable>
         ))}
       </View>
@@ -193,12 +202,18 @@ export function SessionPlanner({
             onPress={() => setBudget(option.id)}
             style={[styles.chip, option.id === budget && styles.chipSelected]}
           >
-            <Text style={styles.chipText}>{option.label}</Text>
+            <Text style={[styles.chipText, option.id === budget && styles.chipTextSelected]}>
+              {option.label}
+            </Text>
           </Pressable>
         ))}
       </View>
 
       {problem && <Text style={styles.problem}>{problem}</Text>}
+
+      {exercises.length > 0 && (
+        <Text style={styles.detail}>Con − y + le quitas o le pones series a un ejercicio.</Text>
+      )}
 
       {exercises.map((exercise) => (
         <View key={exercise.exerciseId} style={styles.row}>
@@ -253,15 +268,18 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     gap: 8,
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: theme.line,
     paddingTop: 12,
   },
   heading: {
     fontSize: 14,
+    fontFamily: mono,
+    color: theme.text,
   },
   label: {
     fontSize: 11,
-    color: '#888',
+    color: theme.textGhost,
+    fontFamily: mono,
   },
   chips: {
     flexDirection: 'row',
@@ -270,28 +288,33 @@ const styles = StyleSheet.create({
   },
   chip: {
     borderWidth: 1,
-    borderColor: '#e2e2e2',
+    borderColor: theme.line,
     borderRadius: 12,
     paddingHorizontal: 9,
     paddingVertical: 5,
   },
   chipSelected: {
-    borderColor: '#555',
-    backgroundColor: '#f3f3f3',
+    borderColor: theme.accent,
+    backgroundColor: theme.accent,
   },
   chipText: {
     fontSize: 11,
+    fontFamily: mono,
+    color: theme.text,
+  },
+  chipTextSelected: {
+    color: theme.accentInk,
   },
   problem: {
     fontSize: 11,
-    color: '#8a1f11',
+    color: theme.danger,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     borderTopWidth: 1,
-    borderTopColor: '#f5f5f5',
+    borderTopColor: theme.lineSoft,
     paddingTop: 6,
   },
   rowText: {
@@ -300,14 +323,16 @@ const styles = StyleSheet.create({
   },
   exercise: {
     fontSize: 13,
+    fontFamily: mono,
+    color: theme.text,
   },
   detail: {
     fontSize: 11,
-    color: '#888',
+    color: theme.textGhost,
   },
   nudge: {
     borderWidth: 1,
-    borderColor: '#e2e2e2',
+    borderColor: theme.line,
     borderRadius: 6,
     width: 30,
     height: 30,
@@ -316,23 +341,28 @@ const styles = StyleSheet.create({
   },
   nudgeText: {
     fontSize: 14,
+    fontFamily: mono,
+    color: theme.text,
   },
   estimate: {
     fontSize: 11,
-    color: '#666',
+    color: theme.textFaint,
+    fontFamily: mono,
   },
   start: {
     borderWidth: 1,
-    borderColor: '#555',
+    borderColor: theme.lineStrong,
     borderRadius: 6,
     paddingVertical: 10,
     alignItems: 'center',
     marginTop: 4,
   },
   startDisabled: {
-    borderColor: '#ddd',
+    borderColor: theme.lineSoft,
   },
   startText: {
     fontSize: 13,
+    fontFamily: mono,
+    color: theme.text,
   },
 });

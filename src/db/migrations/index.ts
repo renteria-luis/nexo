@@ -20,6 +20,7 @@ import { sql as seedFit4Less } from './019_seed_fit4less.ts';
 import { sql as fit4lessBasics } from './020_fit4less_basics.ts';
 import { sql as matrixPulleyStack } from './021_matrix_pulley_stack.ts';
 import { sql as deals } from './022_deals.ts';
+import { sql as exerciseNames } from './023_exercise_names.ts';
 
 export type Migration = {
   id: string;
@@ -51,4 +52,5 @@ export const migrations: Migration[] = [
   { id: '020_fit4less_basics', sql: fit4lessBasics },
   { id: '021_matrix_pulley_stack', sql: matrixPulleyStack },
   { id: '022_deals', sql: deals },
+  { id: '023_exercise_names', sql: exerciseNames },
 ];

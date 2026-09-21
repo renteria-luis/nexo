@@ -81,12 +81,15 @@ import {
 import {
   addSet,
   deleteSet,
+  finishSession,
   listGyms,
   listRoutines,
+  listSessionDates,
   loadRoutinePlan,
   loadSessionPlan,
   saveSessionPlan,
   setSessionDetails,
+  setSessionRoutine,
   startSession,
   type SessionDetails,
   type PlannedExercise,
@@ -169,7 +172,15 @@ async function load(exerciseId: string | null): Promise<Loaded> {
 
   // Spec 6.6: the score is stored beside the day, so the grid reads it back rather
   // than recomputing every cell on every render.
-  if (assembled.log) await storeScore(db, today, assembled.result?.score ?? null);
+  // Spec 4.1 da 22 de los 100 puntos a entrenar, asi que un dia que entreno es un
+  // dia con datos aunque no haya registrado nada mas. Sin esto el cuadrito quedaba
+  // vacio despues de una sesion de verdad, que es justo lo que le paso.
+  if (assembled.trained === true && !assembled.log) {
+    await upsertDailyLog(db, { date: today });
+  }
+  if (assembled.log || assembled.trained === true) {
+    await storeScore(db, today, assembled.result?.score ?? null);
+  }
 
   const [logs, containers, foods, exercise, change, openBatches, routines, plan] =
     await Promise.all([
@@ -184,6 +195,7 @@ async function load(exerciseId: string | null): Promise<Loaded> {
     ]);
 
   const gyms = await listGyms(db);
+  const trainedDates = new Set(await listSessionDates(db, { from, to: today }));
   const [deals, discounts, dealSources] = await Promise.all([
     listDeals(db, today),
     listDiscounts(db),
@@ -202,11 +214,18 @@ async function load(exerciseId: string | null): Promise<Loaded> {
   });
 
   return {
-    days: logs.map((log) => ({
-      date: log.date,
-      score: log.score,
-      hasData: log.has_data === 1,
-    })),
+    days: (() => {
+      const byDate = new Map(logs.map((log) => [log.date, log]));
+      const dates = [...new Set([...byDate.keys(), ...trainedDates])].sort();
+      return dates.map((date) => {
+        const log = byDate.get(date);
+        return {
+          date,
+          score: log?.score ?? null,
+          hasData: log?.has_data === 1 || trainedDates.has(date),
+        };
+      });
+    })(),
     settings,
     palette: paletteFrom(settings),
     unit: weightUnitFrom(settings),
@@ -257,6 +276,10 @@ export type AppData = {
     extra?: { isWarmup?: boolean; rpe?: number | null },
   ) => void;
   describeSession: (details: SessionDetails) => void;
+  /** Writes the end time. Spec 6: the session is over when he says it is. */
+  endSession: () => void;
+  /** Corrects a routine picked by mistake, replanning at the budget already chosen. */
+  switchRoutine: (routineId: string) => void;
   loadExperiments: () => Promise<ExperimentWithReadings[]>;
   beginExperiment: (experiment: NewExperiment) => Promise<void>;
   logExperimentReading: (id: string, date: IsoDate, value: number, note?: string) => void;
@@ -355,6 +378,20 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       const sessionId = loaded?.today.session?.id;
       if (!sessionId) return;
       run((db) => setSessionDetails(db, sessionId, details));
+    },
+    endSession: () => {
+      const sessionId = loaded?.today.session?.id;
+      if (!sessionId) return;
+      run((db) => finishSession(db, sessionId));
+    },
+    switchRoutine: (routineId) => {
+      const session = loaded?.today.session;
+      if (!session) return;
+      run(async (db) => {
+        const plan = await loadRoutinePlan(db, routineId, session.time_budget);
+        await setSessionRoutine(db, session.id, routineId);
+        await saveSessionPlan(db, session.id, plan.exercises);
+      });
     },
     loadExperiments: () => openDatabase().then((db) => listExperiments(db, todayIso())),
     beginExperiment: async (experiment) => {

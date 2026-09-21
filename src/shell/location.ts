@@ -15,6 +15,23 @@ export async function locateGym(gyms: readonly GymLocation[]): Promise<LocationO
   const { status } = await Location.requestForegroundPermissionsAsync();
   if (status !== 'granted') return { kind: 'denied' };
 
+  // El telefono casi siempre tiene una posicion reciente guardada, y leerla es
+  // instantaneo mientras que encender el GPS tarda unos cinco segundos. Dos minutos
+  // y cien metros de margen siguen siendo suficientes para distinguir dos gimnasios
+  // que estan a kilometros uno del otro.
+  const cached = await Location.getLastKnownPositionAsync({
+    maxAge: 120_000,
+    requiredAccuracy: 100,
+  });
+
+  if (cached) {
+    const fix = gymAt(gyms, {
+      lat: cached.coords.latitude,
+      lng: cached.coords.longitude,
+    });
+    if (fix) return { kind: 'match', fix };
+  }
+
   // High rather than Balanced: at a plaza, a 100 m error picks the wrong unit, and
   // this runs once so the extra second of GPS is paid once.
   const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });

@@ -11,6 +11,7 @@ import {
   volumeLoadByMuscle,
   volumeLoadBySession,
   averageRestSeconds,
+  estimatedRestSeconds,
   repDropOffs,
   type ExerciseMuscles,
   type LoggedSet,
@@ -220,4 +221,15 @@ test('a drop in reps only counts against the rest when the rest was short', () =
   );
 
   assert.deepEqual(drops, [{ setIndex: 2, reps: 10, firstSetReps: 12, restSeconds: 60 }]);
+});
+
+test('the rest estimate takes the set out of the gap between two sets', () => {
+  // Once he logged eleven reps, the two minutes on the clock were never two
+  // minutes of rest: thirty three seconds of them were the set.
+  assert.equal(estimatedRestSeconds(120, 11), 87);
+  assert.equal(estimatedRestSeconds(150, 0), 150);
+});
+
+test('a gap shorter than the set it contains is zero rest, not negative', () => {
+  assert.equal(estimatedRestSeconds(10, 12), 0);
 });

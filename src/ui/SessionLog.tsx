@@ -2,12 +2,23 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { formatWeight, fromKg, snapToIncrement, toKg, type WeightUnit } from '../core/units.ts';
-import { repDropOffs, type E1rmMark, type LoggedSet } from '../training/calculations.ts';
+import {
+  estimatedRestSeconds,
+  repDropOffs,
+  type E1rmMark,
+  type LoggedSet,
+} from '../training/calculations.ts';
 import type { Crowding } from '../db/types.ts';
 import type { CatalogExercise } from '../training/queries.ts';
+import { mono, theme } from './theme.ts';
 
 function setLine(set: LoggedSet, unit: WeightUnit): string {
   return `${formatWeight(set.weightKg, unit)} ${unit} × ${set.reps}`;
+}
+
+function hhmm(timestamp: number): string {
+  const when = new Date(timestamp);
+  return `${when.getHours()}:${String(when.getMinutes()).padStart(2, '0')}`;
 }
 
 function clock(seconds: number): string {
@@ -28,6 +39,8 @@ export type SessionLogProps = {
   unit: WeightUnit;
   /** Spec 8.3 rule 8: the sets this session was approved to do, per exercise. */
   plannedSets: number | null;
+  /** The exercises today's routine asked for. The rest of the catalogue hides behind "ver mas". */
+  planExerciseIds: string[];
   crowding: Crowding | null;
   onDescribe: (details: { crowding: Crowding }) => void;
   onAddSet: (
@@ -36,6 +49,9 @@ export type SessionLogProps = {
     extra?: { isWarmup?: boolean; rpe?: number | null },
   ) => void;
   onRemoveSet: (setIndex: number) => void;
+  /** Set once he closes the session, which turns the button into a note. */
+  finishedAt: number | null;
+  onFinish: () => void;
 };
 
 export function SessionLog({
@@ -46,14 +62,33 @@ export function SessionLog({
   lastSets,
   marks,
   sessionVolume,
-  unit,
+  unit: settingsUnit,
   plannedSets,
+  planExerciseIds,
   crowding,
   onDescribe,
   onAddSet,
   onRemoveSet,
+  finishedAt,
+  onFinish,
 }: SessionLogProps) {
   const exercise = exercises.find((item) => item.id === selectedExerciseId) ?? null;
+
+  // The unit is a setting, but at the rack he reads whatever the machine is printed
+  // in, so he can flip it here for the session without going to Ajustes.
+  const [unitOverride, setUnitOverride] = useState<WeightUnit | null>(null);
+  const unit = unitOverride ?? settingsUnit;
+
+  // Spec 8.5: the plan is the session. The full catalogue is still one tap away,
+  // because a machine can be taken and the swap has to be logged somewhere.
+  const [showAll, setShowAll] = useState(false);
+  const inPlan = exercises.filter((item) => planExerciseIds.includes(item.id));
+  const visibleExercises =
+    showAll || inPlan.length === 0
+      ? exercises
+      : exercises.filter(
+          (item) => planExerciseIds.includes(item.id) || item.id === selectedExerciseId,
+        );
 
   // Null means untouched, so the field shows the pre-fill. Spec 6.4: the fields
   // carry last session's values for the same set index, because that is what he
@@ -94,6 +129,7 @@ export function SessionLog({
   // by one. Stored in kilograms, shown in whatever unit he reads the plates in.
   const stepKg = exercise?.stepKg ?? toKg(5, 'lb');
   const lastSet = todaySets.at(-1) ?? null;
+  const betweenSeconds = lastSet?.timestamp ? (now - lastSet.timestamp) / 1000 : null;
   const dropOffs = exercise ? repDropOffs(todaySets, exercise.default_rest_seconds) : [];
   const parsedWeight = Number(weight);
   const parsedReps = Number(reps);
@@ -103,6 +139,15 @@ export function SessionLog({
     parsedWeight >= 0 &&
     Number.isInteger(parsedReps) &&
     parsedReps > 0;
+
+  const switchUnit = (next: WeightUnit) => {
+    if (next === unit) return;
+    const typed = Number(weightDraft);
+    if (weightDraft !== null && weightDraft.trim() !== '' && Number.isFinite(typed)) {
+      setWeightDraft(formatWeight(toKg(typed, unit), next));
+    }
+    setUnitOverride(next);
+  };
 
   const nudge = (direction: 1 | -1) => {
     const baseKg = toKg(Number.isFinite(parsedWeight) ? parsedWeight : 0, unit);
@@ -138,13 +183,15 @@ export function SessionLog({
               onPress={() => onDescribe({ crowding: id })}
               style={[styles.chip, crowding === id && styles.chipSelected]}
             >
-              <Text style={styles.chipText}>{label}</Text>
+              <Text style={[styles.chipText, crowding === id && styles.chipTextSelected]}>
+                {label}
+              </Text>
             </Pressable>
           ))}
         </View>
 
         <View style={styles.chips}>
-          {exercises.map((item) => (
+          {visibleExercises.map((item) => (
             <Pressable
               key={item.id}
               onPress={() => {
@@ -154,9 +201,24 @@ export function SessionLog({
               }}
               style={[styles.chip, item.id === selectedExerciseId && styles.chipSelected]}
             >
-              <Text style={styles.chipText}>{item.name_es}</Text>
+              <Text
+                style={[styles.chipText, item.id === selectedExerciseId && styles.chipTextSelected]}
+              >
+                {item.name_es}
+              </Text>
             </Pressable>
           ))}
+          {inPlan.length > 0 && inPlan.length < exercises.length && (
+            <Pressable
+              accessibilityLabel={
+                showAll ? 'Ver solo la rutina de hoy' : 'Ver todos los ejercicios'
+              }
+              onPress={() => setShowAll((open) => !open)}
+              style={styles.more}
+            >
+              <Text style={styles.moreText}>{showAll ? 'solo la rutina' : 'ver mas'}</Text>
+            </Pressable>
+          )}
         </View>
 
         {exercise && (
@@ -190,12 +252,19 @@ export function SessionLog({
               </View>
             )}
 
+            {/* Spec 9: what the app can actually see is the gap between two sets, and
+                that gap has the set inside it. Saying "entre series" and estimating the
+                rest under it beats calling the whole gap a rest, which it never was. */}
             <Text style={styles.rest}>
               Descanso sugerido {clock(exercise.default_rest_seconds)}
-              {lastSet?.timestamp
-                ? ` · descansando ${clock((now - lastSet.timestamp) / 1000)}`
-                : ''}
+              {betweenSeconds === null ? '' : ` · entre series ${clock(betweenSeconds)}`}
             </Text>
+            {betweenSeconds !== null && lastSet !== null && (
+              <Text style={styles.restEstimate}>
+                Descanso aprox. {clock(estimatedRestSeconds(betweenSeconds, lastSet.reps))}, sin
+                contar la serie de {lastSet.reps} repeticiones
+              </Text>
+            )}
 
             <Text style={styles.lastLabel}>
               {lastSets.length > 0
@@ -215,12 +284,21 @@ export function SessionLog({
               </Text>
             )}
 
-            {todaySets.map((set) => (
+            {todaySets.map((set, index) => (
               <View key={set.setIndex} style={styles.setRow}>
                 <Text style={styles.setText}>
                   Serie {set.setIndex}: {setLine(set, unit)}
                   {typeof set.restBeforeSeconds === 'number'
-                    ? ` · descansó ${clock(set.restBeforeSeconds)}`
+                    ? ` · entre series ${clock(set.restBeforeSeconds)}${
+                        todaySets[index - 1]
+                          ? ` (descanso aprox. ${clock(
+                              estimatedRestSeconds(
+                                set.restBeforeSeconds,
+                                todaySets[index - 1].reps,
+                              ),
+                            )})`
+                          : ''
+                      }`
                     : ''}
                 </Text>
                 <Pressable
@@ -269,8 +347,21 @@ export function SessionLog({
                 keyboardType="numeric"
                 accessibilityLabel="Peso"
                 placeholder={unit}
+                placeholderTextColor={theme.textGhost}
                 style={styles.input}
               />
+              {(['lb', 'kg'] as const).map((option) => (
+                <Pressable
+                  key={option}
+                  accessibilityLabel={`Escribir el peso en ${option}`}
+                  onPress={() => switchUnit(option)}
+                  style={[styles.unit, option === unit && styles.chipSelected]}
+                >
+                  <Text style={[styles.chipText, option === unit && styles.chipTextSelected]}>
+                    {option}
+                  </Text>
+                </Pressable>
+              ))}
               <Pressable
                 accessibilityLabel="Subir peso"
                 onPress={() => nudge(1)}
@@ -284,6 +375,7 @@ export function SessionLog({
                 keyboardType="numeric"
                 accessibilityLabel="Repeticiones"
                 placeholder="reps"
+                placeholderTextColor={theme.textGhost}
                 style={styles.input}
               />
               <TextInput
@@ -291,7 +383,8 @@ export function SessionLog({
                 onChangeText={setRpeDraft}
                 keyboardType="numeric"
                 accessibilityLabel="RPE"
-                placeholder="RPE"
+                placeholder="RPE 1-10"
+                placeholderTextColor={theme.textGhost}
                 style={styles.input}
               />
               <Pressable
@@ -300,7 +393,9 @@ export function SessionLog({
                 onPress={() => setWarmup((value) => !value)}
                 style={[styles.chip, warmup && styles.chipSelected]}
               >
-                <Text style={styles.chipText}>Calentamiento</Text>
+                <Text style={[styles.chipText, warmup && styles.chipTextSelected]}>
+                  Calentamiento
+                </Text>
               </Pressable>
               <Pressable
                 accessibilityLabel="Agregar serie"
@@ -322,6 +417,14 @@ export function SessionLog({
             </View>
           </>
         )}
+
+        {finishedAt === null ? (
+          <Pressable accessibilityLabel="Terminar entreno" onPress={onFinish} style={styles.finish}>
+            <Text style={styles.finishText}>Terminar entreno</Text>
+          </Pressable>
+        ) : (
+          <Text style={styles.finished}>Entreno terminado a las {hhmm(finishedAt)}</Text>
+        )}
       </>
     </View>
   );
@@ -332,7 +435,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     gap: 8,
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: theme.line,
     paddingTop: 12,
   },
   header: {
@@ -342,24 +445,28 @@ const styles = StyleSheet.create({
   },
   heading: {
     fontSize: 14,
+    fontFamily: mono,
+    color: theme.text,
   },
   volume: {
     fontSize: 11,
-    color: '#888',
+    color: theme.textGhost,
+    fontFamily: mono,
   },
   planned: {
     fontSize: 11,
-    color: '#666',
+    color: theme.textFaint,
+    fontFamily: mono,
   },
   crowdingLabel: {
     fontSize: 11,
-    color: '#888',
+    color: theme.textGhost,
     alignSelf: 'center',
     marginRight: 2,
   },
   warmupNote: {
     fontSize: 11,
-    color: '#888',
+    color: theme.textGhost,
   },
   chips: {
     flexDirection: 'row',
@@ -368,17 +475,39 @@ const styles = StyleSheet.create({
   },
   chip: {
     borderWidth: 1,
-    borderColor: '#e2e2e2',
+    borderColor: theme.line,
     borderRadius: 12,
     paddingHorizontal: 9,
     paddingVertical: 5,
   },
   chipSelected: {
-    borderColor: '#555',
-    backgroundColor: '#f3f3f3',
+    borderColor: theme.accent,
+    backgroundColor: theme.accent,
   },
   chipText: {
     fontSize: 11,
+    fontFamily: mono,
+    color: theme.text,
+  },
+  chipTextSelected: {
+    color: theme.accentInk,
+  },
+  more: {
+    paddingHorizontal: 4,
+    paddingVertical: 5,
+  },
+  moreText: {
+    fontSize: 11,
+    color: theme.textFaint,
+    textDecorationLine: 'underline',
+    fontFamily: mono,
+  },
+  unit: {
+    borderWidth: 1,
+    borderColor: theme.line,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
   },
   machineRow: {
     flexDirection: 'row',
@@ -387,11 +516,12 @@ const styles = StyleSheet.create({
   },
   machine: {
     fontSize: 11,
-    color: '#666',
+    color: theme.textFaint,
+    fontFamily: mono,
   },
   info: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: theme.line,
     borderRadius: 9,
     width: 18,
     height: 18,
@@ -400,38 +530,50 @@ const styles = StyleSheet.create({
   },
   infoText: {
     fontSize: 11,
-    color: '#666',
+    color: theme.textFaint,
+    fontFamily: mono,
   },
   technique: {
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: theme.line,
     borderRadius: 8,
     padding: 10,
     gap: 3,
   },
   techniqueLine: {
     fontSize: 12,
-    color: '#444',
+    color: theme.textDim,
   },
   rest: {
     fontSize: 11,
-    color: '#999',
+    color: theme.textGhost,
+    fontFamily: mono,
+  },
+  restEstimate: {
+    fontSize: 11,
+    color: theme.textGhost,
+    marginTop: -4,
+    fontFamily: mono,
   },
   dropOff: {
     fontSize: 11,
-    color: '#8a6d1f',
+    color: theme.warn,
   },
   lastLabel: {
     fontSize: 11,
-    color: '#888',
+    color: theme.textGhost,
     marginTop: 4,
+    fontFamily: mono,
   },
   lastSets: {
     fontSize: 18,
+    fontFamily: mono,
+    color: theme.text,
   },
   marks: {
     fontSize: 11,
-    color: '#888',
+    color: theme.textGhost,
+    fontFamily: mono,
   },
   setRow: {
     flexDirection: 'row',
@@ -440,6 +582,8 @@ const styles = StyleSheet.create({
   },
   setText: {
     fontSize: 13,
+    fontFamily: mono,
+    color: theme.text,
   },
   remove: {
     paddingHorizontal: 8,
@@ -447,7 +591,8 @@ const styles = StyleSheet.create({
   },
   removeText: {
     fontSize: 11,
-    color: '#8a1f11',
+    color: theme.danger,
+    fontFamily: mono,
   },
   addRow: {
     flexDirection: 'row',
@@ -457,34 +602,59 @@ const styles = StyleSheet.create({
   },
   nudge: {
     borderWidth: 1,
-    borderColor: '#e2e2e2',
+    borderColor: theme.line,
     borderRadius: 6,
     paddingHorizontal: 9,
     paddingVertical: 8,
   },
   nudgeText: {
     fontSize: 12,
+    fontFamily: mono,
+    color: theme.text,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: theme.lineSoft,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 7,
     fontSize: 14,
     width: 62,
+    fontFamily: mono,
+    color: theme.text,
   },
   add: {
     borderWidth: 1,
-    borderColor: '#555',
+    borderColor: theme.lineStrong,
     borderRadius: 6,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
   addDisabled: {
-    borderColor: '#ddd',
+    borderColor: theme.lineSoft,
   },
   addText: {
     fontSize: 12,
+    fontFamily: mono,
+    color: theme.text,
+  },
+  finish: {
+    borderWidth: 1,
+    borderColor: theme.lineStrong,
+    borderRadius: 6,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  finishText: {
+    fontSize: 13,
+    fontFamily: mono,
+    color: theme.text,
+  },
+  finished: {
+    fontSize: 12,
+    color: theme.textFaint,
+    marginTop: 16,
+    fontFamily: mono,
   },
 });

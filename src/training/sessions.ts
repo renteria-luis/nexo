@@ -52,6 +52,22 @@ export async function finishSession(db: SQLiteDatabase, sessionId: string): Prom
   ]);
 }
 
+/**
+ * Spec 8.5: the routine is a choice made before the first set, and a wrong tap there
+ * used to stick for the rest of the session. The plan is replaced along with it by
+ * the caller, so the session cannot end up training one routine under another's plan.
+ */
+export async function setSessionRoutine(
+  db: SQLiteDatabase,
+  sessionId: string,
+  routineId: string,
+): Promise<void> {
+  await db.runAsync('UPDATE training_session SET routine_id = ? WHERE id = ?;', [
+    routineId,
+    sessionId,
+  ]);
+}
+
 export async function getSessionOn(
   db: SQLiteDatabase,
   date: IsoDate,

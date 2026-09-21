@@ -172,6 +172,22 @@ export const REST_OUTLIER_SECONDS = 900;
 /** Spec 9's practical rule: rest long enough to keep 90% of the first set's reps. */
 export const REP_HOLD_RATIO = 0.9;
 
+/**
+ * What one repetition costs in seconds. The app never sees the set itself, only the
+ * gap between two logged sets, and that gap contains the set he just did. Three
+ * seconds is the usual figure for a controlled rep with a real eccentric.
+ */
+export const SECONDS_PER_REP = 3;
+
+/**
+ * The gap between two sets minus the time the set itself took, which is roughly the
+ * rest. It is an estimate and is labelled as one: the app has no way to know when he
+ * racked the weight, only when he wrote the set down.
+ */
+export function estimatedRestSeconds(betweenSetsSeconds: number, reps: number): number {
+  return Math.max(0, betweenSetsSeconds - reps * SECONDS_PER_REP);
+}
+
 export function averageRestSeconds(sets: readonly LoggedSet[]): number | null {
   const measured = sets
     .map((set) => set.restBeforeSeconds)

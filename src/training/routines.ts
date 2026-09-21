@@ -200,6 +200,10 @@ export async function saveSessionPlan(
   sessionId: string,
   exercises: readonly PlannedExercise[],
 ): Promise<void> {
+  // Replacing rather than adding, because approving a plan twice for one session
+  // means he corrected it, and the second plan is the one he is training.
+  await db.runAsync('DELETE FROM training_session_plan WHERE session_id = ?;', [sessionId]);
+
   for (const exercise of exercises) {
     await db.runAsync(
       `INSERT INTO training_session_plan
