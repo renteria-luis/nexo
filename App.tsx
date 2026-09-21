@@ -1,8 +1,9 @@
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
-import { NavigationContainer, useNavigation } from '@react-navigation/native';
+import { DarkTheme, NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, StyleSheet, Text } from 'react-native';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AppDataProvider, useAppData } from './src/shell/AppData.tsx';
@@ -16,10 +17,26 @@ import { RoutineNotesScreen } from './src/ui/screens/RoutineNotesScreen.tsx';
 import { SettingsScreen } from './src/ui/screens/SettingsScreen.tsx';
 import { TodayScreen } from './src/ui/screens/TodayScreen.tsx';
 import { TrainingScreen } from './src/ui/screens/TrainingScreen.tsx';
+import { mono, theme } from './src/ui/theme.ts';
 import { WeekSummaryScreen } from './src/ui/screens/WeekSummaryScreen.tsx';
 
 const Tabs = createMaterialTopTabNavigator();
 const RootStack = createNativeStackNavigator();
+
+// Sin esto, React Navigation pinta sus propios fondos claros detras de cada pantalla
+// y se ve un destello blanco cada vez que se abre una.
+const navigationTheme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: theme.bg,
+    card: theme.bg,
+    text: theme.text,
+    border: theme.line,
+    primary: theme.accent,
+    notification: theme.danger,
+  },
+};
 
 /**
  * Spec 17.3: every module declares its own slot and its own flag. Deals and Finance
@@ -82,8 +99,9 @@ function TabsScreen() {
         tabBarItemStyle: styles.tabItem,
         tabBarIndicatorStyle: styles.tabIndicator,
         tabBarStyle: styles.tabBar,
-        tabBarActiveTintColor: '#111',
-        tabBarInactiveTintColor: '#999',
+        tabBarActiveTintColor: theme.accent,
+        tabBarInactiveTintColor: theme.textGhost,
+        tabBarPressColor: theme.surfaceHigh,
       }}
     >
       {tabs.map((tab) => (
@@ -96,7 +114,8 @@ function TabsScreen() {
 }
 
 function SettingsRoute() {
-  const { state, saveSetting, removeSetting, logDay, resetDatabase } = useAppData();
+  const { state, saveSetting, removeSetting, logDay, resetDatabase, exportData, importData } =
+    useAppData();
   if (state.phase !== 'ready') return null;
 
   return (
@@ -109,6 +128,8 @@ function SettingsRoute() {
       onSaveWeight={(weightKg) => logDay({ weightKg })}
       onSelectPalette={(next) => saveSetting('palette', next)}
       onResetDatabase={resetDatabase}
+      onExport={exportData}
+      onImport={importData}
     />
   );
 }
@@ -116,71 +137,84 @@ function SettingsRoute() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AppDataProvider>
-        <NavigationContainer>
-          <RootStack.Navigator>
-            <RootStack.Screen
-              name="nexo"
-              component={TabsScreen}
-              options={({ navigation }) => ({
-                headerRight: () => (
-                  <HeaderButton label="Ajustes" onPress={() => navigation.navigate('Ajustes')} />
-                ),
-              })}
-            />
-            <RootStack.Screen
-              name="Ajustes"
-              component={SettingsRoute}
-              options={({ navigation }) => ({
-                presentation: 'modal',
-                // A modal opened from a header needs its own way out; the default
-                // back button here reads "nexo", which says nothing about closing.
-                headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
-              })}
-            />
-            <RootStack.Screen
-              name="Recomendaciones"
-              component={RoutineNotesScreen}
-              options={({ navigation }) => ({
-                presentation: 'modal',
-                headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
-              })}
-            />
-            <RootStack.Screen
-              name="Experimentos"
-              component={ExperimentsScreen}
-              options={({ navigation }) => ({
-                presentation: 'modal',
-                headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
-              })}
-            />
-            <RootStack.Screen
-              name="Lecturas"
-              component={ReadingsScreen}
-              options={({ navigation }) => ({
-                presentation: 'modal',
-                headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
-              })}
-            />
-            <RootStack.Screen
-              name="Resumen semanal"
-              component={WeekSummaryScreen}
-              options={({ navigation }) => ({
-                presentation: 'modal',
-                headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
-              })}
-            />
-          </RootStack.Navigator>
-        </NavigationContainer>
-        <StatusBar style="auto" />
-      </AppDataProvider>
+      <KeyboardProvider>
+        <AppDataProvider>
+          <NavigationContainer theme={navigationTheme}>
+            <RootStack.Navigator
+              screenOptions={{
+                headerStyle: { backgroundColor: theme.bg },
+                headerTintColor: theme.text,
+                headerTitleStyle: { fontFamily: mono, fontSize: 15 },
+                contentStyle: { backgroundColor: theme.bg },
+              }}
+            >
+              <RootStack.Screen
+                name="nexo"
+                component={TabsScreen}
+                options={({ navigation }) => ({
+                  // El nombre de la ruta es el titulo, y aqui el titulo es un prompt.
+                  title: 'nexo:~$',
+                  headerRight: () => (
+                    <HeaderButton label="Ajustes" onPress={() => navigation.navigate('Ajustes')} />
+                  ),
+                })}
+              />
+              <RootStack.Screen
+                name="Ajustes"
+                component={SettingsRoute}
+                options={({ navigation }) => ({
+                  presentation: 'modal',
+                  // A modal opened from a header needs its own way out; the default
+                  // back button here reads "nexo", which says nothing about closing.
+                  headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
+                })}
+              />
+              <RootStack.Screen
+                name="Recomendaciones"
+                component={RoutineNotesScreen}
+                options={({ navigation }) => ({
+                  presentation: 'modal',
+                  headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
+                })}
+              />
+              <RootStack.Screen
+                name="Experimentos"
+                component={ExperimentsScreen}
+                options={({ navigation }) => ({
+                  presentation: 'modal',
+                  headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
+                })}
+              />
+              <RootStack.Screen
+                name="Lecturas"
+                component={ReadingsScreen}
+                options={({ navigation }) => ({
+                  presentation: 'modal',
+                  headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
+                })}
+              />
+              <RootStack.Screen
+                name="Resumen semanal"
+                component={WeekSummaryScreen}
+                options={({ navigation }) => ({
+                  presentation: 'modal',
+                  headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
+                })}
+              />
+            </RootStack.Navigator>
+          </NavigationContainer>
+          <StatusBar style="light" />
+        </AppDataProvider>
+      </KeyboardProvider>
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
   tabBar: {
-    backgroundColor: '#fff',
+    backgroundColor: theme.bg,
+    borderTopWidth: 1,
+    borderTopColor: theme.line,
   },
   tabItem: {
     width: 'auto',
@@ -188,11 +222,12 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: 11,
-    textTransform: 'none',
+    textTransform: 'lowercase',
     fontWeight: '400',
+    fontFamily: mono,
   },
   tabIndicator: {
-    backgroundColor: '#111',
+    backgroundColor: theme.accent,
     height: 2,
   },
   headerButton: {
@@ -201,5 +236,7 @@ const styles = StyleSheet.create({
   },
   headerButtonText: {
     fontSize: 13,
+    fontFamily: mono,
+    color: theme.accent,
   },
 });

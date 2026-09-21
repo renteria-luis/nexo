@@ -7,6 +7,7 @@ import { BatchPanel } from '../BatchPanel.tsx';
 import { FoodLog } from '../FoodLog.tsx';
 
 import { Screen } from './Screen.tsx';
+import { mono, theme } from '../theme.ts';
 
 export function NutritionScreen() {
   const { state, addFood, removeFood, startBatch, eatBatchPortion } = useAppData();
@@ -55,6 +56,7 @@ const styles = StyleSheet.create({
   },
   linkText: {
     fontSize: 12,
-    color: '#777',
+    color: theme.textFaint,
+    fontFamily: mono,
   },
 });

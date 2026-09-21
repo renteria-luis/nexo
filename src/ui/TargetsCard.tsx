@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { fatBand, kcalBand, proteinBand, type TargetValues } from '../core/targets.ts';
+import { mono, theme } from './theme.ts';
 
 function Row({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
@@ -58,18 +59,21 @@ const styles = StyleSheet.create({
   card: {
     alignSelf: 'stretch',
     borderWidth: 1,
-    borderColor: '#e2e2e2',
+    borderColor: theme.line,
     borderRadius: 8,
     padding: 12,
     gap: 6,
   },
   heading: {
     fontSize: 14,
+    fontFamily: mono,
+    color: theme.text,
   },
   basis: {
     fontSize: 11,
-    color: '#888',
+    color: theme.textGhost,
     marginBottom: 4,
+    fontFamily: mono,
   },
   row: {
     flexDirection: 'row',
@@ -79,16 +83,19 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 13,
-    color: '#444',
+    color: theme.textDim,
+    fontFamily: mono,
   },
   values: {
     alignItems: 'flex-end',
   },
   value: {
     fontSize: 13,
+    fontFamily: mono,
+    color: theme.text,
   },
   note: {
     fontSize: 11,
-    color: '#888',
+    color: theme.textGhost,
   },
 });

@@ -13,6 +13,8 @@ import { TargetsCard } from '../TargetsCard.tsx';
 import { TodayLog } from '../TodayLog.tsx';
 
 import { Screen } from './Screen.tsx';
+import { CommandBar } from '../CommandBar.tsx';
+import { mono, theme } from '../theme.ts';
 
 /** A one line read on a module, with the way into it. */
 function ModuleCard({
@@ -101,6 +103,8 @@ export function TodayScreen({ onOpen }: { onOpen: (tab: string) => void }) {
 
   return (
     <Screen title="Hoy">
+      <CommandBar />
+
       {loaded.readapting && (
         <Text style={styles.banner}>
           Readaptación — semana {loaded.readapting.week} de {loaded.readapting.of}
@@ -224,18 +228,20 @@ export function TodayScreen({ onOpen }: { onOpen: (tab: string) => void }) {
 const styles = StyleSheet.create({
   change: {
     borderWidth: 1,
-    borderColor: '#d9e3f0',
-    backgroundColor: '#f4f8fc',
+    borderColor: theme.line,
+    backgroundColor: theme.surface,
     borderRadius: 8,
     padding: 10,
     gap: 4,
   },
   changeText: {
     fontSize: 13,
+    color: theme.text,
   },
   changeRow: {
     fontSize: 11,
-    color: '#555',
+    color: theme.textDim,
+    fontFamily: mono,
   },
   changeDismiss: {
     alignSelf: 'flex-start',
@@ -248,14 +254,15 @@ const styles = StyleSheet.create({
   },
   stepsAccept: {
     borderWidth: 1,
-    borderColor: '#555',
+    borderColor: theme.lineStrong,
     borderRadius: 6,
     paddingHorizontal: 12,
     paddingVertical: 5,
   },
   changeDismissText: {
     fontSize: 12,
-    color: '#555',
+    color: theme.textDim,
+    fontFamily: mono,
   },
   weekLink: {
     alignSelf: 'flex-start',
@@ -263,12 +270,13 @@ const styles = StyleSheet.create({
   },
   weekLinkText: {
     fontSize: 12,
-    color: '#555',
+    color: theme.textDim,
+    fontFamily: mono,
   },
   banner: {
     fontSize: 13,
-    color: '#5a4a00',
-    backgroundColor: '#fdf3d0',
+    color: theme.warn,
+    backgroundColor: theme.warnBg,
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 6,
@@ -281,40 +289,52 @@ const styles = StyleSheet.create({
   },
   score: {
     fontSize: 40,
+    fontFamily: mono,
+    color: theme.text,
   },
   streak: {
     fontSize: 13,
+    fontFamily: mono,
+    color: theme.text,
   },
   streakDetail: {
     fontSize: 11,
-    color: '#888',
+    color: theme.textGhost,
+    fontFamily: mono,
   },
   card: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: theme.line,
     borderRadius: 8,
     padding: 12,
   },
   cardLabel: {
     fontSize: 11,
-    color: '#888',
+    color: theme.textGhost,
+    fontFamily: mono,
   },
   cardValue: {
     fontSize: 14,
+    fontFamily: mono,
+    color: theme.text,
   },
   cardDetail: {
     fontSize: 11,
-    color: '#999',
+    color: theme.textGhost,
+    fontFamily: mono,
   },
   cardArrow: {
     fontSize: 22,
-    color: '#bbb',
+    color: theme.textGhost,
+    fontFamily: mono,
   },
   section: {
     fontSize: 14,
     marginTop: 6,
+    fontFamily: mono,
+    color: theme.text,
   },
 });

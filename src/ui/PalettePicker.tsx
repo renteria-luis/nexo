@@ -9,6 +9,7 @@ import {
 } from '../core/palettes.ts';
 
 import { ScoreCell } from './DisciplineGrid.tsx';
+import { mono, theme } from './theme.ts';
 
 const ORDER: PaletteId[] = ['deutan', 'standard', 'tritan'];
 
@@ -65,16 +66,18 @@ const styles = StyleSheet.create({
   },
   option: {
     borderWidth: 1,
-    borderColor: '#e2e2e2',
+    borderColor: theme.line,
     borderRadius: 8,
     padding: 10,
     gap: 6,
   },
   optionSelected: {
-    borderColor: '#555',
+    borderColor: theme.lineStrong,
   },
   name: {
     fontSize: 13,
+    fontFamily: mono,
+    color: theme.text,
   },
   sample: {
     flexDirection: 'row',
@@ -82,6 +85,7 @@ const styles = StyleSheet.create({
   },
   scale: {
     fontSize: 10,
-    color: '#888',
+    color: theme.textGhost,
+    fontFamily: mono,
   },
 });

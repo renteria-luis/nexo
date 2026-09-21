@@ -12,6 +12,7 @@ import {
   type NewFoodEntry,
   type NutritionTotals,
 } from '../nutrition/index.ts';
+import { mono, theme } from './theme.ts';
 
 function Total({
   label,
@@ -228,6 +229,8 @@ const styles = StyleSheet.create({
   },
   heading: {
     fontSize: 14,
+    fontFamily: mono,
+    color: theme.text,
   },
   totals: {
     flexDirection: 'row',
@@ -239,25 +242,30 @@ const styles = StyleSheet.create({
   },
   totalLabel: {
     fontSize: 11,
-    color: '#888',
+    color: theme.textGhost,
+    fontFamily: mono,
   },
   totalValue: {
     fontSize: 15,
+    fontFamily: mono,
+    color: theme.text,
   },
   totalBand: {
     fontSize: 10,
-    color: '#888',
+    color: theme.textGhost,
+    fontFamily: mono,
   },
   gap: {
     fontSize: 11,
-    color: '#8a6d1f',
+    color: theme.warn,
+    fontFamily: mono,
   },
   entry: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: theme.line,
     paddingTop: 6,
   },
   entryText: {
@@ -265,10 +273,13 @@ const styles = StyleSheet.create({
   },
   entryName: {
     fontSize: 13,
+    fontFamily: mono,
+    color: theme.text,
   },
   entryMeta: {
     fontSize: 10,
-    color: '#999',
+    color: theme.textGhost,
+    fontFamily: mono,
   },
   remove: {
     paddingHorizontal: 8,
@@ -276,12 +287,13 @@ const styles = StyleSheet.create({
   },
   removeText: {
     fontSize: 11,
-    color: '#8a1f11',
+    color: theme.danger,
+    fontFamily: mono,
   },
   picker: {
     gap: 6,
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: theme.line,
     paddingTop: 8,
   },
   chips: {
@@ -291,17 +303,19 @@ const styles = StyleSheet.create({
   },
   chip: {
     borderWidth: 1,
-    borderColor: '#e2e2e2',
+    borderColor: theme.line,
     borderRadius: 12,
     paddingHorizontal: 9,
     paddingVertical: 5,
   },
   chipSelected: {
-    borderColor: '#555',
-    backgroundColor: '#f3f3f3',
+    borderColor: theme.lineStrong,
+    backgroundColor: theme.surfaceHigh,
   },
   chipText: {
     fontSize: 11,
+    fontFamily: mono,
+    color: theme.text,
   },
   addRow: {
     flexDirection: 'row',
@@ -310,29 +324,34 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: theme.lineSoft,
     borderRadius: 6,
     paddingHorizontal: 10,
     paddingVertical: 7,
     fontSize: 14,
     width: 70,
+    fontFamily: mono,
+    color: theme.text,
   },
   unit: {
     fontSize: 11,
-    color: '#888',
+    color: theme.textGhost,
     flexShrink: 1,
+    fontFamily: mono,
   },
   add: {
     borderWidth: 1,
-    borderColor: '#555',
+    borderColor: theme.lineStrong,
     borderRadius: 6,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
   addDisabled: {
-    borderColor: '#ddd',
+    borderColor: theme.lineSoft,
   },
   addText: {
     fontSize: 12,
+    fontFamily: mono,
+    color: theme.text,
   },
 });

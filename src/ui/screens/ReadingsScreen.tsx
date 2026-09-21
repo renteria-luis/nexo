@@ -7,6 +7,7 @@ import type { CoreStudyRow } from '../../db/types.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 
 import { Screen } from './Screen.tsx';
+import { mono, theme } from '../theme.ts';
 
 const TOPIC_ES: Record<string, string> = {
   sleep: 'Sueño',
@@ -117,11 +118,11 @@ export function ReadingsScreen() {
 const styles = StyleSheet.create({
   intro: {
     fontSize: 12,
-    color: '#666',
+    color: theme.textFaint,
   },
   problem: {
     fontSize: 12,
-    color: '#8a1f11',
+    color: theme.danger,
   },
   topic: {
     gap: 8,
@@ -129,27 +130,34 @@ const styles = StyleSheet.create({
   },
   topicName: {
     fontSize: 14,
+    fontFamily: mono,
+    color: theme.text,
   },
   study: {
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: theme.line,
     paddingTop: 8,
     gap: 3,
   },
   summary: {
     fontSize: 13,
+    fontFamily: mono,
+    color: theme.text,
   },
   title: {
     fontSize: 11,
-    color: '#666',
+    color: theme.textFaint,
+    fontFamily: mono,
   },
   reference: {
     fontSize: 11,
-    color: '#999',
+    color: theme.textGhost,
+    fontFamily: mono,
   },
   criterion: {
     fontSize: 11,
-    color: '#4a6b4a',
+    color: theme.ok,
+    fontFamily: mono,
   },
   link: {
     alignSelf: 'flex-start',
@@ -157,6 +165,7 @@ const styles = StyleSheet.create({
   },
   linkText: {
     fontSize: 12,
-    color: '#555',
+    color: theme.textDim,
+    fontFamily: mono,
   },
 });

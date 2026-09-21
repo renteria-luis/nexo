@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Screen } from './Screen.tsx';
+import { theme } from '../theme.ts';
 
 /**
  * A tab whose module has not been built yet. It says so plainly instead of showing
@@ -19,13 +20,13 @@ export function PendingScreen({ title, note }: { title: string; note: string }) 
 const styles = StyleSheet.create({
   box: {
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: theme.line,
     borderRadius: 8,
     padding: 16,
   },
   note: {
     fontSize: 13,
-    color: '#777',
+    color: theme.textFaint,
     lineHeight: 19,
   },
 });

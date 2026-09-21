@@ -6,6 +6,7 @@ import type { ExperimentWithReadings } from '../../core/experiments.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 
 import { Screen } from './Screen.tsx';
+import { mono, theme } from '../theme.ts';
 
 /** Spec 7.5 point 3, the test the spec actually proposes. Placeholders, not defaults. */
 const DAIRY = {
@@ -36,6 +37,7 @@ function Field({
         onChangeText={onChange}
         accessibilityLabel={label}
         placeholder={placeholder}
+        placeholderTextColor={theme.textGhost}
         style={styles.input}
       />
     </View>
@@ -153,6 +155,11 @@ export function ExperimentsScreen() {
   return (
     <Screen>
       <Text style={styles.intro}>
+        Un experimento es una pregunta con fecha: cambias una sola cosa, la anotas cada dia en la
+        misma escala y al final ves si movio algo. Por ejemplo dormir media hora mas durante dos
+        semanas y apuntar como amaneces del 1 al 10.
+      </Text>
+      <Text style={styles.intro}>
         Una cosa a la vez, con fecha de inicio y una lectura en la misma escala. Cambiar dos cosas
         al mismo tiempo no responde ninguna.
       </Text>
@@ -235,19 +242,19 @@ export function ExperimentsScreen() {
 const styles = StyleSheet.create({
   intro: {
     fontSize: 12,
-    color: '#666',
+    color: theme.textFaint,
   },
   problem: {
     fontSize: 12,
-    color: '#8a1f11',
+    color: theme.danger,
   },
   empty: {
     fontSize: 12,
-    color: '#888',
+    color: theme.textGhost,
   },
   card: {
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: theme.line,
     borderRadius: 8,
     padding: 10,
     gap: 4,
@@ -255,14 +262,17 @@ const styles = StyleSheet.create({
   },
   name: {
     fontSize: 14,
+    fontFamily: mono,
+    color: theme.text,
   },
   detail: {
     fontSize: 11,
-    color: '#666',
+    color: theme.textFaint,
   },
   halves: {
     fontSize: 12,
-    color: '#4a6b4a',
+    color: theme.ok,
+    fontFamily: mono,
   },
   chips: {
     flexDirection: 'row',
@@ -271,13 +281,15 @@ const styles = StyleSheet.create({
   },
   chip: {
     borderWidth: 1,
-    borderColor: '#e2e2e2',
+    borderColor: theme.line,
     borderRadius: 12,
     paddingHorizontal: 11,
     paddingVertical: 5,
   },
   chipText: {
     fontSize: 12,
+    fontFamily: mono,
+    color: theme.text,
   },
   finish: {
     alignSelf: 'flex-start',
@@ -285,7 +297,8 @@ const styles = StyleSheet.create({
   },
   finishText: {
     fontSize: 12,
-    color: '#777',
+    color: theme.textFaint,
+    fontFamily: mono,
   },
   newOne: {
     alignSelf: 'flex-start',
@@ -294,12 +307,13 @@ const styles = StyleSheet.create({
   },
   newOneText: {
     fontSize: 12,
-    color: '#555',
+    color: theme.textDim,
+    fontFamily: mono,
   },
   form: {
     gap: 8,
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: theme.line,
     borderRadius: 8,
     padding: 10,
     marginTop: 12,
@@ -309,15 +323,18 @@ const styles = StyleSheet.create({
   },
   fieldLabel: {
     fontSize: 10,
-    color: '#777',
+    color: theme.textFaint,
+    fontFamily: mono,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: theme.lineSoft,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 6,
     fontSize: 13,
+    fontFamily: mono,
+    color: theme.text,
   },
   row: {
     flexDirection: 'row',
@@ -326,16 +343,18 @@ const styles = StyleSheet.create({
   },
   save: {
     borderWidth: 1,
-    borderColor: '#555',
+    borderColor: theme.lineStrong,
     borderRadius: 6,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
   saveDisabled: {
-    borderColor: '#ddd',
+    borderColor: theme.lineSoft,
   },
   saveText: {
     fontSize: 12,
+    fontFamily: mono,
+    color: theme.text,
   },
   cancel: {
     paddingHorizontal: 10,
@@ -343,6 +362,7 @@ const styles = StyleSheet.create({
   },
   cancelText: {
     fontSize: 12,
-    color: '#777',
+    color: theme.textFaint,
+    fontFamily: mono,
   },
 });

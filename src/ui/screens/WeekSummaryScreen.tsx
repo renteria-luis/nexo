@@ -7,6 +7,7 @@ import { useAppData } from '../../shell/AppData.tsx';
 import { SET_BAND, type Comparison, type MuscleWeek, type WeekSummary } from '../../shell/week.ts';
 
 import { Screen } from './Screen.tsx';
+import { mono, theme } from '../theme.ts';
 
 const MUSCLE_ES: Record<string, string> = {
   chest: 'Pecho',
@@ -190,34 +191,43 @@ const styles = StyleSheet.create({
   },
   navText: {
     fontSize: 22,
+    fontFamily: mono,
+    color: theme.text,
   },
   range: {
     fontSize: 13,
+    fontFamily: mono,
+    color: theme.text,
   },
   problem: {
     fontSize: 12,
-    color: '#8a1f11',
+    color: theme.danger,
   },
   section: {
     fontSize: 14,
     marginTop: 10,
+    fontFamily: mono,
+    color: theme.text,
   },
   empty: {
     fontSize: 12,
-    color: '#888',
+    color: theme.textGhost,
   },
   muscle: {
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: theme.line,
     paddingTop: 6,
     gap: 2,
   },
   muscleName: {
     fontSize: 12,
+    fontFamily: mono,
+    color: theme.text,
   },
   muscleDetail: {
     fontSize: 11,
-    color: '#777',
+    color: theme.textFaint,
+    fontFamily: mono,
   },
   line: {
     flexDirection: 'row',
@@ -226,11 +236,14 @@ const styles = StyleSheet.create({
   },
   lineLabel: {
     fontSize: 12,
-    color: '#555',
+    color: theme.textDim,
+    fontFamily: mono,
   },
   lineValue: {
     fontSize: 12,
     flexShrink: 1,
     textAlign: 'right',
+    fontFamily: mono,
+    color: theme.text,
   },
 });
