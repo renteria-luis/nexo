@@ -31,7 +31,7 @@ function unitOf(item) {
   return clean === '' ? null : clean;
 }
 
-function normalise(item, foodId) {
+function normalise(item, foodId, staple) {
   return {
     id: String(item.id),
     title: String(item.name ?? '').trim(),
@@ -48,6 +48,7 @@ function normalise(item, foodId) {
     // It came from a structured response, not from reading a flyer image.
     confidence: 'exact',
     foodId,
+    staple,
     raw: item,
   };
 }
@@ -67,10 +68,10 @@ const deals = [];
 const seen = new Set();
 const failures = [];
 
-for (const { term, foodId } of config.queries) {
+for (const { term, foodId, staple } of config.queries) {
   try {
     for (const item of await search(term)) {
-      const deal = normalise(item, foodId);
+      const deal = normalise(item, foodId, staple === true);
       if (deal.title === '' || deal.merchant === '') continue;
       // The same item answers several searches. Keeping one copy is not merging
       // sources (spec 16.3 rule 1): it is the same record from the same source.

@@ -47,6 +47,7 @@ function snapshotDeal(overrides: Partial<SnapshotDeal> = {}): SnapshotDeal {
     unit: 'kg',
     validFrom: '2026-09-17',
     validTo: '2026-09-24',
+    staple: false,
     imageUrl: null,
     sourceUrl: 'https://flipp.com/item/1',
     confidence: 'exact',

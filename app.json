@@ -9,7 +9,12 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.luisrenteria.nexo",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": [
+          "flipp"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {

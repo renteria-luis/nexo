@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import type { DailyLogEntry } from '../core/daily-log.ts';
+import { sleepMinutesFrom, type DailyLogEntry } from '../core/daily-log.ts';
 import type { CoreDailyLogRow, NutritionContainerRow, SleepSource } from '../db/types.ts';
+import { mono, theme } from './theme.ts';
 
 const SLEEP_SOURCES: { value: SleepSource; label: string }[] = [
   { value: 'autosleep', label: 'AutoSleep' },
@@ -43,14 +44,26 @@ export type TodayLogProps = {
 };
 
 export function TodayLog({ log, containers, waterTargetMl, onLog }: TodayLogProps) {
-  const [sleepDraft, setSleepDraft] = useState(
-    log?.sleep_minutes === null || log?.sleep_minutes === undefined
-      ? ''
-      : String(log.sleep_minutes),
+  // Dos casillas porque asi lo dice en voz alta: siete y media, o ciento treinta
+  // minutos. Cualquiera de las dos sola vale, y 7.5 en horas tambien.
+  const slept = log?.sleep_minutes ?? null;
+  const [sleepHours, setSleepHours] = useState(
+    slept === null ? '' : String(Math.floor(slept / 60)),
   );
+  const [sleepMinutes, setSleepMinutes] = useState(slept === null ? '' : String(slept % 60));
   const [stepsDraft, setStepsDraft] = useState(
     log?.steps === null || log?.steps === undefined ? '' : String(log.steps),
   );
+
+  const commitSleep = () => {
+    const total = sleepMinutesFrom(sleepHours, sleepMinutes);
+    if (total === null) return;
+    // El esquema pide de donde salio el dato, y escrito a mano es 'manual'. Sin
+    // esto, escribir la hora antes de tocar un chip rompe la escritura.
+    onLog({ sleepMinutes: total, sleepSource: log?.sleep_source ?? 'manual' });
+    setSleepHours(String(Math.floor(total / 60)));
+    setSleepMinutes(String(total % 60));
+  };
 
   const waterMl = log?.water_ml ?? 0;
   const drinks = log?.alcohol_drinks ?? 0;
@@ -92,15 +105,23 @@ export function TodayLog({ log, containers, waterTargetMl, onLog }: TodayLogProp
       <Section title="Sueño">
         <View style={styles.row}>
           <TextInput
-            value={sleepDraft}
-            onChangeText={setSleepDraft}
-            onBlur={() => {
-              const parsed = Number(sleepDraft);
-              if (Number.isInteger(parsed) && parsed > 0) onLog({ sleepMinutes: parsed });
-            }}
+            value={sleepHours}
+            onChangeText={setSleepHours}
+            onBlur={commitSleep}
+            keyboardType="numeric"
+            accessibilityLabel="Horas de sueño"
+            placeholder="horas"
+            placeholderTextColor={theme.textGhost}
+            style={styles.input}
+          />
+          <TextInput
+            value={sleepMinutes}
+            onChangeText={setSleepMinutes}
+            onBlur={commitSleep}
             keyboardType="numeric"
             accessibilityLabel="Minutos de sueño"
-            placeholder="minutos"
+            placeholder="min"
+            placeholderTextColor={theme.textGhost}
             style={styles.input}
           />
           {SLEEP_SOURCES.map((source) => (
@@ -125,6 +146,7 @@ export function TodayLog({ log, containers, waterTargetMl, onLog }: TodayLogProp
           keyboardType="numeric"
           accessibilityLabel="Pasos"
           placeholder="pasos"
+          placeholderTextColor={theme.textGhost}
           style={styles.input}
         />
       </Section>
@@ -164,10 +186,13 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 12,
-    color: '#666',
+    color: theme.textFaint,
+    fontFamily: mono,
   },
   value: {
     fontSize: 14,
+    fontFamily: mono,
+    color: theme.text,
   },
   row: {
     flexDirection: 'row',
@@ -177,25 +202,29 @@ const styles = StyleSheet.create({
   },
   chip: {
     borderWidth: 1,
-    borderColor: '#e2e2e2',
+    borderColor: theme.line,
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
   chipSelected: {
-    borderColor: '#555',
-    backgroundColor: '#f3f3f3',
+    borderColor: theme.lineStrong,
+    backgroundColor: theme.surfaceHigh,
   },
   chipText: {
     fontSize: 12,
+    fontFamily: mono,
+    color: theme.text,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: theme.lineSoft,
     borderRadius: 6,
     paddingHorizontal: 10,
     paddingVertical: 7,
     fontSize: 14,
     minWidth: 96,
+    fontFamily: mono,
+    color: theme.text,
   },
 });

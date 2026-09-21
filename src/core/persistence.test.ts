@@ -15,6 +15,7 @@ import {
 import {
   listDailyLogs,
   readDailyLog,
+  sleepMinutesFrom,
   storeScore,
   toDisciplineDay,
   toWeighIns,
@@ -275,4 +276,18 @@ test('a recalculated change is still there on the next load', async () => {
   // which is exactly why the card cannot depend on that return value.
   assert.equal(await recalculateTargets(db, heavier, profile, '2026-09-20'), null);
   assert.equal((await latestTargetChange(db))?.to.weightBasisKg, 74.5);
+});
+
+test('sleep is written the way he says it, in hours or in minutes', () => {
+  assert.equal(sleepMinutesFrom('7.5', ''), 450);
+  assert.equal(sleepMinutesFrom('', '130'), 130);
+  assert.equal(sleepMinutesFrom('7', '30'), 450);
+  assert.equal(sleepMinutesFrom('7,5', ''), 450);
+});
+
+test('an empty or impossible sleep entry writes nothing rather than a zero', () => {
+  assert.equal(sleepMinutesFrom('', ''), null);
+  assert.equal(sleepMinutesFrom('0', '0'), null);
+  assert.equal(sleepMinutesFrom('-8', ''), null);
+  assert.equal(sleepMinutesFrom('anoche', ''), null);
 });

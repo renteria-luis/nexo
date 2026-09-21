@@ -5,6 +5,7 @@ import type { DealsDealRow, DealsDiscountRow, NutritionFoodRow } from '../db/typ
 
 import {
   applicableDiscount,
+  comparedToUsual,
   finalPriceCents,
   proteinPerDollar,
   rankByProteinPerDollar,
@@ -84,6 +85,7 @@ function deal(priceCents: number | null, unit: string | null): DealsDealRow {
     expires_at: null,
     confidence: 'exact',
     raw_payload: null,
+    staple: 0,
   };
 }
 
@@ -152,4 +154,28 @@ test('the discount is applied to the price, not to the protein', () => {
   assert.equal(finalPriceCents(deal(1000, 'kg'), null), 1000);
   assert.equal(finalPriceCents(deal(1000, 'kg'), METRO), 900);
   assert.equal(finalPriceCents(deal(null, 'kg'), METRO), null);
+});
+
+test('a deal is measured against what he already pays for that kilo', () => {
+  // Kirkland chicken at $15.49 the kilo is the number to beat.
+  const chicken = {
+    ...CHICKEN,
+    protein_g: 28 / 125,
+    base_unit_g: 1,
+    price_cad_cents: 1549,
+    package_size: 1000,
+  };
+
+  const cheaper = comparedToUsual(deal(881, 'kg'), chicken, [], null, '2026-09-21');
+  assert.ok(cheaper !== null);
+  assert.equal(Math.round(cheaper.usualCentsPerKg), 1549);
+  assert.equal(Math.round(cheaper.dealCentsPerKg), 881);
+  assert.equal(Math.round(cheaper.savingPercent), 43);
+
+  const dearer = comparedToUsual(deal(1999, 'kg'), chicken, [], null, '2026-09-21');
+  assert.ok(dearer !== null && dearer.savingPercent < 0);
+});
+
+test('without a price on the catalogue row there is nothing to compare against', () => {
+  assert.equal(comparedToUsual(deal(881, 'kg'), CHICKEN, [], null, '2026-09-21'), null);
 });

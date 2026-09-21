@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NutritionFoodRow } from '../db/types.ts';
 import { MEAL_SLOTS, roundAmount } from '../nutrition/index.ts';
 import type { BatchStart, OpenBatch } from '../shell/AppData.tsx';
+import { mono, theme } from './theme.ts';
 
 function parse(value: string): number {
   return value.trim() === '' ? Number.NaN : Number(value);
@@ -29,6 +30,7 @@ function Field({
         keyboardType={label === 'Nombre' ? 'default' : 'numeric'}
         accessibilityLabel={label}
         placeholder={placeholder}
+        placeholderTextColor={theme.textGhost}
         style={styles.input}
       />
     </View>
@@ -156,6 +158,10 @@ export function BatchPanel({ batches, foods, onStart, onEat }: BatchPanelProps) 
   return (
     <View style={styles.wrapper}>
       <Text style={styles.heading}>Tandas</Text>
+      <Text style={styles.hint}>
+        Una tanda es lo que cocinas de una vez y vas comiendo por porciones: metes el total una sola
+        vez y despues cada plato se descuenta solo.
+      </Text>
 
       {batches.length > 0 && (
         <View style={styles.chips}>
@@ -282,34 +288,40 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     gap: 8,
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: theme.line,
     paddingTop: 12,
   },
   heading: {
     fontSize: 14,
+    fontFamily: mono,
+    color: theme.text,
   },
   card: {
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: theme.line,
     borderRadius: 8,
     padding: 10,
     gap: 4,
   },
   cardTitle: {
     fontSize: 13,
+    fontFamily: mono,
+    color: theme.text,
   },
   cardDetail: {
     fontSize: 11,
-    color: '#666',
+    color: theme.textFaint,
+    fontFamily: mono,
   },
   spoilage: {
     fontSize: 11,
-    color: '#8a6d1f',
+    color: theme.warn,
+    fontFamily: mono,
   },
   eat: {
     alignSelf: 'flex-start',
     borderWidth: 1,
-    borderColor: '#555',
+    borderColor: theme.lineStrong,
     borderRadius: 6,
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -317,6 +329,8 @@ const styles = StyleSheet.create({
   },
   eatText: {
     fontSize: 12,
+    fontFamily: mono,
+    color: theme.text,
   },
   newBatch: {
     alignSelf: 'flex-start',
@@ -324,12 +338,13 @@ const styles = StyleSheet.create({
   },
   newBatchText: {
     fontSize: 12,
-    color: '#555',
+    color: theme.textDim,
+    fontFamily: mono,
   },
   form: {
     gap: 8,
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: theme.line,
     borderRadius: 8,
     padding: 10,
   },
@@ -340,17 +355,19 @@ const styles = StyleSheet.create({
   },
   chip: {
     borderWidth: 1,
-    borderColor: '#e2e2e2',
+    borderColor: theme.line,
     borderRadius: 12,
     paddingHorizontal: 9,
     paddingVertical: 5,
   },
   chipSelected: {
-    borderColor: '#555',
-    backgroundColor: '#f3f3f3',
+    borderColor: theme.lineStrong,
+    backgroundColor: theme.surfaceHigh,
   },
   chipText: {
     fontSize: 11,
+    fontFamily: mono,
+    color: theme.text,
   },
   drained: {
     alignSelf: 'flex-start',
@@ -367,36 +384,41 @@ const styles = StyleSheet.create({
   },
   fieldLabel: {
     fontSize: 10,
-    color: '#777',
+    color: theme.textFaint,
+    fontFamily: mono,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: theme.lineSoft,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 6,
     fontSize: 13,
+    fontFamily: mono,
+    color: theme.text,
   },
   hint: {
     fontSize: 10,
-    color: '#999',
+    color: theme.textGhost,
   },
   problem: {
     fontSize: 11,
-    color: '#8a1f11',
+    color: theme.danger,
   },
   save: {
     borderWidth: 1,
-    borderColor: '#555',
+    borderColor: theme.lineStrong,
     borderRadius: 6,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
   saveDisabled: {
-    borderColor: '#ddd',
+    borderColor: theme.lineSoft,
   },
   saveText: {
     fontSize: 12,
+    fontFamily: mono,
+    color: theme.text,
   },
   cancel: {
     paddingHorizontal: 10,
@@ -404,6 +426,7 @@ const styles = StyleSheet.create({
   },
   cancelText: {
     fontSize: 12,
-    color: '#777',
+    color: theme.textFaint,
+    fontFamily: mono,
   },
 });

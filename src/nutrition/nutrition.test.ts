@@ -337,7 +337,7 @@ test('every seeded food is stored per a unit he can actually log in', async () =
   const { db } = seeded();
   const foods = await listFoods(db);
 
-  assert.equal(foods.length, 10);
+  assert.equal(foods.length, 12);
   for (const food of foods) {
     assert.ok(
       ['g', 'ml', 'huevo', 'unidad', 'vaso'].includes(food.base_unit),

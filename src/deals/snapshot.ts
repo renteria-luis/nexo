@@ -35,6 +35,8 @@ export type SnapshotDeal = {
    * because "chicken breast" finding a 3-piece pack is a guess, just a good one.
    */
   foodId: string | null;
+  /** Spec 16.4: a food where the price is worth reacting to, so its cards go first. */
+  staple: boolean;
   /** The untouched source record, kept so a wrong parse can be checked (spec 16.5). */
   raw: unknown;
 };
@@ -112,6 +114,7 @@ export function parseSnapshot(text: string): DealSnapshot {
       sourceUrl: asOptionalString(deal.sourceUrl, `deal ${index} url`),
       confidence,
       foodId: asOptionalString(deal.foodId, `deal ${index} foodId`),
+      staple: deal.staple === true,
       raw: deal.raw ?? null,
     };
   });
@@ -152,8 +155,9 @@ export async function applySnapshot(db: SQLiteDatabase, snapshot: DealSnapshot):
       await db.runAsync(
         `INSERT INTO deals_deal
            (id, source_id, retailer_id, title, price_cents, original_price_cents, unit,
-            valid_from, valid_to, image_url, source_url, fetched_at, confidence, raw_payload)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+            valid_from, valid_to, image_url, source_url, fetched_at, confidence, raw_payload,
+            staple)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
         [
           `${snapshot.source}-${deal.id}`,
           snapshot.source,
@@ -169,6 +173,7 @@ export async function applySnapshot(db: SQLiteDatabase, snapshot: DealSnapshot):
           snapshot.fetchedAt,
           deal.confidence,
           deal.raw === null ? null : JSON.stringify(deal.raw),
+          deal.staple ? 1 : 0,
         ],
       );
 

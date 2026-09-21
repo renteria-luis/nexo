@@ -318,6 +318,8 @@ export type DealsDealRow = {
   expires_at: EpochMs | null;
   confidence: 'exact' | 'parsed';
   raw_payload: string | null;
+  /** Spec 16.4: one of the few foods where the price is worth reacting to. */
+  staple: SqlBool;
 };
 
 export type DealsDiscountRow = {

@@ -300,15 +300,19 @@ test('price is stored in whole cents', () => {
   assert.match(message, /cannot store .* value in INTEGER column/i);
 });
 
-test('the food catalog seeds the ten owner-verified foods', () => {
+test('the food catalog is only what he verified himself or read off a package', () => {
   const db = freshDatabase();
   const rows = db.prepare('SELECT id, source FROM nutrition_food ORDER BY id;').all() as {
     id: string;
     source: string;
   }[];
 
-  assert.equal(rows.length, 10);
-  for (const row of rows) assert.equal(row.source, 'user_measured');
+  assert.equal(rows.length, 12);
+  assert.deepEqual(
+    rows.filter((row) => row.source === 'label').map((row) => row.id),
+    ['chicken-breast-kirkland', 'eggs-costco-xl'],
+  );
+  for (const row of rows) assert.ok(['user_measured', 'label'].includes(row.source));
 });
 
 test('a food the spec leaves blank keeps no carbohydrate figure', () => {

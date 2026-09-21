@@ -1,12 +1,12 @@
 {
-  "comment": "Spec 16.4: the search list starts from the foods he tracks and grows as he wants. foodId links a result to the nutrition catalogue so protein per dollar can be computed; null means the food is not in the catalogue yet and the deal still shows, just without that number.",
+  "comment": "Spec 16.4: the search list starts from the foods he tracks and grows as he wants. foodId links a result to the nutrition catalogue so protein per dollar can be computed; null means the food is not in the catalogue yet and the deal still shows, just without that number. staple marks what a bad price actually costs him, and those cards go first.",
   "queries": [
-    { "term": "chicken breast", "foodId": null },
-    { "term": "ground beef", "foodId": null },
-    { "term": "eggs", "foodId": "eggs-large" },
-    { "term": "milk", "foodId": "milk-1" },
-    { "term": "oats", "foodId": "oats-quaker" },
-    { "term": "rice", "foodId": null },
-    { "term": "pasta", "foodId": "catelli-pasta" }
+    { "term": "chicken breast", "foodId": "chicken-breast-kirkland", "staple": true },
+    { "term": "ground beef", "foodId": null, "staple": true },
+    { "term": "eggs", "foodId": "eggs-costco-xl", "staple": true },
+    { "term": "milk", "foodId": "milk-1", "staple": false },
+    { "term": "oats", "foodId": "oats-quaker", "staple": false },
+    { "term": "rice", "foodId": null, "staple": false },
+    { "term": "pasta", "foodId": "catelli-pasta", "staple": false }
   ]
 }

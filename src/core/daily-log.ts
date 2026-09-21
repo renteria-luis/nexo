@@ -41,6 +41,20 @@ const MEASURED_FIELDS = [
 ] as const;
 
 /**
+ * Sueno escrito como el lo dice: "7.5" en horas o "130" en minutos, o las dos casillas
+ * a la vez. Devuelve null cuando no hay nada util que guardar, porque un cero aqui
+ * significaria que no durmio.
+ */
+export function sleepMinutesFrom(hours: string, minutes: string): number | null {
+  const h = hours.trim() === '' ? 0 : Number(hours.trim().replace(',', '.'));
+  const m = minutes.trim() === '' ? 0 : Number(minutes.trim().replace(',', '.'));
+  if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || m < 0) return null;
+
+  const total = Math.round(h * 60 + m);
+  return total > 0 ? total : null;
+}
+
+/**
  * Writes the day, merging into whatever is already there so logging water in the
  * morning does not wipe the weight logged at breakfast. `has_data` is derived
  * rather than passed in, because a caller that gets it wrong makes a day silently

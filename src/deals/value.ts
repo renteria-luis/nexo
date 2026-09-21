@@ -120,3 +120,50 @@ export type RankedDeal = {
 export function rankByProteinPerDollar(candidates: readonly RankedDeal[]): RankedDeal[] {
   return [...candidates].sort((a, b) => b.value.proteinPerDollar - a.value.proteinPerDollar);
 }
+
+export type PriceComparison = {
+  dealCentsPerKg: number;
+  usualCentsPerKg: number;
+  /** Positive when the deal beats what he pays. */
+  savingPercent: number;
+};
+
+/**
+ * What a kilo of this food normally costs him, from the package price on the
+ * catalogue row. Null when the row does not carry a price, a package size or a
+ * weight, because the whole point of the comparison is that both sides are real.
+ */
+export function usualCentsPerKg(food: NutritionFoodRow): number | null {
+  if (food.price_cad_cents === null || food.package_size === null) return null;
+  if (food.base_unit_g === null || food.base_unit_g <= 0) return null;
+  const grams = food.package_size * food.base_unit_g;
+  if (grams <= 0) return null;
+  return (food.price_cad_cents / grams) * GRAMS_PER_KG;
+}
+
+/**
+ * The deal's price per kilo against his. Spec 16.6 compares final prices, so the
+ * discount of the day is applied first. Null when either side cannot be stated in
+ * kilos, which is most deals: 'ea' does not say how much food it is.
+ */
+export function comparedToUsual(
+  deal: DealsDealRow,
+  food: NutritionFoodRow,
+  discounts: readonly DealsDiscountRow[],
+  chain: string | null,
+  onDate: IsoDate,
+): PriceComparison | null {
+  const grams = gramsPerUnit(deal.unit);
+  const usual = usualCentsPerKg(food);
+  if (grams === null || usual === null || usual <= 0) return null;
+
+  const cents = finalPriceCents(deal, applicableDiscount(discounts, chain, onDate));
+  if (cents === null || cents <= 0) return null;
+
+  const dealCentsPerKg = (cents / grams) * GRAMS_PER_KG;
+  return {
+    dealCentsPerKg,
+    usualCentsPerKg: usual,
+    savingPercent: ((usual - dealCentsPerKg) / usual) * 100,
+  };
+}
