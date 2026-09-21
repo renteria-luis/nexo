@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import type { PaletteId } from '../../core/palettes.ts';
 import { settingProblem, type SettingKey, type Settings } from '../../core/settings.ts';
 
 import { PalettePicker } from '../PalettePicker.tsx';
+import { mono, theme } from '../theme.ts';
 
 const PHASES: { value: string; label: string }[] = [
   { value: 'recomp', label: 'Recomposición' },
@@ -56,6 +58,10 @@ const FIELDS: { key: SettingKey; label: string; hint: string; keyboard: 'numeric
 
 export type SettingsScreenProps = {
   onResetDatabase: () => void;
+  /** Escribe el archivo y abre la hoja de compartir. */
+  onExport: () => Promise<{ uri: string; bytes: number; shared: boolean }>;
+  /** Null cuando cierra el selector sin elegir. Rechaza con el motivo si el archivo no sirve. */
+  onImport: () => Promise<{ tables: number; rows: number; skipped: string[] } | null>;
   settings: Settings;
   palette: PaletteId;
   todayWeightKg: number | null;
@@ -67,6 +73,8 @@ export type SettingsScreenProps = {
 
 export function SettingsScreen({
   onResetDatabase,
+  onExport,
+  onImport,
   settings,
   palette,
   todayWeightKg,
@@ -76,6 +84,9 @@ export function SettingsScreen({
   onSelectPalette,
 }: SettingsScreenProps) {
   const [confirmingReset, setConfirmingReset] = useState(false);
+  const [confirmingImport, setConfirmingImport] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [backupNote, setBackupNote] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Partial<Record<SettingKey, string>>>({});
   const [weightDraft, setWeightDraft] = useState(
     todayWeightKg === null ? '' : String(todayWeightKg),
@@ -98,7 +109,11 @@ export function SettingsScreen({
   return (
     // Scrolls on its own rather than through the shared Screen frame: this one is
     // pushed as a modal and has no tab bar under it.
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.screen}>
+    <KeyboardAwareScrollView
+      bottomOffset={24}
+      style={styles.scroll}
+      contentContainerStyle={styles.screen}
+    >
       <Text style={styles.heading}>Perfil</Text>
       <Text style={styles.warning}>
         Estos datos solo viven en tu teléfono. No están escritos en el código ni se suben a ningún
@@ -183,6 +198,88 @@ export function SettingsScreen({
       <Text style={styles.heading}>Paleta</Text>
       <PalettePicker selected={palette} onSelect={onSelectPalette} />
 
+      <Text style={styles.heading}>Respaldo</Text>
+      <Text style={styles.hint}>
+        Un solo archivo JSON con todo lo registrado. Sirve para volver si se borra la app o cambias
+        de teléfono, y es el mismo archivo que usarás para entrenar un modelo más adelante.
+      </Text>
+      <View style={styles.options}>
+        <Pressable
+          accessibilityLabel="Exportar todo a un archivo"
+          disabled={busy}
+          onPress={() => {
+            setBusy(true);
+            setBackupNote('Escribiendo…');
+            onExport()
+              .then((outcome) => {
+                setBackupNote(
+                  outcome.shared
+                    ? `Listo, ${Math.round(outcome.bytes / 1024)} KB.`
+                    : `Guardado en el teléfono, ${Math.round(outcome.bytes / 1024)} KB: ${outcome.uri}`,
+                );
+              })
+              .catch((error: unknown) => {
+                setBackupNote(error instanceof Error ? error.message : String(error));
+              })
+              .finally(() => setBusy(false));
+          }}
+          style={styles.option}
+        >
+          <Text style={styles.optionText}>Exportar</Text>
+        </Pressable>
+
+        {confirmingImport ? (
+          <>
+            <Pressable
+              accessibilityLabel="Confirmar importación"
+              disabled={busy}
+              onPress={() => {
+                setConfirmingImport(false);
+                setBusy(true);
+                setBackupNote('Leyendo el archivo…');
+                onImport()
+                  .then((result) => {
+                    if (result === null) {
+                      setBackupNote('No elegiste ningún archivo.');
+                      return;
+                    }
+                    setBackupNote(
+                      `Restaurado: ${result.rows} filas en ${result.tables} tablas.` +
+                        (result.skipped.length > 0
+                          ? ` Quedaron fuera ${result.skipped.join(', ')}, que esta versión ya no tiene.`
+                          : ''),
+                    );
+                  })
+                  .catch((error: unknown) => {
+                    setBackupNote(error instanceof Error ? error.message : String(error));
+                  })
+                  .finally(() => setBusy(false));
+              }}
+              style={[styles.option, styles.danger]}
+            >
+              <Text style={styles.dangerText}>Sí, reemplazar lo que hay</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="Cancelar importación"
+              onPress={() => setConfirmingImport(false)}
+              style={styles.option}
+            >
+              <Text style={styles.optionText}>Cancelar</Text>
+            </Pressable>
+          </>
+        ) : (
+          <Pressable
+            accessibilityLabel="Importar desde un archivo"
+            disabled={busy}
+            onPress={() => setConfirmingImport(true)}
+            style={styles.option}
+          >
+            <Text style={styles.optionText}>Importar</Text>
+          </Pressable>
+        )}
+      </View>
+      {backupNote && <Text style={styles.hint}>{backupNote}</Text>}
+
       <Text style={styles.heading}>Base de datos</Text>
       <Text style={styles.hint}>
         Mientras el esquema siga cambiando, una versión nueva de la app puede no entenderse con una
@@ -217,18 +314,18 @@ export function SettingsScreen({
           <Text style={styles.optionText}>Borrar la base de datos</Text>
         </Pressable>
       )}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   scroll: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: theme.bg,
   },
   screen: {
     flexGrow: 1,
-    backgroundColor: '#fff',
+    backgroundColor: theme.bg,
     paddingHorizontal: 20,
     paddingTop: 14,
     paddingBottom: 48,
@@ -237,36 +334,41 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: 14,
     marginTop: 8,
+    fontFamily: mono,
+    color: theme.text,
   },
   warning: {
     fontSize: 11,
-    color: '#888',
+    color: theme.textGhost,
   },
   field: {
     gap: 3,
   },
   label: {
     fontSize: 12,
-    color: '#444',
+    color: theme.textDim,
+    fontFamily: mono,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: theme.lineSoft,
     borderRadius: 6,
     paddingHorizontal: 10,
     paddingVertical: 8,
     fontSize: 14,
+    fontFamily: mono,
+    color: theme.text,
   },
   inputBad: {
-    borderColor: '#8a1f11',
+    borderColor: theme.danger,
   },
   hint: {
     fontSize: 10,
-    color: '#999',
+    color: theme.textGhost,
   },
   problem: {
     fontSize: 10,
-    color: '#8a1f11',
+    color: theme.danger,
   },
   options: {
     flexDirection: 'row',
@@ -275,23 +377,26 @@ const styles = StyleSheet.create({
   },
   option: {
     borderWidth: 1,
-    borderColor: '#e2e2e2',
+    borderColor: theme.line,
     borderRadius: 6,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   optionSelected: {
-    borderColor: '#555',
-    backgroundColor: '#f3f3f3',
+    borderColor: theme.lineStrong,
+    backgroundColor: theme.surfaceHigh,
   },
   optionText: {
     fontSize: 12,
+    fontFamily: mono,
+    color: theme.text,
   },
   danger: {
-    borderColor: '#8a1f11',
+    borderColor: theme.danger,
   },
   dangerText: {
     fontSize: 12,
-    color: '#8a1f11',
+    color: theme.danger,
+    fontFamily: mono,
   },
 });

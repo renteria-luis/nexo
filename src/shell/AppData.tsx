@@ -50,6 +50,7 @@ import {
   setInitialTargets,
   type TargetChange,
 } from '../core/snapshots.ts';
+import type { ImportResult } from '../core/backup.ts';
 import type { WeightUnit } from '../core/units.ts';
 import { openDatabase, resetDatabase } from '../db/index.ts';
 import type {
@@ -98,6 +99,7 @@ import {
   type TimeBudget,
 } from '../training/index.ts';
 
+import { exportToFile, importFromFile, type ExportOutcome } from './backup-file.ts';
 import { assembleDay, exerciseContext, type AssembledDay, type ExerciseContext } from './day.ts';
 import { syncDeals, type SyncOutcome } from './deals.ts';
 import { locateGym, type LocationOutcome } from './location.ts';
@@ -296,6 +298,10 @@ export type AppData = {
   loadStudies: () => Promise<CoreStudyRow[]>;
   /** Spec 16.7: the outcome is returned so the screen can say what happened. */
   refreshDeals: () => Promise<SyncOutcome>;
+  /** El volcado completo a un archivo, para respaldo y para entrenar modelos despues. */
+  exportData: () => Promise<ExportOutcome>;
+  /** Rechaza con el motivo cuando el archivo no sirve, y recarga la app cuando si. */
+  importData: () => Promise<ImportResult | null>;
 };
 
 const Context = createContext<AppData | null>(null);
@@ -402,6 +408,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     logExperimentReading: (id, date, value, note) =>
       run((db) => addReading(db, id, date, value, note)),
     finishExperiment: (id, endDate) => run((db) => endExperiment(db, id, endDate)),
+    exportData: () => exportToFile(),
+    importData: async () => {
+      const result = await importFromFile();
+      if (result !== null) refresh();
+      return result;
+    },
     resetDatabase: () => {
       setState({ phase: 'opening' });
       resetDatabase()

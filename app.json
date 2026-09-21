@@ -35,7 +35,8 @@
         {
           "locationWhenInUsePermission": "nexo usa tu ubicacion una sola vez, al empezar un entreno, para saber en que gimnasio estas."
         }
-      ]
+      ],
+      "expo-sharing"
     ]
   }
 }
