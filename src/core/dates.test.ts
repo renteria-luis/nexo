@@ -11,6 +11,7 @@ import {
   weekRange,
   weekStart,
   weekday,
+  shortDate,
 } from './dates.ts';
 
 test('weeks run Monday to Sunday', () => {
@@ -89,4 +90,11 @@ test('today is read in local time, not UTC', () => {
   // logged a session on is the local one.
   const lateEvening = new Date(2026, 8, 13, 23, 30, 0);
   assert.equal(todayIso(lateEvening), '2026-09-13');
+});
+
+test('a date reads with the month in letters, never as two numbers', () => {
+  assert.equal(shortDate('2026-08-08'), '08-ago-2026');
+  assert.equal(shortDate('2026-01-31'), '31-ene-2026');
+  assert.equal(shortDate('2026-12-01'), '01-dic-2026');
+  assert.throws(() => shortDate('2026-13-01'), /is not a date/);
 });

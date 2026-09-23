@@ -18,12 +18,27 @@ export const BACKUP_VERSION = 1;
 /** La tabla del runner de migraciones: se firma con ella, nunca se sobreescribe. */
 const MIGRATION_TABLE = 'core_migration';
 
+/** Lo que hay que saber para leer el archivo sin tener el codigo al lado. */
+export const BACKUP_NOTES = {
+  weights: 'kilogramos, siempre, aunque la app los muestre en libras',
+  dumbbells: 'weightKg es lo que dice una mancuerna; loadFactor 2 significa que se levantaron dos',
+  money: 'centavos de dolar canadiense, enteros',
+  timestamps: 'milisegundos desde 1970, hora local del telefono',
+  dates: 'AAAA-MM-DD, el dia del calendario local',
+  score: '0 a 100 segun spec 4.1; null cuando el dia no tiene con que puntuarse',
+  tables: 'el volcado crudo de la base, que es la fuente para restaurar',
+  days: 'lo mismo ya resuelto por dia, que es lo que sirve para graficas y modelos',
+};
+
 export type Backup = {
   format: string;
   version: number;
   exportedAt: number;
   migrations: string[];
+  notes: typeof BACKUP_NOTES;
   tables: Record<string, Record<string, unknown>[]>;
+  /** Un objeto por dia, con la nota desglosada, el entreno y la comida ya unidos. */
+  days: unknown[];
 };
 
 async function userTables(db: SQLiteDatabase): Promise<string[]> {
@@ -40,7 +55,7 @@ async function columnsOf(db: SQLiteDatabase, table: string): Promise<string[]> {
   return rows.map((row) => row.name);
 }
 
-export async function exportBackup(db: SQLiteDatabase): Promise<Backup> {
+export async function exportBackup(db: SQLiteDatabase, days: unknown[] = []): Promise<Backup> {
   const tables: Record<string, Record<string, unknown>[]> = {};
   const names = await userTables(db);
 
@@ -58,7 +73,9 @@ export async function exportBackup(db: SQLiteDatabase): Promise<Backup> {
     version: BACKUP_VERSION,
     exportedAt: Date.now(),
     migrations: migrations.map((row) => row.id),
+    notes: BACKUP_NOTES,
     tables,
+    days,
   };
 }
 
@@ -93,7 +110,10 @@ export function parseBackup(raw: unknown): Backup {
     version: BACKUP_VERSION,
     exportedAt: typeof body.exportedAt === 'number' ? body.exportedAt : 0,
     migrations: (body.migrations as unknown[]).map(String),
+    notes: BACKUP_NOTES,
     tables,
+    // Al restaurar no se mira: las tablas mandan y esto se vuelve a calcular solo.
+    days: Array.isArray(body.days) ? body.days : [],
   };
 }
 

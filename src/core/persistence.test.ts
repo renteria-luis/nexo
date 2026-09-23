@@ -291,3 +291,28 @@ test('an empty or impossible sleep entry writes nothing rather than a zero', () 
   assert.equal(sleepMinutesFrom('-8', ''), null);
   assert.equal(sleepMinutesFrom('anoche', ''), null);
 });
+
+test('a day marked as rest is a day with data, not an empty one', async () => {
+  const { db, raw } = fresh();
+  await upsertDailyLog(db, { date: '2026-09-22', restDay: true });
+
+  const row = raw
+    .prepare('SELECT rest_day, has_data FROM core_daily_log WHERE date = ?;')
+    .get('2026-09-22') as { rest_day: number; has_data: number };
+
+  assert.equal(row.rest_day, 1);
+  assert.equal(row.has_data, 1);
+});
+
+test('logging water later does not undo the rest day', async () => {
+  const { db, raw } = fresh();
+  await upsertDailyLog(db, { date: '2026-09-22', restDay: true });
+  await upsertDailyLog(db, { date: '2026-09-22', waterMl: 710 });
+
+  const row = raw
+    .prepare('SELECT rest_day, water_ml FROM core_daily_log WHERE date = ?;')
+    .get('2026-09-22') as { rest_day: number; water_ml: number };
+
+  assert.equal(row.rest_day, 1);
+  assert.equal(row.water_ml, 710);
+});

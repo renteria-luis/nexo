@@ -9,10 +9,12 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 
 import {
   listDailyLogs,
+  readLastWeight,
   storeScore,
   toWeighIns,
   upsertDailyLog,
   type DailyLogEntry,
+  type LastWeight,
 } from '../core/daily-log.ts';
 import { addDays, todayIso, trailingDays, weekStart, type IsoDate } from '../core/dates.ts';
 import type { ScoredDay } from '../core/heatmap.ts';
@@ -89,6 +91,7 @@ import {
   loadRoutinePlan,
   loadSessionPlan,
   saveSessionPlan,
+  getSessionOn,
   setSessionDetails,
   setSessionRoutine,
   startSession,
@@ -100,6 +103,15 @@ import {
 } from '../training/index.ts';
 
 import { exportToFile, importFromFile, type ExportOutcome } from './backup-file.ts';
+import {
+  listDayRows,
+  loadDayDetail,
+  rescoreMissing,
+  windowRange,
+  type DayDetail,
+  type DayRow,
+  type RecordWindow,
+} from './records.ts';
 import { assembleDay, exerciseContext, type AssembledDay, type ExerciseContext } from './day.ts';
 import { syncDeals, type SyncOutcome } from './deals.ts';
 import { locateGym, type LocationOutcome } from './location.ts';
@@ -146,6 +158,8 @@ export type Loaded = {
   dealSources: DealsSourceRow[];
   /** Spec 8.3 rule 8: what today's session was approved to be, empty before it starts. */
   plan: PlannedSet[];
+  /** El ultimo peso anotado, de cuando sea: no se pesa todos los dias. */
+  lastWeight: LastWeight | null;
 };
 
 export type AppState =
@@ -184,6 +198,10 @@ async function load(exerciseId: string | null): Promise<Loaded> {
     await storeScore(db, today, assembled.result?.score ?? null);
   }
 
+  // Rellenar el perfil hoy tiene que arreglar los dias de antes tambien: hasta que
+  // hubo metas, todo lo anotado se guardo sin nota y la cuadricula los pintaba grises.
+  await rescoreMissing(db, { from, to: today }, today);
+
   const [logs, containers, foods, exercise, change, openBatches, routines, plan] =
     await Promise.all([
       listDailyLogs(db, { from, to: today }),
@@ -197,6 +215,7 @@ async function load(exerciseId: string | null): Promise<Loaded> {
     ]);
 
   const gyms = await listGyms(db);
+  const lastWeight = await readLastWeight(db);
   const trainedDates = new Set(await listSessionDates(db, { from, to: today }));
   const [deals, discounts, dealSources] = await Promise.all([
     listDeals(db, today),
@@ -249,6 +268,7 @@ async function load(exerciseId: string | null): Promise<Loaded> {
     discounts,
     dealSources,
     plan,
+    lastWeight,
   };
 }
 
@@ -298,6 +318,26 @@ export type AppData = {
   loadStudies: () => Promise<CoreStudyRow[]>;
   /** Spec 16.7: the outcome is returned so the screen can say what happened. */
   refreshDeals: () => Promise<SyncOutcome>;
+  /** Un dia cualquiera abierto entero, con el desglose de su nota. */
+  loadDay: (date: IsoDate) => Promise<DayDetail>;
+  /** Todos los dias con rastro dentro de la ventana, del mas nuevo al mas viejo. */
+  loadRecords: (window: RecordWindow) => Promise<DayRow[]>;
+  /** Escribe el registro de cualquier dia, no solo el de hoy. */
+  editDay: (date: IsoDate, entry: Omit<DailyLogEntry, 'date'>) => Promise<void>;
+  addFoodOn: (date: IsoDate, entry: Omit<NewFoodEntry, 'date'>) => Promise<void>;
+  /**
+   * El id de la sesion de ese dia, creandola si no existe. Spec 5.4: una sesion
+   * escrita despues queda marcada como tal y no entra en las estadisticas de gentio.
+   */
+  openSessionOn: (date: IsoDate, routineId: string | null) => Promise<string>;
+  addSetOn: (
+    sessionId: string,
+    exerciseId: string,
+    weightKg: number,
+    reps: number,
+    extra?: { isWarmup?: boolean; rpe?: number | null; restBeforeSeconds?: number | null },
+  ) => Promise<void>;
+  removeSetOn: (sessionId: string, exerciseId: string, setIndex: number) => Promise<void>;
   /** El volcado completo a un archivo, para respaldo y para entrenar modelos despues. */
   exportData: () => Promise<ExportOutcome>;
   /** Rechaza con el motivo cuando el archivo no sirve, y recarga la app cuando si. */
@@ -336,6 +376,17 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         .then(work)
         .then(refresh)
         .catch((error: unknown) => console.error(error));
+    },
+    [refresh],
+  );
+
+  // Igual que run pero se puede esperar, porque la pantalla de un dia pasado tiene
+  // que volver a leer ese dia justo despues de escribirlo.
+  const write = useCallback(
+    async (work: (db: Awaited<ReturnType<typeof openDatabase>>) => Promise<unknown>) => {
+      const db = await openDatabase();
+      await work(db);
+      refresh();
     },
     [refresh],
   );
@@ -408,6 +459,36 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     logExperimentReading: (id, date, value, note) =>
       run((db) => addReading(db, id, date, value, note)),
     finishExperiment: (id, endDate) => run((db) => endExperiment(db, id, endDate)),
+    loadDay: (date) => openDatabase().then((db) => loadDayDetail(db, date, todayIso())),
+    loadRecords: (window) =>
+      openDatabase().then((db) => listDayRows(db, windowRange(window, todayIso()))),
+    editDay: (date, entry) => write((db) => upsertDailyLog(db, { date, ...entry })),
+    addFoodOn: (date, entry) => write((db) => addFoodEntry(db, { ...entry, date })),
+    openSessionOn: async (date, routineId) => {
+      const db = await openDatabase();
+      const existing = await getSessionOn(db, date);
+      if (existing) return existing.id;
+
+      const id = await startSession(db, {
+        date,
+        timeBudget: 'completo',
+        routineId,
+        isRetroactive: date !== todayIso(),
+      });
+      refresh();
+      return id;
+    },
+    addSetOn: (sessionId, exerciseId, weightKg, reps, extra) =>
+      write((db) => addSet(db, { sessionId, exerciseId, weightKg, reps, ...extra })),
+    removeSetOn: (sessionId, exerciseId, setIndex) =>
+      write(async (db) => {
+        const rows = await db.getAllAsync<{ id: string }>(
+          `SELECT id FROM training_set_entry
+            WHERE session_id = ? AND exercise_id = ? AND set_index = ?;`,
+          [sessionId, exerciseId, setIndex],
+        );
+        for (const row of rows) await deleteSet(db, row.id);
+      }),
     exportData: () => exportToFile(),
     importData: async () => {
       const result = await importFromFile();

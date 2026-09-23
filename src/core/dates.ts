@@ -34,6 +34,30 @@ export function todayIso(now: Date = new Date()): IsoDate {
   return `${year}-${month}-${day}`;
 }
 
+/** Los tres primeros meses en espanol, que es como los lee de un vistazo. */
+const MONTHS_ES = [
+  'ene',
+  'feb',
+  'mar',
+  'abr',
+  'may',
+  'jun',
+  'jul',
+  'ago',
+  'sep',
+  'oct',
+  'nov',
+  'dic',
+];
+
+/** 2026-08-08 se lee 08-ago-2026: sin ambiguedad entre dia y mes. */
+export function shortDate(date: IsoDate): string {
+  const [year, month, day] = date.split('-');
+  const index = Number(month) - 1;
+  if (!MONTHS_ES[index]) throw new Error(`${date} is not a date`);
+  return `${day}-${MONTHS_ES[index]}-${year}`;
+}
+
 export function addDays(date: IsoDate, days: number): IsoDate {
   return fromUtcMs(toUtcMs(date) + days * DAY_MS);
 }

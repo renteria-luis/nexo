@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import type { IsoDate } from '../core/dates.ts';
+import type { DateRange, IsoDate } from '../core/dates.ts';
 import type { NutritionBatchRow, NutritionContainerRow, NutritionFoodRow } from '../db/types.ts';
 
 import type { LoggedPortion } from './totals.ts';
@@ -28,6 +28,39 @@ export async function listPortions(db: SQLiteDatabase, date: IsoDate): Promise<L
     mealSlot: entry_meal_slot,
     food: food as NutritionFoodRow,
   }));
+}
+
+/**
+ * Lo mismo pero para un rango, en una sola consulta. La pantalla de registros mira
+ * noventa dias de golpe y una consulta por dia son noventa idas a la base.
+ */
+export async function listPortionsBetween(
+  db: SQLiteDatabase,
+  range: DateRange,
+): Promise<Map<IsoDate, LoggedPortion[]>> {
+  const rows = await db.getAllAsync<PortionRow & { entry_date: IsoDate }>(
+    `SELECT e.id AS entry_id, e.quantity AS entry_quantity, e.meal_slot AS entry_meal_slot,
+            e.date AS entry_date, f.*
+       FROM nutrition_food_entry e
+       JOIN nutrition_food f ON f.id = e.food_id
+      WHERE e.date BETWEEN ? AND ?
+   ORDER BY e.date, e.timestamp;`,
+    [range.from, range.to],
+  );
+
+  const byDate = new Map<IsoDate, LoggedPortion[]>();
+  for (const { entry_id, entry_quantity, entry_meal_slot, entry_date, ...food } of rows) {
+    const portion = {
+      entryId: entry_id,
+      quantity: entry_quantity,
+      mealSlot: entry_meal_slot,
+      food: food as NutritionFoodRow,
+    };
+    const existing = byDate.get(entry_date);
+    if (existing) existing.push(portion);
+    else byDate.set(entry_date, [portion]);
+  }
+  return byDate;
 }
 
 /** Batches with portions left, oldest first, which is the order they spoil in. */

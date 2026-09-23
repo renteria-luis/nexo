@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { GridWeek } from '../core/heatmap.ts';
 import { mono, theme } from './theme.ts';
@@ -25,12 +25,13 @@ export function ScoreCell({ color, fill, size = CELL }: CellProps) {
   );
 }
 
-/**
- * La cuadricula se queda sobre papel claro dentro de una app oscura, a proposito.
- * La escala de spec 4.5 se eligio para leerse sobre blanco y su extremo bueno es un
- * azul casi negro: sobre fondo negro, el mejor dia del ano seria el menos visible.
- */
-export function DisciplineGrid({ weeks }: { weeks: GridWeek[] }) {
+export function DisciplineGrid({
+  weeks,
+  onOpenDay,
+}: {
+  weeks: GridWeek[];
+  onOpenDay?: (date: string) => void;
+}) {
   return (
     <View style={styles.panel}>
       <View style={styles.grid}>
@@ -45,7 +46,13 @@ export function DisciplineGrid({ weeks }: { weeks: GridWeek[] }) {
         {weeks.map((week) => (
           <View key={week.startsOn} style={styles.column}>
             {week.cells.map((cell) => (
-              <ScoreCell key={cell.date} color={cell.color} fill={cell.fill} />
+              <Pressable
+                key={cell.date}
+                accessibilityLabel={`Ver el ${cell.date}`}
+                onPress={() => onOpenDay?.(cell.date)}
+              >
+                <ScoreCell color={cell.color} fill={cell.fill} />
+              </Pressable>
             ))}
           </View>
         ))}
@@ -57,9 +64,6 @@ export function DisciplineGrid({ weeks }: { weeks: GridWeek[] }) {
 const styles = StyleSheet.create({
   panel: {
     alignSelf: 'flex-start',
-    backgroundColor: theme.paper,
-    borderRadius: 6,
-    padding: 8,
   },
   grid: {
     flexDirection: 'row',
@@ -76,12 +80,12 @@ const styles = StyleSheet.create({
   },
   weekdayText: {
     fontSize: 10,
-    color: theme.paperInk,
+    color: theme.textGhost,
     fontFamily: mono,
   },
   cell: {
     borderRadius: 3,
-    backgroundColor: theme.paperCell,
+    backgroundColor: theme.surfaceHigh,
     overflow: 'hidden',
     justifyContent: 'flex-end',
   },

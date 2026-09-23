@@ -90,7 +90,7 @@ test('the seeded catalogue survives a restore instead of being wiped', async () 
   const foods = target.raw.prepare('SELECT count(*) AS n FROM nutrition_food;').get() as {
     n: number;
   };
-  assert.equal(foods.n, 12);
+  assert.equal(foods.n, 14);
 });
 
 test('a backup from a newer version of the app is refused, not half applied', async () => {

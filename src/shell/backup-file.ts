@@ -8,7 +8,10 @@ import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
 import { exportBackup, importBackup, parseBackup, type ImportResult } from '../core/backup.ts';
+import { todayIso } from '../core/dates.ts';
 import { openDatabase } from '../db/index.ts';
+
+import { buildDayExports } from './records.ts';
 
 function fileName(at: number): string {
   const when = new Date(at);
@@ -25,7 +28,7 @@ export type ExportOutcome = { uri: string; bytes: number; shared: boolean };
  */
 export async function exportToFile(): Promise<ExportOutcome> {
   const db = await openDatabase();
-  const backup = await exportBackup(db);
+  const backup = await exportBackup(db, await buildDayExports(db, todayIso()));
   const json = JSON.stringify(backup);
 
   const file = new File(Paths.document, fileName(backup.exportedAt));
