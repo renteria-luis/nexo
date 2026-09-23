@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { sleepMinutesFrom, type DailyLogEntry } from '../core/daily-log.ts';
+import { sleepMinutesFrom, type DailyLogEntry, type LastWeight } from '../core/daily-log.ts';
+import { shortDate } from '../core/dates.ts';
 import type { CoreDailyLogRow, NutritionContainerRow, SleepSource } from '../db/types.ts';
+import { NumericField } from './NumericField.tsx';
 import { mono, theme } from './theme.ts';
 
 const SLEEP_SOURCES: { value: SleepSource; label: string }[] = [
@@ -40,10 +42,12 @@ export type TodayLogProps = {
   log: CoreDailyLogRow | null;
   containers: NutritionContainerRow[];
   waterTargetMl: number | null;
+  /** El ultimo peso anotado, que se sigue mostrando los dias que no se pesa. */
+  lastWeight: LastWeight | null;
   onLog: (entry: Omit<DailyLogEntry, 'date'>) => void;
 };
 
-export function TodayLog({ log, containers, waterTargetMl, onLog }: TodayLogProps) {
+export function TodayLog({ log, containers, waterTargetMl, lastWeight, onLog }: TodayLogProps) {
   // Dos casillas porque asi lo dice en voz alta: siete y media, o ciento treinta
   // minutos. Cualquiera de las dos sola vale, y 7.5 en horas tambien.
   const slept = log?.sleep_minutes ?? null;
@@ -54,6 +58,11 @@ export function TodayLog({ log, containers, waterTargetMl, onLog }: TodayLogProp
   const [stepsDraft, setStepsDraft] = useState(
     log?.steps === null || log?.steps === undefined ? '' : String(log.steps),
   );
+
+  // El peso se queda puesto: si hoy no se peso, sigue valiendo el ultimo, y se ve de
+  // donde salio. Anotarlo es cambiarlo, no volver a escribirlo todos los dias.
+  const shownWeight = log?.weight_kg ?? lastWeight?.kg ?? null;
+  const [weightDraft, setWeightDraft] = useState(shownWeight === null ? '' : String(shownWeight));
 
   const commitSleep = () => {
     const total = sleepMinutesFrom(sleepHours, sleepMinutes);
@@ -102,26 +111,49 @@ export function TodayLog({ log, containers, waterTargetMl, onLog }: TodayLogProp
         </View>
       </Section>
 
-      <Section title="Sueño">
+      <Section title="Peso">
         <View style={styles.row}>
-          <TextInput
-            value={sleepHours}
-            onChangeText={setSleepHours}
-            onBlur={commitSleep}
-            keyboardType="numeric"
-            accessibilityLabel="Horas de sueño"
-            placeholder="horas"
-            placeholderTextColor={theme.textGhost}
+          <NumericField
+            value={weightDraft}
+            onChange={setWeightDraft}
+            allowDecimal
+            accessibilityLabel="Peso corporal"
+            placeholder="kg"
+            onCommit={() => {
+              const parsed = Number(weightDraft);
+              if (Number.isFinite(parsed) && parsed > 0 && parsed !== log?.weight_kg) {
+                onLog({ weightKg: parsed });
+              }
+            }}
             style={styles.input}
           />
-          <TextInput
+          <Text style={styles.weightNote}>
+            {log?.weight_kg != null
+              ? 'de hoy'
+              : lastWeight
+                ? `del ${shortDate(lastWeight.date)}`
+                : 'sin pesarte todavía'}
+          </Text>
+        </View>
+      </Section>
+
+      <Section title="Sueño">
+        <View style={styles.row}>
+          <NumericField
+            value={sleepHours}
+            onChange={setSleepHours}
+            allowDecimal
+            accessibilityLabel="Horas de sueño"
+            placeholder="horas"
+            onCommit={commitSleep}
+            style={styles.input}
+          />
+          <NumericField
             value={sleepMinutes}
-            onChangeText={setSleepMinutes}
-            onBlur={commitSleep}
-            keyboardType="numeric"
+            onChange={setSleepMinutes}
             accessibilityLabel="Minutos de sueño"
             placeholder="min"
-            placeholderTextColor={theme.textGhost}
+            onCommit={commitSleep}
             style={styles.input}
           />
           {SLEEP_SOURCES.map((source) => (
@@ -136,17 +168,17 @@ export function TodayLog({ log, containers, waterTargetMl, onLog }: TodayLogProp
       </Section>
 
       <Section title="Pasos">
-        <TextInput
+        <NumericField
           value={stepsDraft}
-          onChangeText={setStepsDraft}
-          onBlur={() => {
+          onChange={setStepsDraft}
+          accessibilityLabel="Pasos"
+          placeholder="pasos"
+          onCommit={() => {
+            // Un campo vacio es "no lo anote", no "cero pasos".
+            if (stepsDraft.trim() === '') return;
             const parsed = Number(stepsDraft);
             if (Number.isInteger(parsed) && parsed >= 0) onLog({ steps: parsed });
           }}
-          keyboardType="numeric"
-          accessibilityLabel="Pasos"
-          placeholder="pasos"
-          placeholderTextColor={theme.textGhost}
           style={styles.input}
         />
       </Section>
@@ -205,7 +237,9 @@ const styles = StyleSheet.create({
     borderColor: theme.line,
     borderRadius: 14,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 9,
+    minHeight: 38,
+    justifyContent: 'center',
   },
   chipSelected: {
     borderColor: theme.lineStrong,
@@ -215,6 +249,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: mono,
     color: theme.text,
+  },
+  weightNote: {
+    fontSize: 11,
+    color: theme.textGhost,
+    fontFamily: mono,
   },
   input: {
     borderWidth: 1,

@@ -8,6 +8,16 @@ import { averageScore, buildGrid } from '../../core/heatmap.ts';
 import type { TargetChange } from '../../core/snapshots.ts';
 import { proteinBand } from '../../core/targets.ts';
 import { fromKg } from '../../core/units.ts';
+import {
+  ChevronRight,
+  Dumbbell,
+  Tag,
+  Utensils,
+  Wallet,
+  type LucideIcon,
+} from 'lucide-react-native';
+
+import { DayDialog } from '../DayDialog.tsx';
 import { DisciplineGrid } from '../DisciplineGrid.tsx';
 import { TargetsCard } from '../TargetsCard.tsx';
 import { TodayLog } from '../TodayLog.tsx';
@@ -21,11 +31,13 @@ function ModuleCard({
   label,
   value,
   detail,
+  icon: Icon,
   onOpen,
 }: {
   label: string;
   value: string;
   detail?: string;
+  icon: LucideIcon;
   onOpen?: () => void;
 }) {
   return (
@@ -40,7 +52,7 @@ function ModuleCard({
         <Text style={styles.cardValue}>{value}</Text>
         {detail ? <Text style={styles.cardDetail}>{detail}</Text> : null}
       </View>
-      {onOpen ? <Text style={styles.cardArrow}>›</Text> : null}
+      {onOpen ? <ChevronRight size={18} color={theme.textGhost} strokeWidth={1.75} /> : null}
     </Pressable>
   );
 }
@@ -85,8 +97,16 @@ function TargetChangeCard({ change, onDismiss }: { change: TargetChange; onDismi
   );
 }
 
-export function TodayScreen({ onOpen }: { onOpen: (tab: string) => void }) {
-  const { state, logDay, dismissTargetChange, raiseStepsTarget, declineStepsTarget } = useAppData();
+export function TodayScreen({
+  onOpen,
+  onOpenDay,
+}: {
+  onOpen: (tab: string) => void;
+  onOpenDay: (date: string) => void;
+}) {
+  const { state, logDay, loadDay, dismissTargetChange, raiseStepsTarget, declineStepsTarget } =
+    useAppData();
+  const [openDay, setOpenDay] = useState<string | null>(null);
   if (state.phase !== 'ready') return <Screen title="Hoy">{null}</Screen>;
 
   const { loaded } = state;
@@ -156,12 +176,39 @@ export function TodayScreen({ onOpen }: { onOpen: (tab: string) => void }) {
         </View>
       </View>
 
+      <View style={styles.gridHead}>
+        <Text style={styles.gridLabel}>{WEEKS_SHOWN} semanas</Text>
+        <Pressable
+          accessibilityLabel="Ver todos los registros"
+          onPress={() => onOpen('Registros')}
+          style={styles.allRecords}
+        >
+          <Text style={styles.allRecordsText}>ver todos los registros</Text>
+          <ChevronRight size={14} color={theme.accent} strokeWidth={1.75} />
+        </Pressable>
+      </View>
+
       {/* No horizontal scroller around it: twelve weeks fit across a phone, and a
           scroller here would swallow the swipe between tabs. */}
-      <DisciplineGrid weeks={weeks} />
+      <DisciplineGrid weeks={weeks} onOpenDay={setOpenDay} />
+
+      {openDay !== null && (
+        <DayDialog
+          date={openDay}
+          unit={loaded.unit}
+          load={loadDay}
+          onClose={() => setOpenDay(null)}
+          onOpenDetail={() => {
+            const date = openDay;
+            setOpenDay(null);
+            onOpenDay(date);
+          }}
+        />
+      )}
 
       <ModuleCard
         label="Entreno"
+        icon={Dumbbell}
         value={
           loaded.today.session
             ? `${Math.round(fromKg(loaded.today.sessionVolume, loaded.unit))} ${loaded.unit} de volumen`
@@ -173,6 +220,7 @@ export function TodayScreen({ onOpen }: { onOpen: (tab: string) => void }) {
 
       <ModuleCard
         label="Comida"
+        icon={Utensils}
         value={
           nutrition
             ? `${Math.round(nutrition.kcal)} kcal · ${Math.round(nutrition.proteinG)} g de proteína`
@@ -203,14 +251,25 @@ export function TodayScreen({ onOpen }: { onOpen: (tab: string) => void }) {
         <Text style={styles.weekLinkText}>Por qué cuenta cada cosa ›</Text>
       </Pressable>
 
-      <ModuleCard label="Ofertas" value="Todavía no construido" />
-      <ModuleCard label="Finanzas" value="Todavía no construido" />
+      <ModuleCard
+        label="Ofertas"
+        icon={Tag}
+        value={
+          loaded.deals.length === 0
+            ? 'Sin ofertas guardadas'
+            : `${loaded.deals.length} ofertas guardadas`
+        }
+        detail={loaded.deals.length === 0 ? 'Toca para buscarlas' : undefined}
+        onOpen={() => onOpen('Ofertas')}
+      />
+      <ModuleCard label="Finanzas" icon={Wallet} value="Todavía no construido" />
 
       {targets && <TargetsCard targets={targets} />}
 
       <Text style={styles.section}>Registro del día</Text>
       <TodayLog
         log={loaded.today.log}
+        lastWeight={loaded.lastWeight}
         containers={loaded.containers}
         waterTargetMl={
           targets
@@ -324,6 +383,27 @@ const styles = StyleSheet.create({
   cardDetail: {
     fontSize: 11,
     color: theme.textGhost,
+    fontFamily: mono,
+  },
+  gridHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+  },
+  gridLabel: {
+    fontSize: 11,
+    color: theme.textGhost,
+    fontFamily: mono,
+  },
+  allRecords: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingVertical: 6,
+  },
+  allRecordsText: {
+    fontSize: 12,
+    color: theme.accent,
     fontFamily: mono,
   },
   cardArrow: {
