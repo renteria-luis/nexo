@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import { ActivityIndicator, StyleSheet, Text } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { useAppData } from '../../shell/AppData.tsx';
+import { NUMBER_PAD_HEIGHT, useNumberPad } from '../NumberPadHost.tsx';
 import { mono, theme } from '../theme.ts';
 
 /**
@@ -11,20 +11,28 @@ import { mono, theme } from '../theme.ts';
  * open. A screen that opened on a failed database would look empty rather than
  * broken.
  *
- * El scroll es el de react-native-keyboard-controller y no el de React Native:
- * KeyboardAvoidingView empuja la pantalla entera y dentro de un scroll deja el campo
- * igual de tapado, mientras que este sigue al teclado cuadro a cuadro y sube justo el
- * campo enfocado. Es lo que se usa hoy para esto y trae modulo nativo, asi que la app
- * ya no corre en Expo Go: se instala desde el IPA.
+ * El teclado se resuelve con las tres propiedades que ya trae el ScrollView de iOS y
+ * sin ninguna libreria: la app arrancaba con un TypeError porque el paquete que se
+ * usaba antes arrastraba reanimated 4, que pide una version de worklets que este SDK
+ * de Expo todavia no soporta.
  */
 export function Screen({ title, children }: { title?: string; children: ReactNode }) {
   const { state } = useAppData();
+  const pad = useNumberPad();
 
   return (
-    <KeyboardAwareScrollView
-      bottomOffset={24}
+    <ScrollView
+      // El campo enfocado nunca queda debajo del teclado.
+      automaticallyAdjustKeyboardInsets
+      // Un toque en un boton con el teclado abierto lo pulsa a la primera; uno en
+      // cualquier otro sitio sigue cerrando el teclado.
+      keyboardShouldPersistTaps="handled"
+      // Y arrastrar hacia abajo lo baja siguiendo el dedo.
+      keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       style={styles.scroll}
-      contentContainerStyle={styles.content}
+      // Con el teclado de la app abierto, el contenido se puede seguir subiendo para
+      // sacar de debajo el campo que se esta escribiendo.
+      contentContainerStyle={[styles.content, pad.isOpen && { paddingBottom: NUMBER_PAD_HEIGHT }]}
     >
       {title ? (
         <Text style={styles.title}>
@@ -40,7 +48,7 @@ export function Screen({ title, children }: { title?: string; children: ReactNod
       )}
 
       {state.phase === 'ready' && children}
-    </KeyboardAwareScrollView>
+    </ScrollView>
   );
 }
 

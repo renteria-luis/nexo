@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import type { PaletteId } from '../../core/palettes.ts';
 import { settingProblem, type SettingKey, type Settings } from '../../core/settings.ts';
 
+import { NUMBER_PAD_HEIGHT, useNumberPad } from '../NumberPadHost.tsx';
+import { NumericField } from '../NumericField.tsx';
 import { PalettePicker } from '../PalettePicker.tsx';
 import { mono, theme } from '../theme.ts';
 
@@ -83,6 +84,7 @@ export function SettingsScreen({
   onSaveWeight,
   onSelectPalette,
 }: SettingsScreenProps) {
+  const pad = useNumberPad();
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [confirmingImport, setConfirmingImport] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -109,10 +111,12 @@ export function SettingsScreen({
   return (
     // Scrolls on its own rather than through the shared Screen frame: this one is
     // pushed as a modal and has no tab bar under it.
-    <KeyboardAwareScrollView
-      bottomOffset={24}
+    <ScrollView
+      automaticallyAdjustKeyboardInsets
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       style={styles.scroll}
-      contentContainerStyle={styles.screen}
+      contentContainerStyle={[styles.screen, pad.isOpen && { paddingBottom: NUMBER_PAD_HEIGHT }]}
     >
       <Text style={styles.heading}>Perfil</Text>
       <Text style={styles.warning}>
@@ -126,15 +130,25 @@ export function SettingsScreen({
         return (
           <View key={field.key} style={styles.field}>
             <Text style={styles.label}>{field.label}</Text>
-            <TextInput
-              value={draft}
-              onChangeText={(text) => setDrafts((current) => ({ ...current, [field.key]: text }))}
-              onBlur={() => commit(field.key)}
-              onSubmitEditing={() => commit(field.key)}
-              keyboardType={field.keyboard}
-              accessibilityLabel={field.label}
-              style={[styles.input, problem ? styles.inputBad : null]}
-            />
+            {field.keyboard === 'numeric' ? (
+              <NumericField
+                value={draft}
+                onChange={(text) => setDrafts((current) => ({ ...current, [field.key]: text }))}
+                allowDecimal
+                accessibilityLabel={field.label}
+                onCommit={() => commit(field.key)}
+                style={[styles.input, problem ? styles.inputBad : null]}
+              />
+            ) : (
+              <TextInput
+                value={draft}
+                onChangeText={(text) => setDrafts((current) => ({ ...current, [field.key]: text }))}
+                onBlur={() => commit(field.key)}
+                onSubmitEditing={() => commit(field.key)}
+                accessibilityLabel={field.label}
+                style={[styles.input, problem ? styles.inputBad : null]}
+              />
+            )}
             <Text style={problem ? styles.problem : styles.hint}>{problem ?? field.hint}</Text>
           </View>
         );
@@ -179,15 +193,15 @@ export function SettingsScreen({
 
       <Text style={styles.heading}>Peso de hoy</Text>
       <View style={styles.field}>
-        <TextInput
+        <NumericField
           value={weightDraft}
-          onChangeText={setWeightDraft}
-          onBlur={() => {
+          onChange={setWeightDraft}
+          allowDecimal
+          accessibilityLabel="Peso de hoy"
+          onCommit={() => {
             const parsed = Number(weightDraft);
             if (Number.isFinite(parsed) && parsed > 0) onSaveWeight(parsed);
           }}
-          keyboardType="numeric"
-          accessibilityLabel="Peso de hoy"
           style={styles.input}
         />
         <Text style={styles.hint}>
@@ -314,7 +328,7 @@ export function SettingsScreen({
           <Text style={styles.optionText}>Borrar la base de datos</Text>
         </Pressable>
       )}
-    </KeyboardAwareScrollView>
+    </ScrollView>
   );
 }
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../db/types.ts';
 import {
@@ -12,6 +12,7 @@ import {
   type NewFoodEntry,
   type NutritionTotals,
 } from '../nutrition/index.ts';
+import { NumericField } from './NumericField.tsx';
 import { mono, theme } from './theme.ts';
 
 function Total({
@@ -49,6 +50,8 @@ export type FoodLogProps = {
   kcalTarget: number | null;
   onAdd: (entry: Omit<NewFoodEntry, 'date'>) => void;
   onRemove: (entryId: string) => void;
+  /** "Comida de hoy" salvo cuando el dia no es hoy. */
+  heading?: string;
 };
 
 export function FoodLog({
@@ -59,6 +62,7 @@ export function FoodLog({
   kcalTarget,
   onAdd,
   onRemove,
+  heading = 'Comida de hoy',
 }: FoodLogProps) {
   const [foodId, setFoodId] = useState<string | null>(null);
   const [quantity, setQuantity] = useState('1');
@@ -75,7 +79,7 @@ export function FoodLog({
     <View style={styles.wrapper}>
       {/* The targets card above also says "Calorías" and "Proteína"; this heading is
           what keeps the eaten figures from being read as the target ones. */}
-      <Text style={styles.heading}>Comida de hoy</Text>
+      <Text style={styles.heading}>{heading}</Text>
 
       {totals && (
         <View style={styles.totals}>
@@ -190,10 +194,10 @@ export function FoodLog({
         )}
 
         <View style={styles.addRow}>
-          <TextInput
+          <NumericField
             value={quantity}
-            onChangeText={setQuantity}
-            keyboardType="numeric"
+            onChange={setQuantity}
+            allowDecimal
             accessibilityLabel="Cantidad"
             style={styles.input}
           />
@@ -304,16 +308,18 @@ const styles = StyleSheet.create({
   chip: {
     borderWidth: 1,
     borderColor: theme.line,
-    borderRadius: 12,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    minHeight: 38,
+    justifyContent: 'center',
   },
   chipSelected: {
     borderColor: theme.lineStrong,
     backgroundColor: theme.surfaceHigh,
   },
   chipText: {
-    fontSize: 11,
+    fontSize: 12,
     fontFamily: mono,
     color: theme.text,
   },

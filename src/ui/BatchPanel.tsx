@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NutritionFoodRow } from '../db/types.ts';
 import { MEAL_SLOTS, roundAmount } from '../nutrition/index.ts';
 import type { BatchStart, OpenBatch } from '../shell/AppData.tsx';
+import { NumericField } from './NumericField.tsx';
 import { mono, theme } from './theme.ts';
 
 function parse(value: string): number {
@@ -24,15 +25,25 @@ function Field({
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChange}
-        keyboardType={label === 'Nombre' ? 'default' : 'numeric'}
-        accessibilityLabel={label}
-        placeholder={placeholder}
-        placeholderTextColor={theme.textGhost}
-        style={styles.input}
-      />
+      {label === 'Nombre' ? (
+        <TextInput
+          value={value}
+          onChangeText={onChange}
+          accessibilityLabel={label}
+          placeholder={placeholder}
+          placeholderTextColor={theme.textGhost}
+          style={styles.input}
+        />
+      ) : (
+        <NumericField
+          value={value}
+          onChange={onChange}
+          allowDecimal
+          accessibilityLabel={label}
+          placeholder={placeholder}
+          style={styles.input}
+        />
+      )}
     </View>
   );
 }
@@ -356,16 +367,18 @@ const styles = StyleSheet.create({
   chip: {
     borderWidth: 1,
     borderColor: theme.line,
-    borderRadius: 12,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    minHeight: 38,
+    justifyContent: 'center',
   },
   chipSelected: {
     borderColor: theme.lineStrong,
     backgroundColor: theme.surfaceHigh,
   },
   chipText: {
-    fontSize: 11,
+    fontSize: 12,
     fontFamily: mono,
     color: theme.text,
   },

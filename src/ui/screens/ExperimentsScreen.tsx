@@ -282,9 +282,11 @@ const styles = StyleSheet.create({
   chip: {
     borderWidth: 1,
     borderColor: theme.line,
-    borderRadius: 12,
-    paddingHorizontal: 11,
-    paddingVertical: 5,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    minHeight: 38,
+    justifyContent: 'center',
   },
   chipText: {
     fontSize: 12,
