@@ -5,6 +5,9 @@ import type { GymLocation } from '../core/geo.ts';
 import type { Company, TrainingRoutineRow } from '../db/types.ts';
 import type { LocationOutcome } from '../shell/location.ts';
 import type { PlannedExercise, RoutinePlan, TimeBudget } from '../training/index.ts';
+import { Moon, Play } from 'lucide-react-native';
+
+import { Button } from './Button.tsx';
 import { mono, theme } from './theme.ts';
 
 const BUDGETS: { id: TimeBudget; label: string }[] = [
@@ -43,6 +46,9 @@ export type SessionPlannerProps = {
     company?: Company,
     gymId?: string,
   ) => void;
+  /** Spec 4.3: un descanso dicho a tiempo no es un entreno fallado. */
+  restDay: boolean;
+  onRestDay: () => void;
 };
 
 /**
@@ -56,6 +62,8 @@ export function SessionPlanner({
   onLocate,
   onLoadPlan,
   onStart,
+  restDay,
+  onRestDay,
 }: SessionPlannerProps) {
   const [routineId, setRoutineId] = useState<string | null>(null);
   const [budget, setBudget] = useState<TimeBudget>('completo');
@@ -223,6 +231,7 @@ export function SessionPlanner({
             </Text>
             <Text style={styles.detail}>
               {TIER_ES[exercise.tier]} · descanso {Math.round(exercise.restSeconds / 60)} min
+              {exercise.unilateral ? ' · por brazo' : ''}
             </Text>
           </View>
           <Pressable
@@ -248,22 +257,42 @@ export function SessionPlanner({
         </Text>
       )}
 
-      <Pressable
-        accessibilityLabel="Empezar entreno"
+      <Button
+        label="Empezar entreno"
+        icon={Play}
+        variant="primary"
+        size="large"
+        block
         disabled={!selected || exercises.length === 0}
+        accessibilityLabel="Empezar entreno"
         onPress={() => {
           if (!selected || exercises.length === 0) return;
           onStart(selected, budget, exercises, company ?? undefined, gymId ?? undefined);
         }}
-        style={[styles.start, exercises.length === 0 && styles.startDisabled]}
-      >
-        <Text style={styles.startText}>Empezar entreno</Text>
-      </Pressable>
+        style={styles.start}
+      />
+
+      {restDay ? (
+        <Text style={styles.restNote}>
+          Hoy es descanso. Cuenta como día planeado, así que no penaliza nada.
+        </Text>
+      ) : (
+        <Button
+          label="Hoy descanso"
+          icon={Moon}
+          block
+          accessibilityLabel="Hoy descanso"
+          onPress={onRestDay}
+        />
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  start: {
+    marginTop: 6,
+  },
   wrapper: {
     alignSelf: 'stretch',
     gap: 8,
@@ -289,16 +318,18 @@ const styles = StyleSheet.create({
   chip: {
     borderWidth: 1,
     borderColor: theme.line,
-    borderRadius: 12,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    minHeight: 38,
+    justifyContent: 'center',
   },
   chipSelected: {
     borderColor: theme.accent,
     backgroundColor: theme.accent,
   },
   chipText: {
-    fontSize: 11,
+    fontSize: 12,
     fontFamily: mono,
     color: theme.text,
   },
@@ -349,20 +380,10 @@ const styles = StyleSheet.create({
     color: theme.textFaint,
     fontFamily: mono,
   },
-  start: {
-    borderWidth: 1,
-    borderColor: theme.lineStrong,
-    borderRadius: 6,
-    paddingVertical: 10,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  startDisabled: {
-    borderColor: theme.lineSoft,
-  },
-  startText: {
-    fontSize: 13,
-    fontFamily: mono,
-    color: theme.text,
+  restNote: {
+    fontSize: 11,
+    color: theme.ok,
+    textAlign: 'center',
+    paddingVertical: 8,
   },
 });

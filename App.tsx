@@ -3,8 +3,7 @@ import { DarkTheme, NavigationContainer, useNavigation } from '@react-navigation
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, StyleSheet, Text } from 'react-native';
-import { KeyboardProvider } from 'react-native-keyboard-controller';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppDataProvider, useAppData } from './src/shell/AppData.tsx';
 import { enabledTabs, type ModuleRegistry } from './src/modules/registry.ts';
@@ -13,10 +12,15 @@ import { ExperimentsScreen } from './src/ui/screens/ExperimentsScreen.tsx';
 import { NutritionScreen } from './src/ui/screens/NutritionScreen.tsx';
 import { PendingScreen } from './src/ui/screens/PendingScreen.tsx';
 import { ReadingsScreen } from './src/ui/screens/ReadingsScreen.tsx';
+import { DayScreen } from './src/ui/screens/DayScreen.tsx';
+import { RecordsScreen } from './src/ui/screens/RecordsScreen.tsx';
 import { RoutineNotesScreen } from './src/ui/screens/RoutineNotesScreen.tsx';
 import { SettingsScreen } from './src/ui/screens/SettingsScreen.tsx';
 import { TodayScreen } from './src/ui/screens/TodayScreen.tsx';
 import { TrainingScreen } from './src/ui/screens/TrainingScreen.tsx';
+import { Dumbbell, LayoutGrid, Tag, Utensils, Wallet, type LucideIcon } from 'lucide-react-native';
+
+import { NumberPadHost, useNumberPad } from './src/ui/NumberPadHost.tsx';
 import { mono, theme } from './src/ui/theme.ts';
 import { WeekSummaryScreen } from './src/ui/screens/WeekSummaryScreen.tsx';
 
@@ -67,6 +71,15 @@ const registry: ModuleRegistry = {
   ],
 };
 
+/** Un icono por pestana: a un metro de distancia se reconoce antes que la palabra. */
+const TAB_ICONS: Record<string, LucideIcon> = {
+  today: LayoutGrid,
+  training: Dumbbell,
+  nutrition: Utensils,
+  deals: Tag,
+  finance: Wallet,
+};
+
 function HeaderButton({ label, onPress }: { label: string; onPress: () => void }) {
   return (
     <Pressable accessibilityLabel={label} onPress={onPress} style={styles.headerButton}>
@@ -81,31 +94,52 @@ function HeaderButton({ label, onPress }: { label: string; onPress: () => void }
  * the other way, and the weekly summary, which is not a tab, bubbles up to the stack.
  */
 function TodayTab() {
-  const navigation = useNavigation<{ navigate: (name: string) => void }>();
-  return <TodayScreen onOpen={(name) => navigation.navigate(name)} />;
+  const navigation = useNavigation<{
+    navigate: (name: string, params?: { date: string }) => void;
+  }>();
+  return (
+    <TodayScreen
+      onOpen={(name) => navigation.navigate(name)}
+      onOpenDay={(date) => navigation.navigate('Día', { date })}
+    />
+  );
 }
 
 function TabsScreen() {
   const tabs = enabledTabs(registry);
+  // La raya del gestor de iOS se dibuja encima de todo, asi que la barra se levanta
+  // por encima de ella en vez de compartirle el sitio.
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs.Navigator
-      // The bar sits at the bottom but the pages still swipe, which bottom tabs
-      // alone cannot do.
+      // La barra va abajo aunque las paginas sean un pager: es donde llega el pulgar.
       tabBarPosition="bottom"
       screenOptions={{
-        tabBarScrollEnabled: true,
+        // Sin scroll: cinco pestanas caben en un telefono y con scroll quedaban
+        // apretadas a la izquierda con un hueco muerto a la derecha.
+        tabBarScrollEnabled: false,
+        tabBarShowIcon: true,
         tabBarLabelStyle: styles.tabLabel,
         tabBarItemStyle: styles.tabItem,
         tabBarIndicatorStyle: styles.tabIndicator,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [styles.tabBar, { paddingBottom: insets.bottom }],
         tabBarActiveTintColor: theme.accent,
         tabBarInactiveTintColor: theme.textGhost,
         tabBarPressColor: theme.surfaceHigh,
       }}
     >
       {tabs.map((tab) => (
-        <Tabs.Screen key={tab.id} name={tab.label}>
+        <Tabs.Screen
+          key={tab.id}
+          name={tab.label}
+          options={{
+            tabBarIcon: ({ color }) => {
+              const Icon = TAB_ICONS[tab.id] ?? LayoutGrid;
+              return <Icon size={20} color={color} strokeWidth={1.75} />;
+            },
+          }}
+        >
           {() => (tab.id === 'today' ? <TodayTab /> : <tab.screen />)}
         </Tabs.Screen>
       ))}
@@ -134,78 +168,107 @@ function SettingsRoute() {
   );
 }
 
+/**
+ * Vive dentro del anfitrion del teclado para poder cerrarlo al cambiar de pestana:
+ * deslizar a otra pantalla con el teclado abierto lo dejaba flotando sobre una
+ * pantalla que ya no era la suya.
+ */
+function Navigation() {
+  const pad = useNumberPad();
+
+  return (
+    <NavigationContainer theme={navigationTheme} onStateChange={pad.close}>
+      <RootStack.Navigator
+        screenOptions={{
+          headerStyle: { backgroundColor: theme.bg },
+          headerTintColor: theme.text,
+          headerTitleStyle: { fontFamily: mono, fontSize: 15 },
+          contentStyle: { backgroundColor: theme.bg },
+        }}
+      >
+        <RootStack.Screen
+          name="nexo"
+          component={TabsScreen}
+          options={({ navigation }) => ({
+            // El nombre de la ruta es el titulo, y aqui el titulo es un prompt.
+            title: 'nexo:~$',
+            headerRight: () => (
+              <HeaderButton label="Ajustes" onPress={() => navigation.navigate('Ajustes')} />
+            ),
+          })}
+        />
+        <RootStack.Screen
+          name="Ajustes"
+          component={SettingsRoute}
+          options={({ navigation }) => ({
+            presentation: 'modal',
+            // A modal opened from a header needs its own way out; the default
+            // back button here reads "nexo", which says nothing about closing.
+            headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
+          })}
+        />
+        <RootStack.Screen
+          name="Día"
+          component={DayScreen}
+          options={({ navigation }) => ({
+            presentation: 'modal',
+            headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
+          })}
+        />
+        <RootStack.Screen
+          name="Registros"
+          component={RecordsScreen}
+          options={({ navigation }) => ({
+            presentation: 'modal',
+            headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
+          })}
+        />
+        <RootStack.Screen
+          name="Recomendaciones"
+          component={RoutineNotesScreen}
+          options={({ navigation }) => ({
+            presentation: 'modal',
+            headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
+          })}
+        />
+        <RootStack.Screen
+          name="Experimentos"
+          component={ExperimentsScreen}
+          options={({ navigation }) => ({
+            presentation: 'modal',
+            headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
+          })}
+        />
+        <RootStack.Screen
+          name="Lecturas"
+          component={ReadingsScreen}
+          options={({ navigation }) => ({
+            presentation: 'modal',
+            headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
+          })}
+        />
+        <RootStack.Screen
+          name="Resumen semanal"
+          component={WeekSummaryScreen}
+          options={({ navigation }) => ({
+            presentation: 'modal',
+            headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
+          })}
+        />
+      </RootStack.Navigator>
+    </NavigationContainer>
+  );
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
-      <KeyboardProvider>
+      <NumberPadHost>
         <AppDataProvider>
-          <NavigationContainer theme={navigationTheme}>
-            <RootStack.Navigator
-              screenOptions={{
-                headerStyle: { backgroundColor: theme.bg },
-                headerTintColor: theme.text,
-                headerTitleStyle: { fontFamily: mono, fontSize: 15 },
-                contentStyle: { backgroundColor: theme.bg },
-              }}
-            >
-              <RootStack.Screen
-                name="nexo"
-                component={TabsScreen}
-                options={({ navigation }) => ({
-                  // El nombre de la ruta es el titulo, y aqui el titulo es un prompt.
-                  title: 'nexo:~$',
-                  headerRight: () => (
-                    <HeaderButton label="Ajustes" onPress={() => navigation.navigate('Ajustes')} />
-                  ),
-                })}
-              />
-              <RootStack.Screen
-                name="Ajustes"
-                component={SettingsRoute}
-                options={({ navigation }) => ({
-                  presentation: 'modal',
-                  // A modal opened from a header needs its own way out; the default
-                  // back button here reads "nexo", which says nothing about closing.
-                  headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
-                })}
-              />
-              <RootStack.Screen
-                name="Recomendaciones"
-                component={RoutineNotesScreen}
-                options={({ navigation }) => ({
-                  presentation: 'modal',
-                  headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
-                })}
-              />
-              <RootStack.Screen
-                name="Experimentos"
-                component={ExperimentsScreen}
-                options={({ navigation }) => ({
-                  presentation: 'modal',
-                  headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
-                })}
-              />
-              <RootStack.Screen
-                name="Lecturas"
-                component={ReadingsScreen}
-                options={({ navigation }) => ({
-                  presentation: 'modal',
-                  headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
-                })}
-              />
-              <RootStack.Screen
-                name="Resumen semanal"
-                component={WeekSummaryScreen}
-                options={({ navigation }) => ({
-                  presentation: 'modal',
-                  headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
-                })}
-              />
-            </RootStack.Navigator>
-          </NavigationContainer>
+          <Navigation />
           <StatusBar style="light" />
         </AppDataProvider>
-      </KeyboardProvider>
+      </NumberPadHost>
     </SafeAreaProvider>
   );
 }
@@ -217,14 +280,16 @@ const styles = StyleSheet.create({
     borderTopColor: theme.line,
   },
   tabItem: {
-    width: 'auto',
-    paddingHorizontal: 14,
+    paddingHorizontal: 4,
+    paddingTop: 7,
+    paddingBottom: 8,
   },
   tabLabel: {
     fontSize: 11,
     textTransform: 'lowercase',
     fontWeight: '400',
     fontFamily: mono,
+    marginTop: 4,
   },
   tabIndicator: {
     backgroundColor: theme.accent,

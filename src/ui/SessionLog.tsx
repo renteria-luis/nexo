@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Check, Circle, Minus, Plus } from 'lucide-react-native';
 
 import { formatWeight, fromKg, snapToIncrement, toKg, type WeightUnit } from '../core/units.ts';
 import {
@@ -8,12 +9,27 @@ import {
   type E1rmMark,
   type LoggedSet,
 } from '../training/calculations.ts';
-import type { Crowding } from '../db/types.ts';
-import type { CatalogExercise } from '../training/queries.ts';
+import { isPerSide, type CatalogExercise } from '../training/queries.ts';
+
+import { Button } from './Button.tsx';
+import { NumericField } from './NumericField.tsx';
 import { mono, theme } from './theme.ts';
 
+/** Donde cae casi siempre una serie efectiva, asi que el primer toque arranca ahi. */
+const RPE_START = 8;
+const RPE_MAX = 10;
+
 function setLine(set: LoggedSet, unit: WeightUnit): string {
-  return `${formatWeight(set.weightKg, unit)} ${unit} × ${set.reps}`;
+  // "c/u" porque el numero es el de una mancuerna, no el de las dos.
+  const each = (set.loadFactor ?? 1) > 1 ? ' c/u' : '';
+  return `${formatWeight(set.weightKg, unit)} ${unit}${each} × ${set.reps}`;
+}
+
+/** Spec 8.3 rule 8 visto de un vistazo: hecho, a medias, o todavia no. */
+function progressOf(done: number, planned: number | undefined): 'done' | 'partial' | 'none' {
+  if (done === 0) return 'none';
+  if (planned === undefined || done >= planned) return 'done';
+  return 'partial';
 }
 
 function hhmm(timestamp: number): string {
@@ -37,17 +53,17 @@ export type SessionLogProps = {
   marks: { best: E1rmMark; worst: E1rmMark } | null;
   sessionVolume: number;
   unit: WeightUnit;
+  /** El boton de unidad cambia el ajuste, asi que vale en toda la app. */
+  onChangeUnit: (unit: WeightUnit) => void;
   /** Spec 8.3 rule 8: the sets this session was approved to do, per exercise. */
   plannedSets: number | null;
   /** The exercises today's routine asked for. The rest of the catalogue hides behind "ver mas". */
   planExerciseIds: string[];
-  crowding: Crowding | null;
-  onDescribe: (details: { crowding: Crowding }) => void;
-  onAddSet: (
-    weightKg: number,
-    reps: number,
-    extra?: { isWarmup?: boolean; rpe?: number | null },
-  ) => void;
+  /** Cuantas series lleva hoy cada ejercicio, para pintar lo que ya esta hecho. */
+  setsDoneByExercise: Map<string, number>;
+  /** Cuantas aprobo para cada uno. */
+  plannedByExercise: Map<string, number>;
+  onAddSet: (weightKg: number, reps: number, extra: { rpe: number | null }) => void;
   onRemoveSet: (setIndex: number) => void;
   /** Set once he closes the session, which turns the button into a note. */
   finishedAt: number | null;
@@ -62,22 +78,18 @@ export function SessionLog({
   lastSets,
   marks,
   sessionVolume,
-  unit: settingsUnit,
+  unit,
+  onChangeUnit,
   plannedSets,
   planExerciseIds,
-  crowding,
-  onDescribe,
+  setsDoneByExercise,
+  plannedByExercise,
   onAddSet,
   onRemoveSet,
   finishedAt,
   onFinish,
 }: SessionLogProps) {
   const exercise = exercises.find((item) => item.id === selectedExerciseId) ?? null;
-
-  // The unit is a setting, but at the rack he reads whatever the machine is printed
-  // in, so he can flip it here for the session without going to Ajustes.
-  const [unitOverride, setUnitOverride] = useState<WeightUnit | null>(null);
-  const unit = unitOverride ?? settingsUnit;
 
   // Spec 8.5: the plan is the session. The full catalogue is still one tap away,
   // because a machine can be taken and the swap has to be logged somewhere.
@@ -96,13 +108,12 @@ export function SessionLog({
   // adding a set moves them without a render pass to catch up.
   const [weightDraft, setWeightDraft] = useState<string | null>(null);
   const [repsDraft, setRepsDraft] = useState<string | null>(null);
+  const [rpeDraft, setRpeDraft] = useState<string | null>(null);
 
   // Spec 9: the rest counts itself up from the last set. It is a reading, not a
   // timer he starts, and nothing happens when it passes the target.
   // Spec 10: the cues open on demand, because mid-set he is looking at the numbers.
   const [showTechnique, setShowTechnique] = useState(false);
-  const [warmup, setWarmup] = useState(false);
-  const [rpeDraft, setRpeDraft] = useState('');
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const tick = setInterval(() => setNow(Date.now()), 1000);
@@ -119,20 +130,30 @@ export function SessionLog({
     null;
   const weight = weightDraft ?? (previous ? formatWeight(previous.weightKg, unit) : '');
   const reps = repsDraft ?? (previous ? String(previous.reps) : '');
+  // El esfuerzo tambien se copia de la serie anterior: entre una y otra casi nunca
+  // cambia, y cuando cambia son dos toques.
+  const rpe = rpeDraft ?? (previous?.rpe == null ? '' : String(previous.rpe));
 
   const clearDrafts = () => {
     setWeightDraft(null);
     setRepsDraft(null);
+    setRpeDraft(null);
   };
 
   // Spec 5.1: the arrows move by the real step of this machine at this gym, never
   // by one. Stored in kilograms, shown in whatever unit he reads the plates in.
   const stepKg = exercise?.stepKg ?? toKg(5, 'lb');
+  // Con mancuernas escribe lo que dice una, porque es lo que se lee agachado al
+  // lado del rack. El volumen ya cuenta las dos por su cuenta.
+  const perSide = exercise
+    ? isPerSide(exercise.equipment_type, exercise.equipment?.kind ?? null)
+    : false;
   const lastSet = todaySets.at(-1) ?? null;
   const betweenSeconds = lastSet?.timestamp ? (now - lastSet.timestamp) / 1000 : null;
   const dropOffs = exercise ? repDropOffs(todaySets, exercise.default_rest_seconds) : [];
   const parsedWeight = Number(weight);
   const parsedReps = Number(reps);
+  const parsedRpe = rpe.trim() === '' ? null : Number(rpe);
   const canAdd =
     exercise !== null &&
     Number.isFinite(parsedWeight) &&
@@ -140,13 +161,31 @@ export function SessionLog({
     Number.isInteger(parsedReps) &&
     parsedReps > 0;
 
-  const switchUnit = (next: WeightUnit) => {
-    if (next === unit) return;
+  // Un solo boton: dice en que unidad escribe y al tocarlo cambia. El numero que ya
+  // estaba escrito se convierte, para que siga siendo el mismo peso.
+  const flipUnit = () => {
+    const next: WeightUnit = unit === 'lb' ? 'kg' : 'lb';
     const typed = Number(weightDraft);
     if (weightDraft !== null && weightDraft.trim() !== '' && Number.isFinite(typed)) {
       setWeightDraft(formatWeight(toKg(typed, unit), next));
     }
-    setUnitOverride(next);
+    onChangeUnit(next);
+  };
+
+  // Cambiar 12 por 11 no vale abrir el teclado, que tapa media pantalla.
+  const stepReps = (direction: 1 | -1) => {
+    const base = Number.isInteger(parsedReps) && parsedReps > 0 ? parsedReps : 0;
+    setRepsDraft(String(Math.max(1, base + direction)));
+  };
+
+  const stepRpe = (direction: 1 | -1) => {
+    if (parsedRpe === null || !Number.isFinite(parsedRpe)) {
+      setRpeDraft(String(RPE_START));
+      return;
+    }
+    const next = parsedRpe + direction;
+    if (next < 0 || next > RPE_MAX) return;
+    setRpeDraft(String(next));
   };
 
   const nudge = (direction: 1 | -1) => {
@@ -157,57 +196,61 @@ export function SessionLog({
   return (
     <View style={styles.wrapper}>
       <View style={styles.header}>
-        <Text style={styles.heading}>Entreno de hoy</Text>
-        {sessionVolume > 0 && (
-          <Text style={styles.volume}>
-            {Math.round(fromKg(sessionVolume, unit))} {unit} de volumen
-          </Text>
-        )}
+        <Text style={styles.heading}>Volumen de hoy</Text>
+        <Text style={styles.volume}>
+          {Math.round(fromKg(sessionVolume, unit))} {unit}
+        </Text>
       </View>
 
       <>
-        {/* Spec 8.5: asked on arrival and apart from starting, so it stays off the
-            critical path. Spec 5.4 keeps it off a session written after the fact. */}
-        <View style={styles.chips}>
-          <Text style={styles.crowdingLabel}>¿Cómo está?</Text>
-          {(
-            [
-              ['empty', 'Vacío'],
-              ['normal', 'Normal'],
-              ['full', 'Lleno'],
-            ] as const
-          ).map(([id, label]) => (
-            <Pressable
-              key={id}
-              accessibilityLabel={`Gimnasio ${label}`}
-              onPress={() => onDescribe({ crowding: id })}
-              style={[styles.chip, crowding === id && styles.chipSelected]}
-            >
-              <Text style={[styles.chipText, crowding === id && styles.chipTextSelected]}>
-                {label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <View style={styles.chips}>
-          {visibleExercises.map((item) => (
-            <Pressable
-              key={item.id}
-              onPress={() => {
-                clearDrafts();
-                setShowTechnique(false);
-                onSelectExercise(item.id);
-              }}
-              style={[styles.chip, item.id === selectedExerciseId && styles.chipSelected]}
-            >
-              <Text
-                style={[styles.chipText, item.id === selectedExerciseId && styles.chipTextSelected]}
+        {/* Lista y no fila de chips: los nombres son largos, cada chip ocupaba un
+            renglon entero igual, y asi se ve de un vistazo lo que falta de cada uno. */}
+        <View style={styles.exerciseList}>
+          {visibleExercises.map((item) => {
+            const done = setsDoneByExercise.get(item.id) ?? 0;
+            const planned = plannedByExercise.get(item.id);
+            const progress = progressOf(done, planned);
+            const selected = item.id === selectedExerciseId;
+            return (
+              <Pressable
+                key={item.id}
+                accessibilityLabel={`${item.name_es}${
+                  progress === 'done' ? ', hecho' : progress === 'partial' ? ', a medias' : ''
+                }`}
+                onPress={() => {
+                  clearDrafts();
+                  setShowTechnique(false);
+                  onSelectExercise(item.id);
+                }}
+                style={[styles.exerciseRow, selected && styles.exerciseRowSelected]}
               >
-                {item.name_es}
-              </Text>
-            </Pressable>
-          ))}
+                <View style={styles.exerciseMark}>
+                  {progress === 'done' ? (
+                    <Check size={16} color={theme.ok} strokeWidth={2} />
+                  ) : progress === 'partial' ? (
+                    <Circle size={14} color={theme.warn} strokeWidth={2} />
+                  ) : (
+                    <Circle size={14} color={theme.textGhost} strokeWidth={1.5} />
+                  )}
+                </View>
+                <Text
+                  style={[
+                    styles.exerciseRowText,
+                    selected && styles.exerciseRowTextSelected,
+                    progress === 'done' && styles.exerciseRowTextDone,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {item.name_es}
+                </Text>
+                <Text style={styles.exerciseCount}>
+                  {done}
+                  {planned === undefined ? '' : `/${planned}`}
+                </Text>
+              </Pressable>
+            );
+          })}
+
           {inPlan.length > 0 && inPlan.length < exercises.length && (
             <Pressable
               accessibilityLabel={
@@ -216,7 +259,9 @@ export function SessionLog({
               onPress={() => setShowAll((open) => !open)}
               style={styles.more}
             >
-              <Text style={styles.moreText}>{showAll ? 'solo la rutina' : 'ver mas'}</Text>
+              <Text style={styles.moreText}>
+                {showAll ? 'solo la rutina de hoy' : 'ver todos los ejercicios'}
+              </Text>
             </Pressable>
           )}
         </View>
@@ -252,19 +297,14 @@ export function SessionLog({
               </View>
             )}
 
-            {/* Spec 9: what the app can actually see is the gap between two sets, and
-                that gap has the set inside it. Saying "entre series" and estimating the
-                rest under it beats calling the whole gap a rest, which it never was. */}
+            {/* Spec 9: lo que la app ve es el hueco entre dos series, y ese hueco tiene
+                la serie dentro. Se muestra ya descontada, que es el numero que sirve. */}
             <Text style={styles.rest}>
               Descanso sugerido {clock(exercise.default_rest_seconds)}
-              {betweenSeconds === null ? '' : ` · entre series ${clock(betweenSeconds)}`}
+              {betweenSeconds === null || lastSet === null
+                ? ''
+                : ` · descanso aprox. ${clock(estimatedRestSeconds(betweenSeconds, lastSet.reps))}`}
             </Text>
-            {betweenSeconds !== null && lastSet !== null && (
-              <Text style={styles.restEstimate}>
-                Descanso aprox. {clock(estimatedRestSeconds(betweenSeconds, lastSet.reps))}, sin
-                contar la serie de {lastSet.reps} repeticiones
-              </Text>
-            )}
 
             <Text style={styles.lastLabel}>
               {lastSets.length > 0
@@ -288,17 +328,10 @@ export function SessionLog({
               <View key={set.setIndex} style={styles.setRow}>
                 <Text style={styles.setText}>
                   Serie {set.setIndex}: {setLine(set, unit)}
-                  {typeof set.restBeforeSeconds === 'number'
-                    ? ` · entre series ${clock(set.restBeforeSeconds)}${
-                        todaySets[index - 1]
-                          ? ` (descanso aprox. ${clock(
-                              estimatedRestSeconds(
-                                set.restBeforeSeconds,
-                                todaySets[index - 1].reps,
-                              ),
-                            )})`
-                          : ''
-                      }`
+                  {typeof set.restBeforeSeconds === 'number' && todaySets[index - 1]
+                    ? ` · descanso aprox. ${clock(
+                        estimatedRestSeconds(set.restBeforeSeconds, todaySets[index - 1].reps),
+                      )}`
                     : ''}
                 </Text>
                 <Pressable
@@ -310,14 +343,6 @@ export function SessionLog({
                 </Pressable>
               </View>
             ))}
-
-            {warmup && (
-              // Spec 5.5: warmups stay out of volume and marks, so a set logged with
-              // this on will not appear in the list above.
-              <Text style={styles.warmupNote}>
-                Los calentamientos no cuentan para el volumen ni para las marcas.
-              </Text>
-            )}
 
             {plannedSets !== null && (
               <Text style={styles.planned}>
@@ -333,95 +358,155 @@ export function SessionLog({
               </Text>
             ))}
 
-            <View style={styles.addRow}>
-              <Pressable
-                accessibilityLabel="Bajar peso"
-                onPress={() => nudge(-1)}
-                style={styles.nudge}
-              >
-                <Text style={styles.nudgeText}>−{formatWeight(stepKg, unit)}</Text>
-              </Pressable>
-              <TextInput
-                value={weight}
-                onChangeText={setWeightDraft}
-                keyboardType="numeric"
-                accessibilityLabel="Peso"
-                placeholder={unit}
-                placeholderTextColor={theme.textGhost}
-                style={styles.input}
-              />
-              {(['lb', 'kg'] as const).map((option) => (
-                <Pressable
-                  key={option}
-                  accessibilityLabel={`Escribir el peso en ${option}`}
-                  onPress={() => switchUnit(option)}
-                  style={[styles.unit, option === unit && styles.chipSelected]}
-                >
-                  <Text style={[styles.chipText, option === unit && styles.chipTextSelected]}>
-                    {option}
-                  </Text>
-                </Pressable>
-              ))}
-              <Pressable
-                accessibilityLabel="Subir peso"
-                onPress={() => nudge(1)}
-                style={styles.nudge}
-              >
-                <Text style={styles.nudgeText}>+{formatWeight(stepKg, unit)}</Text>
-              </Pressable>
-              <TextInput
-                value={reps}
-                onChangeText={setRepsDraft}
-                keyboardType="numeric"
-                accessibilityLabel="Repeticiones"
-                placeholder="reps"
-                placeholderTextColor={theme.textGhost}
-                style={styles.input}
-              />
-              <TextInput
-                value={rpeDraft}
-                onChangeText={setRpeDraft}
-                keyboardType="numeric"
-                accessibilityLabel="RPE"
-                placeholder="RPE 1-10"
-                placeholderTextColor={theme.textGhost}
-                style={styles.input}
-              />
-              <Pressable
-                accessibilityLabel="Serie de calentamiento"
-                accessibilityState={{ checked: warmup }}
-                onPress={() => setWarmup((value) => !value)}
-                style={[styles.chip, warmup && styles.chipSelected]}
-              >
-                <Text style={[styles.chipText, warmup && styles.chipTextSelected]}>
-                  Calentamiento
-                </Text>
-              </Pressable>
-              <Pressable
-                accessibilityLabel="Agregar serie"
-                disabled={!canAdd}
-                onPress={() => {
-                  if (!canAdd) return;
-                  const rpe = rpeDraft.trim() === '' ? null : Number(rpeDraft);
-                  onAddSet(toKg(parsedWeight, unit), parsedReps, {
-                    isWarmup: warmup,
-                    rpe: rpe !== null && Number.isFinite(rpe) ? rpe : null,
-                  });
-                  clearDrafts();
-                  setRpeDraft('');
-                }}
-                style={[styles.add, !canAdd && styles.addDisabled]}
-              >
-                <Text style={styles.addText}>Serie</Text>
-              </Pressable>
+            {/* Cuatro cuadrantes con su etiqueta y sus flechas. Entre serie y serie
+                el pulgar sabe donde va sin leer nada, que es lo que hace que se anote
+                mientras entrena y no al final de memoria. */}
+            <View style={styles.grid}>
+              <View style={styles.gridRow}>
+                <View style={styles.cell}>
+                  <View style={styles.cellHead}>
+                    <Text style={styles.cellLabel}>peso</Text>
+                    <Pressable
+                      accessibilityLabel={`Cambiar a ${unit === 'lb' ? 'kilos' : 'libras'}`}
+                      onPress={flipUnit}
+                      style={styles.unit}
+                    >
+                      <Text style={styles.unitText}>{unit}</Text>
+                    </Pressable>
+                  </View>
+                  <View style={styles.cellRow}>
+                    <Pressable
+                      accessibilityLabel="Bajar peso"
+                      onPress={() => nudge(-1)}
+                      style={styles.step}
+                    >
+                      <Minus size={18} color={theme.text} strokeWidth={1.75} />
+                    </Pressable>
+                    <NumericField
+                      value={weight}
+                      onChange={setWeightDraft}
+                      allowDecimal={true}
+                      accessibilityLabel="Peso"
+                      placeholder={unit}
+                      style={styles.cellInput}
+                      focusedStyle={styles.cellInputEditing}
+                    />
+                    <Pressable
+                      accessibilityLabel="Subir peso"
+                      onPress={() => nudge(1)}
+                      style={styles.step}
+                    >
+                      <Plus size={18} color={theme.text} strokeWidth={1.75} />
+                    </Pressable>
+                  </View>
+                </View>
+
+                <View style={styles.cell}>
+                  <View style={styles.cellHead}>
+                    <Text style={styles.cellLabel}>RPE</Text>
+                  </View>
+                  <View style={styles.cellRow}>
+                    <Pressable
+                      accessibilityLabel="Bajar RPE"
+                      onPress={() => stepRpe(-1)}
+                      style={styles.step}
+                    >
+                      <Minus size={18} color={theme.text} strokeWidth={1.75} />
+                    </Pressable>
+                    <NumericField
+                      value={rpe}
+                      onChange={setRpeDraft}
+                      allowDecimal={false}
+                      accessibilityLabel="RPE"
+                      placeholder="—"
+                      style={styles.cellInput}
+                      focusedStyle={styles.cellInputEditing}
+                    />
+                    <Pressable
+                      accessibilityLabel="Subir RPE"
+                      onPress={() => stepRpe(1)}
+                      style={styles.step}
+                    >
+                      <Plus size={18} color={theme.text} strokeWidth={1.75} />
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.gridRow}>
+                <View style={styles.cell}>
+                  <View style={styles.cellHead}>
+                    <Text style={styles.cellLabel}>reps</Text>
+                  </View>
+                  <View style={styles.cellRow}>
+                    <Pressable
+                      accessibilityLabel="Una repeticion menos"
+                      onPress={() => stepReps(-1)}
+                      style={styles.step}
+                    >
+                      <Minus size={18} color={theme.text} strokeWidth={1.75} />
+                    </Pressable>
+                    <NumericField
+                      value={reps}
+                      onChange={setRepsDraft}
+                      allowDecimal={false}
+                      accessibilityLabel="Repeticiones"
+                      placeholder="0"
+                      style={styles.cellInput}
+                      focusedStyle={styles.cellInputEditing}
+                    />
+                    <Pressable
+                      accessibilityLabel="Una repeticion mas"
+                      onPress={() => stepReps(1)}
+                      style={styles.step}
+                    >
+                      <Plus size={18} color={theme.text} strokeWidth={1.75} />
+                    </Pressable>
+                  </View>
+                </View>
+
+                <View style={styles.cell}>
+                  <View style={styles.cellHead} />
+                  <Button
+                    label="Serie"
+                    icon={Plus}
+                    variant="primary"
+                    size="large"
+                    block
+                    disabled={!canAdd}
+                    accessibilityLabel="Agregar serie"
+                    onPress={() => {
+                      if (!canAdd) return;
+                      const rpe =
+                        parsedRpe !== null && Number.isFinite(parsedRpe)
+                          ? Math.min(RPE_MAX, Math.max(0, parsedRpe))
+                          : null;
+                      onAddSet(toKg(parsedWeight, unit), parsedReps, { rpe });
+                      clearDrafts();
+                    }}
+                    style={styles.serie}
+                  />
+                </View>
+              </View>
             </View>
+
+            {perSide && (
+              <Text style={styles.perSide}>
+                El peso es el de una mancuerna; el volumen cuenta las dos.
+              </Text>
+            )}
           </>
         )}
 
         {finishedAt === null ? (
-          <Pressable accessibilityLabel="Terminar entreno" onPress={onFinish} style={styles.finish}>
-            <Text style={styles.finishText}>Terminar entreno</Text>
-          </Pressable>
+          <Button
+            label="Terminar entreno"
+            icon={Check}
+            block
+            accessibilityLabel="Terminar entreno"
+            onPress={onFinish}
+            style={styles.finish}
+          />
         ) : (
           <Text style={styles.finished}>Entreno terminado a las {hhmm(finishedAt)}</Text>
         )}
@@ -431,6 +516,127 @@ export function SessionLog({
 }
 
 const styles = StyleSheet.create({
+  grid: {
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: theme.line,
+    paddingTop: 12,
+    marginTop: 4,
+  },
+  gridRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  cell: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  cellHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    // Pegado a su etiqueta: al otro extremo quedaba junto al rotulo del RPE y
+    // parecia decir "kg RPE".
+    gap: 8,
+    minHeight: 26,
+  },
+  cellLabel: {
+    fontSize: 11,
+    color: theme.textGhost,
+    fontFamily: mono,
+  },
+  unit: {
+    borderWidth: 1,
+    borderColor: theme.accent,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  unitText: {
+    fontSize: 12,
+    color: theme.accent,
+    fontFamily: mono,
+  },
+  cellRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 6,
+  },
+  step: {
+    width: 42,
+    minHeight: 52,
+    borderWidth: 1,
+    borderColor: theme.lineStrong,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cellInput: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 52,
+    borderWidth: 1,
+    borderColor: theme.lineStrong,
+    borderRadius: 8,
+    textAlign: 'center',
+    fontSize: 20,
+    color: theme.text,
+    fontFamily: mono,
+  },
+  cellInputEditing: {
+    borderColor: theme.accent,
+  },
+  serie: {
+    minHeight: 52,
+  },
+  perSide: {
+    fontSize: 11,
+    color: theme.textGhost,
+    fontFamily: mono,
+  },
+  exerciseList: {
+    borderTopWidth: 1,
+    borderTopColor: theme.line,
+  },
+  exerciseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 43,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.lineSoft,
+    paddingHorizontal: 4,
+  },
+  exerciseRowSelected: {
+    backgroundColor: theme.surfaceHigh,
+    borderLeftWidth: 2,
+    borderLeftColor: theme.accent,
+    paddingHorizontal: 8,
+  },
+  exerciseMark: {
+    width: 18,
+    alignItems: 'center',
+  },
+  exerciseRowText: {
+    flex: 1,
+    fontSize: 14,
+    color: theme.textDim,
+    fontFamily: mono,
+  },
+  exerciseRowTextSelected: {
+    color: theme.text,
+  },
+  exerciseRowTextDone: {
+    color: theme.ok,
+  },
+  exerciseCount: {
+    fontSize: 13,
+    color: theme.textGhost,
+    fontFamily: mono,
+  },
+  finish: {
+    marginTop: 18,
+  },
   wrapper: {
     alignSelf: 'stretch',
     gap: 8,
@@ -458,40 +664,6 @@ const styles = StyleSheet.create({
     color: theme.textFaint,
     fontFamily: mono,
   },
-  crowdingLabel: {
-    fontSize: 11,
-    color: theme.textGhost,
-    alignSelf: 'center',
-    marginRight: 2,
-  },
-  warmupNote: {
-    fontSize: 11,
-    color: theme.textGhost,
-  },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 5,
-  },
-  chip: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 12,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-  },
-  chipSelected: {
-    borderColor: theme.accent,
-    backgroundColor: theme.accent,
-  },
-  chipText: {
-    fontSize: 11,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  chipTextSelected: {
-    color: theme.accentInk,
-  },
   more: {
     paddingHorizontal: 4,
     paddingVertical: 5,
@@ -501,13 +673,6 @@ const styles = StyleSheet.create({
     color: theme.textFaint,
     textDecorationLine: 'underline',
     fontFamily: mono,
-  },
-  unit: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
   },
   machineRow: {
     flexDirection: 'row',
@@ -593,63 +758,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: theme.danger,
     fontFamily: mono,
-  },
-  addRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    flexWrap: 'wrap',
-  },
-  nudge: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 6,
-    paddingHorizontal: 9,
-    paddingVertical: 8,
-  },
-  nudgeText: {
-    fontSize: 12,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: theme.lineSoft,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 7,
-    fontSize: 14,
-    width: 62,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  add: {
-    borderWidth: 1,
-    borderColor: theme.lineStrong,
-    borderRadius: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  addDisabled: {
-    borderColor: theme.lineSoft,
-  },
-  addText: {
-    fontSize: 12,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  finish: {
-    borderWidth: 1,
-    borderColor: theme.lineStrong,
-    borderRadius: 6,
-    paddingVertical: 10,
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  finishText: {
-    fontSize: 13,
-    fontFamily: mono,
-    color: theme.text,
   },
   finished: {
     fontSize: 12,

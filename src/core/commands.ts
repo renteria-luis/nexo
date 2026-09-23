@@ -30,11 +30,7 @@ export const COMMAND_HELP = [
 
 /** Sin tildes y en minusculas, para que "sueño" y "sueno" sean el mismo comando. */
 function plain(text: string): string {
-  return text
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .trim();
+  return text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 }
 
 function number(raw: string): number | null {

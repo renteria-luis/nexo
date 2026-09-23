@@ -37,13 +37,6 @@ export const theme = {
   info: '#9cc3ef',
   infoBg: '#16202b',
   infoLine: '#2a3d52',
-
-  // La cuadricula del ano se queda sobre papel claro. Su escala de color se eligio
-  // para leerse sobre blanco (spec 4.5) y el extremo bueno de la paleta por defecto
-  // es azul muy oscuro: sobre fondo negro, un dia perfecto desapareceria.
-  paper: '#ececec',
-  paperCell: '#dadada',
-  paperInk: '#3a3a3a',
 } as const;
 
 /** La mono del sistema: no hay que empaquetar ninguna fuente ni esperar a que cargue. */
