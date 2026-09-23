@@ -307,10 +307,10 @@ test('the food catalog is only what he verified himself or read off a package', 
     source: string;
   }[];
 
-  assert.equal(rows.length, 12);
+  assert.equal(rows.length, 14);
   assert.deepEqual(
     rows.filter((row) => row.source === 'label').map((row) => row.id),
-    ['chicken-breast-kirkland', 'eggs-costco-xl'],
+    ['chicken-breast-kirkland', 'costco-hot-dog', 'eggs-costco-xl', 'protein-bar-60g'],
   );
   for (const row of rows) assert.ok(['user_measured', 'label'].includes(row.source));
 });
@@ -342,7 +342,9 @@ test('the exercise catalog seeds the routine the owner trains today', () => {
   const row = db.prepare('SELECT COUNT(*) AS count FROM training_exercise;').get() as {
     count: number;
   };
-  assert.equal(row.count, 16);
+  // Los dieciseis de siempre mas la version en polea de las laterales, que entra
+  // sola cuando entrena con tiempo completo.
+  assert.equal(row.count, 17);
 });
 
 test('every seeded exercise has exactly one primary muscle row', () => {
