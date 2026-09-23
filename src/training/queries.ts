@@ -15,7 +15,37 @@ type LoggedSetRow = {
   reps: number;
   rest_before_seconds: number | null;
   timestamp: number;
+  rpe: number | null;
+  equipment_type: string;
+  equipment_kind: string | null;
+  body_weight_kg: number | null;
 };
+
+// Una mancuerna se escribe por mancuerna pero se levantan dos. En maquina, polea o
+// barra el peso escrito ya es el total, asi que el gimnasio de esa sesion decide:
+// si ahi el ejercicio sale en una maquina, no se dobla nada.
+const MACHINE_KINDS = ['selectorized', 'plate_loaded', 'cable'];
+
+/** Si el peso escrito es el de una mano, o ya es todo lo que se movio. */
+export function isPerSide(equipmentType: string, equipmentKind: string | null): boolean {
+  if (equipmentType !== 'dumbbell') return false;
+  return equipmentKind === null || !MACHINE_KINDS.includes(equipmentKind);
+}
+
+function loadFactor(row: LoggedSetRow): number {
+  return isPerSide(row.equipment_type, row.equipment_kind) ? 2 : 1;
+}
+
+/**
+ * El ultimo peso corporal conocido a esa fecha, que es lo que hay que sumarle a una
+ * dominada. Se busca hacia atras a proposito: no se pesa todos los dias, y el peso
+ * de la semana pasada describe mejor el de hoy que un cero.
+ */
+const BODY_WEIGHT_AS_OF = `(SELECT l.weight_kg
+       FROM core_daily_log l
+      WHERE l.date <= e.date AND l.weight_kg IS NOT NULL
+   ORDER BY l.date DESC
+      LIMIT 1)`;
 
 /**
  * Working sets in a date range, warmups excluded per spec 5.5. Retroactive
@@ -28,9 +58,18 @@ export async function listWorkingSets(
 ): Promise<LoggedSet[]> {
   const rows = await db.getAllAsync<LoggedSetRow>(
     `SELECT s.session_id, e.date, s.exercise_id, s.set_index, s.weight_kg, s.reps,
-            s.rest_before_seconds, s.timestamp
+            s.rest_before_seconds, s.timestamp, s.rpe, x.equipment_type,
+            CASE WHEN x.equipment_type = 'bodyweight'
+                 THEN ${BODY_WEIGHT_AS_OF} END AS body_weight_kg,
+            -- Escalar y no un JOIN: un ejercicio con dos maquinas en el mismo
+            -- gimnasio duplicaria la serie y con ella el volumen.
+            (SELECT max(q.kind)
+               FROM training_exercise_equipment xe
+               JOIN training_equipment q ON q.id = xe.equipment_id
+              WHERE xe.exercise_id = s.exercise_id AND q.gym_id = e.gym_id) AS equipment_kind
        FROM training_set_entry s
        JOIN training_session e ON e.id = s.session_id
+       JOIN training_exercise x ON x.id = s.exercise_id
       WHERE s.is_warmup = 0
         AND e.date BETWEEN ? AND ?
         AND (? IS NULL OR s.exercise_id = ?)
@@ -47,6 +86,9 @@ export async function listWorkingSets(
     reps: row.reps,
     restBeforeSeconds: row.rest_before_seconds,
     timestamp: row.timestamp,
+    rpe: row.rpe,
+    loadFactor: loadFactor(row),
+    bodyWeightKg: row.body_weight_kg,
   }));
 }
 

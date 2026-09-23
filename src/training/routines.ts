@@ -23,9 +23,20 @@ export const AVG_SET_SECONDS = 45;
 export const TRANSITION_SECONDS = 60;
 export const WARMUP_SECONDS = 300;
 
+/** La version que hace cuando no anda con el reloj encima. */
+export type RoutineAlternative = {
+  exerciseId: string;
+  name: string;
+  unilateral: boolean;
+  defaultRestSeconds: number;
+};
+
 export type RoutineExercise = {
   exerciseId: string;
   name: string;
+  unilateral: boolean;
+  /** Null cuando el ejercicio es el mismo tenga el tiempo que tenga. */
+  fullTime: RoutineAlternative | null;
   position: number;
   tier: number;
   setsFull: number;
@@ -41,6 +52,8 @@ export type RoutineExercise = {
 export type PlannedExercise = {
   exerciseId: string;
   name: string;
+  /** Un brazo por vez: la misma serie cuesta el doble de reloj. */
+  unilateral: boolean;
   position: number;
   tier: number;
   sets: number;
@@ -89,7 +102,11 @@ export function restForBudget(
 export function estimateSeconds(exercises: readonly PlannedExercise[]): number {
   if (exercises.length === 0) return 0;
   const work = exercises.reduce(
-    (total, exercise) => total + exercise.sets * (AVG_SET_SECONDS + exercise.restSeconds),
+    // A un brazo se trabaja dos veces por serie y se descansa una: se cambia de
+    // lado sin parar, y el descanso llega recien cuando termina el segundo.
+    (total, exercise) =>
+      total +
+      exercise.sets * (AVG_SET_SECONDS * (exercise.unilateral ? 2 : 1) + exercise.restSeconds),
     0,
   );
   return WARMUP_SECONDS + work + exercises.length * TRANSITION_SECONDS;
@@ -105,17 +122,27 @@ export function trimRoutine(
     .flatMap((exercise) => {
       const sets = setsForBudget(exercise, budget);
       if (sets === null) return [];
+
+      // Con el tiempo completo hace la version buena aunque cueste mas reloj; en
+      // cuanto recorta, vuelve la que se despacha en la mitad.
+      const chosen = budget === 'completo' && exercise.fullTime ? exercise.fullTime : exercise;
+      const restSeconds =
+        budget === 'completo' && exercise.fullTime
+          ? exercise.fullTime.defaultRestSeconds
+          : exercise.defaultRestSeconds;
+
       return [
         {
-          exerciseId: exercise.exerciseId,
-          name: exercise.name,
+          exerciseId: chosen.exerciseId,
+          name: chosen.name,
+          unilateral: chosen.unilateral,
           position: exercise.position,
           tier: exercise.tier,
           sets,
           repMode: exercise.repMode,
           repMin: exercise.repMin,
           repMax: exercise.repMax,
-          restSeconds: restForBudget(exercise.tier, exercise.defaultRestSeconds, budget),
+          restSeconds: restForBudget(exercise.tier, restSeconds, budget),
         },
       ];
     });
@@ -134,6 +161,11 @@ type RoutineExerciseRow = {
   target_rep_min: number | null;
   target_rep_max: number | null;
   default_rest_seconds: number;
+  unilateral: number;
+  full_time_exercise_id: string | null;
+  full_time_name: string | null;
+  full_time_unilateral: number | null;
+  full_time_rest_seconds: number | null;
 };
 
 export async function listRoutines(db: SQLiteDatabase): Promise<TrainingRoutineRow[]> {
@@ -148,9 +180,14 @@ export async function loadRoutine(
     `SELECT re.exercise_id, e.name_es, re.position, re.tier,
             re.sets_full, re.sets_minus_25, re.sets_minus_50, re.sets_express,
             re.target_rep_mode, re.target_rep_min, re.target_rep_max,
-            e.default_rest_seconds
+            e.default_rest_seconds, e.unilateral,
+            re.full_time_exercise_id,
+            f.name_es              AS full_time_name,
+            f.unilateral           AS full_time_unilateral,
+            f.default_rest_seconds AS full_time_rest_seconds
        FROM training_routine_exercise re
        JOIN training_exercise e ON e.id = re.exercise_id
+       LEFT JOIN training_exercise f ON f.id = re.full_time_exercise_id
       WHERE re.routine_id = ?
    ORDER BY re.position;`,
     [routineId],
@@ -159,6 +196,16 @@ export async function loadRoutine(
   return rows.map((row) => ({
     exerciseId: row.exercise_id,
     name: row.name_es,
+    unilateral: row.unilateral === 1,
+    fullTime:
+      row.full_time_exercise_id === null
+        ? null
+        : {
+            exerciseId: row.full_time_exercise_id,
+            name: row.full_time_name ?? row.full_time_exercise_id,
+            unilateral: row.full_time_unilateral === 1,
+            defaultRestSeconds: row.full_time_rest_seconds ?? row.default_rest_seconds,
+          },
     position: row.position,
     tier: row.tier,
     setsFull: row.sets_full,

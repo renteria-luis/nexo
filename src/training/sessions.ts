@@ -216,6 +216,8 @@ type LastSetRow = {
   reps: number;
   rest_before_seconds: number | null;
   timestamp: number;
+  rpe: number | null;
+  body_weight_kg: number | null;
 };
 
 /**
@@ -230,9 +232,16 @@ export async function lastSessionSets(
 ): Promise<LoggedSet[]> {
   const rows = await db.getAllAsync<LastSetRow>(
     `SELECT s.session_id, e.date, s.exercise_id, s.set_index, s.weight_kg, s.reps,
-            s.rest_before_seconds, s.timestamp
+            s.rest_before_seconds, s.timestamp, s.rpe,
+            CASE WHEN x.equipment_type = 'bodyweight'
+                 THEN (SELECT l.weight_kg
+                         FROM core_daily_log l
+                        WHERE l.date <= e.date AND l.weight_kg IS NOT NULL
+                     ORDER BY l.date DESC
+                        LIMIT 1) END AS body_weight_kg
        FROM training_set_entry s
        JOIN training_session e ON e.id = s.session_id
+       JOIN training_exercise x ON x.id = s.exercise_id
       WHERE s.exercise_id = ?
         AND s.is_warmup = 0
         AND (? IS NULL OR s.session_id <> ?)
@@ -259,6 +268,8 @@ export async function lastSessionSets(
     reps: row.reps,
     restBeforeSeconds: row.rest_before_seconds,
     timestamp: row.timestamp,
+    rpe: row.rpe,
+    bodyWeightKg: row.body_weight_kg,
   }));
 }
 

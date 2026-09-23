@@ -112,13 +112,14 @@ test('a week of stored sets produces the weekly numbers end to end', async () =>
   const sets = await listWorkingSets(db, thatWeek);
   const muscles = await loadExerciseMuscles(db);
 
-  // press 30x8 twice, fly 50x14, pushdown 25x10 twice.
-  assert.equal(volumeLoad(sets), 30 * 8 * 2 + 50 * 14 + 25 * 10 * 2);
+  // press 30x8 twice, fly 50x14, pushdown 25x10 twice. El press es con mancuernas,
+  // asi que sus 30 kg son 30 en cada mano y cuentan doble.
+  assert.equal(volumeLoad(sets), 30 * 2 * 8 * 2 + 50 * 14 + 25 * 10 * 2);
 
   assert.deepEqual(setCountsByMuscle(sets, muscles).get('chest'), { direct: 3, weighted: 3 });
   assert.deepEqual(setCountsByMuscle(sets, muscles).get('triceps'), { direct: 2, weighted: 3 });
 
   const byMuscle = volumeLoadByMuscle(sets, muscles);
-  assert.equal(byMuscle.get('chest'), 30 * 8 * 2 + 50 * 14);
-  assert.equal(byMuscle.get('triceps'), (30 * 8 * 2) / 2 + 25 * 10 * 2);
+  assert.equal(byMuscle.get('chest'), 30 * 2 * 8 * 2 + 50 * 14);
+  assert.equal(byMuscle.get('triceps'), (30 * 2 * 8 * 2) / 2 + 25 * 10 * 2);
 });

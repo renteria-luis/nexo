@@ -63,6 +63,8 @@ export type CoreDailyLogRow = {
   /** Null when fewer than three criteria have data (spec 6.6). */
   score: number | null;
   has_data: SqlBool;
+  /** Spec 4.3: el dia estaba planeado como descanso, asi que no fallo ningun entreno. */
+  rest_day: SqlBool;
 };
 
 export type TrainingGymRow = {

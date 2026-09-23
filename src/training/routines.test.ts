@@ -88,6 +88,7 @@ test('the estimate is the sets, their rest, a transition each and a warmup', () 
     {
       exerciseId: 'hack-squat',
       name: 'Sentadilla hack',
+      unilateral: false,
       position: 1,
       tier: 1,
       sets: 3,
@@ -103,6 +104,43 @@ test('the estimate is the sets, their rest, a transition each and a warmup', () 
     WARMUP_SECONDS + 3 * (AVG_SET_SECONDS + 180) + TRANSITION_SECONDS,
   );
   assert.equal(estimateSeconds([]), 0);
+});
+
+test('a un brazo por vez la misma serie cuesta el doble de trabajo', () => {
+  const oneArm = [
+    {
+      exerciseId: 'lateral-raise-cable',
+      name: 'Elevaciones laterales en polea, un brazo',
+      unilateral: true,
+      position: 1,
+      tier: 3,
+      sets: 3,
+      repMode: 'range' as const,
+      repMin: 12,
+      repMax: 15,
+      restSeconds: 120,
+    },
+  ];
+
+  assert.equal(
+    estimateSeconds(oneArm),
+    WARMUP_SECONDS + 3 * (AVG_SET_SECONDS * 2 + 120) + TRANSITION_SECONDS,
+  );
+});
+
+test('con tiempo completo las laterales salen en polea, y al recortar vuelven las mancuernas', async () => {
+  const db = fresh();
+
+  const full = await loadRoutinePlan(db, 'push', 'completo');
+  const short = await loadRoutinePlan(db, 'push', 'minus_25');
+
+  const lateralFull = full.exercises.find((exercise) => exercise.position === 6);
+  const lateralShort = short.exercises.find((exercise) => exercise.position === 6);
+
+  assert.equal(lateralFull?.exerciseId, 'lateral-raise-cable');
+  assert.equal(lateralFull?.unilateral, true);
+  assert.equal(lateralShort?.exerciseId, 'lateral-raise');
+  assert.equal(lateralShort?.unilateral, false);
 });
 
 test('a shorter budget is a shorter session', async () => {

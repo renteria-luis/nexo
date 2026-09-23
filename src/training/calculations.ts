@@ -19,7 +19,30 @@ export type LoggedSet = {
   restBeforeSeconds?: number | null;
   /** When the set was recorded, epoch milliseconds. */
   timestamp?: number;
+  /** Spec 5.5: el esfuerzo percibido, 0 a 10. Null cuando no lo anoto. */
+  rpe?: number | null;
+  /**
+   * Lo que pesaba el ese dia, para los ejercicios que mueven el cuerpo. En una
+   * dominada el peso escrito es el lastre, que casi siempre es cero: sin esto una
+   * sesion entera de dominadas vale cero de volumen, que es justo lo contrario de
+   * lo que paso.
+   */
+  bodyWeightKg?: number | null;
+  /**
+   * Cuantas veces cuenta el peso escrito. Con mancuernas el escribe lo que dice una
+   * mancuerna, porque es lo que se lee en el hierro, pero levanto dos: ahi vale 2.
+   * Ausente es 1, que es el caso de toda maquina, polea y barra.
+   */
+  loadFactor?: number;
 };
+
+/**
+ * El peso que realmente movio esa serie: las dos mancuernas cuando toca, y su propio
+ * cuerpo cuando el ejercicio es colgarse de una barra.
+ */
+export function setLoad(set: LoggedSet): number {
+  return set.weightKg * (set.loadFactor ?? 1) + (set.bodyWeightKg ?? 0);
+}
 
 /** How much one set of an exercise counts towards a muscle: 1.0 primary, 0.5 secondary. */
 export type MuscleShare = {
@@ -47,7 +70,7 @@ export function epleyE1rm(weightKg: number, reps: number): number | null {
 
 /** Spec 6.1, the sum of weight times reps. */
 export function volumeLoad(sets: readonly LoggedSet[]): number {
-  return sets.reduce((total, set) => total + set.weightKg * set.reps, 0);
+  return sets.reduce((total, set) => total + setLoad(set) * set.reps, 0);
 }
 
 function groupSum<T>(
@@ -67,7 +90,7 @@ export function volumeLoadByExercise(sets: readonly LoggedSet[]): Map<string, nu
   return groupSum(
     sets,
     (set) => set.exerciseId,
-    (set) => set.weightKg * set.reps,
+    (set) => setLoad(set) * set.reps,
   );
 }
 
@@ -75,7 +98,7 @@ export function volumeLoadBySession(sets: readonly LoggedSet[]): Map<string, num
   return groupSum(
     sets,
     (set) => set.sessionId,
-    (set) => set.weightKg * set.reps,
+    (set) => setLoad(set) * set.reps,
   );
 }
 
@@ -95,7 +118,7 @@ export function volumeLoadByMuscle(
   const totals = new Map<string, number>();
   for (const set of sets) {
     for (const share of sharesFor(muscles, set.exerciseId)) {
-      const load = set.weightKg * set.reps * share.contribution;
+      const load = setLoad(set) * set.reps * share.contribution;
       totals.set(share.muscle, (totals.get(share.muscle) ?? 0) + load);
     }
   }
@@ -148,7 +171,9 @@ export function bestAndWorstE1rm(
   let worst: E1rmMark | null = null;
 
   for (const set of sets) {
-    const e1rm = epleyE1rm(set.weightKg, set.reps);
+    // El mismo peso efectivo que el volumen: un 1RM de dominadas calculado sobre el
+    // lastre da cero y no dice nada.
+    const e1rm = epleyE1rm(setLoad(set), set.reps);
     if (e1rm === null) continue;
     if (!best || e1rm > best.e1rm) best = { set, e1rm };
     if (!worst || e1rm < worst.e1rm) worst = { set, e1rm };

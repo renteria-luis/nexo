@@ -35,7 +35,7 @@ const CHANGES: Recommendation[] = [
   {
     title: 'Laterales en la polea Matrix',
     routines: ['push'],
-    why: 'La polea mantiene la tensión en todo el recorrido. Con mancuerna, abajo la carga sobre el deltoide es casi cero.',
+    why: 'Ya aplicado, y solo cuando hay tiempo: con tiempo completo el plan pide la polea a un brazo, que mantiene la tensión en todo el recorrido; al recortar a −25% o menos vuelven las mancuernas, que son los dos brazos a la vez. En Fanshawe la polea es la torre doble Matrix, la misma del tríceps sobre la cabeza.',
     effect: '6 series por semana → 10 a 12',
   },
   {

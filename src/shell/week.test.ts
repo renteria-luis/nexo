@@ -39,6 +39,7 @@ function log(date: string, fields: Partial<CoreDailyLogRow> = {}): CoreDailyLogR
     weight_kg: null,
     score: null,
     has_data: 1,
+    rest_day: 0,
     ...fields,
   };
 }

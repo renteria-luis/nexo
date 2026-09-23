@@ -4,6 +4,7 @@ import { test } from 'node:test';
 
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { upsertDailyLog } from '../core/daily-log.ts';
 import { formatWeight, fromKg, snapToIncrement, toKg } from '../core/units.ts';
 import { migrations } from '../db/migrations/index.ts';
 
@@ -116,7 +117,11 @@ test('a session adds up to its volume load', async () => {
   const sets = await listWorkingSets(db, { from: '2026-09-13', to: '2026-09-13' });
   // The warmup is left out, per spec 5.5.
   assert.equal(sets.length, 3);
-  assert.equal(volumeLoad(sets), 30 * 23);
+  // Thirty kilos is what one dumbbell says and he lifts two of them, so the volume
+  // is double the number he typed. The number he typed is what he still reads back.
+  assert.equal(sets[0].weightKg, 30);
+  assert.equal(sets[0].loadFactor, 2);
+  assert.equal(volumeLoad(sets), 30 * 2 * 23);
 });
 
 test('removing a set takes it out of the volume', async () => {
@@ -408,4 +413,30 @@ test('the Matrix pulley stack is the one he read at the machine', async () => {
   assert.ok(Math.abs(fromKg(tower?.stack_max_kg ?? 0, 'lb') - 97.5) < 1e-9);
   assert.ok(Math.abs(fromKg(tower?.load_increment ?? 0, 'lb') - 5) < 1e-9);
   assert.equal(tower?.increment_confirmed, 1);
+});
+
+test('las dominadas pesan lo que pesa el, aunque no se ponga lastre', async () => {
+  const db = fresh();
+  await upsertDailyLog(db, { date: '2026-09-10', weightKg: 73 });
+
+  const id = await sessionOn(db, '2026-09-13');
+  await addSet(db, { sessionId: id, exerciseId: 'pull-up', weightKg: 0, reps: 10 });
+
+  const [set] = await listWorkingSets(db, { from: '2026-09-13', to: '2026-09-13' });
+
+  // No se peso ese dia: vale el ultimo peso conocido, que es el del 10.
+  assert.equal(set.bodyWeightKg, 73);
+  assert.equal(volumeLoad([set]), 730);
+  // Y la marca deja de ser cero, que era lo que no decia nada.
+  assert.ok((bestAndWorstE1rm([set])?.best.e1rm ?? 0) > 73);
+});
+
+test('sin ningun peso registrado una dominada no inventa uno', async () => {
+  const db = fresh();
+  const id = await sessionOn(db, '2026-09-13');
+  await addSet(db, { sessionId: id, exerciseId: 'pull-up', weightKg: 0, reps: 10 });
+
+  const [set] = await listWorkingSets(db, { from: '2026-09-13', to: '2026-09-13' });
+  assert.equal(set.bodyWeightKg, null);
+  assert.equal(volumeLoad([set]), 0);
 });

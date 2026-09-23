@@ -91,7 +91,7 @@ export async function assembleDay(
         {
           sessionsLastSevenDays: sessionsInTrailingWeek(sessionDates, date),
           consecutiveMissed: consecutiveMissedBefore(sessionDates, date, HISTORY_DAYS),
-          isScheduledRestDay: false,
+          isScheduledRestDay: log?.rest_day === 1,
           reEntryActive,
         },
       )

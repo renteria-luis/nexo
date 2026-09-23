@@ -23,6 +23,11 @@ import { sql as deals } from './022_deals.ts';
 import { sql as exerciseNames } from './023_exercise_names.ts';
 import { sql as staples } from './024_staples.ts';
 import { sql as dealLinks } from './025_deal_links.ts';
+import { sql as restDay } from './026_rest_day.ts';
+import { sql as lateralRaise } from './027_lateral_raise.ts';
+import { sql as moreFoods } from './028_more_foods.ts';
+import { sql as lateralRaiseCable } from './029_lateral_raise_cable.ts';
+import { sql as hotDogProtein } from './030_hot_dog_protein.ts';
 
 export type Migration = {
   id: string;
@@ -57,4 +62,9 @@ export const migrations: Migration[] = [
   { id: '023_exercise_names', sql: exerciseNames },
   { id: '024_staples', sql: staples },
   { id: '025_deal_links', sql: dealLinks },
+  { id: '026_rest_day', sql: restDay },
+  { id: '027_lateral_raise', sql: lateralRaise },
+  { id: '028_more_foods', sql: moreFoods },
+  { id: '029_lateral_raise_cable', sql: lateralRaiseCable },
+  { id: '030_hot_dog_protein', sql: hotDogProtein },
 ];

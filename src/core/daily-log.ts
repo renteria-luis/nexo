@@ -21,6 +21,8 @@ export type DailyLogEntry = {
   hrvMs?: number | null;
   steps?: number | null;
   weightKg?: number | null;
+  /** Spec 4.3: un descanso planeado, que se puntua en todo lo demas y no castiga. */
+  restDay?: boolean | null;
 };
 
 function toSqlBool(value: boolean | null | undefined): SqlBool | null {
@@ -38,6 +40,8 @@ const MEASURED_FIELDS = [
   'hrv_ms',
   'steps',
   'weight_kg',
+  // Decir "hoy descanso" es un dato sobre el dia, no la ausencia de uno.
+  'rest_day',
 ] as const;
 
 /**
@@ -64,8 +68,8 @@ export async function upsertDailyLog(db: SQLiteDatabase, entry: DailyLogEntry): 
   await db.runAsync(
     `INSERT INTO core_daily_log
        (date, water_ml, creatine_taken, alcohol_drinks, alcohol_after_training, cannabis,
-        sleep_minutes, sleep_source, resting_hr, hrv_ms, steps, weight_kg, has_data)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+        sleep_minutes, sleep_source, resting_hr, hrv_ms, steps, weight_kg, rest_day, has_data)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, coalesce(?, 0), 0)
      ON CONFLICT (date) DO UPDATE SET
        water_ml       = coalesce(excluded.water_ml, water_ml),
        creatine_taken = coalesce(excluded.creatine_taken, creatine_taken),
@@ -77,7 +81,8 @@ export async function upsertDailyLog(db: SQLiteDatabase, entry: DailyLogEntry): 
        resting_hr     = coalesce(excluded.resting_hr, resting_hr),
        hrv_ms         = coalesce(excluded.hrv_ms, hrv_ms),
        steps          = coalesce(excluded.steps, steps),
-       weight_kg      = coalesce(excluded.weight_kg, weight_kg);`,
+       weight_kg      = coalesce(excluded.weight_kg, weight_kg),
+       rest_day       = coalesce(?, rest_day);`,
     [
       entry.date,
       entry.waterMl ?? null,
@@ -91,16 +96,38 @@ export async function upsertDailyLog(db: SQLiteDatabase, entry: DailyLogEntry): 
       entry.hrvMs ?? null,
       entry.steps ?? null,
       entry.weightKg ?? null,
+      toSqlBool(entry.restDay),
+      toSqlBool(entry.restDay),
     ],
   );
 
   await db.runAsync(
     `UPDATE core_daily_log
-        SET has_data = CASE WHEN ${MEASURED_FIELDS.map((f) => `${f} IS NOT NULL`).join(' OR ')}
+        SET has_data = CASE WHEN ${MEASURED_FIELDS.map((f) =>
+          f === 'rest_day' ? `${f} = 1` : `${f} IS NOT NULL`,
+        ).join(' OR ')}
                        THEN 1 ELSE 0 END
       WHERE date = ?;`,
     [entry.date],
   );
+}
+
+export type LastWeight = { kg: number; date: IsoDate };
+
+/**
+ * El ultimo peso que anoto, sea de cuando sea.
+ *
+ * No se pesa todos los dias y no tiene por que: para las dominadas y para leerlo de
+ * un vistazo, el peso de la ultima vez describe hoy mucho mejor que un hueco.
+ */
+export async function readLastWeight(db: SQLiteDatabase): Promise<LastWeight | null> {
+  const row = await db.getFirstAsync<{ date: IsoDate; weight_kg: number }>(
+    `SELECT date, weight_kg FROM core_daily_log
+      WHERE weight_kg IS NOT NULL
+   ORDER BY date DESC
+      LIMIT 1;`,
+  );
+  return row ? { kg: row.weight_kg, date: row.date } : null;
 }
 
 export async function readDailyLog(

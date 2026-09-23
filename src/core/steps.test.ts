@@ -24,6 +24,7 @@ function log(date: string, steps: number | null): CoreDailyLogRow {
     weight_kg: null,
     score: null,
     has_data: 1,
+    rest_day: 0,
   };
 }
 
