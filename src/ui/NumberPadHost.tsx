@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NumberPad, type PadKey } from './NumberPad.tsx';
@@ -56,7 +57,17 @@ export function NumberPadHost({ children }: { children: ReactNode }) {
 
   return (
     <Context.Provider value={api}>
-      {children}
+      {/* Tocar fuera del teclado lo cierra, pero solo donde no habia nada que tocar.
+          Un toque se ofrece primero al elemento mas hondo y solo sube si nadie lo
+          quiere, asi que un boton o un campo se quedan con el suyo y nunca llega
+          hasta aqui: siguen funcionando a la primera y con el teclado abierto. */}
+      <View
+        style={styles.app}
+        onStartShouldSetResponder={target ? claimTouch : undefined}
+        onResponderRelease={target ? close : undefined}
+      >
+        {children}
+      </View>
       {target && (
         <NumberPad
           onKey={target.onKey}
@@ -68,6 +79,14 @@ export function NumberPadHost({ children }: { children: ReactNode }) {
     </Context.Provider>
   );
 }
+
+const claimTouch = () => true;
+
+const styles = StyleSheet.create({
+  app: {
+    flex: 1,
+  },
+});
 
 /** Lo que mide el teclado, para que el contenido pueda hacerle sitio al desplazarse. */
 export const NUMBER_PAD_HEIGHT = 220;
