@@ -29,6 +29,8 @@ import { sql as moreFoods } from './028_more_foods.ts';
 import { sql as lateralRaiseCable } from './029_lateral_raise_cable.ts';
 import { sql as hotDogProtein } from './030_hot_dog_protein.ts';
 import { sql as setImplement } from './031_set_implement.ts';
+import { sql as dropPreacher } from './032_drop_preacher_from_pull.ts';
+import { sql as shouldersAndForearms } from './033_shoulders_and_forearms.ts';
 
 export type Migration = {
   id: string;
@@ -69,4 +71,6 @@ export const migrations: Migration[] = [
   { id: '029_lateral_raise_cable', sql: lateralRaiseCable },
   { id: '030_hot_dog_protein', sql: hotDogProtein },
   { id: '031_set_implement', sql: setImplement },
+  { id: '032_drop_preacher_from_pull', sql: dropPreacher },
+  { id: '033_shoulders_and_forearms', sql: shouldersAndForearms },
 ];

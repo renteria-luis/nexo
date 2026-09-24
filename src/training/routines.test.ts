@@ -60,16 +60,31 @@ test('tier 1 keeps its sets and its rest at every budget', async () => {
 
 test('the lower tiers come off in order, and Express leaves only the core', async () => {
   const db = fresh();
-  const pull = await loadRoutine(db, 'pull');
+  const pull = trimRoutine(await loadRoutine(db, 'pull'), 'completo');
+  const push = await loadRoutine(db, 'push');
   const ids = (budget: 'completo' | 'minus_25' | 'minus_50' | 'express') =>
-    trimRoutine(pull, budget).map((exercise) => exercise.exerciseId);
+    trimRoutine(push, budget).map((exercise) => exercise.exerciseId);
 
   // Tier 4 goes at the first cut, tier 3 at the second.
-  assert.ok(ids('completo').includes('reverse-pec-deck'));
-  assert.ok(!ids('minus_25').includes('reverse-pec-deck'));
-  assert.ok(ids('minus_25').includes('preacher-curl'));
-  assert.ok(!ids('minus_50').includes('preacher-curl'));
-  assert.deepEqual(ids('express'), ['pull-up', 'cable-row-narrow']);
+  assert.ok(pull.some((exercise) => exercise.exerciseId === 'reverse-pec-deck'));
+  assert.ok(ids('minus_25').includes('triceps-pulldown'));
+  assert.ok(!ids('minus_50').includes('triceps-pulldown'));
+  assert.deepEqual(
+    trimRoutine(await loadRoutine(db, 'pull'), 'express').map((exercise) => exercise.exerciseId),
+    ['pull-up', 'cable-row-narrow'],
+  );
+});
+
+test('el predicador sale de la rutina pero se queda en el catalogo', async () => {
+  const db = fresh();
+  const pull = await loadRoutine(db, 'pull');
+
+  assert.ok(!pull.some((exercise) => exercise.exerciseId === 'preacher-curl'));
+  // Sigue estando para elegirlo a mano el dia que quiera cambiarlo por el inclinado.
+  const rows = await db.getAllAsync<{ id: string }>(
+    "SELECT id FROM training_exercise WHERE id = 'preacher-curl';",
+  );
+  assert.equal(rows.length, 1);
 });
 
 test('rest on the lighter work drops to 90 seconds only when time is short', async () => {

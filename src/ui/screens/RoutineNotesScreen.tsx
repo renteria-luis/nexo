@@ -21,44 +21,57 @@ type Recommendation = {
 // measurements: this ships in the app bundle and the repository is public.
 const CHANGES: Recommendation[] = [
   {
-    title: 'Deltoide posterior en la NM537',
-    routines: ['pull'],
-    why: 'Hace remo y deltoide posterior en la misma estación. Hoy el contractor invertido compite por la P156 con el contractor de pecho, y por eso queda para "si me da tiempo".',
-    effect: '0 a 4 series por semana → 6 a 9',
+    title: 'Elevaciones laterales: cuál usar',
+    routines: ['push', 'pull', 'legs'],
+    why: 'Por orden, cuando hay de dónde elegir. 1) Máquina sentado, la IPDR3 de Fit4Less: tensión pareja en todo el recorrido, cero impulso de cadera, y puedes llegar al fallo sin miedo. 2) Polea a un brazo: mismo perfil, y es la única opción con tensión abajo en Fanshawe, pero cuesta el doble de reloj. 3) Mancuernas sentado: te quita la trampa de la cadera. 4) Mancuernas de pie: la que siempre hay. Un estudio de 2025 midió mancuerna contra polea igualando el recorrido y el deltoide creció igual, así que el orden importa menos que hacer el recorrido completo y sin impulso.',
+    effect:
+      'el plan pide polea en push y mancuernas en pull, para que hagas dos variantes en la semana',
   },
   {
-    title: 'Quitar los aductores (C114)',
-    routines: ['legs'],
-    why: 'La meta en pierna es fuerza y función, no tamaño. Son tres series por semana que no compran nada.',
-    effect: '3 series por semana → 0',
+    title: 'Deltoide posterior dos veces por semana',
+    routines: ['push', 'pull'],
+    why: 'Ya aplicado. Estaba en tier 4, o sea que era lo primero que se borraba al recortar tiempo, y se quedaba en 6 series. Ahora está en tier 2 en pull y entra también en push, en la misma máquina donde ya haces el contractor: en Fanshawe la P156 hace las dos cosas, en Fit4Less el contractor también. Es un cambio de pin, no de estación.',
+    effect: '6 series por semana → 12',
   },
   {
-    title: 'Laterales en la polea Matrix',
-    routines: ['push'],
-    why: 'Ya aplicado, y solo cuando hay tiempo: con tiempo completo el plan pide la polea a un brazo, que mantiene la tensión en todo el recorrido; al recortar a −25% o menos vuelven las mancuernas, que son los dos brazos a la vez. En Fanshawe la polea es la torre doble Matrix, la misma del tríceps sobre la cabeza.',
-    effect: '6 series por semana → 10 a 12',
+    title: 'Hombro lateral, de mínimo a prioridad',
+    routines: ['push', 'pull', 'legs'],
+    why: 'Ya aplicado. Es tu prioridad número uno y estaba en 9 series, justo en el suelo de la banda útil. Los presses de pecho no lo entrenan: alimentan el deltoide frontal, que es el que menos hace por verse redondo. Subió a 4 series en push y entró en pull, así que ahora lo tocas cuatro veces por semana.',
+    effect: '9 series por semana → 17',
   },
   {
     title: 'Antebrazo directo',
     routines: ['pull'],
-    why: 'Curl de muñeca con barra Z o paseos con mancuernas. No hay máquina de antebrazo en Fanshawe, pero sí el material.',
-    effect: '0 series directas → 4 a 6',
+    why: 'Ya aplicado. Curl inverso con barra Z, 3 series de 12 a 15 en el día de pull. Va por el braquiorradial, que es el músculo que engrosa el antebrazo visto de fuera, y de paso trabaja el braquial, que empuja el bíceps hacia arriba. Antes solo recibía lo que caía de las dominadas y el martillo, que mantiene pero no construye.',
+    effect: '0 series directas → 6',
   },
   {
-    title: 'Pierna con otro carácter',
-    routines: ['legs'],
-    why: 'Bisagra con barra, V-Squat, prensa a una pierna en la C403 y paseos. Un día de fuerza y función en vez de uno de máquinas de aislamiento.',
-  },
-  {
-    title: 'Descansos de 2 minutos en contractor y laterales',
-    routines: ['push'],
-    why: 'Brazos y hombros son justo donde descansar más rinde más. Es el cambio más barato de todos.',
+    title: 'Espalda: más remo, menos vertical',
+    routines: ['pull'],
+    why: 'Ya aplicado. Las dominadas bajan a 3 y el remo sube a 4. El total de espalda no cambia, cambia hacia dónde apunta: lo vertical hace ancho, que ya tienes, y lo horizontal más el deltoide posterior es lo que hace que se vea rocosa. En las dominadas asistidas usa el agarre pronado: el dorsal se activa igual con cualquier agarre, pero el pronado da más trapecio medio, que es el detalle que buscas, y más braquial.',
+    effect: '4 dominadas y 3 remos → 3 y 4',
   },
   {
     title: 'Un curl menos',
     routines: ['pull'],
-    why: 'Fuera el predicador de la B158. Se quedan el curl inclinado, por el estiramiento, y el martillo, que también trabaja antebrazo.',
-    effect: '20 a 24 series por semana → 14 a 18',
+    why: 'Ya aplicado. Fuera el predicador. Se quedan el curl inclinado, por el estiramiento, y el martillo, que también trabaja antebrazo. El predicador sigue en el catálogo: sirve para cambiarlo por el inclinado el día que quieras variar, no para sumarlo.',
+    effect: '18 series directas de bíceps por semana → 12',
+  },
+  {
+    title: 'El pecho paga el hombro',
+    routines: ['push'],
+    why: 'Ya aplicado. Tenías 20 series semanales de pecho, más que ningún otro músculo, siendo tu segunda prioridad. El contractor baja de 4 a 3 y el press sentado de 3 a 2; esas tres series se fueron al hombro. 16 sigue estando dentro de la banda.',
+    effect: '20 series por semana → 16',
+  },
+  {
+    title: 'Pierna con otro carácter',
+    routines: ['legs'],
+    why: 'Sin aplicar. Bisagra con barra, V-Squat, prensa a una pierna en la C403 y paseos. Un día de fuerza y función en vez de uno de máquinas de aislamiento.',
+  },
+  {
+    title: 'Descansos de 2 minutos en contractor y laterales',
+    routines: ['push'],
+    why: 'Sin aplicar. Brazos y hombros son justo donde descansar más rinde más. Es el cambio más barato de todos.',
   },
 ];
 
@@ -72,6 +85,11 @@ const UNCHANGED: Recommendation[] = [
     title: 'Espalda',
     routines: ['pull'],
     why: 'Está dentro de la banda y la meta es estética, no tamaño. Hay D123, NM500 y NM537 disponibles, pero más volumen ahí no compra nada que hayas pedido.',
+  },
+  {
+    title: 'Aductores',
+    routines: ['legs'],
+    why: 'Los quieres y son tres series una vez por semana. No pelean con nada más del programa.',
   },
   {
     title: 'Cardio',

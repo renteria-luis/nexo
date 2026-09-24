@@ -342,9 +342,9 @@ test('the exercise catalog seeds the routine the owner trains today', () => {
   const row = db.prepare('SELECT COUNT(*) AS count FROM training_exercise;').get() as {
     count: number;
   };
-  // Los dieciseis de siempre mas la version en polea de las laterales, que entra
-  // sola cuando entrena con tiempo completo.
-  assert.equal(row.count, 17);
+  // Los dieciseis de siempre, la version en polea de las laterales y el curl
+  // inverso, que es el primer antebrazo directo del catalogo.
+  assert.equal(row.count, 18);
 });
 
 test('every seeded exercise has exactly one primary muscle row', () => {
@@ -383,9 +383,10 @@ test('direct and weighted set counts are different questions', () => {
     )
     .get() as { total: number };
 
-  // Spec 13.2 reads "Forearms ~0 direct" and 13.3 point 3 asks for direct work.
-  // Both facts have to be expressible, and they are only different numbers
-  // because the contribution column exists.
-  assert.equal(direct.count, 0);
-  assert.equal(weighted.total, 1);
+  // Spec 13.2 leia "antebrazo ~0 directo" y 13.3 punto 3 pedia trabajo directo.
+  // Ya lo tiene: el curl inverso es la unica serie directa, y las otras dos medias
+  // vienen de dominadas y martillo. Los dos numeros siguen siendo distintos, que es
+  // lo que esta prueba defiende.
+  assert.equal(direct.count, 1);
+  assert.equal(weighted.total, 2);
 });
