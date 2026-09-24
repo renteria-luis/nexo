@@ -22,8 +22,6 @@ export function Screen({ title, children }: { title?: string; children: ReactNod
 
   return (
     <ScrollView
-      // El campo enfocado nunca queda debajo del teclado.
-      automaticallyAdjustKeyboardInsets
       // Un toque en un boton con el teclado abierto lo pulsa a la primera; uno en
       // cualquier otro sitio sigue cerrando el teclado.
       keyboardShouldPersistTaps="handled"

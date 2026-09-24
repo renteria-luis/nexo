@@ -201,9 +201,9 @@ function Navigation() {
           name="Ajustes"
           component={SettingsRoute}
           options={({ navigation }) => ({
-            presentation: 'modal',
-            // A modal opened from a header needs its own way out; the default
-            // back button here reads "nexo", which says nothing about closing.
+            // Nada de modales: un modal de iOS se presenta en su propia ventana y el
+            // teclado de la app, que vive en la raiz, quedaba debajo y sin poder
+            // tocarse. Apilada, la pantalla comparte arbol con el teclado.
             headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
           })}
         />
@@ -211,7 +211,6 @@ function Navigation() {
           name="Día"
           component={DayScreen}
           options={({ navigation }) => ({
-            presentation: 'modal',
             headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
           })}
         />
@@ -219,7 +218,6 @@ function Navigation() {
           name="Registros"
           component={RecordsScreen}
           options={({ navigation }) => ({
-            presentation: 'modal',
             headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
           })}
         />
@@ -227,7 +225,6 @@ function Navigation() {
           name="Recomendaciones"
           component={RoutineNotesScreen}
           options={({ navigation }) => ({
-            presentation: 'modal',
             headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
           })}
         />
@@ -235,7 +232,6 @@ function Navigation() {
           name="Experimentos"
           component={ExperimentsScreen}
           options={({ navigation }) => ({
-            presentation: 'modal',
             headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
           })}
         />
@@ -243,7 +239,6 @@ function Navigation() {
           name="Lecturas"
           component={ReadingsScreen}
           options={({ navigation }) => ({
-            presentation: 'modal',
             headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
           })}
         />
@@ -251,7 +246,6 @@ function Navigation() {
           name="Resumen semanal"
           component={WeekSummaryScreen}
           options={({ navigation }) => ({
-            presentation: 'modal',
             headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
           })}
         />

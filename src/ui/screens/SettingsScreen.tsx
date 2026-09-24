@@ -16,46 +16,60 @@ const PHASES: { value: string; label: string }[] = [
   { value: 'bulk', label: 'Volumen' },
 ];
 
-const FIELDS: { key: SettingKey; label: string; hint: string; keyboard: 'numeric' | 'default' }[] =
-  [
-    {
-      key: 'height_cm',
-      label: 'Estatura (cm)',
-      hint: 'Necesaria para el gasto basal',
-      keyboard: 'numeric',
-    },
-    { key: 'birth_date', label: 'Fecha de nacimiento', hint: 'AAAA-MM-DD', keyboard: 'default' },
-    {
-      key: 'activity_factor',
-      label: 'Factor de actividad',
-      hint: '1.55 a 1.60 con cinco sesiones por semana',
-      keyboard: 'numeric',
-    },
-    {
-      key: 'sleep_target_minutes',
-      label: 'Meta de sueño (min)',
-      hint: '420 son siete horas',
-      keyboard: 'numeric',
-    },
-    {
-      key: 'steps_target',
-      label: 'Meta de pasos',
-      hint: 'Sube por etapas, no de golpe',
-      keyboard: 'numeric',
-    },
-    {
-      key: 're_entry_started_on',
-      label: 'Readaptación desde',
-      hint: 'AAAA-MM-DD, vacío si no aplica',
-      keyboard: 'default',
-    },
-    {
-      key: 're_entry_weeks',
-      label: 'Semanas de readaptación',
-      hint: 'Tres por defecto',
-      keyboard: 'numeric',
-    },
-  ];
+// Cada campo dice para que sirve y que pasa si se deja vacio, porque son datos que
+// se llenan una vez y despues no se vuelven a mirar en meses.
+const FIELDS: {
+  key: SettingKey;
+  label: string;
+  hint: string;
+  keyboard: 'numeric' | 'default';
+  required?: boolean;
+}[] = [
+  {
+    key: 'height_cm',
+    label: 'Estatura (cm)',
+    hint: 'Con tu peso y tu edad sale cuantas calorias quemas en reposo. Sin esto no hay metas y los dias salen sin nota.',
+    keyboard: 'numeric',
+    required: true,
+  },
+  {
+    key: 'birth_date',
+    label: 'Fecha de nacimiento',
+    hint: 'AAAA-MM-DD, por ejemplo 1999-04-27. La edad entra en la misma cuenta que la estatura.',
+    keyboard: 'default',
+    required: true,
+  },
+  {
+    key: 'activity_factor',
+    label: 'Factor de actividad',
+    hint: 'Cuanto te mueves fuera del gym. 1.55 con cinco entrenos por semana y trabajo sentado; 1.7 si ademas caminas todo el dia.',
+    keyboard: 'numeric',
+  },
+  {
+    key: 'sleep_target_minutes',
+    label: 'Meta de sueño (min)',
+    hint: 'En minutos: 420 son siete horas, 450 siete y media. Es contra lo que se puntua tu sueño.',
+    keyboard: 'numeric',
+  },
+  {
+    key: 'steps_target',
+    label: 'Meta de pasos',
+    hint: 'Los pasos del dia que cuentan como cumplido. La app te propone subirla sola cuando la cumples tres semanas seguidas.',
+    keyboard: 'numeric',
+  },
+  {
+    key: 're_entry_started_on',
+    label: 'Readaptación desde',
+    hint: 'Solo si volviste de un parón largo: mientras dura, no te penaliza los entrenos que faltes. Vacío si no aplica.',
+    keyboard: 'default',
+  },
+  {
+    key: 're_entry_weeks',
+    label: 'Semanas de readaptación',
+    hint: 'Cuanto dura esa readaptación. Tres es lo normal.',
+    keyboard: 'numeric',
+  },
+];
 
 export type SettingsScreenProps = {
   onResetDatabase: () => void;
@@ -112,7 +126,6 @@ export function SettingsScreen({
     // Scrolls on its own rather than through the shared Screen frame: this one is
     // pushed as a modal and has no tab bar under it.
     <ScrollView
-      automaticallyAdjustKeyboardInsets
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       style={styles.scroll}
@@ -122,6 +135,11 @@ export function SettingsScreen({
       <Text style={styles.warning}>
         Estos datos solo viven en tu teléfono. No están escritos en el código ni se suben a ningún
         lado.
+      </Text>
+      <Text style={styles.hint}>
+        Solo los dos primeros son obligatorios: sin estatura y fecha de nacimiento no se pueden
+        calcular tus metas, y sin metas ningún día tiene nota. El resto ya viene con un valor
+        razonable y lo puedes dejar como está.
       </Text>
 
       {FIELDS.map((field) => {
@@ -149,7 +167,10 @@ export function SettingsScreen({
                 style={[styles.input, problem ? styles.inputBad : null]}
               />
             )}
-            <Text style={problem ? styles.problem : styles.hint}>{problem ?? field.hint}</Text>
+            <Text style={problem ? styles.problem : styles.hint}>
+              {problem ?? field.hint}
+              {field.required && draft.trim() === '' ? ' Falta este.' : ''}
+            </Text>
           </View>
         );
       })}
