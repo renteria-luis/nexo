@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Eye, EyeOff } from 'lucide-react-native';
 
 import type { PaletteId } from '../../core/palettes.ts';
 import { settingProblem, type SettingKey, type Settings } from '../../core/settings.ts';
@@ -100,6 +101,11 @@ export function SettingsScreen({
 }: SettingsScreenProps) {
   const pad = useNumberPad();
   const [confirmingReset, setConfirmingReset] = useState(false);
+  // Lo que no paso la validacion, para que no parezca guardado.
+  const [refused, setRefused] = useState<Partial<Record<SettingKey, string>>>({});
+  // Estatura, fecha de nacimiento y peso son datos que no quiere a la vista de nadie
+  // que le mire el telefono por encima del hombro.
+  const [hidden, setHidden] = useState(true);
   const [confirmingImport, setConfirmingImport] = useState(false);
   const [busy, setBusy] = useState(false);
   const [backupNote, setBackupNote] = useState<string | null>(null);
@@ -114,9 +120,19 @@ export function SettingsScreen({
     if (draft.trim() === '') {
       onClearSetting(key);
       setDrafts((current) => ({ ...current, [key]: undefined }));
+      setRefused((current) => ({ ...current, [key]: undefined }));
       return;
     }
-    if (settingProblem(key, draft) !== null) return;
+
+    const problem = settingProblem(key, draft);
+    if (problem !== null) {
+      // Antes se descartaba en silencio: el campo se veia lleno, no se guardaba
+      // nada, y al volver a entrar el dato habia "desaparecido".
+      setRefused((current) => ({ ...current, [key]: problem }));
+      return;
+    }
+
+    setRefused((current) => ({ ...current, [key]: undefined }));
     onSaveSetting(key, draft.trim());
   };
 
@@ -131,7 +147,21 @@ export function SettingsScreen({
       style={styles.scroll}
       contentContainerStyle={[styles.screen, pad.isOpen && { paddingBottom: NUMBER_PAD_HEIGHT }]}
     >
-      <Text style={styles.heading}>Perfil</Text>
+      <View style={styles.headingRow}>
+        <Text style={styles.heading}>Perfil</Text>
+        <Pressable
+          accessibilityLabel={hidden ? 'Mostrar mis datos' : 'Ocultar mis datos'}
+          onPress={() => setHidden((value) => !value)}
+          style={styles.reveal}
+        >
+          {hidden ? (
+            <Eye size={16} color={theme.textFaint} strokeWidth={1.75} />
+          ) : (
+            <EyeOff size={16} color={theme.textFaint} strokeWidth={1.75} />
+          )}
+          <Text style={styles.revealText}>{hidden ? 'mostrar' : 'ocultar'}</Text>
+        </Pressable>
+      </View>
       <Text style={styles.warning}>
         Estos datos solo viven en tu teléfono. No están escritos en el código ni se suben a ningún
         lado.
@@ -148,7 +178,17 @@ export function SettingsScreen({
         return (
           <View key={field.key} style={styles.field}>
             <Text style={styles.label}>{field.label}</Text>
-            {field.keyboard === 'numeric' ? (
+            {/* Un valor que no se guardo nunca se tapa: hay que poder ver que tiene
+                de malo para arreglarlo. */}
+            {hidden && draft.trim() !== '' && !refused[field.key] && problem === null ? (
+              <Pressable
+                accessibilityLabel={`Mostrar ${field.label}`}
+                onPress={() => setHidden(false)}
+                style={styles.input}
+              >
+                <Text style={styles.masked}>{'•'.repeat(Math.min(10, draft.trim().length))}</Text>
+              </Pressable>
+            ) : field.keyboard === 'numeric' ? (
               <NumericField
                 value={draft}
                 onChange={(text) => setDrafts((current) => ({ ...current, [field.key]: text }))}
@@ -167,8 +207,8 @@ export function SettingsScreen({
                 style={[styles.input, problem ? styles.inputBad : null]}
               />
             )}
-            <Text style={problem ? styles.problem : styles.hint}>
-              {problem ?? field.hint}
+            <Text style={(problem ?? refused[field.key]) ? styles.problem : styles.hint}>
+              {refused[field.key] ? `Sin guardar: ${refused[field.key]}` : (problem ?? field.hint)}
               {field.required && draft.trim() === '' ? ' Falta este.' : ''}
             </Text>
           </View>
@@ -214,17 +254,27 @@ export function SettingsScreen({
 
       <Text style={styles.heading}>Peso de hoy</Text>
       <View style={styles.field}>
-        <NumericField
-          value={weightDraft}
-          onChange={setWeightDraft}
-          allowDecimal
-          accessibilityLabel="Peso de hoy"
-          onCommit={() => {
-            const parsed = Number(weightDraft);
-            if (Number.isFinite(parsed) && parsed > 0) onSaveWeight(parsed);
-          }}
-          style={styles.input}
-        />
+        {hidden && weightDraft.trim() !== '' ? (
+          <Pressable
+            accessibilityLabel="Mostrar el peso de hoy"
+            onPress={() => setHidden(false)}
+            style={styles.input}
+          >
+            <Text style={styles.masked}>{'•'.repeat(Math.min(10, weightDraft.trim().length))}</Text>
+          </Pressable>
+        ) : (
+          <NumericField
+            value={weightDraft}
+            onChange={setWeightDraft}
+            allowDecimal
+            accessibilityLabel="Peso de hoy"
+            onCommit={() => {
+              const parsed = Number(weightDraft);
+              if (Number.isFinite(parsed) && parsed > 0) onSaveWeight(parsed);
+            }}
+            style={styles.input}
+          />
+        )}
         <Text style={styles.hint}>
           El promedio de siete días es el que manda; un día suelto es agua y comida en el estómago.
         </Text>
@@ -365,6 +415,29 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 48,
     gap: 10,
+  },
+  headingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  reveal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  revealText: {
+    fontSize: 11,
+    color: theme.textFaint,
+    fontFamily: mono,
+  },
+  masked: {
+    fontSize: 15,
+    color: theme.textFaint,
+    fontFamily: mono,
+    letterSpacing: 2,
   },
   heading: {
     fontSize: 14,

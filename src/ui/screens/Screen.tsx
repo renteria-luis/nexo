@@ -1,5 +1,14 @@
 import type { ReactNode } from 'react';
-import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text } from 'react-native';
+import { useState } from 'react';
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { useAppData } from '../../shell/AppData.tsx';
 import { NUMBER_PAD_HEIGHT, useNumberPad } from '../NumberPadHost.tsx';
@@ -17,8 +26,9 @@ import { mono, theme } from '../theme.ts';
  * de Expo todavia no soporta.
  */
 export function Screen({ title, children }: { title?: string; children: ReactNode }) {
-  const { state } = useAppData();
+  const { state, resetDatabase } = useAppData();
   const pad = useNumberPad();
+  const [confirming, setConfirming] = useState(false);
 
   return (
     <ScrollView
@@ -42,7 +52,40 @@ export function Screen({ title, children }: { title?: string; children: ReactNod
       {state.phase === 'opening' && <ActivityIndicator accessibilityLabel="Abriendo la base" />}
 
       {state.phase === 'failed' && (
-        <Text style={styles.error}>No abrió la base de datos: {state.message}</Text>
+        <View style={styles.failure}>
+          <Text style={styles.error}>No abrió la base de datos: {state.message}</Text>
+          {/* Con la base rota no se llega ni a Ajustes, asi que la unica salida vive
+              aqui. Borra y reconstruye: se pierde lo registrado, por eso pregunta. */}
+          {confirming ? (
+            <View style={styles.failureButtons}>
+              <Pressable
+                accessibilityLabel="Confirmar borrado"
+                onPress={() => {
+                  setConfirming(false);
+                  resetDatabase();
+                }}
+                style={styles.danger}
+              >
+                <Text style={styles.dangerText}>Sí, borrar y empezar de cero</Text>
+              </Pressable>
+              <Pressable
+                accessibilityLabel="Cancelar borrado"
+                onPress={() => setConfirming(false)}
+                style={styles.cancel}
+              >
+                <Text style={styles.cancelText}>Cancelar</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <Pressable
+              accessibilityLabel="Borrar la base de datos"
+              onPress={() => setConfirming(true)}
+              style={styles.cancel}
+            >
+              <Text style={styles.cancelText}>Borrar la base de datos</Text>
+            </Pressable>
+          )}
+        </View>
       )}
 
       {state.phase === 'ready' && children}
@@ -70,6 +113,40 @@ const styles = StyleSheet.create({
   },
   prompt: {
     color: theme.accent,
+  },
+  failure: {
+    gap: 12,
+    alignItems: 'center',
+    marginTop: 24,
+  },
+  failureButtons: {
+    gap: 8,
+    alignSelf: 'stretch',
+  },
+  danger: {
+    borderWidth: 1,
+    borderColor: theme.danger,
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  dangerText: {
+    fontSize: 13,
+    color: theme.danger,
+    fontFamily: mono,
+  },
+  cancel: {
+    borderWidth: 1,
+    borderColor: theme.line,
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  cancelText: {
+    fontSize: 13,
+    color: theme.textDim,
+    fontFamily: mono,
   },
   error: {
     fontSize: 14,
