@@ -21,6 +21,7 @@ export function TrainingScreen() {
     describeSession,
     logDay,
     saveSetting,
+    saveDraft,
     endSession,
     switchRoutine,
     whereAmI,
@@ -31,8 +32,13 @@ export function TrainingScreen() {
   const [changingRoutine, setChangingRoutine] = useState(false);
 
   // Empezar un entreno y que no haya nada donde escribir es un toque de mas en cada
-  // sesion, asi que el primer ejercicio del plan queda abierto desde el principio.
-  const first = state.phase === 'ready' ? (state.loaded.plan[0]?.exerciseId ?? null) : null;
+  // sesion, asi que queda abierto el ejercicio en el que estaba, o el primero del
+  // plan si es la primera vez que entra hoy.
+  const saved = state.phase === 'ready' ? state.loaded.sessionDraft : null;
+  const first =
+    state.phase === 'ready'
+      ? (saved?.exerciseId ?? state.loaded.plan[0]?.exerciseId ?? null)
+      : null;
   const hasSession = state.phase === 'ready' && state.loaded.today.session !== null;
   useEffect(() => {
     if (hasSession && exerciseId === null && first !== null) selectExercise(first);
@@ -155,6 +161,18 @@ export function TrainingScreen() {
             plannedByExercise={plannedByExercise}
             onAddSet={logSet}
             onRemoveSet={removeSet}
+            startedAt={session.start_time}
+            draft={loaded.sessionDraft}
+            onDraftChange={(next) =>
+              saveDraft({
+                sessionId: session.id,
+                exerciseId,
+                weight: next.weight,
+                reps: next.reps,
+                rpe: next.rpe,
+                implement: next.implement,
+              })
+            }
             finishedAt={session.end_time}
             onFinish={endSession}
           />

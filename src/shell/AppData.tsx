@@ -53,6 +53,7 @@ import {
   type TargetChange,
 } from '../core/snapshots.ts';
 import type { ImportResult } from '../core/backup.ts';
+import { parseDraft, serializeDraft, type SessionDraft } from '../core/session-draft.ts';
 import type { WeightUnit } from '../core/units.ts';
 import { openDatabase, resetDatabase } from '../db/index.ts';
 import type {
@@ -160,6 +161,8 @@ export type Loaded = {
   plan: PlannedSet[];
   /** El ultimo peso anotado, de cuando sea: no se pesa todos los dias. */
   lastWeight: LastWeight | null;
+  /** Lo que quedo a medio escribir en el entreno de hoy, si la app se cerro. */
+  sessionDraft: SessionDraft | null;
 };
 
 export type AppState =
@@ -269,6 +272,7 @@ async function load(exerciseId: string | null): Promise<Loaded> {
     dealSources,
     plan,
     lastWeight,
+    sessionDraft: parseDraft(settings.get('session_draft'), assembled.session?.id ?? null),
   };
 }
 
@@ -318,6 +322,11 @@ export type AppData = {
   loadStudies: () => Promise<CoreStudyRow[]>;
   /** Spec 16.7: the outcome is returned so the screen can say what happened. */
   refreshDeals: () => Promise<SyncOutcome>;
+  /**
+   * Guarda lo que esta escribiendo sin recargar nada: esto se llama en cada tecla y
+   * un refresco por tecla dejaria la pantalla inservible.
+   */
+  saveDraft: (draft: SessionDraft) => void;
   /** Un dia cualquiera abierto entero, con el desglose de su nota. */
   loadDay: (date: IsoDate) => Promise<DayDetail>;
   /** Todos los dias con rastro dentro de la ventana, del mas nuevo al mas viejo. */
@@ -459,6 +468,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     logExperimentReading: (id, date, value, note) =>
       run((db) => addReading(db, id, date, value, note)),
     finishExperiment: (id, endDate) => run((db) => endExperiment(db, id, endDate)),
+    saveDraft: (draft) => {
+      openDatabase()
+        .then((db) => writeSetting(db, 'session_draft', serializeDraft(draft)))
+        .catch((error: unknown) => console.error(error));
+    },
     loadDay: (date) => openDatabase().then((db) => loadDayDetail(db, date, todayIso())),
     loadRecords: (window) =>
       openDatabase().then((db) => listDayRows(db, windowRange(window, todayIso()))),

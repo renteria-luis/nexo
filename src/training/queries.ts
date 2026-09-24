@@ -58,7 +58,10 @@ export async function listWorkingSets(
 ): Promise<LoggedSet[]> {
   const rows = await db.getAllAsync<LoggedSetRow>(
     `SELECT s.session_id, e.date, s.exercise_id, s.set_index, s.weight_kg, s.reps,
-            s.rest_before_seconds, s.timestamp, s.rpe, x.equipment_type,
+            s.rest_before_seconds, s.timestamp, s.rpe,
+            -- Lo que diga la serie manda sobre lo que diga el catalogo: el martillo
+            -- se hace con mancuernas un dia y con la soga al siguiente.
+            coalesce(s.implement, x.equipment_type) AS equipment_type,
             CASE WHEN x.equipment_type = 'bodyweight'
                  THEN ${BODY_WEIGHT_AS_OF} END AS body_weight_kg,
             -- Escalar y no un JOIN: un ejercicio con dos maquinas en el mismo

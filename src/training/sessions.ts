@@ -12,6 +12,7 @@ import { trailingDays, type IsoDate } from '../core/dates.ts';
 import type { TrainingSessionRow, TrainingSetEntryRow } from '../db/types.ts';
 
 import type { LoggedSet } from './calculations.ts';
+import { isPerSide } from './queries.ts';
 
 export type NewSession = {
   date: IsoDate;
@@ -118,6 +119,9 @@ export async function setSessionDetails(
   }
 }
 
+/** Con que se movio el peso, que es lo que decide si el numero escrito es de una mano. */
+export type Implement = 'machine' | 'barbell' | 'ez_bar' | 'dumbbell' | 'cable' | 'bodyweight';
+
 export type NewSet = {
   sessionId: string;
   exerciseId: string;
@@ -126,6 +130,8 @@ export type NewSet = {
   isWarmup?: boolean;
   rpe?: number | null;
   restBeforeSeconds?: number | null;
+  /** Null cuando se hizo con lo que dice el catalogo del ejercicio. */
+  implement?: Implement | null;
 };
 
 /**
@@ -168,12 +174,12 @@ export async function addSet(db: SQLiteDatabase, set: NewSet): Promise<string> {
   await db.runAsync(
     `INSERT INTO training_set_entry
        (id, session_id, exercise_id, set_index, weight_kg, reps, rest_before_seconds,
-        timestamp, rpe, is_warmup)
+        timestamp, rpe, is_warmup, implement)
      VALUES (
        ?, ?, ?,
        (SELECT coalesce(max(set_index), 0) + 1 FROM training_set_entry
          WHERE session_id = ? AND exercise_id = ?),
-       ?, ?, ?, ?, ?, ?
+       ?, ?, ?, ?, ?, ?, ?
      );`,
     [
       id,
@@ -187,6 +193,7 @@ export async function addSet(db: SQLiteDatabase, set: NewSet): Promise<string> {
       timestamp,
       set.rpe ?? null,
       set.isWarmup ? 1 : 0,
+      set.implement ?? null,
     ],
   );
 
@@ -217,6 +224,7 @@ type LastSetRow = {
   rest_before_seconds: number | null;
   timestamp: number;
   rpe: number | null;
+  equipment_type: string;
   body_weight_kg: number | null;
 };
 
@@ -233,6 +241,7 @@ export async function lastSessionSets(
   const rows = await db.getAllAsync<LastSetRow>(
     `SELECT s.session_id, e.date, s.exercise_id, s.set_index, s.weight_kg, s.reps,
             s.rest_before_seconds, s.timestamp, s.rpe,
+            coalesce(s.implement, x.equipment_type) AS equipment_type,
             CASE WHEN x.equipment_type = 'bodyweight'
                  THEN (SELECT l.weight_kg
                          FROM core_daily_log l
@@ -269,6 +278,9 @@ export async function lastSessionSets(
     restBeforeSeconds: row.rest_before_seconds,
     timestamp: row.timestamp,
     rpe: row.rpe,
+    // Sin el gimnasio a mano se decide solo con lo que dice la serie, que es
+    // justamente el dato que manda cuando existe.
+    loadFactor: isPerSide(row.equipment_type, null) ? 2 : 1,
     bodyWeightKg: row.body_weight_kg,
   }));
 }

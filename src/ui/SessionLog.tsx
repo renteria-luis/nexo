@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Check, Circle, Minus, Plus } from 'lucide-react-native';
 
@@ -10,6 +10,8 @@ import {
   type LoggedSet,
 } from '../training/calculations.ts';
 import { isPerSide, type CatalogExercise } from '../training/queries.ts';
+import type { SessionDraft } from '../core/session-draft.ts';
+import type { Implement } from '../training/sessions.ts';
 
 import { Button } from './Button.tsx';
 import { NumericField } from './NumericField.tsx';
@@ -22,7 +24,10 @@ const RPE_MAX = 10;
 function setLine(set: LoggedSet, unit: WeightUnit): string {
   // "c/u" porque el numero es el de una mancuerna, no el de las dos.
   const each = (set.loadFactor ?? 1) > 1 ? ' c/u' : '';
-  return `${formatWeight(set.weightKg, unit)} ${unit}${each} × ${set.reps}`;
+  // En una dominada lo que escribe es el lastre, casi siempre cero, asi que al lado
+  // va lo que de verdad levanto, que es el.
+  const body = set.bodyWeightKg ? ` (+${formatWeight(set.bodyWeightKg, unit)} ${unit})` : '';
+  return `${formatWeight(set.weightKg, unit)} ${unit}${each}${body} × ${set.reps}`;
 }
 
 /** Spec 8.3 rule 8 visto de un vistazo: hecho, a medias, o todavia no. */
@@ -63,8 +68,22 @@ export type SessionLogProps = {
   setsDoneByExercise: Map<string, number>;
   /** Cuantas aprobo para cada uno. */
   plannedByExercise: Map<string, number>;
-  onAddSet: (weightKg: number, reps: number, extra: { rpe: number | null }) => void;
+  onAddSet: (
+    weightKg: number,
+    reps: number,
+    extra: { rpe: number | null; implement: Implement | null },
+  ) => void;
   onRemoveSet: (setIndex: number) => void;
+  /** Cuando toco empezar, para el reloj de la sesion. */
+  startedAt: number | null;
+  /** Lo que quedo escrito la ultima vez que estuvo aqui, si la app se cerro. */
+  draft: SessionDraft | null;
+  onDraftChange: (draft: {
+    weight: string | null;
+    reps: string | null;
+    rpe: string | null;
+    implement: Implement | null;
+  }) => void;
   /** Set once he closes the session, which turns the button into a note. */
   finishedAt: number | null;
   onFinish: () => void;
@@ -86,6 +105,9 @@ export function SessionLog({
   plannedByExercise,
   onAddSet,
   onRemoveSet,
+  startedAt,
+  draft,
+  onDraftChange,
   finishedAt,
   onFinish,
 }: SessionLogProps) {
@@ -106,19 +128,33 @@ export function SessionLog({
   // carry last session's values for the same set index, because that is what he
   // copies most of the time. Derived rather than stored, so changing exercise or
   // adding a set moves them without a render pass to catch up.
-  const [weightDraft, setWeightDraft] = useState<string | null>(null);
-  const [repsDraft, setRepsDraft] = useState<string | null>(null);
-  const [rpeDraft, setRpeDraft] = useState<string | null>(null);
+  const [weightDraft, setWeightDraft] = useState<string | null>(draft?.weight ?? null);
+  const [repsDraft, setRepsDraft] = useState<string | null>(draft?.reps ?? null);
+  const [rpeDraft, setRpeDraft] = useState<string | null>(draft?.rpe ?? null);
 
   // Spec 9: the rest counts itself up from the last set. It is a reading, not a
   // timer he starts, and nothing happens when it passes the target.
   // Spec 10: the cues open on demand, because mid-set he is looking at the numbers.
   const [showTechnique, setShowTechnique] = useState(false);
+  // Con que lo esta haciendo hoy. Null es "con lo que dice el catalogo".
+  const [implement, setImplement] = useState<Implement | null>(
+    (draft?.implement as Implement | null) ?? null,
+  );
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const tick = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(tick);
   }, []);
+
+  // Cada cambio se guarda, para que cerrar la app a mitad de una serie no borre lo
+  // que estaba escrito. Es una escritura suelta en la base, sin recargar nada.
+  const report = useRef(onDraftChange);
+  useEffect(() => {
+    report.current = onDraftChange;
+  }, [onDraftChange]);
+  useEffect(() => {
+    report.current({ weight: weightDraft, reps: repsDraft, rpe: rpeDraft, implement });
+  }, [weightDraft, repsDraft, rpeDraft, implement]);
 
   // Mid-exercise the useful default is the set he just did, because the weight
   // usually holds across a run of sets. Starting one, it is what he did last time
@@ -140,14 +176,22 @@ export function SessionLog({
     setRpeDraft(null);
   };
 
-  // Spec 5.1: the arrows move by the real step of this machine at this gym, never
-  // by one. Stored in kilograms, shown in whatever unit he reads the plates in.
-  const stepKg = exercise?.stepKg ?? toKg(5, 'lb');
+  // Spec 5.1 pedia el salto real de la maquina, pero la P156 sube de 15 en 15 y casi
+  // todas las torres traen un bloquecito de 5 lb que se añade aparte, asi que el
+  // salto util es ese. En kilos el equivalente redondo son 2.5.
+  const stepKg = unit === 'lb' ? toKg(5, 'lb') : 2.5;
+  // El martillo y las laterales se hacen con mancuernas o en polea, y el numero que
+  // escribe significa una cosa distinta en cada caso, asi que se elige aqui.
+  const swappable =
+    exercise !== null &&
+    (exercise.equipment_type === 'dumbbell' || exercise.equipment_type === 'cable');
+  const doneWith = implement ?? exercise?.equipment_type ?? null;
   // Con mancuernas escribe lo que dice una, porque es lo que se lee agachado al
   // lado del rack. El volumen ya cuenta las dos por su cuenta.
-  const perSide = exercise
-    ? isPerSide(exercise.equipment_type, exercise.equipment?.kind ?? null)
-    : false;
+  const perSide =
+    doneWith === null
+      ? false
+      : isPerSide(doneWith, implement === null ? (exercise?.equipment?.kind ?? null) : null);
   const lastSet = todaySets.at(-1) ?? null;
   const betweenSeconds = lastSet?.timestamp ? (now - lastSet.timestamp) / 1000 : null;
   const dropOffs = exercise ? repDropOffs(todaySets, exercise.default_rest_seconds) : [];
@@ -220,6 +264,7 @@ export function SessionLog({
                 onPress={() => {
                   clearDrafts();
                   setShowTechnique(false);
+                  setImplement(null);
                   onSelectExercise(item.id);
                 }}
                 style={[styles.exerciseRow, selected && styles.exerciseRowSelected]}
@@ -285,6 +330,21 @@ export function SessionLog({
                   <Text style={styles.infoText}>i</Text>
                 </Pressable>
               )}
+              {swappable &&
+                (['dumbbell', 'cable'] as const).map((option) => (
+                  <Pressable
+                    key={option}
+                    accessibilityLabel={option === 'dumbbell' ? 'Con mancuernas' : 'En polea'}
+                    onPress={() => setImplement(option)}
+                    style={[styles.implement, doneWith === option && styles.implementOn]}
+                  >
+                    <Text
+                      style={[styles.implementText, doneWith === option && styles.implementTextOn]}
+                    >
+                      {option === 'dumbbell' ? 'mancuerna' : 'polea'}
+                    </Text>
+                  </Pressable>
+                ))}
             </View>
 
             {showTechnique && exercise.technique_text && (
@@ -297,13 +357,13 @@ export function SessionLog({
               </View>
             )}
 
-            {/* Spec 9: lo que la app ve es el hueco entre dos series, y ese hueco tiene
-                la serie dentro. Se muestra ya descontada, que es el numero que sirve. */}
+            {/* Spec 9: el reloj cuenta desde que anoto la ultima serie, que es cuando
+                empezo a descansar de verdad. El descuento por la serie solo aplica al
+                hueco entre dos series ya anotadas, que si lleva una serie dentro: aqui
+                dejaba el reloj clavado en cero durante medio minuto. */}
             <Text style={styles.rest}>
               Descanso sugerido {clock(exercise.default_rest_seconds)}
-              {betweenSeconds === null || lastSet === null
-                ? ''
-                : ` · descanso aprox. ${clock(estimatedRestSeconds(betweenSeconds, lastSet.reps))}`}
+              {betweenSeconds === null ? '' : ` · descansando ${clock(betweenSeconds)}`}
             </Text>
 
             <Text style={styles.lastLabel}>
@@ -481,7 +541,7 @@ export function SessionLog({
                         parsedRpe !== null && Number.isFinite(parsedRpe)
                           ? Math.min(RPE_MAX, Math.max(0, parsedRpe))
                           : null;
-                      onAddSet(toKg(parsedWeight, unit), parsedReps, { rpe });
+                      onAddSet(toKg(parsedWeight, unit), parsedReps, { rpe, implement });
                       clearDrafts();
                     }}
                     style={styles.serie}
@@ -509,6 +569,10 @@ export function SessionLog({
           />
         ) : (
           <Text style={styles.finished}>Entreno terminado a las {hhmm(finishedAt)}</Text>
+        )}
+
+        {startedAt !== null && (
+          <Text style={styles.sessionClock}>Entrenando {clock((now - startedAt) / 1000)}</Text>
         )}
       </>
     </View>
@@ -698,6 +762,25 @@ const styles = StyleSheet.create({
     color: theme.textFaint,
     fontFamily: mono,
   },
+  implement: {
+    borderWidth: 1,
+    borderColor: theme.line,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  implementOn: {
+    borderColor: theme.accent,
+    backgroundColor: theme.accent,
+  },
+  implementText: {
+    fontSize: 10,
+    color: theme.textGhost,
+    fontFamily: mono,
+  },
+  implementTextOn: {
+    color: theme.accentInk,
+  },
   technique: {
     borderWidth: 1,
     borderColor: theme.line,
@@ -758,6 +841,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: theme.danger,
     fontFamily: mono,
+  },
+  sessionClock: {
+    fontSize: 12,
+    color: theme.textGhost,
+    fontFamily: mono,
+    textAlign: 'center',
+    marginTop: 10,
   },
   finished: {
     fontSize: 12,

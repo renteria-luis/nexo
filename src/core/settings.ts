@@ -25,7 +25,8 @@ export type SettingKey =
   | 're_entry_weeks'
   | 'weight_unit'
   | 'targets_change_seen'
-  | 'steps_advice_declined';
+  | 'steps_advice_declined'
+  | 'session_draft';
 
 export type Settings = ReadonlyMap<string, string>;
 
@@ -178,6 +179,9 @@ export function settingProblem(key: SettingKey, value: string): string | null {
       return inRange(trimmed, 1000, 40000, 'una meta de pasos entre 1000 y 40000');
     case 're_entry_weeks':
       return inRange(trimmed, 1, 12, 'semanas entre 1 y 12');
+    // Lo escribe la app, no el: es lo que quedo a medio teclear en el entreno.
+    case 'session_draft':
+      return null;
   }
 }
 
