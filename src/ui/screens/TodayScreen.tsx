@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAppData, WEEKS_SHOWN } from '../../shell/AppData.tsx';
-import { addDays, todayIso, weekStart } from '../../core/dates.ts';
+import { addDays, dateAndTime, todayIso, weekStart } from '../../core/dates.ts';
 import { currentStreak, longestStreak } from '../../core/discipline.ts';
 import { averageScore, buildGrid } from '../../core/heatmap.ts';
 import type { TargetChange } from '../../core/snapshots.ts';
@@ -107,6 +107,12 @@ export function TodayScreen({
   const { state, logDay, loadDay, dismissTargetChange, raiseStepsTarget, declineStepsTarget } =
     useAppData();
   const [openDay, setOpenDay] = useState<string | null>(null);
+  // El reloj de arriba se refresca solo, sin esperar a que algo mas cambie.
+  const [clock, setClock] = useState(() => dateAndTime());
+  useEffect(() => {
+    const tick = setInterval(() => setClock(dateAndTime()), 20_000);
+    return () => clearInterval(tick);
+  }, []);
   if (state.phase !== 'ready') return <Screen title="Hoy">{null}</Screen>;
 
   const { loaded } = state;
@@ -123,6 +129,8 @@ export function TodayScreen({
 
   return (
     <Screen title="Hoy">
+      <Text style={styles.clock}>{clock}</Text>
+
       <CommandBar />
 
       {loaded.readapting && (
@@ -392,6 +400,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: theme.textGhost,
     fontFamily: mono,
+  },
+  clock: {
+    fontSize: 13,
+    color: theme.textFaint,
+    fontFamily: mono,
+    marginTop: -6,
   },
   gridHead: {
     flexDirection: 'row',
