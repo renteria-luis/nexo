@@ -4,13 +4,14 @@ import { test } from 'node:test';
 
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { upsertDailyLog } from '../core/daily-log.ts';
+import { storeScore, upsertDailyLog } from '../core/daily-log.ts';
 import { migrations } from '../db/migrations/index.ts';
 import { computeTargets } from '../core/targets.ts';
 import { writeTargetSnapshot } from '../core/snapshots.ts';
 import { addFoodEntry } from '../nutrition/index.ts';
 import { addSet, startSession } from '../training/index.ts';
 
+import { loadCharts } from './charts.ts';
 import {
   buildDayExports,
   listDayRows,
@@ -202,4 +203,44 @@ test('a day logged before there were targets gets its score back', async () => {
 
   const rows = await listDayRows(db, windowRange('month', TODAY));
   assert.ok((rows.find((row) => row.date === '2026-09-21')?.score ?? 0) > 0);
+});
+
+test('las graficas leen lo mismo que el resto de la app', async () => {
+  const db = fresh();
+
+  await upsertDailyLog(db, { date: '2026-09-21', weightKg: 73 });
+  await upsertDailyLog(db, { date: '2026-09-22', weightKg: 73.4 });
+  await upsertDailyLog(db, { date: '2026-09-23', weightKg: 72.8 });
+
+  const session = await startSession(db, { date: '2026-09-22', timeBudget: 'completo' });
+  await addSet(db, { sessionId: session, exerciseId: 'peck-deck', weightKg: 50, reps: 10 });
+  const later = await startSession(db, { date: '2026-09-23', timeBudget: 'completo' });
+  await addSet(db, { sessionId: later, exerciseId: 'peck-deck', weightKg: 55, reps: 10 });
+
+  await addFoodEntry(db, {
+    date: '2026-09-23',
+    foodId: 'protein-bar-60g',
+    quantity: 2,
+    unit: 'unidad',
+    mealSlot: 'tarde',
+  });
+
+  const charts = await loadCharts(db, TODAY, 30);
+
+  assert.equal(charts.weight.length, 3);
+  // Con dos pesadas ya hay media, que es lo que se dibuja.
+  assert.ok(charts.weightAverage.length > 0);
+
+  const peck = charts.trends.find((trend) => trend.exerciseId === 'peck-deck');
+  assert.equal(peck?.points.length, 2);
+  // Epley sobre 55 x 10 proyecta mas que sobre 50 x 10, que es toda la grafica.
+  assert.ok((peck?.points[1].value ?? 0) > (peck?.points[0].value ?? 0));
+
+  assert.equal(charts.muscles.find((bar) => bar.muscle === 'chest')?.sets, 2);
+  assert.equal(Math.round(charts.protein[0].value), 42);
+
+  // La nota es la que ya guarda la cuadricula, no una segunda cuenta.
+  await storeScore(db, '2026-09-22', 68);
+  const scored = await loadCharts(db, TODAY, 30);
+  assert.deepEqual(scored.score, [{ date: '2026-09-22', value: 68 }]);
 });

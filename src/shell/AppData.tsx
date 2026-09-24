@@ -104,6 +104,7 @@ import {
 } from '../training/index.ts';
 
 import { exportToFile, importFromFile, type ExportOutcome } from './backup-file.ts';
+import { loadCharts as loadChartsData, type ChartsData } from './charts.ts';
 import {
   listDayRows,
   loadDayDetail,
@@ -329,6 +330,8 @@ export type AppData = {
   saveDraft: (draft: SessionDraft) => void;
   /** Un dia cualquiera abierto entero, con el desglose de su nota. */
   loadDay: (date: IsoDate) => Promise<DayDetail>;
+  /** Todo lo guardado a lo largo del tiempo, listo para dibujar. */
+  loadCharts: (days: number) => Promise<ChartsData>;
   /** Todos los dias con rastro dentro de la ventana, del mas nuevo al mas viejo. */
   loadRecords: (window: RecordWindow) => Promise<DayRow[]>;
   /** Escribe el registro de cualquier dia, no solo el de hoy. */
@@ -474,6 +477,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         .catch((error: unknown) => console.error(error));
     },
     loadDay: (date) => openDatabase().then((db) => loadDayDetail(db, date, todayIso())),
+    loadCharts: (days) => openDatabase().then((db) => loadChartsData(db, todayIso(), days)),
     loadRecords: (window) =>
       openDatabase().then((db) => listDayRows(db, windowRange(window, todayIso()))),
     editDay: (date, entry) => write((db) => upsertDailyLog(db, { date, ...entry })),

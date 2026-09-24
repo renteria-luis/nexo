@@ -6,26 +6,10 @@ import { fromKg } from '../../core/units.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 import { SET_BAND, type Comparison, type MuscleWeek, type WeekSummary } from '../../shell/week.ts';
 
+import { MUSCLE_ES } from '../muscles.ts';
+
 import { Screen } from './Screen.tsx';
 import { mono, theme } from '../theme.ts';
-
-const MUSCLE_ES: Record<string, string> = {
-  chest: 'Pecho',
-  front_delts: 'Deltoide frontal',
-  lateral_delts: 'Deltoide lateral',
-  rear_delts: 'Deltoide posterior',
-  traps: 'Trapecio',
-  back: 'Espalda',
-  biceps: 'Bíceps',
-  triceps: 'Tríceps',
-  forearms: 'Antebrazo',
-  abs: 'Abdomen',
-  quads: 'Cuádriceps',
-  hamstrings: 'Isquiotibiales',
-  glutes: 'Glúteos',
-  adductors: 'Aductores',
-  calves: 'Pantorrillas',
-};
 
 const BAND_ES: Record<MuscleWeek['band'], string> = {
   below: 'bajo la banda',

@@ -235,6 +235,14 @@ export function TodayScreen({
       />
 
       <Pressable
+        accessibilityLabel="Ver las gráficas"
+        onPress={() => onOpen('Gráficas')}
+        style={styles.weekLink}
+      >
+        <Text style={styles.weekLinkText}>Gráficas ›</Text>
+      </Pressable>
+
+      <Pressable
         accessibilityLabel="Ver el resumen de la semana"
         onPress={() => onOpen('Resumen semanal')}
         style={styles.weekLink}

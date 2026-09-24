@@ -12,6 +12,7 @@ import { ExperimentsScreen } from './src/ui/screens/ExperimentsScreen.tsx';
 import { NutritionScreen } from './src/ui/screens/NutritionScreen.tsx';
 import { PendingScreen } from './src/ui/screens/PendingScreen.tsx';
 import { ReadingsScreen } from './src/ui/screens/ReadingsScreen.tsx';
+import { ChartsScreen } from './src/ui/screens/ChartsScreen.tsx';
 import { DayScreen } from './src/ui/screens/DayScreen.tsx';
 import { RecordsScreen } from './src/ui/screens/RecordsScreen.tsx';
 import { RoutineNotesScreen } from './src/ui/screens/RoutineNotesScreen.tsx';
@@ -210,6 +211,13 @@ function Navigation() {
         <RootStack.Screen
           name="Día"
           component={DayScreen}
+          options={({ navigation }) => ({
+            headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
+          })}
+        />
+        <RootStack.Screen
+          name="Gráficas"
+          component={ChartsScreen}
           options={({ navigation }) => ({
             headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
           })}
