@@ -7,7 +7,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { storeScore, upsertDailyLog } from '../core/daily-log.ts';
 import { migrations } from '../db/migrations/index.ts';
 import { computeTargets } from '../core/targets.ts';
-import { writeTargetSnapshot } from '../core/snapshots.ts';
+import { setInitialTargets, writeTargetSnapshot } from '../core/snapshots.ts';
 import { addFoodEntry } from '../nutrition/index.ts';
 import { addSet, startSession } from '../training/index.ts';
 
@@ -243,4 +243,40 @@ test('las graficas leen lo mismo que el resto de la app', async () => {
   await storeScore(db, '2026-09-22', 68);
   const scored = await loadCharts(db, TODAY, 30);
   assert.deepEqual(scored.score, [{ date: '2026-09-22', value: 68 }]);
+});
+
+test('un dia de puro entreno y comida tambien recibe su nota', async () => {
+  const db = fresh();
+
+  // El perfil se llena hoy, pero el entreno fue anteayer.
+  const session = await startSession(db, { date: '2026-09-21', timeBudget: 'completo' });
+  await addSet(db, { sessionId: session, exerciseId: 'peck-deck', weightKg: 50, reps: 10 });
+  await addFoodEntry(db, {
+    date: '2026-09-21',
+    foodId: 'eggs-costco-xl',
+    quantity: 6,
+    unit: 'huevo',
+    mealSlot: 'desayuno',
+  });
+  await upsertDailyLog(db, { date: '2026-09-21', sleepMinutes: 450, sleepSource: 'manual' });
+  await upsertDailyLog(db, { date: TODAY, weightKg: 73 });
+
+  await setInitialTargets(
+    db,
+    73,
+    {
+      heightCm: 170,
+      birthDate: '1996-08-30',
+      activityFactor: 1.55,
+      phase: 'recomp',
+      sleepMinutes: 420,
+      steps: 7000,
+    },
+    TODAY,
+  );
+
+  assert.ok((await rescoreMissing(db, { from: '2026-09-01', to: TODAY }, TODAY)) > 0);
+
+  const rows = await listDayRows(db, windowRange('month', TODAY));
+  assert.ok((rows.find((row) => row.date === '2026-09-21')?.score ?? 0) > 0);
 });

@@ -7,7 +7,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { addDays, type DateRange, type IsoDate } from '../core/dates.ts';
-import { storeScore } from '../core/daily-log.ts';
+import { storeScore, upsertDailyLog } from '../core/daily-log.ts';
 import { reportDay, type DayReport } from '../core/day-report.ts';
 import { dailyTotals, listPortionsBetween } from '../nutrition/index.ts';
 import {
@@ -369,10 +369,17 @@ export async function rescoreMissing(
   range: DateRange,
   today: IsoDate,
 ): Promise<number> {
+  // Un dia dejo rastro en cualquiera de los tres sitios: el registro diario, un
+  // entreno o algo que comio. Mirando solo el primero, un dia de puro entreno y
+  // comida se quedaba gris para siempre.
   const pending = await db.getAllAsync<{ date: IsoDate }>(
-    `SELECT date FROM core_daily_log
-      WHERE score IS NULL AND has_data = 1 AND date BETWEEN ? AND ?
-      ORDER BY date;`,
+    `SELECT DISTINCT date FROM (
+       SELECT date FROM core_daily_log WHERE has_data = 1 AND score IS NULL
+       UNION SELECT date FROM training_session
+       UNION SELECT date FROM nutrition_food_entry
+     )
+     WHERE date BETWEEN ? AND ?
+     ORDER BY date;`,
     [range.from, range.to],
   );
 
@@ -380,6 +387,8 @@ export async function rescoreMissing(
   for (const { date } of pending) {
     const day = await assembleDay(db, date, today);
     if (day.result?.score == null) continue;
+    // La nota vive en la fila del dia, asi que un dia sin fila necesita una.
+    if (day.log === null) await upsertDailyLog(db, { date });
     await storeScore(db, date, day.result.score);
     scored += 1;
   }

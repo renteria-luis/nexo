@@ -106,3 +106,26 @@ test('a file that is not a nexo backup says so', () => {
   assert.throws(() => parseBackup({ format: BACKUP_FORMAT, version: 99 }), /version/);
   assert.throws(() => parseBackup('{}'), /no es un objeto/);
 });
+
+test('el respaldo es de sus datos: las ofertas no entran', async () => {
+  const { db, raw } = fresh();
+  raw
+    .prepare(
+      `INSERT INTO deals_deal (id, source_id, title, fetched_at, confidence, raw_payload)
+       VALUES ('flipp-1', 'flipp', 'Huevos', 1, 'exact', '{"mucho":"texto"}');`,
+    )
+    .run();
+
+  const backup = await exportBackup(db);
+
+  assert.equal(backup.tables.deals_deal, undefined);
+  assert.equal(backup.tables.deals_source, undefined);
+  // Lo suyo sigue estando entero.
+  assert.ok(backup.tables.core_daily_log);
+  assert.ok(backup.tables.training_set_entry);
+
+  // Y restaurar no borra las ofertas que el telefono ya tenga.
+  await importBackup(db, backup);
+  const left = raw.prepare('SELECT count(*) AS n FROM deals_deal;').get() as { n: number };
+  assert.equal(left.n, 1);
+});

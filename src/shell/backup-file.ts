@@ -29,7 +29,9 @@ export type ExportOutcome = { uri: string; bytes: number; shared: boolean };
 export async function exportToFile(): Promise<ExportOutcome> {
   const db = await openDatabase();
   const backup = await exportBackup(db, await buildDayExports(db, todayIso()));
-  const json = JSON.stringify(backup);
+  // Con sangria: un JSON de un solo renglon de varios megas cuelga al editor que lo
+  // abre, y este archivo esta hecho para poder mirarlo.
+  const json = JSON.stringify(backup, null, 2);
 
   const file = new File(Paths.document, fileName(backup.exportedAt));
   file.create({ overwrite: true });

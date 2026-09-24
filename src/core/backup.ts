@@ -18,6 +18,17 @@ export const BACKUP_VERSION = 1;
 /** La tabla del runner de migraciones: se firma con ella, nunca se sobreescribe. */
 const MIGRATION_TABLE = 'core_migration';
 
+/**
+ * Las ofertas no son suyas y no entran.
+ *
+ * Son una copia de lo que publica Flipp, se vuelven a bajar solas y cada una guarda
+ * la respuesta cruda del buscador entera: doscientas ofertas pesaban mas que todo lo
+ * que el ha registrado en su vida. El respaldo es de sus datos.
+ */
+function isHisData(table: string): boolean {
+  return table !== MIGRATION_TABLE && !table.startsWith('deals_');
+}
+
 /** Lo que hay que saber para leer el archivo sin tener el codigo al lado. */
 export const BACKUP_NOTES = {
   weights: 'kilogramos, siempre, aunque la app los muestre en libras',
@@ -27,6 +38,7 @@ export const BACKUP_NOTES = {
   dates: 'AAAA-MM-DD, el dia del calendario local',
   score: '0 a 100 segun spec 4.1; null cuando el dia no tiene con que puntuarse',
   tables: 'el volcado crudo de la base, que es la fuente para restaurar',
+  deals: 'las ofertas no estan: son una copia de Flipp que se vuelve a bajar sola',
   days: 'lo mismo ya resuelto por dia, que es lo que sirve para graficas y modelos',
 };
 
@@ -60,7 +72,7 @@ export async function exportBackup(db: SQLiteDatabase, days: unknown[] = []): Pr
   const names = await userTables(db);
 
   for (const table of names) {
-    if (table === MIGRATION_TABLE) continue;
+    if (!isHisData(table)) continue;
     tables[table] = await db.getAllAsync<Record<string, unknown>>(`SELECT * FROM ${table};`);
   }
 
@@ -146,7 +158,7 @@ export async function importBackup(db: SQLiteDatabase, backup: Backup): Promise<
   try {
     await db.withTransactionAsync(async () => {
       for (const [table, rows] of Object.entries(backup.tables)) {
-        if (table === MIGRATION_TABLE) continue;
+        if (!isHisData(table)) continue;
         if (!present.has(table)) {
           skipped.push(table);
           continue;

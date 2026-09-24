@@ -45,6 +45,18 @@ export async function targetsInForceOn(
   return row ? snapshotToTargets(row) : null;
 }
 
+/** El primer dia del que hay algo anotado, mirando donde puede haber quedado rastro. */
+async function firstLoggedDate(db: SQLiteDatabase): Promise<IsoDate | null> {
+  const row = await db.getFirstAsync<{ date: IsoDate | null }>(
+    `SELECT min(date) AS date FROM (
+       SELECT min(date) AS date FROM core_daily_log
+       UNION ALL SELECT min(date) FROM training_session
+       UNION ALL SELECT min(date) FROM nutrition_food_entry
+     );`,
+  );
+  return row?.date ?? null;
+}
+
 export async function writeTargetSnapshot(
   db: SQLiteDatabase,
   targets: TargetValues,
@@ -97,7 +109,16 @@ export async function setInitialTargets(
   if (await targetsInForceOn(db, onDate)) return null;
 
   const targets = computeTargets(weightKg, profile, onDate);
-  await writeTargetSnapshot(db, targets, onDate);
+
+  // Empieza el dia del primer registro y no hoy. Casi siempre se llena el perfil
+  // despues de haber estado anotando unos dias, y con la foto empezando hoy esos
+  // dias se quedaban sin nada contra que medirse, o sea grises para siempre por
+  // mucho que hubiera anotado. Estas son las unicas metas que ha tenido nunca, asi
+  // que son tambien las suyas de esos dias: spec 5.10 sigue cumpliendose, porque lo
+  // que prohibe es juzgar un dia con metas posteriores a las que regian, y aqui no
+  // habia ninguna anterior.
+  const first = await firstLoggedDate(db);
+  await writeTargetSnapshot(db, targets, first !== null && first < onDate ? first : onDate);
   return targets;
 }
 

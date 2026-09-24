@@ -24,6 +24,7 @@ import {
 import { scoreDay } from './discipline.ts';
 import {
   latestTargetChange,
+  setInitialTargets,
   recalculateTargets,
   targetsInForceOn,
   writeTargetSnapshot,
@@ -315,4 +316,19 @@ test('logging water later does not undo the rest day', async () => {
 
   assert.equal(row.rest_day, 1);
   assert.equal(row.water_ml, 710);
+});
+
+test('lo anotado antes de llenar el perfil tambien se puede puntuar', async () => {
+  const { db } = fresh();
+
+  // Estuvo anotando cuatro dias antes de llenar el perfil.
+  await upsertDailyLog(db, { date: '2026-09-20', waterMl: 2000 });
+  await upsertDailyLog(db, { date: '2026-09-24', waterMl: 2000 });
+
+  await setInitialTargets(db, 73, profile, '2026-09-24');
+
+  // La primera foto arranca el dia del primer registro, no el dia que la creo.
+  const before = await targetsInForceOn(db, '2026-09-20');
+  assert.equal(before?.weightBasisKg, 73);
+  assert.equal(await targetsInForceOn(db, '2026-09-19'), null);
 });
