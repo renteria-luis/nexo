@@ -4,6 +4,20 @@ import type { DateRange, IsoDate } from '../core/dates.ts';
 import type { NutritionBatchRow, NutritionContainerRow, NutritionFoodRow } from '../db/types.ts';
 
 import type { LoggedPortion } from './totals.ts';
+import { MEAL_SLOTS } from './units.ts';
+
+/**
+ * Del desayuno a la cena y no en el orden en que lo escribio: si anota la cena a
+ * mediodia y el desayuno despues, el dia se lee al reves de como paso.
+ */
+function byMealTime(a: LoggedPortion, b: LoggedPortion): number {
+  const rank = (slot: string) => {
+    const index = MEAL_SLOTS.indexOf(slot);
+    // Lo que no es una comida del dia va al final, no al principio.
+    return index === -1 ? MEAL_SLOTS.length : index;
+  };
+  return rank(a.mealSlot) - rank(b.mealSlot);
+}
 
 type PortionRow = NutritionFoodRow & {
   entry_id: string;
@@ -22,12 +36,14 @@ export async function listPortions(db: SQLiteDatabase, date: IsoDate): Promise<L
     [date],
   );
 
-  return rows.map(({ entry_id, entry_quantity, entry_meal_slot, ...food }) => ({
-    entryId: entry_id,
-    quantity: entry_quantity,
-    mealSlot: entry_meal_slot,
-    food: food as NutritionFoodRow,
-  }));
+  return rows
+    .map(({ entry_id, entry_quantity, entry_meal_slot, ...food }) => ({
+      entryId: entry_id,
+      quantity: entry_quantity,
+      mealSlot: entry_meal_slot,
+      food: food as NutritionFoodRow,
+    }))
+    .sort(byMealTime);
 }
 
 /**
@@ -60,6 +76,7 @@ export async function listPortionsBetween(
     if (existing) existing.push(portion);
     else byDate.set(entry_date, [portion]);
   }
+  for (const portions of byDate.values()) portions.sort(byMealTime);
   return byDate;
 }
 
