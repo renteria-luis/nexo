@@ -12,6 +12,7 @@ import {
   weekStart,
   weekday,
   shortDate,
+  dateAndTime,
 } from './dates.ts';
 
 test('weeks run Monday to Sunday', () => {
@@ -97,4 +98,11 @@ test('a date reads with the month in letters, never as two numbers', () => {
   assert.equal(shortDate('2026-01-31'), '31-ene-2026');
   assert.equal(shortDate('2026-12-01'), '01-dic-2026');
   assert.throws(() => shortDate('2026-13-01'), /is not a date/);
+});
+
+test('la fecha y la hora se leen como las dice en voz alta', () => {
+  assert.equal(dateAndTime(new Date(2026, 8, 24, 12, 51)), '24 de setiembre 12:51');
+  assert.equal(dateAndTime(new Date(2026, 0, 3, 7, 5)), '3 de enero 07:05');
+  // Reloj de 24 horas: las nueve de la noche no son las 9.
+  assert.equal(dateAndTime(new Date(2026, 11, 31, 21, 0)), '31 de diciembre 21:00');
 });

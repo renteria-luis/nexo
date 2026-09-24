@@ -7,7 +7,7 @@
 
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import type { IsoDate } from './dates.ts';
+import { isRealDate, type IsoDate } from './dates.ts';
 import type { PaletteId } from './palettes.ts';
 import type { WeightUnit } from './units.ts';
 import type { Phase, TargetProfile } from './targets.ts';
@@ -129,6 +129,10 @@ export function profileFrom(settings: Settings): TargetProfile | null {
   const heightCm = asNumber(settings, 'height_cm');
   const birthDate = raw(settings, 'birth_date');
   if (heightCm === null || birthDate === null) return null;
+  // Una fecha imposible guardada antes de que esto se validara deja al perfil sin
+  // existir, que es lo mismo que no haberlo llenado: se ve "faltan tus metas" y se
+  // arregla en Ajustes. Lo que no puede es tumbar la app al abrirla.
+  if (!isRealDate(birthDate)) return null;
 
   const phase = raw(settings, 'phase');
   if (phase === null || !PHASES.has(phase)) {
@@ -146,6 +150,12 @@ export function profileFrom(settings: Settings): TargetProfile | null {
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function dateProblem(value: string): string | null {
+  if (!ISO_DATE.test(value)) return 'usa el formato AAAA-MM-DD';
+  // El mes 30 pasa la forma y no existe. Guardarlo rompia el arranque entero.
+  return isRealDate(value) ? null : 'esa fecha no existe, revisa el mes y el día';
+}
 
 /**
  * Checks a value before it is stored, so a typo is refused at the form rather than
@@ -165,7 +175,7 @@ export function settingProblem(key: SettingKey, value: string): string | null {
     case 'birth_date':
     case 're_entry_started_on':
     case 'targets_change_seen':
-      return ISO_DATE.test(trimmed) ? null : 'usa el formato AAAA-MM-DD';
+      return dateProblem(trimmed);
     case 'treat_missing_sleep_as_zero':
       return trimmed === 'true' || trimmed === 'false' ? null : 'solo true o false';
     case 'height_cm':
@@ -199,8 +209,9 @@ export type ReEntryState = {
 };
 
 export function reEntryFrom(settings: Settings): ReEntryState {
+  const startedOn = raw(settings, 're_entry_started_on');
   return {
-    startedOn: raw(settings, 're_entry_started_on'),
+    startedOn: startedOn !== null && isRealDate(startedOn) ? startedOn : null,
     weeks: asNumber(settings, 're_entry_weeks') as number,
   };
 }

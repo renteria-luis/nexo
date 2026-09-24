@@ -26,6 +26,20 @@ function fromUtcMs(ms: number): IsoDate {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
+/**
+ * Si es un dia que existe en el calendario. La forma AAAA-MM-DD no basta: 1996-30-08
+ * la cumple y no es ninguna fecha, y hasta ahora eso se guardaba y reventaba al
+ * arrancar, con la app entera bloqueada en la pantalla de error.
+ */
+export function isRealDate(date: string): boolean {
+  try {
+    toUtcMs(date);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** The device's current local day. The only function here that reads the clock. */
 export function todayIso(now: Date = new Date()): IsoDate {
   const year = now.getFullYear();
@@ -49,6 +63,30 @@ const MONTHS_ES = [
   'nov',
   'dic',
 ];
+
+const MONTH_NAMES_ES = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'setiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
+];
+
+/** "24 de setiembre 12:51", en reloj de 24 horas, que es como lee la hora. */
+export function dateAndTime(now: Date = new Date()): string {
+  const day = now.getDate();
+  const month = MONTH_NAMES_ES[now.getMonth()];
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  return `${day} de ${month} ${hours}:${minutes}`;
+}
 
 /** 2026-08-08 se lee 08-ago-2026: sin ambiguedad entre dia y mes. */
 export function shortDate(date: IsoDate): string {

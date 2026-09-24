@@ -22,6 +22,7 @@ import {
   treatMissingSleepAsZero,
   writeSetting,
   type Settings,
+  settingProblem,
 } from './settings.ts';
 
 type SqlValue = string | number | null;
@@ -160,4 +161,24 @@ test('an adjustable window is actually adjustable', () => {
   assert.equal(isReEntryActive(shorter, '2026-09-18'), true);
   assert.equal(isReEntryActive(shorter, '2026-09-19'), false);
   assert.equal(reEntryBanner(shorter, '2026-09-05')?.of, 2);
+});
+
+test('una fecha con forma correcta pero imposible se rechaza antes de guardarse', () => {
+  assert.match(settingProblem('birth_date', '1996-30-08') ?? '', /no existe/);
+  assert.match(settingProblem('birth_date', '2026-02-31') ?? '', /no existe/);
+  assert.equal(settingProblem('birth_date', '1996-08-30'), null);
+});
+
+test('una fecha imposible ya guardada deja sin perfil, no tumba la app', () => {
+  const settings = new Map([
+    ['height_cm', '170'],
+    ['birth_date', '1996-30-08'],
+    ['phase', 'recomp'],
+    ['activity_factor', '1.55'],
+    ['sleep_target_minutes', '420'],
+    ['steps_target', '7000'],
+  ]);
+
+  assert.equal(profileFrom(settings), null);
+  assert.equal(reEntryFrom(new Map([['re_entry_started_on', '2026-13-01']])).startedOn, null);
 });
