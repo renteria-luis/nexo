@@ -11,8 +11,19 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 
 const ENDPOINT = 'https://backflipp.wishabi.com/flipp/items/search';
-const POSTAL_CODE = process.env.DEALS_POSTAL_CODE ?? 'N6A3K7';
 const SNAPSHOT_VERSION = 1;
+
+// Flipp exige el codigo postal completo y sin espacio: con tres caracteres, o
+// vacio, responde 422 a todo. Y un secreto sin configurar llega como cadena vacia,
+// no como ausente, asi que un valor por defecto con ?? no lo atrapa. Sin codigo se
+// para aqui, que es mas util que seis busquedas fallando una por una.
+const POSTAL_CODE = (process.env.DEALS_POSTAL_CODE ?? '').trim().toUpperCase();
+if (!/^[A-Z]\d[A-Z]\d[A-Z]\d$/.test(POSTAL_CODE)) {
+  throw new Error(
+    'falta DEALS_POSTAL_CODE, o no es un codigo postal completo sin espacio como N6A3K7. ' +
+      'Se configura en GitHub, en Settings > Secrets and variables > Actions.',
+  );
+}
 
 function cents(value) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
