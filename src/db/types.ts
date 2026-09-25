@@ -46,6 +46,14 @@ export type CoreTargetSnapshotRow = {
   steps: number;
 };
 
+export type CoreNudgeRow = {
+  id: string;
+  kind: string;
+  date: IsoDate;
+  sent_at: EpochMs;
+  acted_at: EpochMs | null;
+};
+
 export type CoreDailyLogRow = {
   date: IsoDate;
   water_ml: number | null;

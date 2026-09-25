@@ -3,7 +3,14 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fr
 import { Eye, EyeOff } from 'lucide-react-native';
 
 import type { PaletteId } from '../../core/palettes.ts';
-import { settingProblem, type SettingKey, type Settings } from '../../core/settings.ts';
+import {
+  nudgesEnabled,
+  nudgesOffFrom,
+  settingProblem,
+  type SettingKey,
+  type Settings,
+} from '../../core/settings.ts';
+import { DEFAULT_NUDGE_RULES, type NudgeKind } from '../../core/nudges.ts';
 
 import { isBodyWeightKg } from '../../core/daily-log.ts';
 import { NUMBER_PAD_HEIGHT, useNumberPad } from '../NumberPadHost.tsx';
@@ -88,6 +95,15 @@ export type SettingsScreenProps = {
   onSelectPalette: (palette: PaletteId) => void;
 };
 
+/** Los cuatro que puede apagar por su lado. El resumen del domingo va con el cierre. */
+const NUDGE_SWITCHES: { kind: NudgeKind; label: string }[] = [
+  { kind: 'comida', label: 'comida' },
+  { kind: 'entreno', label: 'entreno' },
+  { kind: 'agua', label: 'agua' },
+  { kind: 'manana', label: 'mañana' },
+  { kind: 'cierre', label: 'cierre del día' },
+];
+
 export function SettingsScreen({
   onResetDatabase,
   onExport,
@@ -106,6 +122,8 @@ export function SettingsScreen({
   const [refused, setRefused] = useState<Partial<Record<SettingKey, string>>>({});
   // Estatura, fecha de nacimiento y peso son datos que no quiere a la vista de nadie
   // que le mire el telefono por encima del hombro.
+  const nudgesOn = nudgesEnabled(settings);
+  const nudgesOff = nudgesOffFrom(settings);
   const [hidden, setHidden] = useState(true);
   // Tapar con puntos lo que esta escribiendo en ese momento es como escribir a
   // ciegas: el campo abierto se ve, y se vuelve a tapar al salir de el.
@@ -295,6 +313,49 @@ export function SettingsScreen({
           El promedio de siete días es el que manda; un día suelto es agua y comida en el estómago.
         </Text>
       </View>
+
+      <Text style={styles.heading}>Avisos</Text>
+      <Text style={styles.hint}>
+        Solo te avisa de lo que falta y nunca de lo que ya anotaste. Máximo{' '}
+        {DEFAULT_NUDGE_RULES.maxPerDay} al día, nada entre las 21:30 y las 7:30, y el tipo de aviso
+        que ignores tres veces seguidas se calla una semana solo.
+      </Text>
+      <View style={styles.options}>
+        <Pressable
+          accessibilityRole="radio"
+          accessibilityLabel={nudgesOn ? 'Apagar todos los avisos' : 'Encender los avisos'}
+          onPress={() => onSaveSetting('nudges_enabled', nudgesOn ? 'false' : 'true')}
+          style={[styles.option, nudgesOn && styles.optionSelected]}
+        >
+          <Text style={styles.optionText}>{nudgesOn ? 'encendidos' : 'apagados'}</Text>
+        </Pressable>
+      </View>
+      {nudgesOn && (
+        <View style={styles.options}>
+          {NUDGE_SWITCHES.map((nudge) => {
+            const on = !nudgesOff.includes(nudge.kind);
+            return (
+              <Pressable
+                key={nudge.kind}
+                accessibilityRole="radio"
+                accessibilityLabel={`${on ? 'Apagar' : 'Encender'} los avisos de ${nudge.label}`}
+                onPress={() =>
+                  onSaveSetting(
+                    'nudges_off',
+                    (on
+                      ? [...nudgesOff, nudge.kind]
+                      : nudgesOff.filter((kind) => kind !== nudge.kind)
+                    ).join(','),
+                  )
+                }
+                style={[styles.option, on && styles.optionSelected]}
+              >
+                <Text style={styles.optionText}>{nudge.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
 
       <Text style={styles.heading}>Paleta</Text>
       <PalettePicker selected={palette} onSelect={onSelectPalette} />

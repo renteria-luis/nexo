@@ -26,7 +26,9 @@ export type SettingKey =
   | 'weight_unit'
   | 'targets_change_seen'
   | 'steps_advice_declined'
-  | 'session_draft';
+  | 'session_draft'
+  | 'nudges_enabled'
+  | 'nudges_off';
 
 export type Settings = ReadonlyMap<string, string>;
 
@@ -43,6 +45,9 @@ const DEFAULTS: Partial<Record<SettingKey, string>> = {
   re_entry_weeks: '3',
   // His main gym is imperial. Storage stays metric either way.
   weight_unit: 'lb',
+  // Spec 18: los avisos vienen encendidos, y cada tipo se apaga por su lado.
+  nudges_enabled: 'true',
+  nudges_off: '',
 };
 
 export async function readSettings(db: SQLiteDatabase): Promise<Settings> {
@@ -120,6 +125,20 @@ export function treatMissingSleepAsZero(settings: Settings): boolean {
   return raw(settings, 'treat_missing_sleep_as_zero') === 'true';
 }
 
+/** Spec 18: el interruptor general. Apagado no se programa ni uno. */
+export function nudgesEnabled(settings: Settings): boolean {
+  return raw(settings, 'nudges_enabled') !== 'false';
+}
+
+/** Los tipos que apago a mano, guardados como una lista separada por comas. */
+export function nudgesOffFrom(settings: Settings): string[] {
+  const value = raw(settings, 'nudges_off') ?? '';
+  return value
+    .split(',')
+    .map((kind) => kind.trim())
+    .filter((kind) => kind !== '');
+}
+
 /**
  * Null until height and birth date are entered. Everything downstream of the BMR
  * depends on them, so an absent profile has to stop the calculation rather than
@@ -177,7 +196,11 @@ export function settingProblem(key: SettingKey, value: string): string | null {
     case 'targets_change_seen':
       return dateProblem(trimmed);
     case 'treat_missing_sleep_as_zero':
+    case 'nudges_enabled':
       return trimmed === 'true' || trimmed === 'false' ? null : 'solo true o false';
+    // Lo escribe la app al apagar un tipo de aviso, no el.
+    case 'nudges_off':
+      return null;
     case 'height_cm':
       return inRange(trimmed, 100, 250, 'una estatura en centímetros');
     case 'activity_factor':

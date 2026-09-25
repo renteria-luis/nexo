@@ -114,3 +114,15 @@ un día casi perfecto salía como cien.
 Rejected: Ajustar la curva del sueño a su meta personal de 7 h. La escala que eligió
 es absoluta y da 17 de 20 a las 7 h; escalarla a su meta habría deformado los puntos
 que él fijó. Su meta de Ajustes se queda como referencia y para los avisos.
+
+## 2026-09-25 — Los avisos se deciden en el teléfono y se aprenden de él
+Context: Quería que la app le avise lo que falta sin volverse fastidiosa, con tope de
+3 al día y los cuatro tipos.
+Decision: El motor que decide vive en core y no habla con iOS, así que se prueba
+entero sin teléfono. Las horas salen de la mediana de lo que ya anota (comida por
+espacio, inicio de sesión, primer rastro del día), con el horario de §1.4 hasta tener
+cinco muestras. Se programan 3 días por delante porque iOS no deja pensar en segundo
+plano, y el plan se rehace en cada carga de la app.
+Rejected: Horas fijas configurables a mano, como MyFitnessPal. Obliga a mantenerlas
+él y envejecen mal. También rechazado un servidor que decida y empuje: la app es
+local y sin cuentas.

@@ -9,6 +9,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 
 import {
   listDailyLogs,
+  readDailyLog,
   readLastWeight,
   storeScore,
   toWeighIns,
@@ -110,6 +111,9 @@ import {
 } from '../training/index.ts';
 
 import { exportToFile, importFromFile, type ExportOutcome } from './backup-file.ts';
+import { WATER_ACTION_ML } from '../core/nudges.ts';
+import { listenToNudges, syncNudges } from './notifications.ts';
+import { recordNudgeAction } from './nudges.ts';
 import { loadCharts as loadChartsData, type ChartsData } from './charts.ts';
 import {
   listDayRows,
@@ -235,6 +239,10 @@ async function load(exerciseId: string | null): Promise<Loaded> {
       listRoutines(db),
       assembled.session ? loadSessionPlan(db, assembled.session.id) : Promise.resolve([]),
     ]);
+
+  // Los avisos de los proximos dias se rehacen con lo que acaba de anotar. No se
+  // espera: programar en iOS no tiene por que retrasar lo que ya se puede pintar.
+  void syncNudges(db, today).catch((error: unknown) => console.error(error));
 
   const gyms = await listGyms(db);
   const lastWeight = await readLastWeight(db);
@@ -404,6 +412,27 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }, [exerciseId]);
 
   useEffect(refresh, [refresh]);
+
+  // Spec 18: los botones del aviso anotan sin abrir nada, y siempre queda escrito
+  // que hizo caso, que es lo que decide si ese tipo de aviso sigue saliendo.
+  useEffect(
+    () =>
+      listenToNudges(({ nudgeId, action }) => {
+        openDatabase()
+          .then(async (db) => {
+            const date = todayIso();
+            await recordNudgeAction(db, nudgeId);
+            if (action === 'descanso') await upsertDailyLog(db, { date, restDay: true });
+            if (action === 'agua') {
+              const log = await readDailyLog(db, date);
+              await upsertDailyLog(db, { date, waterMl: (log?.water_ml ?? 0) + WATER_ACTION_ML });
+            }
+          })
+          .then(refresh)
+          .catch((error: unknown) => console.error(error));
+      }),
+    [refresh],
+  );
 
   const run = useCallback(
     (work: (db: Awaited<ReturnType<typeof openDatabase>>) => Promise<unknown>) => {
