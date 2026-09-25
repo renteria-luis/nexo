@@ -1,5 +1,8 @@
+import { useNavigation } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+
+import { scoreText } from '../../core/day-report.ts';
 
 import { fromKg } from '../../core/units.ts';
 import { useAppData } from '../../shell/AppData.tsx';
@@ -47,6 +50,12 @@ function Section({
  */
 export function ChartsScreen() {
   const { state, loadCharts } = useAppData();
+  const navigation = useNavigation<{
+    navigate: (name: string, params?: { date: string }) => void;
+  }>();
+  // Un solo globito abierto en toda la pantalla: tocar una barra de otra grafica
+  // cierra el anterior, y tocar fuera los cierra todos.
+  const [open, setOpen] = useState<{ chart: string; index: number } | null>(null);
   const [days, setDays] = useState(90);
   const [data, setData] = useState<ChartsData | null>(null);
   const [exercise, setExercise] = useState<string | null>(null);
@@ -74,124 +83,148 @@ export function ChartsScreen() {
 
   return (
     <Screen>
-      <View style={styles.chips}>
-        {WINDOWS.map((option) => (
-          <Pressable
-            key={option.days}
-            accessibilityLabel={`Ver ${option.label}`}
-            onPress={() => setDays(option.days)}
-            style={[styles.chip, option.days === days && styles.chipOn]}
-          >
-            <Text style={[styles.chipText, option.days === days && styles.chipTextOn]}>
-              {option.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      {/* Igual que el teclado: una barra o un boton se quedan con el toque antes de
+          llegar aqui, asi que solo lo cierra el toque en una zona muerta. */}
+      <View
+        style={styles.sheet}
+        onStartShouldSetResponder={open === null ? undefined : () => true}
+        onResponderRelease={open === null ? undefined : () => setOpen(null)}
+      >
+        <View style={styles.chips}>
+          {WINDOWS.map((option) => (
+            <Pressable
+              key={option.days}
+              accessibilityLabel={`Ver ${option.label}`}
+              onPress={() => setDays(option.days)}
+              style={[styles.chip, option.days === days && styles.chipOn]}
+            >
+              <Text style={[styles.chipText, option.days === days && styles.chipTextOn]}>
+                {option.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
 
-      {problem && <Text style={styles.problem}>{problem}</Text>}
-      {data === null && <Text style={styles.loading}>Leyendo tus datos…</Text>}
+        {problem && <Text style={styles.problem}>{problem}</Text>}
+        {data === null && <Text style={styles.loading}>Leyendo tus datos…</Text>}
 
-      {data && (
-        <>
-          <Section
-            title="Peso corporal"
-            note="El punto es cada pesada y la línea celeste es la media de siete días, que es la que manda."
-          >
-            <LineChart
-              width={width}
-              format={(value) => `${Math.round(fromKg(value, 'kg'))} kg`}
-              series={[
-                { points: data.weight, color: theme.textGhost, dots: true },
-                { points: data.weightAverage, color: theme.accent },
-              ]}
-            />
-          </Section>
+        {data && (
+          <>
+            <Section
+              title="Nota del día"
+              note="Cada barra es un día puntuado. Tócala para ver cuál fue. Los días sin nota no aparecen."
+            >
+              <DayBars
+                points={data.score}
+                width={width}
+                band={{ from: 70, to: 100 }}
+                max={100}
+                format={(value) => `${scoreText(value)} de 100`}
+                selected={open?.chart === 'score' ? open.index : null}
+                onSelect={(index) => setOpen(index === null ? null : { chart: 'score', index })}
+                onOpenDay={(date) => navigation.navigate('Día', { date })}
+              />
+            </Section>
 
-          <Section
-            title="Nota del día"
-            note="Cada barra es un día puntuado. Los días sin nota no aparecen."
-          >
-            <DayBars
-              points={data.score}
-              width={width}
-              band={{ from: 70, to: 100 }}
-              max={100}
-              format={(value) => String(Math.round(value))}
-            />
-          </Section>
+            <Section
+              title="Series por músculo, últimos 7 días"
+              note="Directas, sin contar las medias series que caen de otros ejercicios."
+            >
+              <MuscleBars bars={data.muscles} band={data.setBand} />
+            </Section>
 
-          <Section
-            title="Series por músculo, últimos 7 días"
-            note="Directas, sin contar las medias series que caen de otros ejercicios."
-          >
-            <MuscleBars bars={data.muscles} band={data.setBand} />
-          </Section>
-
-          <Section
-            title="Fuerza por ejercicio"
-            note="El mejor 1RM estimado de cada día que lo entrenaste. Sale de tus series normales, no de una prueba."
-          >
-            <View style={styles.chips}>
-              {data.trends.slice(0, 8).map((item) => (
-                <Pressable
-                  key={item.exerciseId}
-                  accessibilityLabel={`Ver ${item.name}`}
-                  onPress={() => setExercise(item.exerciseId)}
-                  style={[styles.chip, item.exerciseId === trend?.exerciseId && styles.chipOn]}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      item.exerciseId === trend?.exerciseId && styles.chipTextOn,
-                    ]}
+            <Section
+              title="Fuerza por ejercicio"
+              note="El mejor 1RM estimado de cada día que lo entrenaste. Sale de tus series normales, no de una prueba."
+            >
+              <View style={styles.chips}>
+                {data.trends.slice(0, 8).map((item) => (
+                  <Pressable
+                    key={item.exerciseId}
+                    accessibilityLabel={`Ver ${item.name}`}
+                    onPress={() => setExercise(item.exerciseId)}
+                    style={[styles.chip, item.exerciseId === trend?.exerciseId && styles.chipOn]}
                   >
-                    {item.name}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-            {trend ? (
+                    <Text
+                      style={[
+                        styles.chipText,
+                        item.exerciseId === trend?.exerciseId && styles.chipTextOn,
+                      ]}
+                    >
+                      {item.name}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              {trend ? (
+                <LineChart
+                  width={width}
+                  format={(value) => `${Math.round(fromKg(value, unit))} ${unit}`}
+                  series={[{ points: trend.points, color: theme.accent, dots: true }]}
+                />
+              ) : (
+                <Text style={styles.loading}>
+                  Anota dos sesiones de un ejercicio y aparece aquí.
+                </Text>
+              )}
+            </Section>
+
+            <Section
+              title="Proteína por día"
+              note="Verde, dentro de tu banda. Gris, fuera. La banda sale de tu peso."
+            >
+              <DayBars
+                points={data.protein}
+                width={width}
+                band={data.proteinBand}
+                format={(value) => `${Math.round(value)} g`}
+                selected={open?.chart === 'protein' ? open.index : null}
+                onSelect={(index) => setOpen(index === null ? null : { chart: 'protein', index })}
+                onOpenDay={(date) => navigation.navigate('Día', { date })}
+              />
+            </Section>
+
+            <Section
+              title="Calorías por día"
+              note="La banda es tu objetivo con el margen que la app considera dentro."
+            >
+              <DayBars
+                points={data.kcal}
+                width={width}
+                band={data.kcalBand}
+                format={(value) => `${Math.round(value)} kcal`}
+                selected={open?.chart === 'kcal' ? open.index : null}
+                onSelect={(index) => setOpen(index === null ? null : { chart: 'kcal', index })}
+                onOpenDay={(date) => navigation.navigate('Día', { date })}
+              />
+            </Section>
+
+            {/* El peso al final: cambia poco y se pesa poco, asi que no tiene por que
+              abrir la pantalla. */}
+            <Section
+              title="Peso corporal"
+              note="El punto es cada pesada y la línea celeste es la media de siete días, que es la que manda."
+            >
               <LineChart
                 width={width}
-                format={(value) => `${Math.round(fromKg(value, unit))} ${unit}`}
-                series={[{ points: trend.points, color: theme.accent, dots: true }]}
+                format={(value) => `${Math.round(fromKg(value, 'kg'))} kg`}
+                series={[
+                  { points: data.weight, color: theme.textGhost, dots: true },
+                  { points: data.weightAverage, color: theme.accent },
+                ]}
               />
-            ) : (
-              <Text style={styles.loading}>Anota dos sesiones de un ejercicio y aparece aquí.</Text>
-            )}
-          </Section>
-
-          <Section
-            title="Proteína por día"
-            note="Verde, dentro de tu banda. Gris, fuera. La banda sale de tu peso."
-          >
-            <DayBars
-              points={data.protein}
-              width={width}
-              band={data.proteinBand}
-              format={(value) => `${Math.round(value)} g`}
-            />
-          </Section>
-
-          <Section
-            title="Calorías por día"
-            note="La banda es tu objetivo con el margen que la app considera dentro."
-          >
-            <DayBars
-              points={data.kcal}
-              width={width}
-              band={data.kcalBand}
-              format={(value) => String(Math.round(value))}
-            />
-          </Section>
-        </>
-      )}
+            </Section>
+          </>
+        )}
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  sheet: {
+    gap: 12,
+  },
   chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',

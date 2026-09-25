@@ -22,9 +22,13 @@ export function MuscleBars({ bars, band }: { bars: MuscleBar[]; band: Band }) {
         const state = bar.sets < band.from ? 'below' : bar.sets > band.to ? 'above' : 'within';
         return (
           <View key={bar.muscle} style={styles.row}>
-            <Text style={styles.label} numberOfLines={1}>
-              {MUSCLE_ES[bar.muscle] ?? bar.muscle}
-            </Text>
+            {/* El nombre encima y no a un lado: "deltoide posterior" no cabe en una
+                columna estrecha, y meterlo dentro de la barra lo tapa justo cuando la
+                barra es corta, que es cuando mas importa leerlo. */}
+            <View style={styles.head}>
+              <Text style={styles.label}>{MUSCLE_ES[bar.muscle] ?? bar.muscle}</Text>
+              <Text style={styles.value}>{bar.sets}</Text>
+            </View>
             <View style={styles.track}>
               {/* La banda va detras de la barra, asi se ve de un vistazo si cae dentro. */}
               <View
@@ -45,7 +49,6 @@ export function MuscleBars({ bars, band }: { bars: MuscleBar[]; band: Band }) {
                 ]}
               />
             </View>
-            <Text style={styles.value}>{bar.sets}</Text>
           </View>
         );
       })}
@@ -58,15 +61,17 @@ export function MuscleBars({ bars, band }: { bars: MuscleBar[]; band: Band }) {
 
 const styles = StyleSheet.create({
   wrapper: {
-    gap: 6,
+    gap: 9,
   },
   row: {
+    gap: 3,
+  },
+  head: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
   },
   label: {
-    width: 96,
     fontSize: 11,
     color: theme.textDim,
     fontFamily: mono,
@@ -97,8 +102,6 @@ const styles = StyleSheet.create({
     backgroundColor: theme.info,
   },
   value: {
-    width: 22,
-    textAlign: 'right',
     fontSize: 11,
     color: theme.text,
     fontFamily: mono,

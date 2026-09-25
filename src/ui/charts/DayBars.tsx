@@ -1,11 +1,13 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Rect } from 'react-native-svg';
 
-import { shortDate } from '../../core/dates.ts';
+import { shortDate, type IsoDate } from '../../core/dates.ts';
 import type { Band, Point } from '../../shell/charts.ts';
 import { mono, theme } from '../theme.ts';
 
 const HEIGHT = 110;
+/** Lo que mide el globito, para poder centrarlo sobre la barra sin salirse. */
+const BUBBLE_WIDTH = 116;
 
 /**
  * Una barra por dia, con la banda objetivo pintada por detras.
@@ -19,12 +21,19 @@ export function DayBars({
   band,
   max,
   format,
+  selected = null,
+  onSelect,
+  onOpenDay,
 }: {
   points: Point[];
   width: number;
   band?: Band | null;
   max?: number;
   format: (value: number) => string;
+  /** El dia abierto en el globito, o null. Lo lleva la pantalla para que solo haya uno. */
+  selected?: number | null;
+  onSelect?: (index: number | null) => void;
+  onOpenDay?: (date: IsoDate) => void;
 }) {
   if (points.length === 0 || width <= 0) {
     return <Text style={styles.empty}>Todavía no hay datos.</Text>;
@@ -36,6 +45,12 @@ export function DayBars({
   const y = (value: number) => HEIGHT - (value / top) * HEIGHT;
 
   const inside = (value: number) => !band || (value >= band.from && value <= band.to);
+
+  const open = selected !== null && selected >= 0 && selected < points.length ? selected : null;
+  const bubbleLeft =
+    open === null
+      ? 0
+      : Math.min(Math.max(0, open * step + step / 2 - BUBBLE_WIDTH / 2), width - BUBBLE_WIDTH);
 
   return (
     <View>
@@ -56,11 +71,43 @@ export function DayBars({
             y={y(point.value)}
             width={barWidth}
             height={Math.max(1, HEIGHT - y(point.value))}
-            fill={inside(point.value) ? theme.ok : theme.textGhost}
+            fill={
+              open === index ? theme.accent : inside(point.value) ? theme.ok : theme.textGhost
+            }
             rx={1}
           />
         ))}
       </Svg>
+
+      {/* Las zonas de toque van encima del dibujo: una por barra y del ancho del
+          hueco, porque una barra de dos pixeles no se acierta con el pulgar. */}
+      {onSelect && (
+        <View style={[styles.touch, { width, height: HEIGHT }]}>
+          {points.map((point, index) => (
+            <Pressable
+              key={point.date}
+              accessibilityLabel={`Ver el ${point.date}`}
+              onPress={() => onSelect(open === index ? null : index)}
+              style={{ width: step, height: HEIGHT }}
+            />
+          ))}
+        </View>
+      )}
+
+      {open !== null && (
+        <View style={[styles.bubble, { left: bubbleLeft, width: BUBBLE_WIDTH }]}>
+          <Text style={styles.bubbleDate}>{shortDate(points[open].date)}</Text>
+          <Text style={styles.bubbleValue}>{format(points[open].value)}</Text>
+          {onOpenDay && (
+            <Pressable
+              accessibilityLabel={`Ver los detalles del ${points[open].date}`}
+              onPress={() => onOpenDay(points[open].date)}
+            >
+              <Text style={styles.bubbleLink}>detalles ›</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
 
       <View style={styles.axis}>
         <Text style={styles.axisText}>{shortDate(points[0].date)}</Text>
@@ -74,6 +121,39 @@ export function DayBars({
 }
 
 const styles = StyleSheet.create({
+  touch: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    flexDirection: 'row',
+  },
+  bubble: {
+    position: 'absolute',
+    top: 6,
+    borderWidth: 1,
+    borderColor: theme.accent,
+    borderRadius: 8,
+    backgroundColor: theme.bg,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 2,
+  },
+  bubbleDate: {
+    fontSize: 10,
+    color: theme.textGhost,
+    fontFamily: mono,
+  },
+  bubbleValue: {
+    fontSize: 15,
+    color: theme.text,
+    fontFamily: mono,
+  },
+  bubbleLink: {
+    fontSize: 11,
+    color: theme.accent,
+    fontFamily: mono,
+    paddingTop: 4,
+  },
   axis: {
     flexDirection: 'row',
     justifyContent: 'space-between',
