@@ -42,6 +42,7 @@ const DISCOUNTS = [FOOD_BASICS, METRO];
 const CHICKEN: NutritionFoodRow = {
   id: 'chicken-breast',
   name: 'Pechuga de pollo',
+  keywords: null,
   brand: null,
   store: null,
   base_unit: 'g',

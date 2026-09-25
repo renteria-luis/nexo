@@ -1,4 +1,4 @@
-import { useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -46,12 +46,12 @@ export function DayScreen() {
     loadDay,
     editDay,
     addFoodOn,
-    createFood,
     removeFood,
     openSessionOn,
     addSetOn,
     removeSetOn,
   } = useAppData();
+  const navigation = useNavigation<{ navigate: (name: string) => void }>();
   const [detail, setDetail] = useState<DayDetail | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -203,7 +203,7 @@ export function DayScreen() {
           kcalTarget={day.targets?.kcal ?? null}
           heading={`Lo que comió el ${shortDate(date)}`}
           onAdd={(entry) => after(addFoodOn(date, entry))}
-          onCreateFood={createFood}
+          onOpenCatalogue={() => navigation.navigate('Alimentos')}
           history={loaded.foodHistory}
           onRemove={(entryId) => {
             removeFood(entryId);

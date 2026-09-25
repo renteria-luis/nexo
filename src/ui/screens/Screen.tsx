@@ -25,12 +25,21 @@ import { mono, theme } from '../theme.ts';
  * usaba antes arrastraba reanimated 4, que pide una version de worklets que este SDK
  * de Expo todavia no soporta.
  */
-export function Screen({ title, children }: { title?: string; children: ReactNode }) {
+export function Screen({
+  title,
+  children,
+  overlay,
+}: {
+  title?: string;
+  children: ReactNode;
+  /** Lo que va encima de la pantalla entera, fuera del scroll y sin ser un modal. */
+  overlay?: ReactNode;
+}) {
   const { state, resetDatabase } = useAppData();
   const pad = useNumberPad();
   const [confirming, setConfirming] = useState(false);
 
-  return (
+  const scroll = (
     <ScrollView
       // Un toque en un boton con el teclado abierto lo pulsa a la primera; uno en
       // cualquier otro sitio sigue cerrando el teclado.
@@ -91,9 +100,32 @@ export function Screen({ title, children }: { title?: string; children: ReactNod
       {state.phase === 'ready' && children}
     </ScrollView>
   );
+
+  if (!overlay) return scroll;
+
+  return (
+    <View style={styles.stack}>
+      {scroll}
+      {/* Con el teclado abierto la capa se encoge por arriba de el: si no, los
+          botones de guardar y confirmar quedan justo debajo de las teclas. */}
+      <View style={[styles.overlay, pad.isOpen && { bottom: NUMBER_PAD_HEIGHT }]}>{overlay}</View>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
+  stack: {
+    flex: 1,
+  },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: 14,
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+  },
   scroll: {
     flex: 1,
     backgroundColor: theme.bg,

@@ -12,6 +12,7 @@ import {
   addFoodEntry,
   addFood,
   addFoodFromLabel,
+  datesWithFood,
   consumeBatchPortion,
   createBatch,
   deleteFoodEntry,
@@ -19,6 +20,7 @@ import {
   listFoods,
   listOpenBatches,
   listPortions,
+  updateFood,
 } from './queries.ts';
 import { SODIUM_FLAG_MG, dailyTotals, dairyPortions, type LoggedPortion } from './totals.ts';
 import { MEAL_SLOTS, mealSlotAtHour, portionLabel, quickAmounts, unitLabel } from './units.ts';
@@ -59,6 +61,7 @@ function food(overrides: Partial<NutritionFoodRow> = {}): NutritionFoodRow {
   return {
     id: 'chicken',
     name: 'Pechuga de pollo',
+    keywords: null,
     brand: null,
     store: null,
     base_unit: 'g',
@@ -687,4 +690,80 @@ test('el registro abre en el espacio de comida en el que esta el reloj', () => {
   assert.equal(mealSlotAtHour(19, 30), MEAL_SLOTS[4]);
   assert.equal(mealSlotAtHour(23, 59), MEAL_SLOTS[4]);
   assert.equal(mealSlotAtHour(0), MEAL_SLOTS[0]);
+});
+
+test('corregir un alimento cambia lo que dicen todos los dias que lo comieron', async () => {
+  const { db } = seeded();
+
+  await addFoodEntry(db, {
+    date: '2026-09-20',
+    foodId: 'eggs-large',
+    quantity: 6,
+    unit: 'huevo',
+    mealSlot: 'desayuno',
+  });
+  await addFoodEntry(db, {
+    date: '2026-09-22',
+    foodId: 'eggs-large',
+    quantity: 3,
+    unit: 'huevo',
+    mealSlot: 'cena',
+  });
+
+  const before = dailyTotals(await listPortions(db, '2026-09-20'));
+  assert.equal(Math.round(before.proteinG), 39);
+
+  const eggs = await getFood(db, 'eggs-large');
+  assert.ok(eggs);
+  await updateFood(db, 'eggs-large', {
+    name: eggs.name,
+    kcal: eggs.kcal,
+    proteinG: 7,
+    fatG: eggs.fat_g,
+    carbsG: eggs.carbs_g,
+    sugarG: eggs.sugar_g,
+    sodiumMg: eggs.sodium_mg,
+    keywords: 'egg, eggs, huevo',
+  });
+
+  // Se guarda por unidad, asi que los seis huevos de ese dia ya dicen otra cosa.
+  const after = dailyTotals(await listPortions(db, '2026-09-20'));
+  assert.equal(after.proteinG, 42);
+
+  // Y los dias a rehacer son justo los dos en que lo comio.
+  assert.deepEqual(await datesWithFood(db, 'eggs-large'), ['2026-09-20', '2026-09-22']);
+
+  const saved = await getFood(db, 'eggs-large');
+  assert.equal(saved?.keywords, 'egg, eggs, huevo');
+});
+
+test('la unidad de un alimento no se puede cambiar al corregirlo', async () => {
+  const { db } = seeded();
+  const rice = await addFood(db, {
+    name: 'Arroz',
+    amount: 100,
+    unit: 'g',
+    kind: 'mass',
+    kcal: 350,
+    proteinG: 7,
+    fatG: 2,
+    carbsG: 74,
+  });
+
+  await updateFood(db, rice, {
+    name: 'Arroz integral',
+    kcal: 360,
+    proteinG: 8,
+    fatG: 2.5,
+    carbsG: 75,
+    sugarG: null,
+    sodiumMg: null,
+    keywords: null,
+  });
+
+  const saved = await getFood(db, rice);
+  // Sigue guardado por gramo, y los numeros nuevos entraron divididos entre cien.
+  assert.equal(saved?.base_unit, 'g');
+  assert.equal(saved?.kcal, 3.6);
+  assert.equal(saved?.protein_g, 0.08);
 });

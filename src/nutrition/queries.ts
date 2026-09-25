@@ -202,7 +202,19 @@ export type NewFood = {
   carbsG: number | null;
   sugarG?: number | null;
   sodiumMg?: number | null;
+  /** Como lo va a buscar: "egg, costco", separadas por coma. */
+  keywords?: string | null;
 };
+
+/** Sin espacios de mas y sin comas vacias, que es lo que se teclea de verdad. */
+function cleanKeywords(keywords: string | null | undefined): string | null {
+  if (keywords === null || keywords === undefined) return null;
+  const parts = keywords
+    .split(',')
+    .map((word) => word.trim())
+    .filter((word) => word !== '');
+  return parts.length === 0 ? null : parts.join(', ');
+}
 
 function labelFigure(label: string, value: number): void {
   if (!Number.isFinite(value) || value < 0) throw new Error(`${label} of ${value} is not a figure`);
@@ -245,9 +257,9 @@ export async function addFood(db: SQLiteDatabase, food: NewFood): Promise<string
     `INSERT INTO nutrition_food
        (id, name, brand, store, base_unit, unit_kind, base_unit_g, kcal, protein_g, carbs_g,
         sugar_g, fat_g, fibre_g, sodium_mg, source, price_cad_cents, package_size,
-        glycemic_index, is_dairy)
+        glycemic_index, is_dairy, keywords)
      VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'label',
-             NULL, NULL, NULL, 0);`,
+             NULL, NULL, NULL, 0, ?);`,
     [
       id,
       name,
@@ -261,6 +273,7 @@ export async function addFood(db: SQLiteDatabase, food: NewFood): Promise<string
       sugarG === null ? null : sugarG / per,
       food.fatG / per,
       sodiumMg === null ? null : sodiumMg / per,
+      cleanKeywords(food.keywords),
     ],
   );
 
@@ -287,6 +300,74 @@ export async function addFoodFromLabel(db: SQLiteDatabase, food: LabelFood): Pro
     fatG: food.fatG,
     carbsG: food.carbsG,
   });
+}
+
+export type FoodEdit = {
+  name: string;
+  kcal: number;
+  proteinG: number;
+  fatG: number;
+  carbsG: number | null;
+  sugarG: number | null;
+  sodiumMg: number | null;
+  keywords: string | null;
+};
+
+/** Lo que describen los macros de un alimento: una unidad, o cien gramos o mililitros. */
+export function referenceAmount(food: NutritionFoodRow): number {
+  return food.unit_kind === 'count' ? 1 : 100;
+}
+
+/**
+ * Corrige lo que dice un alimento.
+ *
+ * La unidad no se toca: los macros se guardan por unidad base y todo lo que ya comio
+ * esta anotado en esa unidad, asi que cambiarla reescribiria en silencio cada porcion
+ * del pasado. Lo demas si, y como los totales se calculan leyendo esta fila, el
+ * cambio alcanza a todos los dias de golpe. Las notas guardadas de esos dias son lo
+ * unico que hay que rehacer aparte.
+ */
+export async function updateFood(db: SQLiteDatabase, id: string, food: FoodEdit): Promise<void> {
+  const current = await getFood(db, id);
+  if (!current) throw new Error(`there is no food called ${id}`);
+
+  const name = food.name.trim();
+  if (name === '') throw new Error('a food needs a name');
+  labelFigure('kcal', food.kcal);
+  labelFigure('protein', food.proteinG);
+  labelFigure('fat', food.fatG);
+  const carbsG = optionalFigure('carbohydrate', food.carbsG);
+  const sugarG = optionalFigure('sugar', food.sugarG);
+  const sodiumMg = optionalFigure('sodium', food.sodiumMg);
+
+  const per = referenceAmount(current);
+
+  await db.runAsync(
+    `UPDATE nutrition_food
+        SET name = ?, kcal = ?, protein_g = ?, carbs_g = ?, sugar_g = ?, fat_g = ?,
+            sodium_mg = ?, keywords = ?
+      WHERE id = ?;`,
+    [
+      name,
+      food.kcal / per,
+      food.proteinG / per,
+      carbsG === null ? null : carbsG / per,
+      sugarG === null ? null : sugarG / per,
+      food.fatG / per,
+      sodiumMg === null ? null : sodiumMg / per,
+      cleanKeywords(food.keywords),
+      id,
+    ],
+  );
+}
+
+/** Los dias en los que comio ese alimento, que son los que hay que volver a puntuar. */
+export async function datesWithFood(db: SQLiteDatabase, foodId: string): Promise<IsoDate[]> {
+  const rows = await db.getAllAsync<{ date: IsoDate }>(
+    'SELECT DISTINCT date FROM nutrition_food_entry WHERE food_id = ? ORDER BY date;',
+    [foodId],
+  );
+  return rows.map((row) => row.date);
 }
 
 export type NewBatch = {

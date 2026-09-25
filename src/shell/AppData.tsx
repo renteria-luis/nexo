@@ -72,7 +72,9 @@ import {
   addFoodEntry,
   addFood as addFoodToCatalog,
   addFoodFromLabel,
+  datesWithFood,
   loadFoodHistory,
+  updateFood,
   consumeBatchPortion,
   createBatch,
   deleteFoodEntry,
@@ -82,6 +84,7 @@ import {
   portionMacros,
   spoilageWarning,
   type LabelFood,
+  type FoodEdit,
   type FoodHistory,
   type LastMeal,
   type NewFood,
@@ -118,6 +121,7 @@ import { loadCharts as loadChartsData, type ChartsData } from './charts.ts';
 import {
   listDayRows,
   loadDayDetail,
+  rescoreDays,
   rescoreMissing,
   rescoreSettling,
   windowRange,
@@ -314,6 +318,8 @@ export type AppData = {
   addFood: (entry: Omit<NewFoodEntry, 'date'>) => void;
   /** Un alimento nuevo copiado de su envase, que queda en su catalogo y en su respaldo. */
   createFood: (food: NewFood) => void;
+  /** Corrige la ficha de un alimento y rehace la nota de los dias que lo comieron. */
+  editFood: (id: string, food: FoodEdit) => void;
   /** Vuelve a anotar una comida entera de otro dia, en el espacio que se elija. */
   repeatMeal: (meal: LastMeal, mealSlot: string) => void;
   removeFood: (entryId: string) => void;
@@ -474,6 +480,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     logDay: (entry) => run((db) => upsertDailyLog(db, { date: todayIso(), ...entry })),
     addFood: (entry) => run((db) => addFoodEntry(db, { ...entry, date: todayIso() })),
     createFood: (food) => run((db) => addFoodToCatalog(db, food)),
+    editFood: (id, food) =>
+      run(async (db) => {
+        await updateFood(db, id, food);
+        // Corregir una ficha corrige todos los dias en que la comio, asi que sus
+        // notas guardadas dejan de coincidir con lo que ahora dicen los totales.
+        await rescoreDays(db, await datesWithFood(db, id), todayIso());
+      }),
     repeatMeal: (meal, mealSlot) =>
       run(async (db) => {
         for (const portion of meal.entries) {

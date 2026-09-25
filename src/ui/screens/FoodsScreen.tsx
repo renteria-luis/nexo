@@ -1,0 +1,187 @@
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+
+import type { NutritionFoodRow } from '../../db/types.ts';
+import { matchesSearch, referenceAmount, roundAmount } from '../../nutrition/index.ts';
+import { useAppData } from '../../shell/AppData.tsx';
+import { FoodForm } from '../FoodForm.tsx';
+import { mono, theme } from '../theme.ts';
+
+import { Screen } from './Screen.tsx';
+
+/**
+ * El catalogo, para corregirlo.
+ *
+ * Aparte de la pantalla de anotar a proposito: ahi solo elige lo que comio, y aqui
+ * se cambia lo que significa cada cosa. Mezclarlos era lo que llenaba la pantalla de
+ * registro de botones que no usa mientras come.
+ */
+function macros(food: NutritionFoodRow): string {
+  const per = referenceAmount(food);
+  const unit = food.unit_kind === 'count' ? food.base_unit : `100 ${food.base_unit}`;
+  const carbs = food.carbs_g === null ? '· carbos —' : `· ${roundAmount(food.carbs_g * per)} C`;
+  return `${unit} · ${roundAmount(food.kcal * per)} kcal · ${roundAmount(food.protein_g * per)} P ${carbs}`;
+}
+
+export function FoodsScreen() {
+  const { state, createFood, editFood } = useAppData();
+  const [search, setSearch] = useState('');
+  const [editing, setEditing] = useState<NutritionFoodRow | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  if (state.phase !== 'ready') return null;
+  const foods = state.loaded.foods.filter((food) =>
+    matchesSearch([food.name, food.brand, food.store, food.keywords], search),
+  );
+
+  const open = creating || editing !== null;
+
+  return (
+    <Screen
+      title="Alimentos"
+      overlay={
+        open ? (
+          <FoodForm
+            food={editing}
+            onCancel={() => {
+              setCreating(false);
+              setEditing(null);
+            }}
+            onCreate={(food) => {
+              createFood(food);
+              setCreating(false);
+            }}
+            onEdit={(id, food) => {
+              editFood(id, food);
+              setEditing(null);
+            }}
+          />
+        ) : null
+      }
+    >
+      <Text style={styles.hint}>
+        Lo que diga aquí es lo que cuenta en todos tus días, también en los ya anotados. Las
+        palabras clave sirven para encontrarlo al anotar.
+      </Text>
+
+      <View style={styles.head}>
+        <Pressable
+          accessibilityLabel="Agregar un alimento nuevo"
+          onPress={() => setCreating(true)}
+          style={styles.new}
+        >
+          <Text style={styles.newText}>+ nuevo</Text>
+        </Pressable>
+        <Text style={styles.count}>{state.loaded.foods.length} alimentos</Text>
+      </View>
+
+      <SearchField value={search} onChange={setSearch} />
+
+      {foods.map((food) => (
+        <Pressable
+          key={food.id}
+          accessibilityLabel={`Corregir ${food.name}`}
+          onPress={() => setEditing(food)}
+          style={styles.row}
+        >
+          <Text style={styles.name}>{food.name}</Text>
+          <Text style={styles.macros}>{macros(food)}</Text>
+          {food.keywords !== null && <Text style={styles.keywords}>{food.keywords}</Text>}
+        </Pressable>
+      ))}
+    </Screen>
+  );
+}
+
+function SearchField({ value, onChange }: { value: string; onChange: (next: string) => void }) {
+  return (
+    <View style={styles.searchRow}>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        accessibilityLabel="Buscar un alimento"
+        placeholder="buscar"
+        placeholderTextColor={theme.textGhost}
+        autoCorrect={false}
+        style={styles.search}
+      />
+      {value.trim() !== '' && (
+        <Pressable accessibilityLabel="Borrar la búsqueda" onPress={() => onChange('')}>
+          <Text style={styles.clear}>borrar</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  hint: {
+    fontSize: 11,
+    color: theme.textGhost,
+    fontFamily: mono,
+  },
+  head: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  new: {
+    borderWidth: 1,
+    borderColor: theme.lineStrong,
+    borderRadius: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  newText: {
+    fontSize: 13,
+    fontFamily: mono,
+    color: theme.text,
+  },
+  count: {
+    fontSize: 11,
+    fontFamily: mono,
+    color: theme.textGhost,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  search: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: theme.lineSoft,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+    fontFamily: mono,
+    color: theme.text,
+  },
+  clear: {
+    fontSize: 11,
+    fontFamily: mono,
+    color: theme.textFaint,
+  },
+  row: {
+    borderTopWidth: 1,
+    borderTopColor: theme.line,
+    paddingVertical: 8,
+    gap: 2,
+  },
+  name: {
+    fontSize: 13,
+    fontFamily: mono,
+    color: theme.text,
+  },
+  macros: {
+    fontSize: 10,
+    fontFamily: mono,
+    color: theme.textFaint,
+  },
+  keywords: {
+    fontSize: 10,
+    fontFamily: mono,
+    color: theme.accent,
+  },
+});

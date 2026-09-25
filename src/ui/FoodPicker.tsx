@@ -21,7 +21,8 @@ export type FoodPickerProps = {
   slot: string;
   selectedId: string | null;
   onSelect: (food: NutritionFoodRow) => void;
-  onCreate: () => void;
+  /** Lleva al catalogo, que es donde se crean y se corrigen. */
+  onOpenCatalogue: () => void;
 };
 
 /** Cuantos caben arriba sin que la pantalla se vuelva otra lista larga. */
@@ -63,7 +64,7 @@ export function FoodPicker({
   slot,
   selectedId,
   onSelect,
-  onCreate,
+  onOpenCatalogue,
 }: FoodPickerProps) {
   const [search, setSearch] = useState('');
   const [showAll, setShowAll] = useState(false);
@@ -71,7 +72,9 @@ export function FoodPicker({
   const byId = new Map(foods.map((food) => [food.id, food]));
   const searching = search.trim() !== '';
 
-  const found = foods.filter((food) => matchesSearch([food.name, food.brand, food.store], search));
+  const found = foods.filter((food) =>
+    matchesSearch([food.name, food.brand, food.store, food.keywords], search),
+  );
 
   const pick = (ids: readonly string[], already: Set<string>): NutritionFoodRow[] => {
     const rows: NutritionFoodRow[] = [];
@@ -125,17 +128,19 @@ export function FoodPicker({
           </Pressable>
         )}
         <Pressable
-          accessibilityLabel="Agregar un alimento nuevo"
-          onPress={onCreate}
+          accessibilityLabel="Editar los alimentos"
+          onPress={onOpenCatalogue}
           style={styles.new}
         >
-          <Text style={styles.newText}>+ nuevo</Text>
+          <Text style={styles.newText}>editar ›</Text>
         </Pressable>
       </View>
 
       {searching ? (
         found.length === 0 ? (
-          <Text style={styles.empty}>Nada con ese nombre. Con &quot;+ nuevo&quot; lo agregas.</Text>
+          <Text style={styles.empty}>
+            Nada con ese nombre. En &quot;editar&quot; lo agregas o le pones palabras clave.
+          </Text>
         ) : (
           found.map(row)
         )

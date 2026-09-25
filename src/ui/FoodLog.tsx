@@ -12,14 +12,12 @@ import {
   type FoodHistory,
   type LastMeal,
   type LoggedPortion,
-  type NewFood,
   type NewFoodEntry,
   type NutritionTotals,
 } from '../nutrition/index.ts';
 import { shortDate } from '../core/dates.ts';
 
 import { FoodPicker } from './FoodPicker.tsx';
-import { NewFoodPanel } from './NewFoodPanel.tsx';
 import { NumericField } from './NumericField.tsx';
 import { mono, theme } from './theme.ts';
 
@@ -58,8 +56,8 @@ export type FoodLogProps = {
   kcalTarget: number | null;
   onAdd: (entry: Omit<NewFoodEntry, 'date'>) => void;
   onRemove: (entryId: string) => void;
-  /** Un alimento que no esta en el catalogo, copiado de su envase. */
-  onCreateFood: (food: NewFood) => void;
+  /** Lleva al catalogo: crear y corregir viven aparte de anotar. */
+  onOpenCatalogue: () => void;
   /** Lo que ya anoto, que es lo que decide el orden de la lista. */
   history: FoodHistory;
   /** Sin esto no se ofrece repetir: solo tiene sentido sobre el dia de hoy. */
@@ -67,6 +65,9 @@ export type FoodLogProps = {
   /** "Comida de hoy" salvo cuando el dia no es hoy. */
   heading?: string;
 };
+
+/** Los que salen arriba con su total: son los unicos que pueden mostrar un hueco. */
+const SHOWN_NUTRIENTS = ['kcal', 'protein_g', 'carbs_g', 'fat_g', 'sodium_mg'];
 
 export function FoodLog({
   foods,
@@ -76,7 +77,7 @@ export function FoodLog({
   kcalTarget,
   onAdd,
   onRemove,
-  onCreateFood,
+  onOpenCatalogue,
   history,
   onRepeatMeal,
   heading = 'Comida de hoy',
@@ -89,7 +90,6 @@ export function FoodLog({
     const now = new Date();
     return mealSlotAtHour(now.getHours(), now.getMinutes());
   });
-  const [creating, setCreating] = useState(false);
   const repeatable = history.lastMealBySlot.get(slot) ?? null;
 
   const selected = foods.find((food) => food.id === foodId) ?? null;
@@ -98,6 +98,15 @@ export function FoodLog({
 
   const missingFor = (nutrient: string) =>
     totals?.missing.some((gap) => gap.nutrient === nutrient) ?? false;
+
+  // El aviso solo puede hablar de los huecos que se ven con un + arriba. La fibra y
+  // el indice glucemico no se muestran, asi que nombrar un alimento por no traerlos
+  // decia "faltan datos" de un alimento que los tiene todos.
+  const shownGaps = (totals?.missing ?? []).filter((gap) =>
+    gap.nutrient === 'glycemic_index'
+      ? totals?.glycemicLoad !== null && totals?.glycemicLoad !== undefined
+      : SHOWN_NUTRIENTS.includes(gap.nutrient),
+  );
 
   return (
     <View style={styles.wrapper}>
@@ -152,11 +161,11 @@ export function FoodLog({
         </View>
       )}
 
-      {totals && totals.missing.length > 0 && (
+      {totals && shownGaps.length > 0 && (
         <Text style={styles.gap}>
           El signo + marca totales incompletos:{' '}
-          {[...new Set(totals.missing.map((entry) => entry.foodName))].join(', ')} no traen todos
-          los datos en la spec.
+          {[...new Set(shownGaps.map((entry) => entry.foodName))].join(', ')} no trae todos los
+          datos. Se arreglan en editar alimentos.
         </Text>
       )}
 
@@ -207,23 +216,13 @@ export function FoodLog({
           history={history}
           slot={slot}
           selectedId={foodId}
-          onCreate={() => setCreating((open) => !open)}
+          onOpenCatalogue={onOpenCatalogue}
           onSelect={(food) => {
             setFoodId(food.id);
             // Con la cantidad de la ultima vez ya puesta, anotar son dos toques.
             setQuantity(roundAmount(history.lastQuantity.get(food.id) ?? 1));
           }}
         />
-
-        {creating && (
-          <NewFoodPanel
-            onCancel={() => setCreating(false)}
-            onSave={(food) => {
-              onCreateFood(food);
-              setCreating(false);
-            }}
-          />
-        )}
 
         {selected && (
           <View style={styles.chips}>

@@ -374,9 +374,25 @@ export async function rescoreSettling(
   today: IsoDate,
   days = SETTLING_DAYS,
 ): Promise<number> {
+  const dates: IsoDate[] = [];
+  for (let back = days - 1; back >= 0; back -= 1) dates.push(addDays(today, -back));
+  return rescoreDays(db, dates, today);
+}
+
+/**
+ * Vuelve a puntuar unos dias concretos, pasen lo que pasen.
+ *
+ * Corregir los gramos de proteina de un alimento cambia el pasado entero: los totales
+ * se calculan leyendo la ficha, pero la nota de cada dia esta guardada. Estos son los
+ * dias que hay que rehacer.
+ */
+export async function rescoreDays(
+  db: SQLiteDatabase,
+  dates: readonly IsoDate[],
+  today: IsoDate,
+): Promise<number> {
   let changed = 0;
-  for (let back = days - 1; back >= 0; back -= 1) {
-    const date = addDays(today, -back);
+  for (const date of dates) {
     const day = await assembleDay(db, date, today);
     if (day.log === null || day.result?.score == null) continue;
     if (day.log.score === day.result.score) continue;

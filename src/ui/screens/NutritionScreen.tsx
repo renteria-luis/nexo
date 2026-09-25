@@ -10,8 +10,7 @@ import { Screen } from './Screen.tsx';
 import { mono, theme } from '../theme.ts';
 
 export function NutritionScreen() {
-  const { state, addFood, createFood, repeatMeal, removeFood, startBatch, eatBatchPortion } =
-    useAppData();
+  const { state, addFood, repeatMeal, removeFood, startBatch, eatBatchPortion } = useAppData();
   const navigation = useNavigation<{ navigate: (name: string) => void }>();
   if (state.phase !== 'ready') return <Screen title="Comida">{null}</Screen>;
 
@@ -28,7 +27,7 @@ export function NutritionScreen() {
         kcalTarget={targets?.kcal ?? null}
         onAdd={addFood}
         onRemove={removeFood}
-        onCreateFood={createFood}
+        onOpenCatalogue={() => navigation.navigate('Alimentos')}
         history={loaded.foodHistory}
         onRepeatMeal={repeatMeal}
       />

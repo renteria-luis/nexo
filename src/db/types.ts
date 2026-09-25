@@ -206,6 +206,8 @@ export type NutritionFoodRow = {
   package_size: number | null;
   glycemic_index: number | null;
   is_dairy: SqlBool;
+  /** Lo que el escribe para encontrarlo: "egg, costco", separadas por coma. */
+  keywords: string | null;
 };
 
 export type NutritionContainerRow = {

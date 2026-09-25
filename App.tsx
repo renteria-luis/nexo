@@ -14,6 +14,7 @@ import { PendingScreen } from './src/ui/screens/PendingScreen.tsx';
 import { ReadingsScreen } from './src/ui/screens/ReadingsScreen.tsx';
 import { ChartsScreen } from './src/ui/screens/ChartsScreen.tsx';
 import { DayScreen } from './src/ui/screens/DayScreen.tsx';
+import { FoodsScreen } from './src/ui/screens/FoodsScreen.tsx';
 import { RecordsScreen } from './src/ui/screens/RecordsScreen.tsx';
 import { RoutineNotesScreen } from './src/ui/screens/RoutineNotesScreen.tsx';
 import { SettingsScreen } from './src/ui/screens/SettingsScreen.tsx';
@@ -218,6 +219,13 @@ function Navigation() {
         <RootStack.Screen
           name="Gráficas"
           component={ChartsScreen}
+          options={({ navigation }) => ({
+            headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
+          })}
+        />
+        <RootStack.Screen
+          name="Alimentos"
+          component={FoodsScreen}
           options={({ navigation }) => ({
             headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
           })}
