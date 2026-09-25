@@ -47,6 +47,7 @@ import { listDeals, listDiscounts, listSources, type DealWithContext } from '../
 import { stepsAdvice, type StepsAdvice } from '../core/steps.ts';
 import { listStudies } from '../core/studies.ts';
 import {
+  backdateFirstSnapshot,
   latestTargetChange,
   recalculateTargets,
   setInitialTargets,
@@ -187,6 +188,10 @@ async function load(exerciseId: string | null): Promise<Loaded> {
     // Spec 3.6: after that, a kilo of drift in the rolling average moves them.
     await recalculateTargets(db, toWeighIns(recent), profile, today);
   }
+
+  // Las metas tienen que cubrir tambien lo que ya estaba anotado cuando se lleno el
+  // perfil, o esos dias no se pueden puntuar nunca.
+  await backdateFirstSnapshot(db);
 
   const assembled = await assembleDay(db, today, today);
 

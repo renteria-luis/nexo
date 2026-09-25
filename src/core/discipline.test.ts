@@ -15,7 +15,7 @@ import {
   type TrainingContext,
 } from './discipline.ts';
 import { MINIMUM_CRITERIA_WITH_DATA } from './scoring.ts';
-import { computeTargets, type TargetProfile } from './targets.ts';
+import { computeTargets, proteinBand, type TargetProfile } from './targets.ts';
 
 const profile: TargetProfile = {
   heightCm: 170,
@@ -71,7 +71,7 @@ test('missing the training day costs its 22 points', () => {
   close(scoreDay(day, targets, onTrack).score, 78);
 });
 
-test('criteria without data leave both sides of the fraction', () => {
+test('un criterio sin dato no gana sus puntos, y se ve cuantos fueron', () => {
   const day: DisciplineDay = {
     ...perfectDay,
     proteinG: null,
@@ -79,24 +79,66 @@ test('criteria without data leave both sides of the fraction', () => {
     steps: null,
     waterMl: null,
     creatineTaken: null,
-  };
-  // Trained, sleep and alcohol logged, all full: 52 of a possible 52.
-  close(scoreDay(day, targets, onTrack).score, 100);
-});
-
-test('a day with too little logged has no score at all', () => {
-  const day: DisciplineDay = {
-    ...perfectDay,
-    proteinG: null,
-    kcal: null,
-    steps: null,
-    waterMl: null,
-    creatineTaken: null,
-    alcoholDrinks: null,
   };
   const result = scoreDay(day, targets, onTrack);
+  // Entreno, sueno y alcohol llenos: 22 + 20 + 10 de los cien del dia.
+  close(result.score, 52);
+  // Y los otros 48 no son un suspenso, son cuatro cosas sin anotar.
+  close(result.pointsWithoutData, 48);
+});
+
+test('un solo criterio ya da nota, y vale lo que vale ese criterio', () => {
+  const onlyCreatine: DisciplineDay = {
+    trained: null,
+    sleepMinutes: null,
+    proteinG: null,
+    kcal: null,
+    alcoholDrinks: null,
+    alcoholWithinSixHoursAfterTraining: false,
+    waterMl: null,
+    steps: null,
+    creatineTaken: true,
+    isTrainingDay: false,
+  };
+  const result = scoreDay(onlyCreatine, targets, onTrack);
+  close(result.score, CRITERION_WEIGHTS.creatine);
+  assert.equal(result.criteriaWithData, MINIMUM_CRITERIA_WITH_DATA);
+});
+
+test('un dia sin nada anotado no tiene nota', () => {
+  const empty: DisciplineDay = {
+    trained: null,
+    sleepMinutes: null,
+    proteinG: null,
+    kcal: null,
+    alcoholDrinks: null,
+    alcoholWithinSixHoursAfterTraining: false,
+    waterMl: null,
+    steps: null,
+    creatineTaken: null,
+    isTrainingDay: false,
+  };
+  const result = scoreDay(empty, targets, onTrack);
   assert.equal(result.score, null);
-  assert.ok(result.criteriaWithData < MINIMUM_CRITERIA_WITH_DATA);
+  assert.equal(result.criteriaWithData, 0);
+  close(result.pointsWithoutData, 100);
+});
+
+test('un descanso marcado con la semana cumplida vale como entrenar', () => {
+  const resting: DisciplineDay = { ...perfectDay, trained: null, isTrainingDay: false };
+  const restDay: TrainingContext = { ...onTrack, isScheduledRestDay: true };
+
+  // Cinco sesiones hechas, asi que los 22 del entreno se ganan descansando.
+  close(scoreDay(resting, targets, restDay).score, 100);
+
+  // Con sesiones pendientes no: si no, marcar descanso seria la forma facil de sacar
+  // cien todos los dias.
+  const behind: TrainingContext = { ...restDay, sessionsLastSevenDays: 2 };
+  const result = scoreDay(resting, targets, behind);
+  close(result.score, 78);
+  close(result.pointsWithoutData, 22);
+  // Y spec 4.3 sigue: un descanso marcado no arrastra la penalizacion.
+  assert.equal(result.penalty, 0);
 });
 
 test('sleep is scored linearly between six and seven hours', () => {
@@ -107,6 +149,23 @@ test('sleep is scored linearly between six and seven hours', () => {
   close(at(360), 80); // Zero of the twenty sleep points.
   close(at(330), 80); // Below six hours is the same zero, not worse.
   close(at(390), 90); // Halfway through the hour earns half the twenty.
+});
+
+test('la proteina se pondera en vez de ser todo o nada', () => {
+  const at = (grams: number) =>
+    scoreDay({ ...perfectDay, proteinG: grams }, targets, onTrack).score;
+  const band = proteinBand(targets);
+
+  // 73 kg: banda 131 a 160, y a cero en 87, que es 1.2 g por kilo.
+  assert.equal(band.from, 131);
+  assert.equal(band.to, 160);
+
+  close(at(145), 100);
+  close(at(band.from), 100);
+  // Ocho gramos cortos ya no cuestan los 16 puntos enteros, cuestan tres.
+  close(at(123), 100 - 16 * (1 - (123 - 87) / (131 - 87)));
+  close(at(87), 84);
+  close(at(60), 84);
 });
 
 test('under-eating misses the calorie band just as over-eating does', () => {

@@ -88,8 +88,13 @@ export function DayScreen() {
       )}
       {report.noScore === 'pocos-datos' && (
         <Text style={styles.warn}>
-          Gris porque solo {report.criteriaWithData} de los 8 criterios tienen dato. Con tres ya hay
-          nota.
+          Gris porque ese día no quedó nada anotado. Con un solo criterio ya hay nota.
+        </Text>
+      )}
+      {report.score !== null && report.pointsWithoutData > 0 && (
+        <Text style={styles.warn}>
+          {Math.round(report.pointsWithoutData)} de los 100 puntos del día se quedaron sin anotar,
+          que no es lo mismo que no haberlos cumplido.
         </Text>
       )}
       {day.log?.rest_day === 1 && (

@@ -128,6 +128,24 @@ export function proteinBand(targets: TargetValues): { from: number; to: number }
 }
 
 /**
+ * Spec 4.1. La proteina se pondera en vez de ser todo o nada: 123 g contra una banda
+ * de 131 a 160 perdia los 16 puntos enteros por ocho gramos, y eso no es lo que dice
+ * la evidencia. Dentro de la banda vale todo, porque la banda es la evidencia (Morton
+ * 2018, 1.6 a 2.2 g/kg, y spec 3.6 la pone en 1.8 a 2.2). Por debajo baja en linea
+ * hasta cero en 1.2 g/kg, que es donde la respuesta ya esta claramente comprometida;
+ * por encima, hasta 3.0 g/kg, donde empieza a quitarle sitio a los otros macros.
+ */
+export function proteinScoringBand(targets: TargetValues): Band {
+  const band = proteinBand(targets);
+  return {
+    fullFrom: band.from,
+    fullTo: band.to,
+    partialFrom: Math.floor(targets.weightBasisKg * 1.2),
+    partialTo: Math.ceil(targets.weightBasisKg * 3),
+  };
+}
+
+/**
  * Spec 3.3: 25% to 33% of energy, with a hard floor of 0.8 g per kg. Below roughly
  * 20% of calories is where the testosterone decline in Whittaker and Wu appears,
  * so the floor wins when it is the higher of the two.

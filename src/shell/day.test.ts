@@ -83,9 +83,10 @@ test('nothing eaten leaves the food criteria without data, not at zero grams', a
   const calories = day.result?.criteria.find((c) => c.id === 'calories');
   assert.equal(protein?.fraction, null);
   assert.equal(calories?.fraction, null);
-  // Three criteria logged and all met, so the day sits at 100 rather than being
-  // dragged down by food that was never entered.
-  assert.equal(day.result?.score, 100);
+  // Agua, pasos y creatina, los tres llenos: 8 + 8 + 6 de los cien del dia. Los 78
+  // que faltan no son un suspenso, son seis cosas sin anotar.
+  assert.equal(day.result?.score, 22);
+  assert.equal(day.result?.pointsWithoutData, 78);
 });
 
 test('what was eaten reaches the grid through the nutrition module', async () => {
@@ -158,10 +159,9 @@ test('drinks after training cost half again, through the stored flag', async () 
   await upsertDailyLog(db, { date: TODAY, alcoholAfterTraining: true });
   const afterTraining = await assembleDay(db, TODAY, TODAY);
 
-  // Only water, creatine, steps and alcohol were logged, so the day is judged out
-  // of 8 + 6 + 8 + 10 = 32 points. Two drinks cost 2 of those, which is 6.25%.
-  const lost = (score: number | null | undefined) => 100 - (score ?? 0);
-  assert.equal(lost(plain.result?.score), 6.25);
-  // The same two drinks inside six hours of a session cost 3 instead of 2.
-  assert.equal(lost(afterTraining.result?.score), 3 * (100 / 32));
+  // Agua, creatina, pasos y alcohol anotados: 8 + 6 + 8 + 10 = 32 puntos en juego.
+  // Dos tragos cuestan 2 de los diez del alcohol, asi que el dia queda en 30.
+  assert.equal(plain.result?.score, 30);
+  // Los mismos dos tragos dentro de las seis horas de una sesion cuestan 3.
+  assert.equal(afterTraining.result?.score, 29);
 });

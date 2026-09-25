@@ -88,8 +88,13 @@ export function DayDialog({ date, unit, load, onClose, onOpenDetail }: DayDialog
             <Text style={styles.why}>Sin nota: faltan tus metas en Ajustes.</Text>
           )}
           {report?.noScore === 'pocos-datos' && (
+            <Text style={styles.why}>Sin nota: no anotaste nada ese día.</Text>
+          )}
+          {/* La nota es sobre cien, asi que un dia a medio anotar y un dia malo dan
+              parecido. Esta linea es la que los separa. */}
+          {report !== null && report.score !== null && report.pointsWithoutData > 0 && (
             <Text style={styles.why}>
-              Sin nota: solo {report.criteriaWithData} de 8 criterios con dato.
+              {Math.round(report.pointsWithoutData)} puntos sin anotar de los 100 del día.
             </Text>
           )}
 

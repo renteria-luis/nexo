@@ -7,7 +7,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { storeScore, upsertDailyLog } from '../core/daily-log.ts';
 import { migrations } from '../db/migrations/index.ts';
 import { computeTargets } from '../core/targets.ts';
-import { setInitialTargets, writeTargetSnapshot } from '../core/snapshots.ts';
+import { backdateFirstSnapshot, setInitialTargets, writeTargetSnapshot } from '../core/snapshots.ts';
 import { addFoodEntry } from '../nutrition/index.ts';
 import { addSet, startSession } from '../training/index.ts';
 
@@ -201,8 +201,10 @@ test('a day logged before there were targets gets its score back', async () => {
 
   assert.equal(await rescoreMissing(db, { from: '2026-09-01', to: TODAY }, TODAY), 1);
 
+  // Semanas sin entrenar dejan la penalizacion de spec 4.3 en su tope y se come los
+  // 52 puntos que si gano, pero el dia ya tiene nota, que es lo que estaba roto.
   const rows = await listDayRows(db, windowRange('month', TODAY));
-  assert.ok((rows.find((row) => row.date === '2026-09-21')?.score ?? 0) > 0);
+  assert.notEqual(rows.find((row) => row.date === '2026-09-21')?.score, null);
 });
 
 test('las graficas leen lo mismo que el resto de la app', async () => {
@@ -274,9 +276,12 @@ test('un dia de puro entreno y comida tambien recibe su nota', async () => {
     },
     TODAY,
   );
+  await backdateFirstSnapshot(db);
 
   assert.ok((await rescoreMissing(db, { from: '2026-09-01', to: TODAY }, TODAY)) > 0);
 
+  // Semanas sin entrenar dejan la penalizacion de spec 4.3 en su tope y se come los
+  // 52 puntos que si gano, pero el dia ya tiene nota, que es lo que estaba roto.
   const rows = await listDayRows(db, windowRange('month', TODAY));
-  assert.ok((rows.find((row) => row.date === '2026-09-21')?.score ?? 0) > 0);
+  assert.notEqual(rows.find((row) => row.date === '2026-09-21')?.score, null);
 });

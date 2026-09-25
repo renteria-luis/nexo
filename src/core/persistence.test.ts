@@ -23,6 +23,7 @@ import {
 } from './daily-log.ts';
 import { scoreDay } from './discipline.ts';
 import {
+  backdateFirstSnapshot,
   latestTargetChange,
   setInitialTargets,
   recalculateTargets,
@@ -326,9 +327,24 @@ test('lo anotado antes de llenar el perfil tambien se puede puntuar', async () =
   await upsertDailyLog(db, { date: '2026-09-24', waterMl: 2000 });
 
   await setInitialTargets(db, 73, profile, '2026-09-24');
+  assert.equal(await targetsInForceOn(db, '2026-09-20'), null);
 
-  // La primera foto arranca el dia del primer registro, no el dia que la creo.
-  const before = await targetsInForceOn(db, '2026-09-20');
-  assert.equal(before?.weightBasisKg, 73);
+  // La foto se estira hasta el primer registro, y ahi ya hay contra que medir.
+  assert.equal(await backdateFirstSnapshot(db), '2026-09-20');
+  assert.equal((await targetsInForceOn(db, '2026-09-20'))?.weightBasisKg, 73);
   assert.equal(await targetsInForceOn(db, '2026-09-19'), null);
+
+  // Nada que mover la segunda vez, y la foto se queda donde esta.
+  assert.equal(await backdateFirstSnapshot(db), null);
+  assert.equal((await targetsInForceOn(db, '2026-09-20'))?.weightBasisKg, 73);
+});
+
+test('una foto que ya cubre el primer registro no se mueve', async () => {
+  const { db } = fresh();
+
+  await upsertDailyLog(db, { date: '2026-09-22', waterMl: 2000 });
+  await writeTargetSnapshot(db, computeTargets(73, profile, '2026-09-20'), '2026-09-20');
+
+  assert.equal(await backdateFirstSnapshot(db), null);
+  assert.equal((await targetsInForceOn(db, '2026-09-20'))?.weightBasisKg, 73);
 });

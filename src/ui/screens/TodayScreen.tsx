@@ -122,6 +122,7 @@ export function TodayScreen({
   const scores = loaded.days.map((day) => day.score);
   const average = averageScore(loaded.days);
   const score = loaded.today.result?.score ?? null;
+  const pending = loaded.today.result?.pointsWithoutData ?? 100;
 
   const targets = loaded.today.targets;
   const nutrition = loaded.today.nutrition;
@@ -175,7 +176,15 @@ export function TodayScreen({
       )}
 
       <View style={styles.scoreRow}>
-        <Text style={styles.score}>{score === null ? '—' : Math.round(score)}</Text>
+        <View>
+          <Text style={styles.score}>{score === null ? '—' : Math.round(score)}</Text>
+          {/* La nota es sobre cien y sube durante el dia, asi que a media manana es
+              baja porque casi nada esta anotado todavia, no porque el dia vaya mal. */}
+          <Text style={styles.scoreOutOf}>
+            de 100
+            {pending > 0 ? ` · faltan ${Math.round(pending)} por anotar` : ''}
+          </Text>
+        </View>
         <View>
           <Text style={styles.streak}>Racha {currentStreak(scores)} días</Text>
           <Text style={styles.streakDetail}>
@@ -366,6 +375,11 @@ const styles = StyleSheet.create({
     fontSize: 40,
     fontFamily: mono,
     color: theme.text,
+  },
+  scoreOutOf: {
+    fontSize: 11,
+    fontFamily: mono,
+    color: theme.textGhost,
   },
   streak: {
     fontSize: 13,

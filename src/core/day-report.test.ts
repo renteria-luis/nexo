@@ -102,11 +102,18 @@ test('a day without targets says it is the profile that is missing', () => {
   assert.equal(report.noScore, 'sin-metas');
 });
 
-test('a day with targets but almost nothing logged says it is the day that is empty', () => {
-  const report = reportDay({ ...base, result: scored({ creatineTaken: true }) });
+test('un dia con metas y nada anotado dice que el vacio es el dia', () => {
+  const report = reportDay({ ...base, result: scored({}) });
   assert.equal(report.score, null);
   assert.equal(report.noScore, 'pocos-datos');
-  assert.equal(report.criteriaWithData, 1);
+  assert.equal(report.criteriaWithData, 0);
+});
+
+test('con un solo criterio ya hay nota, y son los puntos de ese criterio', () => {
+  const report = reportDay({ ...base, result: scored({ creatineTaken: true }) });
+  assert.equal(Math.round(report.score ?? 0), 6);
+  assert.equal(report.noScore, null);
+  assert.equal(Math.round(report.pointsWithoutData), 94);
 });
 
 test('the penalty travels with the report, so the low score can be explained', () => {

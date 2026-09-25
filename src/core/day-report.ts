@@ -41,6 +41,8 @@ export type DayReport = {
   base: number | null;
   penalty: number;
   criteriaWithData: number;
+  /** Puntos del dia que nadie anoto, que es distinto de puntos que no se cumplieron. */
+  pointsWithoutData: number;
   missedScheduledSession: boolean;
   noScore: NoScoreReason | null;
   lines: CriterionLine[];
@@ -97,7 +99,16 @@ function lines(input: ReportInput): CriterionLine[] {
       label: CRITERION_LABELS.trained,
       weight: CRITERION_WEIGHTS.trained,
       earned: earned('trained'),
-      value: trained === null ? 'el día no terminó' : trained ? 'entrenó' : 'no entrenó',
+      // Un descanso marcado con la semana cumplida gana los puntos, asi que la linea
+      // tiene que decir por que estan ahi sin haber entrenado.
+      value:
+        log?.rest_day === 1 && earned('trained') === CRITERION_WEIGHTS.trained
+          ? 'descanso planeado'
+          : trained === null
+            ? 'el día no terminó'
+            : trained
+              ? 'entrenó'
+              : 'no entrenó',
       target: null,
     },
     {
@@ -178,6 +189,9 @@ export function reportDay(input: ReportInput): DayReport {
     base: input.result?.base ?? null,
     penalty: input.result?.penalty ?? 0,
     criteriaWithData: withData,
+    pointsWithoutData:
+      input.result?.pointsWithoutData ??
+      all.reduce((sum, line) => (line.earned === null ? sum + line.weight : sum), 0),
     missedScheduledSession: input.result?.missedScheduledSession ?? false,
     noScore,
     lines: all,

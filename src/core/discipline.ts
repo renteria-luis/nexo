@@ -8,7 +8,7 @@ import {
   type DayScore,
   type ScoredCriterion,
 } from './scoring.ts';
-import { kcalBand, proteinBand, type TargetValues } from './targets.ts';
+import { kcalBand, proteinScoringBand, type TargetValues } from './targets.ts';
 
 /** Spec 4.1. Weights are the evidence base, not preference, and they sum to 100. */
 export const CRITERION_WEIGHTS = {
@@ -108,12 +108,29 @@ function binary(value: boolean | null): number | null {
   return value === null ? null : value ? 1 : 0;
 }
 
-export function scoreCriteria(day: DisciplineDay, targets: TargetValues): ScoredCriterion[] {
-  const protein = proteinBand(targets);
+/**
+ * Spec 4.3. Cinco sesiones en los ultimos siete dias dejan los otros dos libres, y un
+ * descanso marcado en uno de esos dias vale como haber entrenado: descansar cuando ya
+ * cumpliste es parte del plan, no un dia perdido. Con sesiones pendientes no vale, o
+ * marcar descanso todos los dias seria la forma mas facil de sacar cien.
+ */
+export function restCountsAsTrained(training: TrainingContext): boolean {
+  return training.isScheduledRestDay && !isScheduledToday(training.sessionsLastSevenDays);
+}
+
+export function scoreCriteria(
+  day: DisciplineDay,
+  targets: TargetValues,
+  training: TrainingContext,
+): ScoredCriterion[] {
   const water = day.isTrainingDay ? targets.waterMlTraining : targets.waterMlRest;
 
   return [
-    { id: 'trained', weight: CRITERION_WEIGHTS.trained, fraction: binary(day.trained) },
+    {
+      id: 'trained',
+      weight: CRITERION_WEIGHTS.trained,
+      fraction: restCountsAsTrained(training) ? 1 : binary(day.trained),
+    },
     {
       id: 'sleep',
       weight: CRITERION_WEIGHTS.sleep,
@@ -125,13 +142,8 @@ export function scoreCriteria(day: DisciplineDay, targets: TargetValues): Scored
     {
       id: 'protein',
       weight: CRITERION_WEIGHTS.protein,
-      // Spec 4.1 scores protein as in band or not; there is no partial shoulder.
       fraction:
-        day.proteinG === null
-          ? null
-          : day.proteinG >= protein.from && day.proteinG <= protein.to
-            ? 1
-            : 0,
+        day.proteinG === null ? null : withinBand(day.proteinG, proteinScoringBand(targets)),
     },
     {
       id: 'calories',
@@ -179,7 +191,7 @@ export function scoreDay(
   targets: TargetValues,
   training: TrainingContext,
 ): DisciplineResult {
-  const criteria = scoreCriteria(day, targets);
+  const criteria = scoreCriteria(day, targets, training);
 
   const missedScheduledSession =
     day.trained === false &&

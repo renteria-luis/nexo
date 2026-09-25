@@ -109,17 +109,38 @@ export async function setInitialTargets(
   if (await targetsInForceOn(db, onDate)) return null;
 
   const targets = computeTargets(weightKg, profile, onDate);
-
-  // Empieza el dia del primer registro y no hoy. Casi siempre se llena el perfil
-  // despues de haber estado anotando unos dias, y con la foto empezando hoy esos
-  // dias se quedaban sin nada contra que medirse, o sea grises para siempre por
-  // mucho que hubiera anotado. Estas son las unicas metas que ha tenido nunca, asi
-  // que son tambien las suyas de esos dias: spec 5.10 sigue cumpliendose, porque lo
-  // que prohibe es juzgar un dia con metas posteriores a las que regian, y aqui no
-  // habia ninguna anterior.
-  const first = await firstLoggedDate(db);
-  await writeTargetSnapshot(db, targets, first !== null && first < onDate ? first : onDate);
+  await writeTargetSnapshot(db, targets, onDate);
   return targets;
+}
+
+/**
+ * Estira la primera foto de metas hasta el dia del primer registro.
+ *
+ * El perfil se llena despues de haber estado anotando unos dias, y la foto nace el
+ * dia que se lleno: los dias de antes no tenian nada contra que medirse, o sea
+ * cuadrito gris para siempre por mucho que hubiera anotado ahi. Estas son las unicas
+ * metas que ha tenido nunca, asi que son tambien las de esos dias, y spec 5.10 sigue
+ * cumpliendose: lo que prohibe es juzgar un dia viejo con metas que llegaron despues
+ * de las que regian ese dia, y antes de esta foto no regia ninguna.
+ *
+ * Corre en cada arranque y no solo al crear la foto, porque un entreno anotado a
+ * mano puede ser de un dia anterior a ella. Devuelve el dia al que la movio, o null
+ * si no habia nada que mover.
+ */
+export async function backdateFirstSnapshot(db: SQLiteDatabase): Promise<IsoDate | null> {
+  const first = await firstLoggedDate(db);
+  if (first === null) return null;
+
+  const earliest = await db.getFirstAsync<{ effective_from: IsoDate }>(
+    'SELECT effective_from FROM core_target_snapshot ORDER BY effective_from LIMIT 1;',
+  );
+  if (!earliest || earliest.effective_from <= first) return null;
+
+  await db.runAsync(
+    'UPDATE core_target_snapshot SET id = ?, effective_from = ? WHERE effective_from = ?;',
+    [`snapshot-${first}`, first, earliest.effective_from],
+  );
+  return first;
 }
 
 export type TargetChange = {

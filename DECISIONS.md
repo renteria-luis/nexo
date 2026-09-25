@@ -66,3 +66,24 @@ permiso de segundo plano: la lectura termina y la radio se apaga sola.
 Rejected: Geocerca en segundo plano. Detectaría la llegada sin tocar nada, pero pide el
 permiso "siempre" y mantiene el servicio despierto, que es justo lo que no quiere.
 
+## 2026-09-24 — La nota del día pasa a ser absoluta sobre 100
+Context: Pedía que un solo criterio bastara para tener nota, porque anotar algo ya
+prueba que no se olvidó de entrar. Con la fórmula anterior, que dividía solo entre los
+criterios con dato, un día de pura creatina habría dado 100 y alargado la racha.
+Decision: La nota es la suma de los puntos ganados sobre los 100 del día. Un criterio
+sin dato no gana nada y cuesta su peso, así que un solo criterio da exactamente lo que
+vale ese criterio. Basta uno para tener nota; con cero, gris. Sus tres días reales
+pasaron de 83 a 76, de 66 a 66 y de 54 a 30: con el día completo las dos fórmulas
+coinciden y solo se separan donde hay huecos.
+Rejected: Dejar el mínimo en 3 y pintar el cuadrito sin número. Pintaba el día pero no
+le daba la nota que pidió. También rechazado subir el peso de la creatina a 10 o 15:
+los pesos de §4.1 salen de la evidencia y eso la pondría por encima del agua y de los
+pasos.
+
+## 2026-09-24 — Un descanso marcado con la semana cumplida vale como entrenar
+Context: Con la nota absoluta, no entrenar cuesta los 22 puntos del criterio, así que
+un día de descanso perfecto topaba en 78 y descansar penalizaba.
+Decision: Si los últimos siete días ya tienen las cinco sesiones de §4.3 y marca
+"descanso", el criterio de entreno se gana entero. Con sesiones pendientes no se gana.
+Rejected: Sacar el entreno del total ese día y repartir los 22 entre los demás. Cambia
+lo que vale cada criterio según el día y vuelve incomparables dos notas iguales.
