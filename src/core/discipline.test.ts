@@ -30,7 +30,7 @@ const targets = computeTargets(73, profile, '2026-09-13');
 
 const perfectDay: DisciplineDay = {
   trained: true,
-  sleepMinutes: 450,
+  sleepMinutes: 480,
   proteinG: 145,
   kcal: targets.kcal,
   alcoholDrinks: 0,
@@ -43,6 +43,7 @@ const perfectDay: DisciplineDay = {
 
 const onTrack: TrainingContext = {
   sessionsLastSevenDays: 5,
+  bestWeekSessions: 5,
   consecutiveMissed: 0,
   isScheduledRestDay: false,
   reEntryActive: false,
@@ -128,12 +129,15 @@ test('un descanso marcado con la semana cumplida vale como entrenar', () => {
   const resting: DisciplineDay = { ...perfectDay, trained: null, isTrainingDay: false };
   const restDay: TrainingContext = { ...onTrack, isScheduledRestDay: true };
 
-  // Cinco sesiones hechas, asi que los 22 del entreno se ganan descansando.
+  // Cinco sesiones en la semana que lo rodea, asi que los 22 del entreno se ganan
+  // descansando, aunque las cinco esten todas por delante del dia.
   close(scoreDay(resting, targets, restDay).score, 100);
+  const allAhead: TrainingContext = { ...restDay, sessionsLastSevenDays: 0 };
+  close(scoreDay(resting, targets, allAhead).score, 100);
 
   // Con sesiones pendientes no: si no, marcar descanso seria la forma facil de sacar
   // cien todos los dias.
-  const behind: TrainingContext = { ...restDay, sessionsLastSevenDays: 2 };
+  const behind: TrainingContext = { ...restDay, sessionsLastSevenDays: 2, bestWeekSessions: 2 };
   const result = scoreDay(resting, targets, behind);
   close(result.score, 78);
   close(result.pointsWithoutData, 22);
@@ -141,38 +145,80 @@ test('un descanso marcado con la semana cumplida vale como entrenar', () => {
   assert.equal(result.penalty, 0);
 });
 
-test('sleep is scored linearly between six and seven hours', () => {
-  const at = (minutes: number) =>
-    scoreDay({ ...perfectDay, sleepMinutes: minutes }, targets, onTrack).score;
+test('el sueno sigue la curva de spec 4.1 y no un umbral', () => {
+  const points = (minutes: number) => {
+    const day = scoreDay({ ...perfectDay, sleepMinutes: minutes }, targets, onTrack);
+    return (day.criteria.find((criterion) => criterion.id === 'sleep')?.fraction ?? 0) * 20;
+  };
 
-  close(at(420), 100);
-  close(at(360), 80); // Zero of the twenty sleep points.
-  close(at(330), 80); // Below six hours is the same zero, not worse.
-  close(at(390), 90); // Halfway through the hour earns half the twenty.
+  // Los puntos que fijo el dueno, tal cual.
+  close(points(480), 20);
+  close(points(450), 19);
+  close(points(420), 17);
+  close(points(390), 14);
+  close(points(360), 11);
+  close(points(330), 9);
+  close(points(300), 7);
+  close(points(240), 5);
+  close(points(180), 3);
+  close(points(90), 1);
+  close(points(60), 0);
+  close(points(0), 0);
+
+  // Y entre dos puntos, la linea recta: cinco horas y cinco minutos no es cero.
+  close(points(305), 7 + (5 / 30) * 2, 0.05);
+  // Dormir de mas no suma: el maximo del dia sigue siendo cien.
+  close(points(600), 20);
 });
 
-test('la proteina se pondera en vez de ser todo o nada', () => {
-  const at = (grams: number) =>
-    scoreDay({ ...perfectDay, proteinG: grams }, targets, onTrack).score;
+test('la proteina sigue la meseta de Morton y no una banda de todo o nada', () => {
+  const points = (grams: number) => {
+    const day = scoreDay({ ...perfectDay, proteinG: grams }, targets, onTrack);
+    return (day.criteria.find((criterion) => criterion.id === 'protein')?.fraction ?? 0) * 16;
+  };
   const band = proteinBand(targets);
+  const perKilo = (gramsPerKilo: number) => targets.weightBasisKg * gramsPerKilo;
 
-  // 73 kg: banda 131 a 160, y a cero en 87, que es 1.2 g por kilo.
+  // 73 kg: la banda de spec 3.6 va de 131 a 160 y vale los dieciseis enteros.
   assert.equal(band.from, 131);
   assert.equal(band.to, 160);
+  // El piso de la banda esta redondeado hacia abajo, asi que se queda a un pelo.
+  close(points(band.from), 16, 0.1);
+  close(points(145), 16);
+  close(points(band.to), 16);
 
-  close(at(145), 100);
-  close(at(band.from), 100);
-  // Ocho gramos cortos ya no cuestan los 16 puntos enteros, cuestan tres.
-  close(at(123), 100 - 16 * (1 - (123 - 87) / (131 - 87)));
-  close(at(87), 84);
-  close(at(60), 84);
+  // 1.6 g/kg es la meseta de Morton: casi todo, no todo.
+  close(points(perKilo(1.6)), 14);
+  close(points(perKilo(1.2)), 8);
+  close(points(perKilo(0.8)), 3.2);
+  close(points(0), 0);
+
+  // Ocho gramos cortos ya no cuestan los dieciseis puntos.
+  assert.ok(points(123) > 12);
+
+  // Pasarse no es un suspenso, solo deja de sumar.
+  close(points(perKilo(3)), 14);
 });
 
-test('under-eating misses the calorie band just as over-eating does', () => {
-  const under = scoreDay({ ...perfectDay, kcal: targets.kcal - 400 }, targets, onTrack).score;
-  const over = scoreDay({ ...perfectDay, kcal: targets.kcal + 400 }, targets, onTrack).score;
-  assert.equal(under, over);
-  close(under, 90);
+test('las calorias caen segun el tamano del deficit, no de golpe', () => {
+  const points = (kcal: number) => {
+    const day = scoreDay({ ...perfectDay, kcal }, targets, onTrack);
+    return (day.criteria.find((criterion) => criterion.id === 'calories')?.fraction ?? 0) * 10;
+  };
+  const share = (of: number) => targets.kcal * of;
+
+  close(points(targets.kcal), 10);
+  close(points(share(0.94)), 10);
+  close(points(share(1.06)), 10);
+
+  // Diez dias al 80% bajan la sintesis de proteina un 16%: la mitad de los puntos.
+  close(points(share(0.8)), 5);
+  close(points(share(0.7)), 2);
+  close(points(share(0.6)), 0);
+
+  // Pasarse engorda pero no se come el musculo, asi que baja mas despacio.
+  assert.ok(points(share(1.15)) > points(share(0.85)));
+  close(points(share(1.4)), 0);
 });
 
 test('the alcohol scale follows the doses in spec 4.2', () => {
@@ -220,6 +266,7 @@ test('the miss penalty escalates and then repeats', () => {
 test('the penalty applies against the score and the day floors at zero', () => {
   const behind: TrainingContext = {
     sessionsLastSevenDays: 2,
+    bestWeekSessions: 2,
     consecutiveMissed: 2,
     isScheduledRestDay: false,
     reEntryActive: false,
@@ -238,6 +285,7 @@ test('the penalty applies against the score and the day floors at zero', () => {
 test('a scheduled rest day is scored on everything else and penalised on nothing', () => {
   const resting: TrainingContext = {
     sessionsLastSevenDays: 2,
+    bestWeekSessions: 2,
     consecutiveMissed: 3,
     isScheduledRestDay: true,
     reEntryActive: false,
@@ -251,6 +299,7 @@ test('a scheduled rest day is scored on everything else and penalised on nothing
 test('re-entry mode suppresses the penalty but not the scoring', () => {
   const readapting: TrainingContext = {
     sessionsLastSevenDays: 1,
+    bestWeekSessions: 1,
     consecutiveMissed: 4,
     isScheduledRestDay: false,
     reEntryActive: true,
@@ -263,6 +312,7 @@ test('re-entry mode suppresses the penalty but not the scoring', () => {
 test('the run of misses resets on the first completed session', () => {
   const behind: TrainingContext = {
     sessionsLastSevenDays: 2,
+    bestWeekSessions: 2,
     consecutiveMissed: 3,
     isScheduledRestDay: false,
     reEntryActive: false,

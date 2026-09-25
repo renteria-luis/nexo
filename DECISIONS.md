@@ -87,3 +87,30 @@ Decision: Si los últimos siete días ya tienen las cinco sesiones de §4.3 y ma
 "descanso", el criterio de entreno se gana entero. Con sesiones pendientes no se gana.
 Rejected: Sacar el entreno del total ese día y repartir los 22 entre los demás. Cambia
 lo que vale cada criterio según el día y vuelve incomparables dos notas iguales.
+
+## 2026-09-24 — La semana de un descanso mira hacia adelante, no solo hacia atrás
+Context: Marcó descanso un jueves con dos entrenos detrás y tres por delante. La
+ventana de siete días hacia atrás decía 2 sesiones y le negaba los 22 puntos por una
+semana que todavía no había pasado.
+Decision: Un descanso marcado gana los puntos si cualquier ventana de siete días que
+contenga ese día llega a cinco sesiones. El día queda provisional hasta que su semana
+cierra, y los últimos siete días se vuelven a puntuar en cada arranque.
+Rejected: Semana fija de lunes a domingo. Rompe el "rolling, not pinned to weekdays"
+de §4.3 y castiga al que mueve un entreno de domingo a lunes.
+
+## 2026-09-25 — El sueño, la proteína y las calorías se puntúan con curvas
+Context: Durmió 5 h 05 por trabajo y la app le dio 0 de 20, igual que si no hubiera
+dormido nada. El umbral de §3.5 (cero por debajo de 6 h) no dice lo que dice la
+evidencia, y lo mismo pasaba con la proteína y las calorías, que eran bandas con
+acantilado.
+Decision: Tres criterios pasan a leerse de una curva de puntos con rectas entre
+ellos. La del sueño es la escala que él escribió a partir de Saner 2020, con los 20
+puntos en las 8 h; 5 h 05 ahora son 7.3. La de proteína sigue la meseta de Morton
+2018 (1.62 g/kg, IC 1.03-2.20). La de calorías se ancla en Areta 2014 (diez días al
+80% bajan la síntesis 16%) y baja más suave por arriba, donde se gana grasa pero no
+se pierde músculo. Cada criterio guarda sus decimales y la nota del día también:
+un decimal, sin redondear. Un 99.2 se queda en 99.2, porque redondeando hacia arriba
+un día casi perfecto salía como cien.
+Rejected: Ajustar la curva del sueño a su meta personal de 7 h. La escala que eligió
+es absoluta y da 17 de 20 a las 7 h; escalarla a su meta habría deformado los puntos
+que él fijó. Su meta de Ajustes se queda como referencia y para los avisos.

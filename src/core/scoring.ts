@@ -11,15 +11,6 @@ export type ScoredCriterion = {
   fraction: Fraction;
 };
 
-export type Band = {
-  /** Full points inside these bounds. */
-  fullFrom: number;
-  fullTo: number;
-  /** Points fall away linearly out to here, and are zero beyond. */
-  partialFrom: number;
-  partialTo: number;
-};
-
 /**
  * Full at the target or above, nothing below `partialFrom`, and a straight line
  * between the two. Spec 3.5 spells this shape out for sleep and spec 3.4 and 14.2
@@ -34,20 +25,49 @@ export function towardsTarget(value: number, target: number, partialFrom: number
   return (value - partialFrom) / (target - partialFrom);
 }
 
+export type CurvePoint = {
+  /** El valor medido: minutos dormidos, gramos por kilo, veces la meta. */
+  at: number;
+  /** Lo que se gana de ese criterio ahi, de 0 a 1. */
+  fraction: number;
+};
+
 /**
- * Full inside the band, a straight line down through each partial shoulder, zero
- * outside. Spec 3.2: under-eating is a miss too, so both shoulders count.
+ * Lo que vale un valor dentro de una curva dada por puntos, en linea recta entre
+ * uno y el siguiente.
+ *
+ * Un umbral con cero debajo dice que dormir cinco horas es lo mismo que no dormir, y
+ * eso no es lo que dice ningun estudio. Una curva por puntos deja escribir lo que si
+ * dicen: cada tramo con su pendiente, y el salto donde la evidencia lo pone.
+ *
+ * Por debajo del primer punto y por encima del ultimo vale lo que valga ese extremo.
  */
-export function withinBand(value: number, band: Band): number {
-  if (band.partialFrom > band.fullFrom || band.partialTo < band.fullTo) {
-    throw new Error('the partial bounds of a band have to sit outside the full bounds');
+export function alongCurve(value: number, curve: readonly CurvePoint[]): number {
+  if (curve.length === 0) throw new Error('a curve needs at least one point');
+
+  let previous: CurvePoint | null = null;
+  for (const point of curve) {
+    if (point.fraction < 0 || point.fraction > 1) {
+      throw new Error(`a curve point at ${point.at} scores ${point.fraction}, outside 0 to 1`);
+    }
+    if (previous !== null && point.at <= previous.at) {
+      throw new Error(`a curve has to climb: ${point.at} comes after ${previous.at}`);
+    }
+    previous = point;
   }
-  if (value >= band.fullFrom && value <= band.fullTo) return 1;
-  if (value <= band.partialFrom || value >= band.partialTo) return 0;
-  if (value < band.fullFrom) {
-    return (value - band.partialFrom) / (band.fullFrom - band.partialFrom);
+
+  const first = curve[0];
+  if (value <= first.at) return first.fraction;
+
+  for (let i = 1; i < curve.length; i += 1) {
+    const to = curve[i];
+    if (value > to.at) continue;
+    const from = curve[i - 1];
+    const share = (value - from.at) / (to.at - from.at);
+    return from.fraction + share * (to.fraction - from.fraction);
   }
-  return (band.partialTo - value) / (band.partialTo - band.fullTo);
+
+  return curve[curve.length - 1].fraction;
 }
 
 /** Spec 6.6: with nothing logged there is no day to judge, and one thing is enough. */
@@ -106,8 +126,10 @@ export function dayScore(criteria: readonly ScoredCriterion[], penalty = 0): Day
   }
 
   const base = earned * scale;
+  // La nota se queda con un decimal. Redondear hacia arriba convertia un 99.2 en un
+  // cien, y el cien tiene que significar el dia entero.
   return {
-    score: Math.max(0, base + penalty),
+    score: Math.max(0, Math.round((base + penalty) * 10) / 10),
     base,
     penalty,
     criteriaWithData: withData,

@@ -8,6 +8,7 @@ import { migrations } from '../db/migrations/index.ts';
 import {
   consecutiveMissedBefore,
   listSessionDates,
+  sessionsInBestWeekAround,
   sessionsInTrailingWeek,
   trainedOn,
 } from '../training/history.ts';
@@ -192,7 +193,10 @@ test('the stored log feeds the grid and the rolling weight average', async () =>
   assert.equal(toWeighIns(logs).length, 4);
 
   const targets = computeTargets(73.25, profile, '2026-09-13');
-  const day = toDisciplineDay(logs[3], {
+  // Ocho horas, que es donde la curva del sueno llega a los veinte puntos.
+  await upsertDailyLog(db, { date: '2026-09-13', sleepMinutes: 480, sleepSource: 'autosleep' });
+  const full = (await listDailyLogs(db, { from: '2026-09-13', to: '2026-09-13' }))[0];
+  const day = toDisciplineDay(full, {
     trained: true,
     proteinG: 148,
     kcal: targets.kcal,
@@ -201,6 +205,7 @@ test('the stored log feeds the grid and the rolling weight average', async () =>
 
   const result = scoreDay(day, targets, {
     sessionsLastSevenDays: 5,
+    bestWeekSessions: 5,
     consecutiveMissed: 0,
     isScheduledRestDay: false,
     reEntryActive: false,
@@ -226,6 +231,25 @@ test('session history answers what the miss penalty needs', async () => {
   assert.equal(sessionsInTrailingWeek(dates, '2026-09-09'), 3);
   assert.equal(sessionsInTrailingWeek(dates, '2026-09-13'), 3);
   assert.equal(sessionsInTrailingWeek(dates, '2026-09-16'), 0);
+});
+
+test('la semana de un descanso cuenta tambien los dias que vienen', () => {
+  // Martes y miercoles entrenados, jueves de descanso, y viernes, sabado y domingo
+  // por entrenar: el caso de su semana real.
+  const week = ['2026-09-22', '2026-09-23', '2026-09-25', '2026-09-26', '2026-09-27'];
+  const thursday = '2026-09-24';
+
+  // Mirando solo hacia atras, el jueves nunca pasa de dos.
+  assert.equal(sessionsInTrailingWeek(week, thursday), 2);
+  // Mirando cualquier semana que lo contenga, llega a las cinco.
+  assert.equal(sessionsInBestWeekAround(week, thursday), 5);
+
+  // Y el lunes, el otro descanso de esa semana, tambien.
+  assert.equal(sessionsInBestWeekAround(week, '2026-09-21'), 5);
+
+  // Sin el domingo la semana se queda en cuatro y ninguno de los dos alcanza.
+  const short = week.slice(0, 4);
+  assert.equal(sessionsInBestWeekAround(short, thursday), 4);
 });
 
 test('the run of misses counts scheduled days and stops at the last session', () => {

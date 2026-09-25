@@ -69,7 +69,9 @@ import type {
 } from '../db/types.ts';
 import {
   addFoodEntry,
+  addFood as addFoodToCatalog,
   addFoodFromLabel,
+  loadFoodHistory,
   consumeBatchPortion,
   createBatch,
   deleteFoodEntry,
@@ -79,6 +81,9 @@ import {
   portionMacros,
   spoilageWarning,
   type LabelFood,
+  type FoodHistory,
+  type LastMeal,
+  type NewFood,
   type NewFoodEntry,
   type PortionMacros,
   type SpoilageWarning,
@@ -110,6 +115,7 @@ import {
   listDayRows,
   loadDayDetail,
   rescoreMissing,
+  rescoreSettling,
   windowRange,
   type DayDetail,
   type DayRow,
@@ -146,6 +152,8 @@ export type Loaded = {
   today: AssembledDay;
   containers: NutritionContainerRow[];
   foods: NutritionFoodRow[];
+  /** Lo que ya anoto, que es lo que ordena la lista de alimentos. */
+  foodHistory: FoodHistory;
   exercise: ExerciseContext;
   /** Spec 3.6: a recalculation he has not dismissed yet. */
   targetChange: TargetChange | null;
@@ -210,12 +218,17 @@ async function load(exerciseId: string | null): Promise<Loaded> {
   // Rellenar el perfil hoy tiene que arreglar los dias de antes tambien: hasta que
   // hubo metas, todo lo anotado se guardo sin nota y la cuadricula los pintaba grises.
   await rescoreMissing(db, { from, to: today }, today);
+  // Y los ultimos siete se rehacen aunque ya tengan nota: un descanso marcado gana los
+  // puntos del entreno cuando la semana que lo rodea llega a las cinco sesiones, y eso
+  // pasa dias despues de ese dia.
+  await rescoreSettling(db, today);
 
-  const [logs, containers, foods, exercise, change, openBatches, routines, plan] =
+  const [logs, containers, foods, foodHistory, exercise, change, openBatches, routines, plan] =
     await Promise.all([
       listDailyLogs(db, { from, to: today }),
       listContainers(db),
       listFoods(db),
+      loadFoodHistory(db, today),
       exerciseContext(db, assembled, exerciseId),
       latestTargetChange(db),
       listOpenBatches(db),
@@ -263,6 +276,7 @@ async function load(exerciseId: string | null): Promise<Loaded> {
     today: assembled,
     containers,
     foods,
+    foodHistory,
     exercise,
     targetChange:
       change && change.effectiveFrom !== targetsChangeSeenFrom(settings) ? change : null,
@@ -290,6 +304,10 @@ export type AppData = {
   removeSetting: (key: SettingKey) => void;
   logDay: (entry: Omit<DailyLogEntry, 'date'>) => void;
   addFood: (entry: Omit<NewFoodEntry, 'date'>) => void;
+  /** Un alimento nuevo copiado de su envase, que queda en su catalogo y en su respaldo. */
+  createFood: (food: NewFood) => void;
+  /** Vuelve a anotar una comida entera de otro dia, en el espacio que se elija. */
+  repeatMeal: (meal: LastMeal, mealSlot: string) => void;
   removeFood: (entryId: string) => void;
   beginSession: (
     routineId: string,
@@ -426,6 +444,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     removeSetting: (key) => run((db) => clearSetting(db, key)),
     logDay: (entry) => run((db) => upsertDailyLog(db, { date: todayIso(), ...entry })),
     addFood: (entry) => run((db) => addFoodEntry(db, { ...entry, date: todayIso() })),
+    createFood: (food) => run((db) => addFoodToCatalog(db, food)),
+    repeatMeal: (meal, mealSlot) =>
+      run(async (db) => {
+        for (const portion of meal.entries) {
+          await addFoodEntry(db, { ...portion, date: todayIso(), mealSlot });
+        }
+      }),
     removeFood: (entryId) => run((db) => deleteFoodEntry(db, entryId)),
     beginSession: (routineId, budget, plan, company, gymId) =>
       run(async (db) => {

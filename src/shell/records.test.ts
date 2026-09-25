@@ -16,6 +16,7 @@ import {
   buildDayExports,
   listDayRows,
   rescoreMissing,
+  rescoreSettling,
   loadDayDetail,
   sortDayRows,
   windowRange,
@@ -205,6 +206,54 @@ test('a day logged before there were targets gets its score back', async () => {
   // 52 puntos que si gano, pero el dia ya tiene nota, que es lo que estaba roto.
   const rows = await listDayRows(db, windowRange('month', TODAY));
   assert.notEqual(rows.find((row) => row.date === '2026-09-21')?.score, null);
+});
+
+test('el descanso del jueves recibe sus puntos cuando la semana cierra', async () => {
+  const db = fresh();
+  const week = ['2026-09-17', '2026-09-18', '2026-09-20', '2026-09-21', '2026-09-22'];
+
+  await setInitialTargets(
+    db,
+    73,
+    {
+      heightCm: 170,
+      birthDate: '1996-08-30',
+      activityFactor: 1.55,
+      phase: 'recomp',
+      sleepMinutes: 420,
+      steps: 7000,
+    },
+    '2026-09-17',
+  );
+
+  // Jueves de descanso marcado, con dos entrenos detras y tres por delante.
+  await upsertDailyLog(db, {
+    date: '2026-09-19',
+    restDay: true,
+    sleepMinutes: 450,
+    sleepSource: 'manual',
+  });
+  for (const date of week.slice(0, 2)) {
+    const session = await startSession(db, { date, timeBudget: 'completo' });
+    await addSet(db, { sessionId: session, exerciseId: 'peck-deck', weightKg: 50, reps: 10 });
+  }
+
+  await rescoreMissing(db, { from: '2026-09-01', to: TODAY }, TODAY);
+  const before = await loadDayDetail(db, '2026-09-19', TODAY);
+  const trainedLine = (detail: typeof before) =>
+    detail.report.lines.find((line) => line.id === 'trained');
+  assert.equal(trainedLine(before)?.earned, 0);
+
+  // Llegan el sabado, el domingo y el lunes: la semana del jueves ya tiene cinco.
+  for (const date of week.slice(2)) {
+    const session = await startSession(db, { date, timeBudget: 'completo' });
+    await addSet(db, { sessionId: session, exerciseId: 'peck-deck', weightKg: 50, reps: 10 });
+  }
+
+  assert.ok((await rescoreSettling(db, '2026-09-23')) > 0);
+  const after = await loadDayDetail(db, '2026-09-19', TODAY);
+  assert.equal(trainedLine(after)?.earned, 22);
+  assert.ok((after.report.score ?? 0) > (before.report.score ?? 0));
 });
 
 test('las graficas leen lo mismo que el resto de la app', async () => {

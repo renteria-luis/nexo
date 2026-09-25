@@ -28,7 +28,7 @@ export function TargetsCard({ targets }: { targets: TargetValues }) {
       <Row
         label="Calorías"
         value={`${targets.kcal} kcal`}
-        note={`banda ${kcal.fullFrom} a ${kcal.fullTo}`}
+        note={`banda ${kcal.from} a ${kcal.to}`}
       />
       <Row
         label="Proteína"

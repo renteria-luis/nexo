@@ -356,6 +356,37 @@ export async function buildDayExports(db: SQLiteDatabase, today: IsoDate): Promi
 }
 
 /**
+ * Los dias cuya nota todavia puede cambiar sola.
+ *
+ * Un descanso marcado gana los puntos del entreno cuando la semana que lo rodea llega
+ * a las cinco sesiones, y esas sesiones pueden ser de hasta seis dias despues.
+ */
+export const SETTLING_DAYS = 7;
+
+/**
+ * Vuelve a puntuar los ultimos dias aunque ya tengan nota.
+ *
+ * Sin esto, el cuadrito del jueves se quedaria con la nota que tenia el jueves aunque
+ * el domingo la cambie. Son siete dias, que es lo que tarda una semana en cerrarse.
+ */
+export async function rescoreSettling(
+  db: SQLiteDatabase,
+  today: IsoDate,
+  days = SETTLING_DAYS,
+): Promise<number> {
+  let changed = 0;
+  for (let back = days - 1; back >= 0; back -= 1) {
+    const date = addDays(today, -back);
+    const day = await assembleDay(db, date, today);
+    if (day.log === null || day.result?.score == null) continue;
+    if (day.log.score === day.result.score) continue;
+    await storeScore(db, date, day.result.score);
+    changed += 1;
+  }
+  return changed;
+}
+
+/**
  * Vuelve a puntuar los dias que quedaron sin nota.
  *
  * Un dia se puntua cuando se escribe, y hasta que no hay perfil no hay metas contra

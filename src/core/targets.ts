@@ -6,7 +6,6 @@
 // those figures deliberately is not.
 
 import type { IsoDate } from './dates.ts';
-import type { Band } from './scoring.ts';
 import { daysBetween, trailingDays } from './dates.ts';
 
 export type Phase = 'recomp' | 'cut' | 'maintain' | 'bulk';
@@ -101,19 +100,14 @@ export function computeTargets(
   };
 }
 
-// Spec 3.2 quotes 2,250 to 2,550 full and 2,100 to 2,700 partial against a 2,400
-// target, which is the target plus or minus 150 and plus or minus 300. Expressed
-// as offsets so the band follows the target when spec 3.6 recomputes it.
+// Spec 3.2 quotes 2,250 to 2,550 against a 2,400 target, which is the target plus or
+// minus 150. Expressed as an offset so the band follows the target when spec 3.6
+// recomputes it. Los puntos ya no salen de aqui sino de la curva de spec 4.1: esto es
+// lo que se le muestra como meta.
 const KCAL_FULL_MARGIN = 150;
-const KCAL_PARTIAL_MARGIN = 300;
 
-export function kcalBand(targets: TargetValues): Band {
-  return {
-    fullFrom: targets.kcal - KCAL_FULL_MARGIN,
-    fullTo: targets.kcal + KCAL_FULL_MARGIN,
-    partialFrom: targets.kcal - KCAL_PARTIAL_MARGIN,
-    partialTo: targets.kcal + KCAL_PARTIAL_MARGIN,
-  };
+export function kcalBand(targets: TargetValues): { from: number; to: number } {
+  return { from: targets.kcal - KCAL_FULL_MARGIN, to: targets.kcal + KCAL_FULL_MARGIN };
 }
 
 /**
@@ -124,24 +118,6 @@ export function proteinBand(targets: TargetValues): { from: number; to: number }
   return {
     from: Math.floor(targets.weightBasisKg * 1.8),
     to: Math.floor(targets.weightBasisKg * 2.2),
-  };
-}
-
-/**
- * Spec 4.1. La proteina se pondera en vez de ser todo o nada: 123 g contra una banda
- * de 131 a 160 perdia los 16 puntos enteros por ocho gramos, y eso no es lo que dice
- * la evidencia. Dentro de la banda vale todo, porque la banda es la evidencia (Morton
- * 2018, 1.6 a 2.2 g/kg, y spec 3.6 la pone en 1.8 a 2.2). Por debajo baja en linea
- * hasta cero en 1.2 g/kg, que es donde la respuesta ya esta claramente comprometida;
- * por encima, hasta 3.0 g/kg, donde empieza a quitarle sitio a los otros macros.
- */
-export function proteinScoringBand(targets: TargetValues): Band {
-  const band = proteinBand(targets);
-  return {
-    fullFrom: band.from,
-    fullTo: band.to,
-    partialFrom: Math.floor(targets.weightBasisKg * 1.2),
-    partialTo: Math.ceil(targets.weightBasisKg * 3),
   };
 }
 

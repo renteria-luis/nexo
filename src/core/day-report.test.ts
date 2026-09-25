@@ -3,7 +3,13 @@ import { test } from 'node:test';
 
 import type { CoreDailyLogRow } from '../db/types.ts';
 
-import { hoursAndMinutes, reportDay, thousands, type ReportInput } from './day-report.ts';
+import {
+  hoursAndMinutes,
+  reportDay,
+  scoreText,
+  thousands,
+  type ReportInput,
+} from './day-report.ts';
 import { scoreDay, type DisciplineDay } from './discipline.ts';
 import { computeTargets, type TargetProfile } from './targets.ts';
 
@@ -57,6 +63,7 @@ function scored(day: Partial<DisciplineDay>) {
     targets,
     {
       sessionsLastSevenDays: 5,
+      bestWeekSessions: 5,
       consecutiveMissed: 0,
       isScheduledRestDay: false,
       reEntryActive: false,
@@ -84,8 +91,10 @@ test('every criterion says what he did and what it wanted', () => {
 
   const sleep = report.lines.find((line) => line.id === 'sleep');
   assert.equal(sleep?.value, '7 h 05');
-  assert.equal(sleep?.target, '7 h 00');
-  assert.equal(sleep?.earned, 20);
+  // La meta que se muestra es donde la curva llega a los veinte, no su meta personal.
+  assert.equal(sleep?.target, '8 h 00');
+  // 7 h 05 son 17.3 de los 20, y la linea lo dice con su decimal.
+  assert.ok((sleep?.earned ?? 0) > 17.3 && (sleep?.earned ?? 0) < 17.4);
 
   const training = report.lines.find((line) => line.id === 'trained');
   assert.equal(training?.value, 'entrenó');
@@ -133,6 +142,7 @@ test('the penalty travels with the report, so the low score can be explained', (
     targets,
     {
       sessionsLastSevenDays: 1,
+      bestWeekSessions: 1,
       consecutiveMissed: 2,
       isScheduledRestDay: false,
       reEntryActive: false,
@@ -142,6 +152,12 @@ test('the penalty travels with the report, so the low score can be explained', (
   const report = reportDay({ ...base, result, trained: false });
   assert.ok(report.penalty < 0);
   assert.equal(report.missedScheduledSession, true);
+});
+
+test('la nota se escribe con su decimal solo cuando lo tiene', () => {
+  assert.equal(scoreText(99.2), '99.2');
+  assert.equal(scoreText(100), '100');
+  assert.equal(scoreText(0), '0');
 });
 
 test('numbers read the way they are written on a phone', () => {

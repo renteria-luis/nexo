@@ -1,7 +1,12 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { DateRange, IsoDate } from '../core/dates.ts';
-import type { NutritionBatchRow, NutritionContainerRow, NutritionFoodRow } from '../db/types.ts';
+import type {
+  NutritionBatchRow,
+  NutritionContainerRow,
+  NutritionFoodRow,
+  UnitKind,
+} from '../db/types.ts';
 
 import type { LoggedPortion } from './totals.ts';
 import { MEAL_SLOTS } from './units.ts';
@@ -180,51 +185,108 @@ export type LabelFood = {
   carbsG: number | null;
 };
 
+export type NewFood = {
+  name: string;
+  store?: string | null;
+  /** Lo que describe la etiqueta: 100 gramos, 1 unidad, 250 ml. */
+  amount: number;
+  /** La unidad en la que va a anotarlo despues: 'g', 'ml', 'unidad', 'huevo'. */
+  unit: string;
+  kind: UnitKind;
+  /** Lo que pesa una unidad contable, cuando la etiqueta lo dice. Null si no. */
+  gramsPerUnit?: number | null;
+  kcal: number;
+  proteinG: number;
+  fatG: number;
+  /** Null cuando la etiqueta no lo trae: spec 16.3 regla 5 prohibe inventarlo. */
+  carbsG: number | null;
+  sugarG?: number | null;
+  sodiumMg?: number | null;
+};
+
+function labelFigure(label: string, value: number): void {
+  if (!Number.isFinite(value) || value < 0) throw new Error(`${label} of ${value} is not a figure`);
+}
+
+function optionalFigure(label: string, value: number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  labelFigure(label, value);
+  return value;
+}
+
 /**
- * Spec 7.3 runs on label protein per gram, and the foods it is about (chicken breast,
- * ground beef, rice) are not in the owner-verified catalogue. This stores a food as
- * the package states it, per gram, marked source = 'label' so it never passes for a
- * measured value.
+ * Un alimento como lo dice su envase, marcado source = 'label' para que nunca pase
+ * por un valor medido por el (spec 7.1).
+ *
+ * Los macros se guardan por unidad base, que es la unidad en la que va a anotarlo:
+ * un wrap de Starbucks se anota por unidad y el arroz por gramo, y la etiqueta de
+ * cada uno habla de una cantidad distinta. Por eso divide entre `amount`.
  */
-export async function addFoodFromLabel(db: SQLiteDatabase, food: LabelFood): Promise<string> {
+export async function addFood(db: SQLiteDatabase, food: NewFood): Promise<string> {
   const name = food.name.trim();
   if (name === '') throw new Error('a food needs a name');
-  if (!(food.servingG > 0))
-    throw new Error(`a label serving of ${food.servingG} g is not a serving`);
-  for (const [label, value] of [
-    ['kcal', food.kcal],
-    ['protein', food.proteinG],
-    ['fat', food.fatG],
-  ] as const) {
-    if (!Number.isFinite(value) || value < 0)
-      throw new Error(`${label} of ${value} is not a figure`);
-  }
-  if (food.carbsG !== null && (!Number.isFinite(food.carbsG) || food.carbsG < 0)) {
-    throw new Error(`carbohydrate of ${food.carbsG} is not a figure`);
-  }
+  if (!(food.amount > 0)) throw new Error(`a label amount of ${food.amount} is not an amount`);
+  if (food.unit.trim() === '') throw new Error('a food needs the unit he logs it in');
+
+  labelFigure('kcal', food.kcal);
+  labelFigure('protein', food.proteinG);
+  labelFigure('fat', food.fatG);
+  const carbsG = optionalFigure('carbohydrate', food.carbsG);
+  const sugarG = optionalFigure('sugar', food.sugarG);
+  const sodiumMg = optionalFigure('sodium', food.sodiumMg);
 
   const id = `food-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-  const per = food.servingG;
+  const per = food.amount;
+  // Un gramo pesa un gramo; una unidad pesa lo que diga la etiqueta, o nada.
+  const baseUnitG =
+    food.kind === 'mass' ? 1 : food.kind === 'count' ? (food.gramsPerUnit ?? null) : null;
 
   await db.runAsync(
     `INSERT INTO nutrition_food
        (id, name, brand, store, base_unit, unit_kind, base_unit_g, kcal, protein_g, carbs_g,
         sugar_g, fat_g, fibre_g, sodium_mg, source, price_cad_cents, package_size,
         glycemic_index, is_dairy)
-     VALUES (?, ?, NULL, ?, 'g', 'mass', 1, ?, ?, ?, NULL, ?, NULL, NULL, 'label',
+     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'label',
              NULL, NULL, NULL, 0);`,
     [
       id,
       name,
       food.store ?? null,
+      food.unit.trim(),
+      food.kind,
+      baseUnitG,
       food.kcal / per,
       food.proteinG / per,
-      food.carbsG === null ? null : food.carbsG / per,
+      carbsG === null ? null : carbsG / per,
+      sugarG === null ? null : sugarG / per,
       food.fatG / per,
+      sodiumMg === null ? null : sodiumMg / per,
     ],
   );
 
   return id;
+}
+
+/**
+ * Spec 7.3 runs on label protein per gram, and the foods it is about (chicken breast,
+ * ground beef, rice) are not in the owner-verified catalogue. La tanda siempre habla
+ * de gramos, asi que esto es addFood con la unidad ya resuelta.
+ */
+export async function addFoodFromLabel(db: SQLiteDatabase, food: LabelFood): Promise<string> {
+  if (!(food.servingG > 0))
+    throw new Error(`a label serving of ${food.servingG} g is not a serving`);
+
+  return addFood(db, {
+    name: food.name,
+    store: food.store,
+    amount: food.servingG,
+    unit: 'g',
+    kind: 'mass',
+    kcal: food.kcal,
+    proteinG: food.proteinG,
+    fatG: food.fatG,
+    carbsG: food.carbsG,
+  });
 }
 
 export type NewBatch = {

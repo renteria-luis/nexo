@@ -143,7 +143,7 @@ export async function loadCharts(
     kcal,
     proteinBand: targets ? proteinBand(targets) : null,
     kcalBand: targets
-      ? { from: Math.round(kcalBand(targets).fullFrom), to: Math.round(kcalBand(targets).fullTo) }
+      ? { from: Math.round(kcalBand(targets).from), to: Math.round(kcalBand(targets).to) }
       : null,
     muscles,
     setBand: SET_BAND,

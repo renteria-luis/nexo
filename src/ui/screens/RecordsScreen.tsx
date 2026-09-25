@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { shortDate } from '../../core/dates.ts';
+import { scoreText } from '../../core/day-report.ts';
 import { fromKg } from '../../core/units.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 import {
@@ -99,7 +100,7 @@ export function RecordsScreen() {
           style={styles.row}
         >
           <Text style={styles.rowScore}>
-            {row.score === null ? MISSING : Math.round(row.score)}
+            {row.score === null ? MISSING : scoreText(row.score)}
           </Text>
           <View style={styles.rowBody}>
             <Text style={styles.rowDate}>{shortDate(row.date)}</Text>

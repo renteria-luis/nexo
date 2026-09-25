@@ -91,12 +91,11 @@ test('the calorie band follows the target instead of staying at 2400', () => {
   const targets = computeTargets(73, profile, '2026-09-13');
   const band = kcalBand(targets);
 
-  assert.equal(band.fullTo - band.fullFrom, 300);
-  assert.equal(band.partialTo - band.partialFrom, 600);
-  assert.equal(band.fullFrom, targets.kcal - 150);
+  assert.equal(band.to - band.from, 300);
+  assert.equal(band.from, targets.kcal - 150);
 
   const heavier = computeTargets(85, profile, '2026-09-13');
-  assert.ok(kcalBand(heavier).fullFrom > band.fullFrom);
+  assert.ok(kcalBand(heavier).from > band.from);
 });
 
 test('the fat floor wins when energy alone would put it lower', () => {

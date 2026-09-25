@@ -10,6 +10,7 @@ import type { NutritionBatchRow, NutritionFoodRow, UnitKind } from '../db/types.
 import { SPOILAGE_WARNING_DAYS, portionMacros, spoilageWarning } from './batch.ts';
 import {
   addFoodEntry,
+  addFood,
   addFoodFromLabel,
   consumeBatchPortion,
   createBatch,
@@ -20,7 +21,7 @@ import {
   listPortions,
 } from './queries.ts';
 import { SODIUM_FLAG_MG, dailyTotals, dairyPortions, type LoggedPortion } from './totals.ts';
-import { portionLabel, quickAmounts, unitLabel } from './units.ts';
+import { MEAL_SLOTS, mealSlotAtHour, portionLabel, quickAmounts, unitLabel } from './units.ts';
 
 type SqlValue = string | number | null;
 
@@ -97,6 +98,84 @@ function batch(overrides: Partial<NutritionBatchRow> = {}): NutritionBatchRow {
     ...overrides,
   };
 }
+
+test('un alimento por unidad se guarda tal cual dice su envase', async () => {
+  const { db, raw } = seeded();
+
+  const id = await addFood(db, {
+    name: 'Wrap de tocino, salchicha y huevo',
+    store: 'Starbucks',
+    amount: 1,
+    unit: 'unidad',
+    kind: 'count',
+    kcal: 640,
+    proteinG: 28,
+    fatG: 33,
+    carbsG: null,
+    sugarG: 2,
+  });
+
+  const row = raw.prepare('SELECT * FROM nutrition_food WHERE id = ?;').get(id) as {
+    base_unit: string;
+    unit_kind: string;
+    base_unit_g: number | null;
+    kcal: number;
+    protein_g: number;
+    carbs_g: number | null;
+    sugar_g: number;
+    sodium_mg: number | null;
+    source: string;
+  };
+
+  // Por unidad no se divide entre nada, y lo que la etiqueta no dice queda vacio.
+  assert.equal(row.base_unit, 'unidad');
+  assert.equal(row.unit_kind, 'count');
+  assert.equal(row.base_unit_g, null);
+  assert.equal(row.kcal, 640);
+  assert.equal(row.protein_g, 28);
+  assert.equal(row.carbs_g, null);
+  assert.equal(row.sugar_g, 2);
+  assert.equal(row.sodium_mg, null);
+  assert.equal(row.source, 'label');
+
+  // Y se anota como cualquier otro: una unidad es una unidad.
+  await addFoodEntry(db, {
+    date: '2026-09-25',
+    foodId: id,
+    quantity: 1,
+    unit: 'unidad',
+    mealSlot: 'desayuno',
+  });
+  const totals = dailyTotals(await listPortions(db, '2026-09-25'));
+  assert.equal(totals.kcal, 640);
+  assert.equal(totals.proteinG, 28);
+});
+
+test('un alimento por cien gramos se guarda por gramo', async () => {
+  const { db, raw } = seeded();
+
+  const id = await addFood(db, {
+    name: 'Arroz integral',
+    amount: 100,
+    unit: 'g',
+    kind: 'mass',
+    kcal: 350,
+    proteinG: 7.5,
+    fatG: 2.5,
+    carbsG: 74,
+  });
+
+  const row = raw.prepare('SELECT * FROM nutrition_food WHERE id = ?;').get(id) as {
+    base_unit: string;
+    base_unit_g: number;
+    kcal: number;
+    carbs_g: number;
+  };
+  assert.equal(row.base_unit, 'g');
+  assert.equal(row.base_unit_g, 1);
+  assert.equal(row.kcal, 3.5);
+  assert.equal(row.carbs_g, 0.74);
+});
 
 test('a day adds up across portions', () => {
   const totals = dailyTotals([portion(200), portion(150)]);
@@ -596,4 +675,16 @@ test('dairy is counted and shown, never subtracted', async () => {
   assert.equal(totals.dairy.millilitresG, 450);
   // The eggs are still in the day's protein, they are simply not dairy.
   assert.ok(totals.proteinG > totals.dairy.proteinG);
+});
+
+test('el registro abre en el espacio de comida en el que esta el reloj', () => {
+  // Sus horas de spec 1.4: 08:00, 10:40, 11:50, 14:40 y 19:30.
+  assert.equal(mealSlotAtHour(7, 30), MEAL_SLOTS[0]);
+  assert.equal(mealSlotAtHour(9), MEAL_SLOTS[0]);
+  assert.equal(mealSlotAtHour(10, 40), MEAL_SLOTS[1]);
+  assert.equal(mealSlotAtHour(11, 50), MEAL_SLOTS[2]);
+  assert.equal(mealSlotAtHour(14, 40), MEAL_SLOTS[3]);
+  assert.equal(mealSlotAtHour(19, 30), MEAL_SLOTS[4]);
+  assert.equal(mealSlotAtHour(23, 59), MEAL_SLOTS[4]);
+  assert.equal(mealSlotAtHour(0), MEAL_SLOTS[0]);
 });

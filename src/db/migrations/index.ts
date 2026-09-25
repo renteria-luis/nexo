@@ -32,6 +32,7 @@ import { sql as setImplement } from './031_set_implement.ts';
 import { sql as dropPreacher } from './032_drop_preacher_from_pull.ts';
 import { sql as shouldersAndForearms } from './033_shoulders_and_forearms.ts';
 import { sql as absoluteScore } from './034_absolute_score.ts';
+import { sql as curveScores } from './035_curve_scores.ts';
 
 export type Migration = {
   id: string;
@@ -75,4 +76,5 @@ export const migrations: Migration[] = [
   { id: '032_drop_preacher_from_pull', sql: dropPreacher },
   { id: '033_shoulders_and_forearms', sql: shouldersAndForearms },
   { id: '034_absolute_score', sql: absoluteScore },
+  { id: '035_curve_scores', sql: curveScores },
 ];

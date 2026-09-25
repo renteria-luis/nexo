@@ -46,3 +46,17 @@ export function portionLabel(food: NutritionFoodRow, quantity: number): string {
 
 /** Spec 1.4: the five moments he actually eats at. */
 export const MEAL_SLOTS = ['desayuno', 'media mañana', 'mediodía', 'tarde', 'cena'];
+
+/**
+ * Spec 1.4. El espacio de comida en el que cae una hora, para abrir el registro en
+ * el que esta en vez del primero de la lista. Sus horas son 08:00, 10:40, 11:50,
+ * 14:40 y 19:30, asi que los cortes van a mitad de camino entre una y la siguiente.
+ */
+export function mealSlotAtHour(hour: number, minute = 0): string {
+  const time = hour + minute / 60;
+  if (time < 9.3) return MEAL_SLOTS[0];
+  if (time < 11.25) return MEAL_SLOTS[1];
+  if (time < 13.25) return MEAL_SLOTS[2];
+  if (time < 17) return MEAL_SLOTS[3];
+  return MEAL_SLOTS[4];
+}

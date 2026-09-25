@@ -87,6 +87,7 @@ test('nothing eaten leaves the food criteria without data, not at zero grams', a
   // que faltan no son un suspenso, son seis cosas sin anotar.
   assert.equal(day.result?.score, 22);
   assert.equal(day.result?.pointsWithoutData, 78);
+  assert.equal(day.bestWeekSessions, 0);
 });
 
 test('what was eaten reaches the grid through the nutrition module', async () => {
@@ -101,8 +102,9 @@ test('what was eaten reaches the grid through the nutrition module', async () =>
   assert.equal(day.nutrition?.proteinG, 39);
 
   const protein = day.result?.criteria.find((c) => c.id === 'protein');
-  // 39 g is well under the band, so it scores zero rather than being skipped.
-  assert.equal(protein?.fraction, 0);
+  // 39 g en 73 kg es medio gramo por kilo: poquisimo, pero la curva de spec 4.1 no
+  // lo manda a cero de golpe.
+  assert.ok((protein?.fraction ?? 0) > 0 && (protein?.fraction ?? 1) < 0.2);
 });
 
 test('a day still open has not failed to train; a day already past has', async () => {

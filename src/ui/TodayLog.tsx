@@ -1,8 +1,13 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { sleepMinutesFrom, type DailyLogEntry, type LastWeight } from '../core/daily-log.ts';
-import { shortDate } from '../core/dates.ts';
+import {
+  isBodyWeightKg,
+  sleepMinutesFrom,
+  type DailyLogEntry,
+  type LastWeight,
+} from '../core/daily-log.ts';
+import { addDays, shortDate } from '../core/dates.ts';
 import type { CoreDailyLogRow, NutritionContainerRow, SleepSource } from '../db/types.ts';
 import { NumericField } from './NumericField.tsx';
 import { mono, theme } from './theme.ts';
@@ -46,6 +51,11 @@ export type TodayLogProps = {
   lastWeight: LastWeight | null;
   onLog: (entry: Omit<DailyLogEntry, 'date'>) => void;
 };
+
+/** Solo el numero del dia: el mes ya esta en la cabecera de la pantalla. */
+function dayOfMonth(date: string): string {
+  return String(Number(date.slice(8, 10)));
+}
 
 export function TodayLog({ log, containers, waterTargetMl, lastWeight, onLog }: TodayLogProps) {
   // Dos casillas porque asi lo dice en voz alta: siete y media, o ciento treinta
@@ -121,9 +131,7 @@ export function TodayLog({ log, containers, waterTargetMl, lastWeight, onLog }: 
             placeholder="kg"
             onCommit={() => {
               const parsed = Number(weightDraft);
-              if (Number.isFinite(parsed) && parsed > 0 && parsed !== log?.weight_kg) {
-                onLog({ weightKg: parsed });
-              }
+              if (isBodyWeightKg(parsed) && parsed !== log?.weight_kg) onLog({ weightKg: parsed });
             }}
             style={styles.input}
           />
@@ -138,6 +146,14 @@ export function TodayLog({ log, containers, waterTargetMl, lastWeight, onLog }: 
       </Section>
 
       <Section title="Sueño">
+        {/* La casilla es la noche anterior, y decirlo evita anotar la de anteanoche
+            el dia que se levanta tarde. Se puntua en este dia porque es la noche que
+            sostiene lo que haga hoy. */}
+        {log?.date && (
+          <Text style={styles.weightNote}>
+            la noche del {dayOfMonth(addDays(log.date, -1))} al {dayOfMonth(log.date)}
+          </Text>
+        )}
         <View style={styles.row}>
           <NumericField
             value={sleepHours}

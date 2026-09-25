@@ -3,7 +3,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { shortDate, todayIso } from '../../core/dates.ts';
+import { scoreText } from '../../core/day-report.ts';
 import { proteinBand } from '../../core/targets.ts';
+import { WEEKLY_SESSION_TARGET } from '../../core/discipline.ts';
 import type { DayDetail } from '../../shell/records.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 import { fromKg } from '../../core/units.ts';
@@ -15,6 +17,11 @@ import { mono, theme } from '../theme.ts';
 import { Screen } from './Screen.tsx';
 
 const MISSING = '—';
+
+/** Un decimal solo cuando lo hay: "17.3/20", pero "22/22". */
+function points(earned: number): string {
+  return Number.isInteger(earned) ? String(earned) : earned.toFixed(1);
+}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -34,8 +41,17 @@ export function DayScreen() {
   const route = useRoute<{ key: string; name: string; params?: { date?: string } }>();
   const date = route.params?.date ?? todayIso();
 
-  const { state, loadDay, editDay, addFoodOn, removeFood, openSessionOn, addSetOn, removeSetOn } =
-    useAppData();
+  const {
+    state,
+    loadDay,
+    editDay,
+    addFoodOn,
+    createFood,
+    removeFood,
+    openSessionOn,
+    addSetOn,
+    removeSetOn,
+  } = useAppData();
   const [detail, setDetail] = useState<DayDetail | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -76,7 +92,7 @@ export function DayScreen() {
       <View style={styles.head}>
         <Text style={styles.date}>{shortDate(date)}</Text>
         <Text style={styles.score}>
-          {report.score === null ? MISSING : Math.round(report.score)}
+          {report.score === null ? MISSING : scoreText(report.score)}
         </Text>
       </View>
 
@@ -98,7 +114,12 @@ export function DayScreen() {
         </Text>
       )}
       {day.log?.rest_day === 1 && (
-        <Text style={styles.ok}>Descanso planeado: no se penaliza no haber entrenado.</Text>
+        <Text style={styles.ok}>
+          Descanso planeado: no se penaliza no haber entrenado.{' '}
+          {day.bestWeekSessions >= WEEKLY_SESSION_TARGET
+            ? `La semana que lo rodea tiene ${day.bestWeekSessions} sesiones, así que este descanso vale como entrenar.`
+            : `Valdrá como entrenar cuando la semana que lo rodea llegue a ${WEEKLY_SESSION_TARGET} sesiones; va en ${day.bestWeekSessions}, y cuentan las de los días que vengan.`}
+        </Text>
       )}
 
       {/* El desglose: que pedia cada cosa, que hiciste y cuantos puntos salieron. */}
@@ -124,7 +145,7 @@ export function DayScreen() {
                       : styles.pointsPartial,
               ]}
             >
-              {line.earned === null ? MISSING : Math.round(line.earned)}/{line.weight}
+              {line.earned === null ? MISSING : points(line.earned)}/{line.weight}
             </Text>
           </View>
         ))}
@@ -182,6 +203,8 @@ export function DayScreen() {
           kcalTarget={day.targets?.kcal ?? null}
           heading={`Lo que comió el ${shortDate(date)}`}
           onAdd={(entry) => after(addFoodOn(date, entry))}
+          onCreateFood={createFood}
+          history={loaded.foodHistory}
           onRemove={(entryId) => {
             removeFood(entryId);
             setTimeout(reload, 300);

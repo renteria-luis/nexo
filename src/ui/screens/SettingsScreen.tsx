@@ -5,6 +5,7 @@ import { Eye, EyeOff } from 'lucide-react-native';
 import type { PaletteId } from '../../core/palettes.ts';
 import { settingProblem, type SettingKey, type Settings } from '../../core/settings.ts';
 
+import { isBodyWeightKg } from '../../core/daily-log.ts';
 import { NUMBER_PAD_HEIGHT, useNumberPad } from '../NumberPadHost.tsx';
 import { NumericField } from '../NumericField.tsx';
 import { PalettePicker } from '../PalettePicker.tsx';
@@ -106,6 +107,9 @@ export function SettingsScreen({
   // Estatura, fecha de nacimiento y peso son datos que no quiere a la vista de nadie
   // que le mire el telefono por encima del hombro.
   const [hidden, setHidden] = useState(true);
+  // Tapar con puntos lo que esta escribiendo en ese momento es como escribir a
+  // ciegas: el campo abierto se ve, y se vuelve a tapar al salir de el.
+  const [editing, setEditing] = useState<string | null>(null);
   const [confirmingImport, setConfirmingImport] = useState(false);
   const [busy, setBusy] = useState(false);
   const [backupNote, setBackupNote] = useState<string | null>(null);
@@ -180,7 +184,11 @@ export function SettingsScreen({
             <Text style={styles.label}>{field.label}</Text>
             {/* Un valor que no se guardo nunca se tapa: hay que poder ver que tiene
                 de malo para arreglarlo. */}
-            {hidden && draft.trim() !== '' && !refused[field.key] && problem === null ? (
+            {hidden &&
+            editing !== field.key &&
+            draft.trim() !== '' &&
+            !refused[field.key] &&
+            problem === null ? (
               <Pressable
                 accessibilityLabel={`Mostrar ${field.label}`}
                 onPress={() => setHidden(false)}
@@ -195,13 +203,19 @@ export function SettingsScreen({
                 allowDecimal
                 accessibilityLabel={field.label}
                 onCommit={() => commit(field.key)}
+                onFocus={() => setEditing(field.key)}
+                onBlur={() => setEditing(null)}
                 style={[styles.input, problem ? styles.inputBad : null]}
               />
             ) : (
               <TextInput
                 value={draft}
                 onChangeText={(text) => setDrafts((current) => ({ ...current, [field.key]: text }))}
-                onBlur={() => commit(field.key)}
+                onFocus={() => setEditing(field.key)}
+                onBlur={() => {
+                  setEditing(null);
+                  commit(field.key);
+                }}
                 onSubmitEditing={() => commit(field.key)}
                 accessibilityLabel={field.label}
                 style={[styles.input, problem ? styles.inputBad : null]}
@@ -254,7 +268,7 @@ export function SettingsScreen({
 
       <Text style={styles.heading}>Peso de hoy</Text>
       <View style={styles.field}>
-        {hidden && weightDraft.trim() !== '' ? (
+        {hidden && editing !== 'weight' && weightDraft.trim() !== '' ? (
           <Pressable
             accessibilityLabel="Mostrar el peso de hoy"
             onPress={() => setHidden(false)}
@@ -268,9 +282,11 @@ export function SettingsScreen({
             onChange={setWeightDraft}
             allowDecimal
             accessibilityLabel="Peso de hoy"
+            onFocus={() => setEditing('weight')}
+            onBlur={() => setEditing(null)}
             onCommit={() => {
               const parsed = Number(weightDraft);
-              if (Number.isFinite(parsed) && parsed > 0) onSaveWeight(parsed);
+              if (isBodyWeightKg(parsed)) onSaveWeight(parsed);
             }}
             style={styles.input}
           />

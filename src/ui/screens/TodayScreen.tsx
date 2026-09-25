@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAppData, WEEKS_SHOWN } from '../../shell/AppData.tsx';
 import { addDays, dateAndTime, todayIso, weekStart } from '../../core/dates.ts';
+import { scoreText } from '../../core/day-report.ts';
 import { currentStreak, longestStreak } from '../../core/discipline.ts';
 import { averageScore, buildGrid } from '../../core/heatmap.ts';
 import type { TargetChange } from '../../core/snapshots.ts';
@@ -177,7 +178,7 @@ export function TodayScreen({
 
       <View style={styles.scoreRow}>
         <View>
-          <Text style={styles.score}>{score === null ? '—' : Math.round(score)}</Text>
+          <Text style={styles.score}>{score === null ? '—' : scoreText(score)}</Text>
           {/* La nota es sobre cien y sube durante el dia, asi que a media manana es
               baja porque casi nada esta anotado todavia, no porque el dia vaya mal. */}
           <Text style={styles.scoreOutOf}>

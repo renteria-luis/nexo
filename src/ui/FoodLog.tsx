@@ -4,14 +4,22 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NutritionFoodRow } from '../db/types.ts';
 import {
   MEAL_SLOTS,
+  mealSlotAtHour,
   portionLabel,
   quickAmounts,
   roundAmount,
   unitLabel,
+  type FoodHistory,
+  type LastMeal,
   type LoggedPortion,
+  type NewFood,
   type NewFoodEntry,
   type NutritionTotals,
 } from '../nutrition/index.ts';
+import { shortDate } from '../core/dates.ts';
+
+import { FoodPicker } from './FoodPicker.tsx';
+import { NewFoodPanel } from './NewFoodPanel.tsx';
 import { NumericField } from './NumericField.tsx';
 import { mono, theme } from './theme.ts';
 
@@ -50,6 +58,12 @@ export type FoodLogProps = {
   kcalTarget: number | null;
   onAdd: (entry: Omit<NewFoodEntry, 'date'>) => void;
   onRemove: (entryId: string) => void;
+  /** Un alimento que no esta en el catalogo, copiado de su envase. */
+  onCreateFood: (food: NewFood) => void;
+  /** Lo que ya anoto, que es lo que decide el orden de la lista. */
+  history: FoodHistory;
+  /** Sin esto no se ofrece repetir: solo tiene sentido sobre el dia de hoy. */
+  onRepeatMeal?: (meal: LastMeal, slot: string) => void;
   /** "Comida de hoy" salvo cuando el dia no es hoy. */
   heading?: string;
 };
@@ -62,11 +76,21 @@ export function FoodLog({
   kcalTarget,
   onAdd,
   onRemove,
+  onCreateFood,
+  history,
+  onRepeatMeal,
   heading = 'Comida de hoy',
 }: FoodLogProps) {
   const [foodId, setFoodId] = useState<string | null>(null);
   const [quantity, setQuantity] = useState('1');
-  const [slot, setSlot] = useState(MEAL_SLOTS[0]);
+  // Abre en el espacio de comida en el que esta el reloj: a las tres de la tarde no
+  // esta anotando el desayuno.
+  const [slot, setSlot] = useState(() => {
+    const now = new Date();
+    return mealSlotAtHour(now.getHours(), now.getMinutes());
+  });
+  const [creating, setCreating] = useState(false);
+  const repeatable = history.lastMealBySlot.get(slot) ?? null;
 
   const selected = foods.find((food) => food.id === foodId) ?? null;
   const parsed = Number(quantity);
@@ -154,18 +178,6 @@ export function FoodLog({
 
       <View style={styles.picker}>
         <View style={styles.chips}>
-          {foods.map((food) => (
-            <Pressable
-              key={food.id}
-              onPress={() => setFoodId(food.id)}
-              style={[styles.chip, food.id === foodId && styles.chipSelected]}
-            >
-              <Text style={styles.chipText}>{food.name}</Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <View style={styles.chips}>
           {MEAL_SLOTS.map((name) => (
             <Pressable
               key={name}
@@ -176,6 +188,42 @@ export function FoodLog({
             </Pressable>
           ))}
         </View>
+
+        {repeatable && onRepeatMeal && (
+          <Pressable
+            accessibilityLabel={`Repetir ${slot} del ${shortDate(repeatable.date)}`}
+            onPress={() => onRepeatMeal(repeatable, slot)}
+            style={styles.repeat}
+          >
+            <Text style={styles.repeatText}>
+              repetir {slot} del {shortDate(repeatable.date)} · {repeatable.entries.length}{' '}
+              {repeatable.entries.length === 1 ? 'cosa' : 'cosas'}
+            </Text>
+          </Pressable>
+        )}
+
+        <FoodPicker
+          foods={foods}
+          history={history}
+          slot={slot}
+          selectedId={foodId}
+          onCreate={() => setCreating((open) => !open)}
+          onSelect={(food) => {
+            setFoodId(food.id);
+            // Con la cantidad de la ultima vez ya puesta, anotar son dos toques.
+            setQuantity(roundAmount(history.lastQuantity.get(food.id) ?? 1));
+          }}
+        />
+
+        {creating && (
+          <NewFoodPanel
+            onCancel={() => setCreating(false)}
+            onSave={(food) => {
+              onCreateFood(food);
+              setCreating(false);
+            }}
+          />
+        )}
 
         {selected && (
           <View style={styles.chips}>
@@ -322,6 +370,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: mono,
     color: theme.text,
+  },
+  repeat: {
+    borderWidth: 1,
+    borderColor: theme.line,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    alignSelf: 'flex-start',
+    marginTop: 2,
+  },
+  repeatText: {
+    fontSize: 11,
+    fontFamily: mono,
+    color: theme.accent,
   },
   addRow: {
     flexDirection: 'row',

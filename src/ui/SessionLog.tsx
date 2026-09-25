@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Check, Circle, Minus, Plus } from 'lucide-react-native';
 
+import { shortDate } from '../core/dates.ts';
 import { formatWeight, fromKg, snapToIncrement, toKg, type WeightUnit } from '../core/units.ts';
 import {
   estimatedRestSeconds,
@@ -28,6 +29,24 @@ function setLine(set: LoggedSet, unit: WeightUnit): string {
   // va lo que de verdad levanto, que es el.
   const body = set.bodyWeightKg ? ` (+${formatWeight(set.bodyWeightKg, unit)} ${unit})` : '';
   return `${formatWeight(set.weightKg, unit)} ${unit}${each}${body} × ${set.reps}`;
+}
+
+/**
+ * La misma serie partida en dos renglones, para el recuadro de la vez pasada.
+ *
+ * Todo seguido en una linea eran tres o cuatro series corridas sin donde cortar, que
+ * es justo cuando no se lee nada de una ojeada entre serie y serie.
+ */
+function setChip(set: LoggedSet, unit: WeightUnit): { load: string; reps: string } {
+  const each = (set.loadFactor ?? 1) > 1 ? ' c/u' : '';
+  const body = set.bodyWeightKg ? `+${formatWeight(set.bodyWeightKg, unit)}` : '';
+  // En una dominada lo que pesa de verdad es el, y el lastre suele ser cero.
+  const load = set.bodyWeightKg
+    ? set.weightKg > 0
+      ? `${formatWeight(set.weightKg, unit)} ${body}`
+      : `${body} ${unit}`
+    : `${formatWeight(set.weightKg, unit)} ${unit}${each}`;
+  return { load, reps: `× ${set.reps}` };
 }
 
 /** Spec 8.3 rule 8 visto de un vistazo: hecho, a medias, o todavia no. */
@@ -368,19 +387,43 @@ export function SessionLog({
 
             <Text style={styles.lastLabel}>
               {lastSets.length > 0
-                ? `La vez pasada (${lastSets[0].date})`
-                : 'Primera vez con este ejercicio'}
+                ? `la vez pasada · ${shortDate(lastSets[0].date)}`
+                : 'primera vez con este ejercicio'}
             </Text>
             {lastSets.length > 0 && (
-              <Text style={styles.lastSets}>
-                {lastSets.map((set) => setLine(set, unit)).join('   ')}
-              </Text>
+              <View style={styles.lastSets}>
+                {lastSets.map((set) => {
+                  const chip = setChip(set, unit);
+                  return (
+                    <Pressable
+                      key={set.setIndex}
+                      // Tocarla la copia a los campos: a veces quiere repetir la
+                      // segunda serie y no la que toca por numero.
+                      accessibilityLabel={`Copiar la serie ${set.setIndex} de la vez pasada`}
+                      onPress={() => {
+                        setWeightDraft(formatWeight(set.weightKg, unit));
+                        setRepsDraft(String(set.reps));
+                      }}
+                      style={styles.lastSet}
+                    >
+                      <Text style={styles.lastSetIndex}>
+                        {set.setIndex}
+                        {set.rpe == null ? '' : ` · RPE ${set.rpe}`}
+                      </Text>
+                      <Text style={styles.lastSetLoad}>{chip.load}</Text>
+                      <Text style={styles.lastSetReps}>{chip.reps}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
             )}
 
             {marks && (
+              /* Un 1RM estimado con centesimas es ruido: la formula ya es una
+                 aproximacion, asi que se lee redondo. */
               <Text style={styles.marks}>
-                Mejor {formatWeight(marks.best.e1rm, unit)} {unit} · peor{' '}
-                {formatWeight(marks.worst.e1rm, unit)} {unit}, 1RM estimado en 8 semanas
+                1RM estimado · mejor {Math.round(fromKg(marks.best.e1rm, unit))} · peor{' '}
+                {Math.round(fromKg(marks.worst.e1rm, unit))} {unit} · 8 semanas
               </Text>
             )}
 
@@ -814,9 +857,33 @@ const styles = StyleSheet.create({
     fontFamily: mono,
   },
   lastSets: {
-    fontSize: 18,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 2,
+  },
+  lastSet: {
+    borderWidth: 1,
+    borderColor: theme.line,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    minWidth: 78,
+  },
+  lastSetIndex: {
+    fontSize: 9,
+    fontFamily: mono,
+    color: theme.textGhost,
+  },
+  lastSetLoad: {
+    fontSize: 15,
     fontFamily: mono,
     color: theme.text,
+  },
+  lastSetReps: {
+    fontSize: 15,
+    fontFamily: mono,
+    color: theme.textFaint,
   },
   marks: {
     fontSize: 11,

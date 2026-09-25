@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { shortDate } from '../core/dates.ts';
-import { hoursAndMinutes, litres, thousands } from '../core/day-report.ts';
+import { hoursAndMinutes, litres, scoreText, thousands } from '../core/day-report.ts';
 import { fromKg, type WeightUnit } from '../core/units.ts';
 import type { DayDetail } from '../shell/records.ts';
 
@@ -80,7 +80,7 @@ export function DayDialog({ date, unit, load, onClose, onOpenDetail }: DayDialog
           <View style={styles.head}>
             <Text style={styles.date}>{shortDate(date)}</Text>
             <Text style={styles.score}>
-              {report?.score == null ? MISSING : Math.round(report.score)}
+              {report?.score == null ? MISSING : scoreText(report.score)}
             </Text>
           </View>
 

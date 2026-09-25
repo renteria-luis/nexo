@@ -49,6 +49,17 @@ const MEASURED_FIELDS = [
  * a la vez. Devuelve null cuando no hay nada util que guardar, porque un cero aqui
  * significaria que no durmio.
  */
+/**
+ * Un peso corporal creible.
+ *
+ * Escribiendo 73 se pasa por 7, y ahora los campos se guardan solos mientras
+ * escribe: sin esto, ese 7 entraria al promedio de siete dias y movería las metas
+ * antes de que termine de teclear.
+ */
+export function isBodyWeightKg(kg: number): boolean {
+  return Number.isFinite(kg) && kg >= 30 && kg <= 250;
+}
+
 export function sleepMinutesFrom(hours: string, minutes: string): number | null {
   const h = hours.trim() === '' ? 0 : Number(hours.trim().replace(',', '.'));
   const m = minutes.trim() === '' ? 0 : Number(minutes.trim().replace(',', '.'));

@@ -2,13 +2,14 @@
 // penalty of 4.3, built on the generic engine in scoring.ts.
 
 import {
+  alongCurve,
   dayScore,
   towardsTarget,
-  withinBand,
+  type CurvePoint,
   type DayScore,
   type ScoredCriterion,
 } from './scoring.ts';
-import { kcalBand, proteinScoringBand, type TargetValues } from './targets.ts';
+import type { TargetValues } from './targets.ts';
 
 /** Spec 4.1. Weights are the evidence base, not preference, and they sum to 100. */
 export const CRITERION_WEIGHTS = {
@@ -24,8 +25,79 @@ export const CRITERION_WEIGHTS = {
 
 export type CriterionId = keyof typeof CRITERION_WEIGHTS;
 
-/** Spec 3.5: zero below six hours, a straight line up to the target. */
-const SLEEP_PARTIAL_FLOOR_MINUTES = 360;
+/**
+ * Spec 3.5 y 4.1. La curva del sueno, en minutos, tal como la fijo el dueno a partir
+ * de Saner 2020 (cinco noches de cuatro horas bajan la sintesis de proteina
+ * miofibrilar) y de los estudios que ya cita spec 1.5.
+ *
+ * Antes eran cero puntos por debajo de seis horas, y eso decia que dormir cinco es lo
+ * mismo que no dormir. No lo es: la perdida es fuerte pero gradual, y el salto de
+ * verdad esta entre las cinco y las siete. De ocho para arriba ya no suma.
+ */
+const SLEEP_CURVE: readonly CurvePoint[] = [
+  { at: 0, fraction: 0 },
+  { at: 60, fraction: 0 },
+  { at: 90, fraction: 1 / 20 },
+  { at: 120, fraction: 1 / 20 },
+  { at: 150, fraction: 2 / 20 },
+  { at: 180, fraction: 3 / 20 },
+  { at: 210, fraction: 4 / 20 },
+  { at: 240, fraction: 5 / 20 },
+  { at: 270, fraction: 6 / 20 },
+  { at: 300, fraction: 7 / 20 },
+  { at: 330, fraction: 9 / 20 },
+  { at: 360, fraction: 11 / 20 },
+  { at: 390, fraction: 14 / 20 },
+  { at: 420, fraction: 17 / 20 },
+  { at: 450, fraction: 19 / 20 },
+  { at: 480, fraction: 1 },
+];
+
+/** Donde la curva del sueno llega a los veinte puntos, para poder decirlo en pantalla. */
+export const SLEEP_FULL_MINUTES = 480;
+
+/**
+ * Spec 4.1. La proteina en gramos por kilo de peso.
+ *
+ * Morton 2018 pone la meseta de ganancia de masa magra en 1.62 g/kg (IC 95% 1.03 a
+ * 2.20), asi que la banda 1.8 a 2.2 de spec 3.6 esta dentro del intervalo y vale los
+ * dieciseis puntos enteros. Por debajo no se cae a plomo: 1.2 g/kg sigue construyendo
+ * bastante y 0.8 es la recomendacion general, que mantiene pero no construye. Por
+ * encima de 2.2 no aporta mas y solo le quita sitio a los otros macros, asi que baja
+ * despacio en vez de castigar.
+ */
+const PROTEIN_CURVE: readonly CurvePoint[] = [
+  { at: 0, fraction: 0 },
+  { at: 0.8, fraction: 0.2 },
+  { at: 1.2, fraction: 0.5 },
+  { at: 1.6, fraction: 0.875 },
+  { at: 1.8, fraction: 1 },
+  { at: 2.2, fraction: 1 },
+  { at: 3, fraction: 0.875 },
+  { at: 4, fraction: 0.75 },
+];
+
+/**
+ * Spec 4.1. Las calorias como fraccion de la meta del dia.
+ *
+ * Diez dias al 80% de lo que necesita bajan la sintesis de proteina en reposo un 16%
+ * (Areta 2014), y el meta-analisis de Murphy 2022 confirma que el deficit frena la
+ * ganancia de masa magra aunque no la fuerza. Por eso la caida por debajo es real
+ * pero progresiva, y cero recien en el 60% de la meta. Por arriba no se pierde
+ * musculo, se gana grasa, que es la meta 4 del dueno: baja mas suave y llega a cero
+ * en el 140%.
+ */
+const KCAL_CURVE: readonly CurvePoint[] = [
+  { at: 0.6, fraction: 0 },
+  { at: 0.7, fraction: 0.2 },
+  { at: 0.8, fraction: 0.5 },
+  { at: 0.88, fraction: 0.8 },
+  { at: 0.94, fraction: 1 },
+  { at: 1.06, fraction: 1 },
+  { at: 1.15, fraction: 0.7 },
+  { at: 1.25, fraction: 0.4 },
+  { at: 1.4, fraction: 0 },
+];
 /** Spec 3.4: partial from three quarters of the day's water target. */
 const WATER_PARTIAL_SHARE = 0.75;
 /** Spec 14.2: partial from seventy percent of the step target. */
@@ -97,6 +169,8 @@ export type DisciplineDay = {
 
 export type TrainingContext = {
   sessionsLastSevenDays: number;
+  /** Spec 4.3: la mejor semana de siete dias que contiene este dia, mire hacia donde mire. */
+  bestWeekSessions: number;
   consecutiveMissed: number;
   /** Spec 4.3: a planned rest day is scored on everything else and penalised on nothing. */
   isScheduledRestDay: boolean;
@@ -109,13 +183,17 @@ function binary(value: boolean | null): number | null {
 }
 
 /**
- * Spec 4.3. Cinco sesiones en los ultimos siete dias dejan los otros dos libres, y un
- * descanso marcado en uno de esos dias vale como haber entrenado: descansar cuando ya
+ * Spec 4.3. Cinco sesiones en una semana dejan los otros dos dias libres, y un
+ * descanso marcado en uno de esos dias vale como haber entrenado: descansar cuando
  * cumpliste es parte del plan, no un dia perdido. Con sesiones pendientes no vale, o
  * marcar descanso todos los dias seria la forma mas facil de sacar cien.
+ *
+ * La semana que cuenta es la mejor que contiene ese dia y no la que quedo detras: un
+ * descanso el jueves con el entreno del viernes, sabado y domingo por delante es
+ * exactamente el caso, y solo el domingo se sabe.
  */
 export function restCountsAsTrained(training: TrainingContext): boolean {
-  return training.isScheduledRestDay && !isScheduledToday(training.sessionsLastSevenDays);
+  return training.isScheduledRestDay && training.bestWeekSessions >= WEEKLY_SESSION_TARGET;
 }
 
 export function scoreCriteria(
@@ -134,21 +212,20 @@ export function scoreCriteria(
     {
       id: 'sleep',
       weight: CRITERION_WEIGHTS.sleep,
-      fraction:
-        day.sleepMinutes === null
-          ? null
-          : towardsTarget(day.sleepMinutes, targets.sleepMinutes, SLEEP_PARTIAL_FLOOR_MINUTES),
+      fraction: day.sleepMinutes === null ? null : alongCurve(day.sleepMinutes, SLEEP_CURVE),
     },
     {
       id: 'protein',
       weight: CRITERION_WEIGHTS.protein,
       fraction:
-        day.proteinG === null ? null : withinBand(day.proteinG, proteinScoringBand(targets)),
+        day.proteinG === null
+          ? null
+          : alongCurve(day.proteinG / targets.weightBasisKg, PROTEIN_CURVE),
     },
     {
       id: 'calories',
       weight: CRITERION_WEIGHTS.calories,
-      fraction: day.kcal === null ? null : withinBand(day.kcal, kcalBand(targets)),
+      fraction: day.kcal === null ? null : alongCurve(day.kcal / targets.kcal, KCAL_CURVE),
     },
     {
       id: 'alcohol',

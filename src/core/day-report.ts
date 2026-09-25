@@ -7,7 +7,12 @@
 
 import type { CoreDailyLogRow } from '../db/types.ts';
 
-import { CRITERION_WEIGHTS, type CriterionId, type DisciplineResult } from './discipline.ts';
+import {
+  CRITERION_WEIGHTS,
+  SLEEP_FULL_MINUTES,
+  type CriterionId,
+  type DisciplineResult,
+} from './discipline.ts';
 import { kcalBand, proteinBand, type TargetValues } from './targets.ts';
 
 export const CRITERION_LABELS: Record<CriterionId, string> = {
@@ -52,6 +57,11 @@ const MISSING = '—';
 
 export function hoursAndMinutes(minutes: number): string {
   return `${Math.floor(minutes / 60)} h ${String(Math.round(minutes % 60)).padStart(2, '0')}`;
+}
+
+/** La nota con su decimal cuando lo tiene: 99.2, pero 100. */
+export function scoreText(score: number): string {
+  return Number.isInteger(score) ? String(score) : score.toFixed(1);
 }
 
 export function litres(ml: number): string {
@@ -117,7 +127,9 @@ function lines(input: ReportInput): CriterionLine[] {
       weight: CRITERION_WEIGHTS.sleep,
       earned: earned('sleep'),
       value: log?.sleep_minutes == null ? MISSING : hoursAndMinutes(log.sleep_minutes),
-      target: targets ? hoursAndMinutes(targets.sleepMinutes) : MISSING,
+      // Los veinte puntos estan en las ocho horas, que es donde la curva de spec 4.1
+      // deja de subir. Su meta personal de Ajustes es otra cosa y vive en Hoy.
+      target: hoursAndMinutes(SLEEP_FULL_MINUTES),
     },
     {
       id: 'protein',
@@ -133,7 +145,7 @@ function lines(input: ReportInput): CriterionLine[] {
       weight: CRITERION_WEIGHTS.calories,
       earned: earned('calories'),
       value: nutrition === null ? MISSING : `${Math.round(nutrition.kcal)} kcal`,
-      target: kcal === null ? MISSING : `${Math.round(kcal.fullFrom)} a ${Math.round(kcal.fullTo)}`,
+      target: kcal === null ? MISSING : `${Math.round(kcal.from)} a ${Math.round(kcal.to)}`,
     },
     {
       id: 'alcohol',

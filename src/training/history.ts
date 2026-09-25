@@ -26,6 +26,27 @@ export function sessionsInTrailingWeek(sessionDates: readonly IsoDate[], onDate:
 }
 
 /**
+ * Spec 4.3. La mejor de las siete ventanas de siete dias que contienen ese dia.
+ *
+ * La ventana que solo mira hacia atras no puede saber el jueves que va a entrenar
+ * viernes, sabado y domingo, asi que juzgaba un descanso de mitad de semana contra
+ * una semana que todavia no habia pasado. Mirando cualquier ventana que lo contenga,
+ * el dia se resuelve cuando la semana termina de existir, y sigue sin depender de que
+ * dia cae: es lo mismo que pide el resto de spec 4.3.
+ */
+export function sessionsInBestWeekAround(
+  sessionDates: readonly IsoDate[],
+  onDate: IsoDate,
+): number {
+  let best = 0;
+  for (let ends = 0; ends <= 6; ends += 1) {
+    const count = sessionsInTrailingWeek(sessionDates, addDays(onDate, ends));
+    if (count > best) best = count;
+  }
+  return best;
+}
+
+/**
  * Spec 4.3. Walks back from the day before, counting scheduled days that went by
  * without a session. A day with no debt was optional, so it neither counts nor
  * clears; only a completed session resets the run.

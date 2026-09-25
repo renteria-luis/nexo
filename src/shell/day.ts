@@ -28,6 +28,7 @@ import {
   listSessionDates,
   listWorkingSets,
   marksWindow,
+  sessionsInBestWeekAround,
   sessionsInTrailingWeek,
   trainedOn,
   volumeLoad,
@@ -48,6 +49,8 @@ export type AssembledDay = {
   /** Null when there are no targets yet, because nothing can be scored against nothing. */
   result: DisciplineResult | null;
   trained: boolean | null;
+  /** Spec 4.3: la mejor semana que contiene el dia, que es la que decide si un descanso marcado gana sus puntos. */
+  bestWeekSessions: number;
   reEntryActive: boolean;
   session: TrainingSessionRow | null;
   sessionSets: LoggedSet[];
@@ -64,7 +67,9 @@ export async function assembleDay(
     targetsInForceOn(db, date),
     readSettings(db),
     listPortions(db, date),
-    listSessionDates(db, { from: addDays(date, -HISTORY_DAYS), to: date }),
+    // Hasta seis dias despues: un descanso marcado gana sus puntos cuando la semana
+    // llega a las cinco sesiones, y esas sesiones pueden ser posteriores al dia.
+    listSessionDates(db, { from: addDays(date, -HISTORY_DAYS), to: addDays(date, 6) }),
     getSessionOn(db, date),
   ]);
 
@@ -78,6 +83,8 @@ export async function assembleDay(
   const nutrition = portions.length > 0 ? dailyTotals(portions) : null;
 
   const reEntryActive = isReEntryActive(reEntryFrom(settings), date);
+  const sessionsLastSevenDays = sessionsInTrailingWeek(sessionDates, date);
+  const bestWeekSessions = sessionsInBestWeekAround(sessionDates, date);
 
   const result = targets
     ? scoreDay(
@@ -89,7 +96,8 @@ export async function assembleDay(
         }),
         targets,
         {
-          sessionsLastSevenDays: sessionsInTrailingWeek(sessionDates, date),
+          sessionsLastSevenDays,
+          bestWeekSessions,
           consecutiveMissed: consecutiveMissedBefore(sessionDates, date, HISTORY_DAYS),
           isScheduledRestDay: log?.rest_day === 1,
           reEntryActive,
@@ -105,6 +113,7 @@ export async function assembleDay(
     portions,
     result,
     trained,
+    bestWeekSessions,
     reEntryActive,
     session,
     sessionSets,
