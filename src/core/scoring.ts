@@ -11,20 +11,6 @@ export type ScoredCriterion = {
   fraction: Fraction;
 };
 
-/**
- * Full at the target or above, nothing below `partialFrom`, and a straight line
- * between the two. Spec 3.5 spells this shape out for sleep and spec 3.4 and 14.2
- * use it for water and steps.
- */
-export function towardsTarget(value: number, target: number, partialFrom: number): number {
-  if (partialFrom >= target) {
-    throw new Error(`partial threshold ${partialFrom} must sit below the target ${target}`);
-  }
-  if (value >= target) return 1;
-  if (value <= partialFrom) return 0;
-  return (value - partialFrom) / (target - partialFrom);
-}
-
 export type CurvePoint = {
   /** El valor medido: minutos dormidos, gramos por kilo, veces la meta. */
   at: number;

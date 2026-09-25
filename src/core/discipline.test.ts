@@ -211,14 +211,40 @@ test('las calorias caen segun el tamano del deficit, no de golpe', () => {
   close(points(share(0.94)), 10);
   close(points(share(1.06)), 10);
 
-  // Diez dias al 80% bajan la sintesis de proteina un 16%: la mitad de los puntos.
-  close(points(share(0.8)), 5);
-  close(points(share(0.7)), 2);
-  close(points(share(0.6)), 0);
+  // Diez dias al 80% bajan la sintesis de proteina un 16%, y eso cuesta dos puntos.
+  close(points(share(0.8)), 8);
+  close(points(share(0.7)), 6);
+  // Medio dia de comida vale un tercio, no cero. Cero es no comer.
+  close(points(share(0.5)), 3.5);
+  close(points(0), 0);
 
-  // Pasarse engorda pero no se come el musculo, asi que baja mas despacio.
-  assert.ok(points(share(1.15)) > points(share(0.85)));
-  close(points(share(1.4)), 0);
+  // Pasarse cuesta casi lo mismo que quedarse corto a la misma distancia, con el
+  // deficit un pelo mejor tratado porque va hacia la meta de bajar grasa.
+  close(points(share(1.5)), points(share(0.5)));
+  assert.ok(points(share(1.15)) < points(share(0.85)));
+  close(points(share(2)), 0);
+});
+
+test('el agua y los pasos tampoco tienen escalon', () => {
+  const water = (ml: number) => {
+    const day = scoreDay({ ...perfectDay, waterMl: ml }, targets, onTrack);
+    return (day.criteria.find((criterion) => criterion.id === 'water')?.fraction ?? 0) * 8;
+  };
+  const steps = (count: number) => {
+    const day = scoreDay({ ...perfectDay, steps: count }, targets, onTrack);
+    return (day.criteria.find((criterion) => criterion.id === 'steps')?.fraction ?? 0) * 8;
+  };
+
+  // Dia de entreno: la meta es 3.5 L, y 2.23 L ya no son 1.5 de 8.
+  close(water(targets.waterMlTraining), 8);
+  assert.ok(water(2230) > 4.5 && water(2230) < 5.5);
+  close(water(0), 0);
+  // Beber de mas no suma.
+  close(water(9000), 8);
+
+  close(steps(targets.steps), 8);
+  assert.ok(steps(targets.steps * 0.7) > 4);
+  close(steps(0), 0);
 });
 
 test('the alcohol scale follows the doses in spec 4.2', () => {

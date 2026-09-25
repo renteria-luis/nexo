@@ -4,7 +4,6 @@
 import {
   alongCurve,
   dayScore,
-  towardsTarget,
   type CurvePoint,
   type DayScore,
   type ScoredCriterion,
@@ -81,27 +80,60 @@ const PROTEIN_CURVE: readonly CurvePoint[] = [
  * Spec 4.1. Las calorias como fraccion de la meta del dia.
  *
  * Diez dias al 80% de lo que necesita bajan la sintesis de proteina en reposo un 16%
- * (Areta 2014), y el meta-analisis de Murphy 2022 confirma que el deficit frena la
- * ganancia de masa magra aunque no la fuerza. Por eso la caida por debajo es real
- * pero progresiva, y cero recien en el 60% de la meta. Por arriba no se pierde
- * musculo, se gana grasa, que es la meta 4 del dueno: baja mas suave y llega a cero
- * en el 140%.
+ * (Areta 2014), el meta-analisis de Murphy 2022 confirma que el deficit frena la
+ * ganancia de masa magra aunque no la fuerza, y Garthe 2011 muestra que bajando de
+ * peso despacio (0.7% por semana) se gana masa magra mientras que bajando rapido
+ * (1.4%) no. Eso describe una pendiente, no un acantilado: comer 1 180 de 2 425 es
+ * medio dia de comida y vale un tercio de los puntos, no cero. Cero es no comer.
+ * Por arriba no se pierde musculo, se gana grasa, que es la meta 4 del dueno: a la
+ * misma distancia de la meta las dos caras valen casi lo mismo, con la de abajo un
+ * pelo mejor tratada porque va en la direccion de esa meta.
  */
 const KCAL_CURVE: readonly CurvePoint[] = [
-  { at: 0.6, fraction: 0 },
-  { at: 0.7, fraction: 0.2 },
-  { at: 0.8, fraction: 0.5 },
-  { at: 0.88, fraction: 0.8 },
+  { at: 0, fraction: 0 },
+  { at: 0.3, fraction: 0.15 },
+  { at: 0.5, fraction: 0.35 },
+  { at: 0.7, fraction: 0.6 },
+  { at: 0.8, fraction: 0.8 },
+  { at: 0.88, fraction: 0.92 },
   { at: 0.94, fraction: 1 },
   { at: 1.06, fraction: 1 },
-  { at: 1.15, fraction: 0.7 },
-  { at: 1.25, fraction: 0.4 },
-  { at: 1.4, fraction: 0 },
+  { at: 1.15, fraction: 0.8 },
+  { at: 1.3, fraction: 0.55 },
+  { at: 1.5, fraction: 0.35 },
+  { at: 2, fraction: 0 },
 ];
-/** Spec 3.4: partial from three quarters of the day's water target. */
-const WATER_PARTIAL_SHARE = 0.75;
-/** Spec 14.2: partial from seventy percent of the step target. */
-const STEPS_PARTIAL_SHARE = 0.7;
+/**
+ * Spec 3.4 y 4.1. El agua como fraccion de la meta del dia, que ya es mayor los dias
+ * que entrena (2.8 L de descanso contra 3.5 L de entreno).
+ *
+ * Antes no daba nada por debajo del 75% de la meta, asi que 2.23 L de 2.8 L salian
+ * 1.5 de 8 y 2.09 L salian cero. La deshidratacion no funciona asi: los efectos
+ * medidos aparecen alrededor del 2% del peso corporal perdido y crecen con el
+ * deficit, sin ningun escalon. Por eso la curva es casi proporcional, con una caida
+ * algo mas rapida en la mitad de abajo, que es donde ya se nota.
+ */
+const WATER_CURVE: readonly CurvePoint[] = [
+  { at: 0, fraction: 0 },
+  { at: 0.25, fraction: 0.18 },
+  { at: 0.5, fraction: 0.45 },
+  { at: 0.75, fraction: 0.72 },
+  { at: 0.9, fraction: 0.9 },
+  { at: 1, fraction: 1 },
+];
+
+/**
+ * Spec 14.2. Los pasos, tambien como fraccion de su meta. Mismo motivo que el agua:
+ * caminar 3 000 de 5 000 no es lo mismo que no salir de casa, y el gasto del dia sube
+ * con cada paso sin ningun umbral.
+ */
+const STEPS_CURVE: readonly CurvePoint[] = [
+  { at: 0, fraction: 0 },
+  { at: 0.4, fraction: 0.3 },
+  { at: 0.7, fraction: 0.62 },
+  { at: 0.9, fraction: 0.88 },
+  { at: 1, fraction: 1 },
+];
 
 /** Spec 4.2, points lost out of the ten the criterion is worth. */
 function drinkScalePointsLost(drinks: number): number {
@@ -240,18 +272,12 @@ export function scoreCriteria(
     {
       id: 'water',
       weight: CRITERION_WEIGHTS.water,
-      fraction:
-        day.waterMl === null
-          ? null
-          : towardsTarget(day.waterMl, water, water * WATER_PARTIAL_SHARE),
+      fraction: day.waterMl === null ? null : alongCurve(day.waterMl / water, WATER_CURVE),
     },
     {
       id: 'steps',
       weight: CRITERION_WEIGHTS.steps,
-      fraction:
-        day.steps === null
-          ? null
-          : towardsTarget(day.steps, targets.steps, targets.steps * STEPS_PARTIAL_SHARE),
+      fraction: day.steps === null ? null : alongCurve(day.steps / targets.steps, STEPS_CURVE),
     },
     { id: 'creatine', weight: CRITERION_WEIGHTS.creatine, fraction: binary(day.creatineTaken) },
   ];

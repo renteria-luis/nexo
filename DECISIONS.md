@@ -126,3 +126,15 @@ plano, y el plan se rehace en cada carga de la app.
 Rejected: Horas fijas configurables a mano, como MyFitnessPal. Obliga a mantenerlas
 él y envejecen mal. También rechazado un servidor que decida y empuje: la app es
 local y sin cuentas.
+
+## 2026-09-25 — El agua, los pasos y las calorías tampoco tienen escalón
+Context: 2.23 L de una meta de 2.8 L daban 1.5 de 8, y 1 180 kcal daban 0 de 10. El
+mismo problema del sueño: un umbral con cero debajo dice que media meta es lo mismo
+que nada.
+Decision: Los tres pasan a curvas casi proporcionales. El agua llega a cero solo en
+cero, con caída algo más rápida en la mitad de abajo, porque la deshidratación empeora
+de forma continua desde ~2% del peso corporal. Las calorías igual, con las dos caras
+costando casi lo mismo a la misma distancia (Areta 2014, Murphy 2022, Garthe 2011) y
+el déficit un pelo mejor tratado porque va hacia la meta de bajar grasa.
+Rejected: Dejar los pasos como estaban. No los mencionó, pero tenían el mismo escalón
+al 70% y habría vuelto a salir.

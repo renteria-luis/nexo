@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { alongCurve, dayScore, towardsTarget, type CurvePoint } from './scoring.ts';
+import { alongCurve, dayScore, type CurvePoint } from './scoring.ts';
 
 const CURVE: readonly CurvePoint[] = [
   { at: 0, fraction: 0 },
@@ -62,10 +62,4 @@ test('la nota del dia se queda con un decimal', () => {
   ];
   assert.equal(dayScore(almost).score, 99.2);
   assert.equal(dayScore([{ id: 'a', weight: 100, fraction: 1 }]).score, 100);
-});
-
-test('el umbral con piso sigue sirviendo para el agua y los pasos', () => {
-  assert.equal(towardsTarget(2800, 2800, 2100), 1);
-  assert.equal(towardsTarget(2100, 2800, 2100), 0);
-  assert.equal(towardsTarget(2450, 2800, 2100), 0.5);
 });
