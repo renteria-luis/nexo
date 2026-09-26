@@ -47,6 +47,9 @@ test('solo avisa de la comida que falta, a su hora mas el margen', () => {
   // Mediodia son las 11:50 en spec 1.4, y el aviso llega 40 minutos despues.
   assert.equal(nudges[0].atMinute, 11 * 60 + 50 + 40);
   assert.ok(nudges[0].body.includes('11:50'));
+  // Y el titulo dice de que va, que "falta mediodia" a secas no lo decia.
+  assert.ok(nudges[0].title.toLowerCase().includes('comida'));
+  assert.ok(nudges[0].body.includes(MEAL_SLOTS[2]));
 });
 
 test('el aviso de entreno trae el boton de descanso y desaparece al marcarlo', () => {

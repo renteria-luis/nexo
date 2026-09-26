@@ -204,6 +204,20 @@ export function silencedKinds(records: readonly NudgeRecord[], today: IsoDate): 
   return silenced;
 }
 
+/** El articulo de cada espacio, que sin el suena a telegrama: "falta tarde". */
+const MEAL_ARTICLE: Record<string, string> = {
+  [MEAL_SLOTS[0]]: 'el',
+  [MEAL_SLOTS[1]]: 'la',
+  [MEAL_SLOTS[2]]: 'el',
+  [MEAL_SLOTS[3]]: 'la',
+  [MEAL_SLOTS[4]]: 'la',
+};
+
+function named(slot: string): string {
+  const article = MEAL_ARTICLE[slot];
+  return article === undefined ? slot : `${article} ${slot}`;
+}
+
 function clockOf(minute: number): string {
   const hour = Math.floor(minute / 60) % 24;
   return `${hour}:${String(Math.round(minute % 60)).padStart(2, '0')}`;
@@ -229,8 +243,10 @@ export function nudgesFor(day: NudgeDay, hours: NudgeHours, rules: NudgeRules): 
     add({
       kind: 'comida',
       atMinute: usual + MEAL_GRACE_MINUTES,
-      title: `Falta ${slot}`,
-      body: `Sueles anotarlo cerca de las ${clockOf(usual)}.`,
+      // El titulo dice de que va el aviso y el cuerpo que falta. "Falta tarde" a
+      // secas no decia si hablaba de comida, de entreno o de la hora.
+      title: 'Comida sin anotar',
+      body: `Falta ${named(slot)}, que sueles anotar cerca de las ${clockOf(usual)}.`,
       actions: [{ id: 'abrir', label: 'Anotar' }],
       // Los puntos de la comida son del dia entero, no de cada espacio: repartidos,
       // una comida suelta no le gana al entreno ni al sueño.
@@ -242,11 +258,11 @@ export function nudgesFor(day: NudgeDay, hours: NudgeHours, rules: NudgeRules): 
     add({
       kind: 'entreno',
       atMinute: hours.training,
-      title: '¿Entrenas hoy?',
+      title: 'Entreno sin empezar',
       body:
         day.trainingDebt === 1
-          ? 'Te falta una sesión para las cinco de la semana.'
-          : `Te faltan ${day.trainingDebt} sesiones para las cinco de la semana.`,
+          ? 'Te falta una sesión para las cinco de la semana. ¿Entrenas hoy?'
+          : `Te faltan ${day.trainingDebt} sesiones para las cinco de la semana. ¿Entrenas hoy?`,
       actions: [
         { id: 'entreno', label: 'Hoy entreno' },
         { id: 'descanso', label: 'Descanso' },
@@ -259,25 +275,25 @@ export function nudgesFor(day: NudgeDay, hours: NudgeHours, rules: NudgeRules): 
     add({
       kind: 'agua',
       atMinute: WATER_CHECK_MINUTE,
-      title: 'Vas corto de agua',
-      body: `${((day.waterMl ?? 0) / 1000).toFixed(2)} L de ${(day.waterTargetMl / 1000).toFixed(1)} L.`,
+      title: 'Agua por debajo de la mitad',
+      body: `Llevas ${((day.waterMl ?? 0) / 1000).toFixed(2)} L de los ${(day.waterTargetMl / 1000).toFixed(1)} L de hoy.`,
       actions: [{ id: 'agua', label: `+${WATER_ACTION_ML} ml` }],
       weight: CRITERION_WEIGHTS.water,
     });
   }
 
   if (day.sleepMinutes === null || day.weightKg === null) {
-    const missing =
-      day.sleepMinutes === null && day.weightKg === null
-        ? 'el sueño y el peso'
-        : day.sleepMinutes === null
-          ? 'el sueño de anoche'
-          : 'tu peso';
+    const both = day.sleepMinutes === null && day.weightKg === null;
+    const missing = both
+      ? 'Faltan el sueño de anoche y tu peso'
+      : day.sleepMinutes === null
+        ? 'Falta el sueño de anoche'
+        : 'Falta tu peso';
     add({
       kind: 'manana',
       atMinute: hours.wake + WAKE_GRACE_MINUTES,
-      title: 'Empieza el día',
-      body: `Falta ${missing}.`,
+      title: 'Registro del día sin empezar',
+      body: `${missing}.`,
       actions: [{ id: 'abrir', label: 'Anotar' }],
       weight: day.sleepMinutes === null ? CRITERION_WEIGHTS.sleep : 0,
     });
@@ -288,7 +304,7 @@ export function nudgesFor(day: NudgeDay, hours: NudgeHours, rules: NudgeRules): 
       kind: 'cierre',
       atMinute: CLOSING_MINUTE,
       title: 'El día va a quedar sin nota',
-      body: `Llevas ${day.criteriaWithData} de los 8 criterios anotados.`,
+      body: `Llevas ${day.criteriaWithData} de los 8 criterios anotados. Con 3 ya hay nota.`,
       actions: [{ id: 'abrir', label: 'Anotar' }],
       // Lo ultimo del dia manda sobre lo demas: es la unica pasada que queda.
       weight: 100,
@@ -300,7 +316,7 @@ export function nudgesFor(day: NudgeDay, hours: NudgeHours, rules: NudgeRules): 
       kind: 'semana',
       atMinute: CLOSING_MINUTE,
       title: 'Resumen de la semana',
-      body: 'Ya está listo el de esta semana.',
+      body: 'Ya está el de esta semana: volumen por músculo, sueño, proteína y peso.',
       actions: [{ id: 'abrir', label: 'Ver' }],
       weight: 1,
     });

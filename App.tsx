@@ -1,6 +1,12 @@
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
-import { DarkTheme, NavigationContainer, useNavigation } from '@react-navigation/native';
+import {
+  DarkTheme,
+  NavigationContainer,
+  useNavigation,
+  useNavigationContainerRef,
+} from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -175,11 +181,30 @@ function SettingsRoute() {
  * deslizar a otra pantalla con el teclado abierto lo dejaba flotando sobre una
  * pantalla que ya no era la suya.
  */
+/** A donde lleva cada aviso al tocarlo: spec 18 pide que caiga donde se anota eso. */
+const NUDGE_ROUTES: Record<string, string> = {
+  comida: 'Comida',
+  entreno: 'Entreno',
+  agua: 'Hoy',
+  manana: 'Hoy',
+  cierre: 'Hoy',
+  semana: 'Resumen semanal',
+};
+
 function Navigation() {
   const pad = useNumberPad();
+  const { nudgeTarget, clearNudgeTarget } = useAppData();
+  const navigation = useNavigationContainerRef();
+
+  useEffect(() => {
+    if (nudgeTarget === null) return;
+    const route = NUDGE_ROUTES[nudgeTarget];
+    if (route && navigation.isReady()) navigation.navigate(route as never);
+    clearNudgeTarget();
+  }, [nudgeTarget, clearNudgeTarget, navigation]);
 
   return (
-    <NavigationContainer theme={navigationTheme} onStateChange={pad.close}>
+    <NavigationContainer ref={navigation} theme={navigationTheme} onStateChange={pad.close}>
       <RootStack.Navigator
         screenOptions={{
           headerStyle: { backgroundColor: theme.bg },

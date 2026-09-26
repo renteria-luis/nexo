@@ -117,7 +117,7 @@ import {
 } from '../training/index.ts';
 
 import { exportToFile, importFromFile, type ExportOutcome } from './backup-file.ts';
-import { WATER_ACTION_ML } from '../core/nudges.ts';
+import { WATER_ACTION_ML, type NudgeKind } from '../core/nudges.ts';
 import { listenToNudges, syncNudges } from './notifications.ts';
 import { recordNudgeAction } from './nudges.ts';
 import { loadCharts as loadChartsData, type ChartsData } from './charts.ts';
@@ -328,6 +328,9 @@ export type AppData = {
   restoreFood: (id: string) => void;
   /** Los archivados, que se leen solo cuando los mira. */
   loadArchivedFoods: () => Promise<NutritionFoodRow[]>;
+  /** El aviso que acaba de abrir la app, para llevarlo a la pantalla que le toca. */
+  nudgeTarget: NudgeKind | null;
+  clearNudgeTarget: () => void;
   /** Vuelve a anotar una comida entera de otro dia, en el espacio que se elija. */
   repeatMeal: (meal: LastMeal, mealSlot: string) => void;
   removeFood: (entryId: string) => void;
@@ -414,6 +417,8 @@ export function useAppData(): AppData {
 export function AppDataProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>({ phase: 'opening' });
   const [exerciseId, setExerciseId] = useState<string | null>(null);
+  const [nudgeTarget, setNudgeTarget] = useState<NudgeKind | null>(null);
+  const clearNudgeTarget = useCallback(() => setNudgeTarget(null), []);
 
   const refresh = useCallback(() => {
     load(exerciseId)
@@ -431,7 +436,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   // que hizo caso, que es lo que decide si ese tipo de aviso sigue saliendo.
   useEffect(
     () =>
-      listenToNudges(({ nudgeId, action }) => {
+      listenToNudges(({ nudgeId, kind, action }) => {
+        // Tocar el aviso abre la app donde estaba, que casi nunca es donde hace
+        // falta. La pantalla la decide el tipo de aviso.
+        if (action === 'abrir') setNudgeTarget(kind);
         openDatabase()
           .then(async (db) => {
             const date = todayIso();
@@ -496,6 +504,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     },
     restoreFood: (id) => run((db) => restoreFoodInCatalogue(db, id)),
     loadArchivedFoods: () => openDatabase().then((db) => listFoods(db, { archived: true })),
+    nudgeTarget,
+    clearNudgeTarget,
     editFood: (id, food) =>
       run(async (db) => {
         await updateFood(db, id, food);
