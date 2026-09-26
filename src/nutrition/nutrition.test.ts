@@ -20,10 +20,21 @@ import {
   listFoods,
   listOpenBatches,
   listPortions,
+  removeFood,
+  restoreFood,
   updateFood,
 } from './queries.ts';
 import { SODIUM_FLAG_MG, dailyTotals, dairyPortions, type LoggedPortion } from './totals.ts';
-import { MEAL_SLOTS, mealSlotAtHour, portionLabel, quickAmounts, unitLabel } from './units.ts';
+import {
+  MAX_QUICK_AMOUNTS,
+  MEAL_SLOTS,
+  mealSlotAtHour,
+  parseQuickAmounts,
+  portionLabel,
+  quickAmounts,
+  quickAmountsFor,
+  unitLabel,
+} from './units.ts';
 
 type SqlValue = string | number | null;
 
@@ -62,6 +73,8 @@ function food(overrides: Partial<NutritionFoodRow> = {}): NutritionFoodRow {
     id: 'chicken',
     name: 'Pechuga de pollo',
     keywords: null,
+    archived: 0,
+    quick_amounts: null,
     brand: null,
     store: null,
     base_unit: 'g',
@@ -724,6 +737,7 @@ test('corregir un alimento cambia lo que dicen todos los dias que lo comieron', 
     sugarG: eggs.sugar_g,
     sodiumMg: eggs.sodium_mg,
     keywords: 'egg, eggs, huevo',
+    quickAmounts: '1, 3, 6',
   });
 
   // Se guarda por unidad, asi que los seis huevos de ese dia ya dicen otra cosa.
@@ -759,6 +773,7 @@ test('la unidad de un alimento no se puede cambiar al corregirlo', async () => {
     sugarG: null,
     sodiumMg: null,
     keywords: null,
+    quickAmounts: null,
   });
 
   const saved = await getFood(db, rice);
@@ -766,4 +781,98 @@ test('la unidad de un alimento no se puede cambiar al corregirlo', async () => {
   assert.equal(saved?.base_unit, 'g');
   assert.equal(saved?.kcal, 3.6);
   assert.equal(saved?.protein_g, 0.08);
+});
+
+test('un alimento que nunca comio se borra, y uno que si se archiva', async () => {
+  const { db, raw } = seeded();
+
+  const typo = await addFood(db, {
+    name: 'Arrroz',
+    amount: 100,
+    unit: 'g',
+    kind: 'mass',
+    kcal: 350,
+    proteinG: 7,
+    fatG: 2,
+    carbsG: 74,
+  });
+
+  // Nunca lo comio: se va del todo.
+  assert.equal(await removeFood(db, typo), 'borrado');
+  await assert.rejects(() => getFood(db, typo), /no food with id/);
+
+  // Este si, asi que sacarlo no puede reescribir ese dia.
+  await addFoodEntry(db, {
+    date: '2026-09-20',
+    foodId: 'eggs-large',
+    quantity: 6,
+    unit: 'huevo',
+    mealSlot: 'desayuno',
+  });
+  assert.equal(await removeFood(db, 'eggs-large'), 'archivado');
+
+  const before = dailyTotals(await listPortions(db, '2026-09-20'));
+  assert.equal(Math.round(before.proteinG), 39);
+
+  // Fuera de la lista de elegir, pero visible en la de archivados.
+  const names = (await listFoods(db)).map((food) => food.id);
+  assert.equal(names.includes('eggs-large'), false);
+  assert.deepEqual(
+    (await listFoods(db, { archived: true })).map((food) => food.id),
+    ['eggs-large'],
+  );
+
+  await restoreFood(db, 'eggs-large');
+  assert.equal(
+    (await listFoods(db)).some((food) => food.id === 'eggs-large'),
+    true,
+  );
+  const rows = raw.prepare('SELECT count(*) AS n FROM nutrition_food_entry;').get() as {
+    n: number;
+  };
+  assert.equal(rows.n, 1);
+});
+
+test('las cantidades de boton son las suyas cuando las escribe', async () => {
+  const { db } = seeded();
+
+  // Sin nada suyo, la lista de siempre segun como se mida.
+  const chicken = await getFood(db, 'chicken-breast-kirkland');
+  assert.deepEqual(quickAmountsFor(chicken), quickAmounts('mass'));
+
+  // Los huevos vienen sembrados con los suyos.
+  const eggs = await getFood(db, 'eggs-large');
+  assert.deepEqual(quickAmountsFor(eggs), [1, 2, 3, 6]);
+
+  await updateFood(db, 'eggs-large', {
+    name: eggs.name,
+    kcal: eggs.kcal,
+    proteinG: eggs.protein_g,
+    fatG: eggs.fat_g,
+    carbsG: eggs.carbs_g,
+    sugarG: eggs.sugar_g,
+    sodiumMg: eggs.sodium_mg,
+    keywords: eggs.keywords,
+    // Repetidos, basura y de mas: se guarda lo que sirve y en orden de tecleo.
+    quickAmounts: ' 6 , 3, 6, x, 0, -2, 1 ',
+  });
+  assert.deepEqual(quickAmountsFor(await getFood(db, 'eggs-large')), [6, 3, 1]);
+
+  // Vaciarlas devuelve la lista de siempre.
+  await updateFood(db, 'eggs-large', {
+    name: eggs.name,
+    kcal: eggs.kcal,
+    proteinG: eggs.protein_g,
+    fatG: eggs.fat_g,
+    carbsG: eggs.carbs_g,
+    sugarG: eggs.sugar_g,
+    sodiumMg: eggs.sodium_mg,
+    keywords: eggs.keywords,
+    quickAmounts: '',
+  });
+  assert.deepEqual(quickAmountsFor(await getFood(db, 'eggs-large')), quickAmounts('count'));
+});
+
+test('no caben mas de diez cantidades', () => {
+  assert.equal(parseQuickAmounts('1,2,3,4,5,6,7,8,9,10,11,12').length, MAX_QUICK_AMOUNTS);
 });

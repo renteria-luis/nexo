@@ -43,6 +43,8 @@ const CHICKEN: NutritionFoodRow = {
   id: 'chicken-breast',
   name: 'Pechuga de pollo',
   keywords: null,
+  archived: 0,
+  quick_amounts: null,
   brand: null,
   store: null,
   base_unit: 'g',

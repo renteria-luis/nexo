@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../../db/types.ts';
@@ -24,10 +24,18 @@ function macros(food: NutritionFoodRow): string {
 }
 
 export function FoodsScreen() {
-  const { state, createFood, editFood } = useAppData();
+  const { state, createFood, editFood, deleteFood, restoreFood, loadArchivedFoods } = useAppData();
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<NutritionFoodRow | null>(null);
   const [creating, setCreating] = useState(false);
+  const [archived, setArchived] = useState<NutritionFoodRow[] | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const readArchived = useCallback(() => {
+    loadArchivedFoods()
+      .then(setArchived)
+      .catch((error: unknown) => console.error(error));
+  }, [loadArchivedFoods]);
 
   if (state.phase !== 'ready') return null;
   const foods = state.loaded.foods.filter((food) =>
@@ -55,6 +63,20 @@ export function FoodsScreen() {
               editFood(id, food);
               setEditing(null);
             }}
+            onDelete={(id) => {
+              const name = editing?.name ?? '';
+              setEditing(null);
+              deleteFood(id)
+                .then((outcome) => {
+                  setNotice(
+                    outcome === 'borrado'
+                      ? `${name} ya no está.`
+                      : `${name} quedó archivado: lo comiste alguna vez y esos días no se tocan.`,
+                  );
+                  if (archived !== null) readArchived();
+                })
+                .catch((error: unknown) => console.error(error));
+            }}
           />
         ) : null
       }
@@ -77,6 +99,12 @@ export function FoodsScreen() {
 
       <SearchField value={search} onChange={setSearch} />
 
+      {notice !== null && (
+        <Pressable accessibilityLabel="Entendido" onPress={() => setNotice(null)}>
+          <Text style={styles.notice}>{notice}</Text>
+        </Pressable>
+      )}
+
       {foods.map((food) => (
         <Pressable
           key={food.id}
@@ -89,6 +117,35 @@ export function FoodsScreen() {
           {food.keywords !== null && <Text style={styles.keywords}>{food.keywords}</Text>}
         </Pressable>
       ))}
+      <Pressable
+        accessibilityLabel={archived === null ? 'Ver los archivados' : 'Esconder los archivados'}
+        onPress={() => (archived === null ? readArchived() : setArchived(null))}
+        style={styles.archivedLink}
+      >
+        <Text style={styles.archivedText}>
+          {archived === null ? 'ver archivados' : '— archivados'}
+        </Text>
+      </Pressable>
+
+      {archived !== null &&
+        (archived.length === 0 ? (
+          <Text style={styles.hint}>No hay ninguno archivado.</Text>
+        ) : (
+          archived.map((food) => (
+            <View key={food.id} style={styles.archivedRow}>
+              <Text style={styles.name}>{food.name}</Text>
+              <Pressable
+                accessibilityLabel={`Recuperar ${food.name}`}
+                onPress={() => {
+                  restoreFood(food.id);
+                  setArchived(archived.filter((other) => other.id !== food.id));
+                }}
+              >
+                <Text style={styles.restore}>recuperar</Text>
+              </Pressable>
+            </View>
+          ))
+        ))}
     </Screen>
   );
 }
@@ -168,6 +225,33 @@ const styles = StyleSheet.create({
     borderTopColor: theme.line,
     paddingVertical: 8,
     gap: 2,
+  },
+  notice: {
+    fontSize: 11,
+    color: theme.accent,
+    fontFamily: mono,
+  },
+  archivedLink: {
+    borderTopWidth: 1,
+    borderTopColor: theme.line,
+    paddingTop: 10,
+    marginTop: 4,
+  },
+  archivedText: {
+    fontSize: 11,
+    color: theme.accent,
+    fontFamily: mono,
+  },
+  archivedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+  },
+  restore: {
+    fontSize: 11,
+    color: theme.accent,
+    fontFamily: mono,
   },
   name: {
     fontSize: 13,

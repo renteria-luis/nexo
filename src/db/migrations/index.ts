@@ -36,6 +36,8 @@ import { sql as curveScores } from './035_curve_scores.ts';
 import { sql as coreNudge } from './036_core_nudge.ts';
 import { sql as foodKeywords } from './037_food_keywords.ts';
 import { sql as softerCurves } from './038_softer_curves.ts';
+import { sql as foodArchived } from './039_food_archived.ts';
+import { sql as foodQuickAmounts } from './040_food_quick_amounts.ts';
 
 export type Migration = {
   id: string;
@@ -83,4 +85,6 @@ export const migrations: Migration[] = [
   { id: '036_core_nudge', sql: coreNudge },
   { id: '037_food_keywords', sql: foodKeywords },
   { id: '038_softer_curves', sql: softerCurves },
+  { id: '039_food_archived', sql: foodArchived },
+  { id: '040_food_quick_amounts', sql: foodQuickAmounts },
 ];

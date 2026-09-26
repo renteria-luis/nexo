@@ -18,6 +18,7 @@ import { Screen } from './Screen.tsx';
 const SCREEN_PADDING = 20;
 
 const WINDOWS: { days: number; label: string }[] = [
+  { days: 7, label: '7 días' },
   { days: 30, label: '30 días' },
   { days: 90, label: '90 días' },
   { days: 365, label: 'un año' },
@@ -127,6 +128,21 @@ export function ChartsScreen() {
             </Section>
 
             <Section
+              title="Proteína por día"
+              note="Verde, dentro de tu banda. Gris, fuera. La banda sale de tu peso."
+            >
+              <DayBars
+                points={data.protein}
+                width={width}
+                band={data.proteinBand}
+                format={(value) => `${Math.round(value)} g`}
+                selected={open?.chart === 'protein' ? open.index : null}
+                onSelect={(index) => setOpen(index === null ? null : { chart: 'protein', index })}
+                onOpenDay={(date) => navigation.navigate('Día', { date })}
+              />
+            </Section>
+
+            <Section
               title="Series por músculo, últimos 7 días"
               note="Directas, sin contar las medias series que caen de otros ejercicios."
             >
@@ -167,21 +183,6 @@ export function ChartsScreen() {
                   Anota dos sesiones de un ejercicio y aparece aquí.
                 </Text>
               )}
-            </Section>
-
-            <Section
-              title="Proteína por día"
-              note="Verde, dentro de tu banda. Gris, fuera. La banda sale de tu peso."
-            >
-              <DayBars
-                points={data.protein}
-                width={width}
-                band={data.proteinBand}
-                format={(value) => `${Math.round(value)} g`}
-                selected={open?.chart === 'protein' ? open.index : null}
-                onSelect={(index) => setOpen(index === null ? null : { chart: 'protein', index })}
-                onOpenDay={(date) => navigation.navigate('Día', { date })}
-              />
             </Section>
 
             <Section

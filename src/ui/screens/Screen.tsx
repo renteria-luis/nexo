@@ -124,6 +124,10 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     padding: 14,
+    // Centrado y del alto que necesite: una hoja que ocupa la pantalla entera parece
+    // otra pantalla, y esto es un formulario corto.
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.72)',
   },
   scroll: {

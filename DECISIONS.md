@@ -138,3 +138,13 @@ costando casi lo mismo a la misma distancia (Areta 2014, Murphy 2022, Garthe 201
 el déficit un pelo mejor tratado porque va hacia la meta de bajar grasa.
 Rejected: Dejar los pasos como estaban. No los mencionó, pero tenían el mismo escalón
 al 70% y habría vuelto a salir.
+
+## 2026-09-25 — Borrar un alimento que ya comió lo archiva, no lo borra
+Context: Pidió poder borrar alimentos. Borrar uno que tiene porciones anotadas
+reescribiría los totales de esos días, y un día que ya pasó no se toca.
+Decision: Si nunca lo comió se borra de verdad, que es el caso del error de tecleo.
+Si tiene porciones o tandas, se archiva: desaparece de donde elige y de donde corrige,
+sus días siguen diciendo lo mismo, y se recupera desde "ver archivados". El aviso en
+pantalla dice cuál de las dos cosas pasó.
+Rejected: Borrar en cascada las porciones. Es la forma más rápida de perder semanas de
+registro por un toque.

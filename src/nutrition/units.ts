@@ -30,6 +30,33 @@ export function quickAmounts(kind: UnitKind): number[] {
   }
 }
 
+/** Hasta aqui caben sin que la fila de botones se vuelva otra lista. */
+export const MAX_QUICK_AMOUNTS = 10;
+
+/**
+ * Las cantidades que salen de boton para un alimento.
+ *
+ * Las suyas si las escribio, y si no la lista de siempre segun se mida en peso,
+ * volumen o unidades. De los huevos come 1, 3 o 6: los botones de 2, 4 y 5 solo
+ * estorban, y el que sobra se toca sin querer.
+ */
+export function quickAmountsFor(food: NutritionFoodRow): number[] {
+  const custom = parseQuickAmounts(food.quick_amounts);
+  return custom.length > 0 ? custom : quickAmounts(food.unit_kind);
+}
+
+export function parseQuickAmounts(text: string | null): number[] {
+  if (text === null) return [];
+  const seen = new Set<number>();
+  for (const part of text.split(',')) {
+    const value = Number(part.trim());
+    if (part.trim() === '' || !Number.isFinite(value) || value <= 0) continue;
+    seen.add(value);
+    if (seen.size === MAX_QUICK_AMOUNTS) break;
+  }
+  return [...seen];
+}
+
 export function unitLabel(food: NutritionFoodRow, quantity: number): string {
   if (food.unit_kind !== 'count') return food.base_unit;
   return quantity === 1 ? food.base_unit : `${food.base_unit}s`;

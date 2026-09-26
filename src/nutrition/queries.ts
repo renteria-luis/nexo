@@ -9,7 +9,7 @@ import type {
 } from '../db/types.ts';
 
 import type { LoggedPortion } from './totals.ts';
-import { MEAL_SLOTS } from './units.ts';
+import { MEAL_SLOTS, parseQuickAmounts } from './units.ts';
 
 /**
  * Del desayuno a la cena y no en el orden en que lo escribio: si anota la cena a
@@ -110,8 +110,14 @@ export async function listContainers(db: SQLiteDatabase): Promise<NutritionConta
   );
 }
 
-export async function listFoods(db: SQLiteDatabase): Promise<NutritionFoodRow[]> {
-  return db.getAllAsync<NutritionFoodRow>('SELECT * FROM nutrition_food ORDER BY name;');
+export async function listFoods(
+  db: SQLiteDatabase,
+  { archived = false }: { archived?: boolean } = {},
+): Promise<NutritionFoodRow[]> {
+  return db.getAllAsync<NutritionFoodRow>(
+    'SELECT * FROM nutrition_food WHERE archived = ? ORDER BY name;',
+    [archived ? 1 : 0],
+  );
 }
 
 export type NewFoodEntry = {
@@ -204,6 +210,8 @@ export type NewFood = {
   sodiumMg?: number | null;
   /** Como lo va a buscar: "egg, costco", separadas por coma. */
   keywords?: string | null;
+  /** Las cantidades de boton, separadas por coma. Vacio deja las de siempre. */
+  quickAmounts?: string | null;
 };
 
 /** Sin espacios de mas y sin comas vacias, que es lo que se teclea de verdad. */
@@ -214,6 +222,12 @@ function cleanKeywords(keywords: string | null | undefined): string | null {
     .map((word) => word.trim())
     .filter((word) => word !== '');
   return parts.length === 0 ? null : parts.join(', ');
+}
+
+/** Se guardan ya limpias y en orden, que es como se van a pintar. */
+function cleanQuickAmounts(amounts: string | null | undefined): string | null {
+  const parsed = parseQuickAmounts(amounts ?? null);
+  return parsed.length === 0 ? null : parsed.join(', ');
 }
 
 function labelFigure(label: string, value: number): void {
@@ -257,9 +271,9 @@ export async function addFood(db: SQLiteDatabase, food: NewFood): Promise<string
     `INSERT INTO nutrition_food
        (id, name, brand, store, base_unit, unit_kind, base_unit_g, kcal, protein_g, carbs_g,
         sugar_g, fat_g, fibre_g, sodium_mg, source, price_cad_cents, package_size,
-        glycemic_index, is_dairy, keywords)
+        glycemic_index, is_dairy, keywords, quick_amounts)
      VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'label',
-             NULL, NULL, NULL, 0, ?);`,
+             NULL, NULL, NULL, 0, ?, ?);`,
     [
       id,
       name,
@@ -274,6 +288,7 @@ export async function addFood(db: SQLiteDatabase, food: NewFood): Promise<string
       food.fatG / per,
       sodiumMg === null ? null : sodiumMg / per,
       cleanKeywords(food.keywords),
+      cleanQuickAmounts(food.quickAmounts),
     ],
   );
 
@@ -311,6 +326,7 @@ export type FoodEdit = {
   sugarG: number | null;
   sodiumMg: number | null;
   keywords: string | null;
+  quickAmounts: string | null;
 };
 
 /** Lo que describen los macros de un alimento: una unidad, o cien gramos o mililitros. */
@@ -345,7 +361,7 @@ export async function updateFood(db: SQLiteDatabase, id: string, food: FoodEdit)
   await db.runAsync(
     `UPDATE nutrition_food
         SET name = ?, kcal = ?, protein_g = ?, carbs_g = ?, sugar_g = ?, fat_g = ?,
-            sodium_mg = ?, keywords = ?
+            sodium_mg = ?, keywords = ?, quick_amounts = ?
       WHERE id = ?;`,
     [
       name,
@@ -356,9 +372,40 @@ export async function updateFood(db: SQLiteDatabase, id: string, food: FoodEdit)
       food.fatG / per,
       sodiumMg === null ? null : sodiumMg / per,
       cleanKeywords(food.keywords),
+      cleanQuickAmounts(food.quickAmounts),
       id,
     ],
   );
+}
+
+export type FoodRemoval = 'borrado' | 'archivado';
+
+/**
+ * Saca un alimento de las listas.
+ *
+ * Si nunca lo comio se borra de verdad: es un error de tecleo y no hay nada que
+ * proteger. Si tiene porciones o tandas anotadas se archiva, porque borrarlo
+ * reescribiria lo que dicen esos dias, y un dia que ya paso no se toca. Archivado
+ * desaparece de donde elige y de donde corrige, y se puede recuperar.
+ */
+export async function removeFood(db: SQLiteDatabase, id: string): Promise<FoodRemoval> {
+  const used = await db.getFirstAsync<{ count: number }>(
+    `SELECT (SELECT count(*) FROM nutrition_food_entry WHERE food_id = ?)
+          + (SELECT count(*) FROM nutrition_batch WHERE food_id = ?) AS count;`,
+    [id, id],
+  );
+
+  if ((used?.count ?? 0) > 0) {
+    await db.runAsync('UPDATE nutrition_food SET archived = 1 WHERE id = ?;', [id]);
+    return 'archivado';
+  }
+
+  await db.runAsync('DELETE FROM nutrition_food WHERE id = ?;', [id]);
+  return 'borrado';
+}
+
+export async function restoreFood(db: SQLiteDatabase, id: string): Promise<void> {
+  await db.runAsync('UPDATE nutrition_food SET archived = 0 WHERE id = ?;', [id]);
 }
 
 /** Los dias en los que comio ese alimento, que son los que hay que volver a puntuar. */

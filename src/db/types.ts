@@ -208,6 +208,10 @@ export type NutritionFoodRow = {
   is_dairy: SqlBool;
   /** Lo que el escribe para encontrarlo: "egg, costco", separadas por coma. */
   keywords: string | null;
+  /** Fuera de las listas sin tocar lo que ya comio. */
+  archived: SqlBool;
+  /** Las cantidades que salen de boton al anotarlo, o null para las de siempre. */
+  quick_amounts: string | null;
 };
 
 export type NutritionContainerRow = {

@@ -6,7 +6,7 @@ import {
   MEAL_SLOTS,
   mealSlotAtHour,
   portionLabel,
-  quickAmounts,
+  quickAmountsFor,
   roundAmount,
   unitLabel,
   type FoodHistory,
@@ -109,7 +109,13 @@ export function FoodLog({
   );
 
   return (
-    <View style={styles.wrapper}>
+    // Tocar donde no hay nada suelta el alimento elegido, igual que el teclado: un
+    // boton o una fila se quedan con el toque antes de llegar aqui.
+    <View
+      style={styles.wrapper}
+      onStartShouldSetResponder={foodId === null ? undefined : () => true}
+      onResponderRelease={foodId === null ? undefined : () => setFoodId(null)}
+    >
       {/* The targets card above also says "Calorías" and "Proteína"; this heading is
           what keeps the eaten figures from being read as the target ones. */}
       <Text style={styles.heading}>{heading}</Text>
@@ -226,7 +232,7 @@ export function FoodLog({
 
         {selected && (
           <View style={styles.chips}>
-            {quickAmounts(selected.unit_kind).map((amount) => (
+            {quickAmountsFor(selected).map((amount) => (
               <Pressable
                 key={amount}
                 onPress={() => setQuantity(String(amount))}
@@ -240,34 +246,36 @@ export function FoodLog({
           </View>
         )}
 
-        <View style={styles.addRow}>
-          <NumericField
-            value={quantity}
-            onChange={setQuantity}
-            allowDecimal
-            accessibilityLabel="Cantidad"
-            style={styles.input}
-          />
-          <Text style={styles.unit}>
-            {selected ? unitLabel(selected, parsed) : 'elige un alimento'}
-          </Text>
-          <Pressable
-            accessibilityLabel="Agregar comida"
-            disabled={!canAdd}
-            onPress={() => {
-              if (!canAdd || !selected) return;
-              onAdd({
-                foodId: selected.id,
-                quantity: parsed,
-                unit: selected.base_unit,
-                mealSlot: slot,
-              });
-            }}
-            style={[styles.add, !canAdd && styles.addDisabled]}
-          >
-            <Text style={styles.addText}>Agregar</Text>
-          </Pressable>
-        </View>
+        {/* Sin alimento elegido no hay nada que anotar, y un boton de agregar suelto
+            es un toque sin querer. */}
+        {selected && (
+          <View style={styles.addRow}>
+            <NumericField
+              value={quantity}
+              onChange={setQuantity}
+              allowDecimal
+              accessibilityLabel="Cantidad"
+              style={styles.input}
+            />
+            <Text style={styles.unit}>{unitLabel(selected, parsed)}</Text>
+            <Pressable
+              accessibilityLabel="Agregar comida"
+              disabled={!canAdd}
+              onPress={() => {
+                if (!canAdd) return;
+                onAdd({
+                  foodId: selected.id,
+                  quantity: parsed,
+                  unit: selected.base_unit,
+                  mealSlot: slot,
+                });
+              }}
+              style={[styles.add, !canAdd && styles.addDisabled]}
+            >
+              <Text style={styles.addText}>Agregar</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
     </View>
   );

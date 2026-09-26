@@ -2,7 +2,14 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../db/types.ts';
-import { referenceAmount, roundAmount, type FoodEdit, type NewFood } from '../nutrition/index.ts';
+import {
+  MAX_QUICK_AMOUNTS,
+  parseQuickAmounts,
+  referenceAmount,
+  roundAmount,
+  type FoodEdit,
+  type NewFood,
+} from '../nutrition/index.ts';
 
 import { NumericField } from './NumericField.tsx';
 import { mono, theme } from './theme.ts';
@@ -29,6 +36,8 @@ export type FoodFormProps = {
   onCancel: () => void;
   onCreate: (food: NewFood) => void;
   onEdit: (id: string, food: FoodEdit) => void;
+  /** Saca el alimento del catalogo. Solo se ofrece al corregir uno que ya existe. */
+  onDelete: (id: string) => void;
 };
 
 function measureOf(food: NutritionFoodRow): MeasureId {
@@ -41,9 +50,9 @@ function shown(value: number | null, per: number): string {
   return value === null ? '' : roundAmount(Math.round(value * per * 100) / 100);
 }
 
-export function FoodForm({ food, onCancel, onCreate, onEdit }: FoodFormProps) {
+export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFormProps) {
   const per = food ? referenceAmount(food) : 1;
-  const [step, setStep] = useState<'datos' | 'resumen'>('datos');
+  const [step, setStep] = useState<'datos' | 'resumen' | 'borrar'>('datos');
   const [name, setName] = useState(food?.name ?? '');
   const [measureId, setMeasureId] = useState<MeasureId>(food ? measureOf(food) : 'unidad');
   const [kcal, setKcal] = useState(food ? shown(food.kcal, per) : '');
@@ -53,6 +62,7 @@ export function FoodForm({ food, onCancel, onCreate, onEdit }: FoodFormProps) {
   const [sugar, setSugar] = useState(food ? shown(food.sugar_g, per) : '');
   const [sodium, setSodium] = useState(food ? shown(food.sodium_mg, per) : '');
   const [keywords, setKeywords] = useState(food?.keywords ?? '');
+  const [amounts, setAmounts] = useState(food?.quick_amounts ?? '');
 
   const measure = MEASURES.find((option) => option.id === measureId) ?? MEASURES[0];
   const figure = (value: string): number | null => {
@@ -78,6 +88,7 @@ export function FoodForm({ food, onCancel, onCreate, onEdit }: FoodFormProps) {
         sugarG: figure(sugar),
         sodiumMg: figure(sodium),
         keywords: keywords.trim() === '' ? null : keywords,
+        quickAmounts: amounts.trim() === '' ? null : amounts,
       });
       return;
     }
@@ -93,6 +104,7 @@ export function FoodForm({ food, onCancel, onCreate, onEdit }: FoodFormProps) {
       sugarG: figure(sugar),
       sodiumMg: figure(sodium),
       keywords: keywords.trim() === '' ? null : keywords,
+      quickAmounts: amounts.trim() === '' ? null : amounts,
     });
   };
 
@@ -107,12 +119,31 @@ export function FoodForm({ food, onCancel, onCreate, onEdit }: FoodFormProps) {
 
   return (
     <View style={styles.sheet}>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.body}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        style={styles.scroll}
+        contentContainerStyle={styles.body}
+      >
         <Text style={styles.title}>
-          {step === 'resumen' ? 'Así va a quedar' : food ? 'Corregir alimento' : 'Alimento nuevo'}
+          {step === 'borrar'
+            ? '¿Sacarlo del catálogo?'
+            : step === 'resumen'
+              ? 'Así va a quedar'
+              : food
+                ? 'Corregir alimento'
+                : 'Alimento nuevo'}
         </Text>
 
-        {step === 'datos' ? (
+        {step === 'borrar' ? (
+          <>
+            <Text style={styles.summaryName}>{food?.name}</Text>
+            <Text style={styles.hint}>
+              Si nunca lo comiste, se borra. Si ya lo comiste alguna vez se archiva: desaparece de
+              donde eliges y de esta lista, y los días en que lo comiste siguen diciendo lo mismo.
+              Lo puedes recuperar desde &quot;archivados&quot;.
+            </Text>
+          </>
+        ) : step === 'datos' ? (
           <>
             <TextInput
               value={name}
@@ -125,8 +156,8 @@ export function FoodForm({ food, onCancel, onCreate, onEdit }: FoodFormProps) {
 
             {food ? (
               <Text style={styles.hint}>
-                Los datos son de {measure.label}. La medida no se cambia: todo lo que ya comiste
-                está anotado en ella.
+                Datos por {measure.label}. La medida no se cambia: lo que ya comiste está anotado
+                en ella.
               </Text>
             ) : (
               <>
@@ -164,14 +195,23 @@ export function FoodForm({ food, onCancel, onCreate, onEdit }: FoodFormProps) {
               autoCapitalize="none"
               style={styles.text}
             />
-            <Text style={styles.hint}>
-              Palabras clave separadas por coma. Buscando cualquiera de ellas sale este alimento.
-            </Text>
-
             {/* Spec 16.3 regla 5: un hueco se muestra, no se rellena. */}
             <Text style={styles.hint}>
-              Lo que la etiqueta no diga, déjalo vacío: el total del día lo marca con un + en vez
-              de inventarlo.
+              Palabras clave separadas por coma. Lo que la etiqueta no diga, déjalo vacío.
+            </Text>
+
+            <TextInput
+              value={amounts}
+              onChangeText={setAmounts}
+              accessibilityLabel="Cantidades frecuentes"
+              placeholder="1, 3, 6"
+              placeholderTextColor={theme.textGhost}
+              inputMode="numeric"
+              style={styles.text}
+            />
+            <Text style={styles.hint}>
+              Los botones de cantidad al anotarlo, hasta {MAX_QUICK_AMOUNTS}. Vacío deja los de
+              siempre.
             </Text>
           </>
         ) : (
@@ -190,6 +230,13 @@ export function FoodForm({ food, onCancel, onCreate, onEdit }: FoodFormProps) {
                 {keywords.trim() === '' ? 'ninguna' : keywords.trim()}
               </Text>
             </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>botones</Text>
+              <Text style={styles.summaryValue}>
+                {parseQuickAmounts(amounts.trim() === '' ? null : amounts).join(', ') ||
+                  'los de siempre'}
+              </Text>
+            </View>
             {food !== null && (
               <Text style={styles.warn}>
                 Se recalculan todos los días en los que comiste esto.
@@ -200,19 +247,38 @@ export function FoodForm({ food, onCancel, onCreate, onEdit }: FoodFormProps) {
       </ScrollView>
 
       <View style={styles.buttons}>
+        {food !== null && step === 'datos' && (
+          <Pressable
+            accessibilityLabel={`Borrar ${food.name}`}
+            onPress={() => setStep('borrar')}
+            style={styles.deleteSlot}
+          >
+            <Text style={styles.delete}>Borrar</Text>
+          </Pressable>
+        )}
         <Pressable
-          accessibilityLabel={step === 'resumen' ? 'Atrás' : 'Cancelar'}
-          onPress={() => (step === 'resumen' ? setStep('datos') : onCancel())}
+          accessibilityLabel={step === 'datos' ? 'Cancelar' : 'Atrás'}
+          onPress={() => (step === 'datos' ? onCancel() : setStep('datos'))}
         >
-          <Text style={styles.back}>{step === 'resumen' ? 'Atrás' : 'Cancelar'}</Text>
+          <Text style={styles.back}>{step === 'datos' ? 'Cancelar' : 'Atrás'}</Text>
         </Pressable>
         <Pressable
-          accessibilityLabel={step === 'resumen' ? 'Confirmar' : 'Guardar'}
-          disabled={!ready}
-          onPress={() => (step === 'resumen' ? save() : setStep('resumen'))}
-          style={[styles.save, !ready && styles.saveOff]}
+          accessibilityLabel={step === 'datos' ? 'Guardar' : 'Confirmar'}
+          disabled={!ready && step !== 'borrar'}
+          onPress={() => {
+            if (step === 'borrar') {
+              if (food) onDelete(food.id);
+              return;
+            }
+            if (step === 'resumen') {
+              save();
+              return;
+            }
+            setStep('resumen');
+          }}
+          style={[styles.save, !ready && step !== 'borrar' && styles.saveOff]}
         >
-          <Text style={styles.saveText}>{step === 'resumen' ? 'Confirmar' : 'Guardar'}</Text>
+          <Text style={styles.saveText}>{step === 'datos' ? 'Guardar' : 'Confirmar'}</Text>
         </Pressable>
       </View>
     </View>
@@ -244,14 +310,22 @@ function Field({
 
 const styles = StyleSheet.create({
   sheet: {
-    flex: 1,
+    // Sin flex: mide lo que mida su contenido, y solo se limita para no desbordar.
+    alignSelf: 'stretch',
+    maxWidth: 400,
+    // Tope para que nunca llegue a parecer una pantalla entera. Lo que no entre se
+    // desplaza dentro de la hoja.
+    maxHeight: 520,
     backgroundColor: theme.bg,
     borderWidth: 1,
     borderColor: theme.lineStrong,
     borderRadius: 10,
   },
+  scroll: {
+    flexShrink: 1,
+  },
   body: {
-    gap: 8,
+    gap: 7,
     padding: 12,
   },
   title: {
@@ -279,8 +353,8 @@ const styles = StyleSheet.create({
     borderColor: theme.line,
     borderRadius: 14,
     paddingHorizontal: 12,
-    paddingVertical: 9,
-    minHeight: 38,
+    paddingVertical: 7,
+    minHeight: 34,
     justifyContent: 'center',
   },
   chipOn: {
@@ -320,10 +394,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.lineSoft,
     borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     fontSize: 14,
-    width: 84,
+    width: 80,
     fontFamily: mono,
     color: theme.text,
   },
@@ -359,7 +433,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: 16,
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderTopWidth: 1,
     borderTopColor: theme.line,
   },
@@ -367,6 +442,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: mono,
     color: theme.textFaint,
+  },
+  deleteSlot: {
+    marginRight: 'auto',
+  },
+  delete: {
+    fontSize: 12,
+    fontFamily: mono,
+    color: theme.danger,
   },
   save: {
     borderWidth: 1,

@@ -74,6 +74,8 @@ import {
   addFoodFromLabel,
   datesWithFood,
   loadFoodHistory,
+  removeFood as removeFoodFromCatalogue,
+  restoreFood as restoreFoodInCatalogue,
   updateFood,
   consumeBatchPortion,
   createBatch,
@@ -86,6 +88,7 @@ import {
   type LabelFood,
   type FoodEdit,
   type FoodHistory,
+  type FoodRemoval,
   type LastMeal,
   type NewFood,
   type NewFoodEntry,
@@ -320,6 +323,11 @@ export type AppData = {
   createFood: (food: NewFood) => void;
   /** Corrige la ficha de un alimento y rehace la nota de los dias que lo comieron. */
   editFood: (id: string, food: FoodEdit) => void;
+  /** Lo saca del catalogo: borrado si nunca lo comio, archivado si si. */
+  deleteFood: (id: string) => Promise<FoodRemoval>;
+  restoreFood: (id: string) => void;
+  /** Los archivados, que se leen solo cuando los mira. */
+  loadArchivedFoods: () => Promise<NutritionFoodRow[]>;
   /** Vuelve a anotar una comida entera de otro dia, en el espacio que se elija. */
   repeatMeal: (meal: LastMeal, mealSlot: string) => void;
   removeFood: (entryId: string) => void;
@@ -480,6 +488,14 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     logDay: (entry) => run((db) => upsertDailyLog(db, { date: todayIso(), ...entry })),
     addFood: (entry) => run((db) => addFoodEntry(db, { ...entry, date: todayIso() })),
     createFood: (food) => run((db) => addFoodToCatalog(db, food)),
+    deleteFood: async (id) => {
+      const db = await openDatabase();
+      const outcome = await removeFoodFromCatalogue(db, id);
+      refresh();
+      return outcome;
+    },
+    restoreFood: (id) => run((db) => restoreFoodInCatalogue(db, id)),
+    loadArchivedFoods: () => openDatabase().then((db) => listFoods(db, { archived: true })),
     editFood: (id, food) =>
       run(async (db) => {
         await updateFood(db, id, food);
