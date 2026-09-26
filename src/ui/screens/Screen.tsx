@@ -22,11 +22,18 @@ export function Screen({
   title,
   children,
   overlay,
+  scrollEnabled = true,
 }: {
   title?: string;
   children: ReactNode;
   /** Lo que va encima de la pantalla entera, fuera del scroll y sin ser un modal. */
   overlay?: ReactNode;
+  /**
+   * Apagado mientras se arrastra algo de dentro. Un arrastre vertical dentro de un
+   * scroll es ambiguo y el scroll gana siempre: la unica forma de que el dedo mueva
+   * la fila y no la pantalla es que la pantalla deje de escuchar mientras dura.
+   */
+  scrollEnabled?: boolean;
 }) {
   const { state, resetDatabase } = useAppData();
   const pad = useNumberPad();
@@ -34,6 +41,7 @@ export function Screen({
 
   const scroll = (
     <ScrollView
+      scrollEnabled={scrollEnabled}
       // Un toque en un boton con el teclado abierto lo pulsa a la primera; uno en
       // cualquier otro sitio sigue cerrando el teclado.
       keyboardShouldPersistTaps="handled"

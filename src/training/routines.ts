@@ -302,6 +302,30 @@ export async function loadRoutinePlan(
   };
 }
 
+/**
+ * El siguiente ejercicio al que le faltan series, en el orden del plan.
+ *
+ * Empieza despues del que acaba de cerrar y da la vuelta al llegar al final, que es lo
+ * que recoge el que se salto porque la maquina estaba ocupada. Es solo para ahorrarle
+ * toques en la pantalla de entreno: no escribe nada ni entra en ninguna cuenta.
+ */
+export function nextPendingExercise(
+  from: string,
+  order: readonly string[],
+  done: ReadonlyMap<string, number>,
+  planned: ReadonlyMap<string, number>,
+): string | null {
+  const at = order.indexOf(from);
+  if (at === -1) return null;
+
+  for (let step = 1; step <= order.length; step += 1) {
+    const id = order[(at + step) % order.length];
+    const target = planned.get(id);
+    if (target !== undefined && (done.get(id) ?? 0) < target) return id;
+  }
+  return null;
+}
+
 export async function saveSessionPlan(
   db: SQLiteDatabase,
   sessionId: string,

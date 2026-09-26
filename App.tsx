@@ -37,6 +37,7 @@ import {
 } from '@expo-google-fonts/nunito';
 
 import { NumberPadHost, useNumberPad } from './src/ui/NumberPadHost.tsx';
+import { SwipeLockProvider, useSwipeLock } from './src/ui/SwipeLock.tsx';
 import { font, sheet, shape, theme } from './src/ui/theme.ts';
 import { WeekSummaryScreen } from './src/ui/screens/WeekSummaryScreen.tsx';
 
@@ -124,6 +125,9 @@ function TodayTab() {
 
 function TabsScreen() {
   const tabs = enabledTabs(registry);
+  // Apagado mientras una pantalla arrastra algo: el gesto del carrusel es nativo y le
+  // quita el toque a cualquier arrastre que no baje perfectamente recto.
+  const { locked } = useSwipeLock();
   // La raya del gestor de iOS se dibuja encima de todo, asi que la barra se levanta
   // por encima de ella en vez de compartirle el sitio.
   const insets = useSafeAreaInsets();
@@ -133,6 +137,7 @@ function TabsScreen() {
       // La barra va abajo aunque las paginas sean un pager: es donde llega el pulgar.
       tabBarPosition="bottom"
       screenOptions={{
+        swipeEnabled: !locked,
         // Sin scroll: cinco pestanas caben en un telefono y con scroll quedaban
         // apretadas a la izquierda con un hueco muerto a la derecha.
         tabBarScrollEnabled: false,
@@ -321,7 +326,9 @@ export default function App() {
     <SafeAreaProvider>
       <NumberPadHost>
         <AppDataProvider>
-          <Navigation />
+          <SwipeLockProvider>
+            <Navigation />
+          </SwipeLockProvider>
           {/* Una sola paleta, clara: la barra de estado va siempre en oscuro. */}
           <StatusBar style="dark" />
         </AppDataProvider>

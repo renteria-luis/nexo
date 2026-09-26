@@ -15,8 +15,10 @@ import type { SessionDraft } from '../core/session-draft.ts';
 import type { Implement } from '../training/sessions.ts';
 
 import { Button } from './Button.tsx';
+import { Card } from './Card.tsx';
+import { Chip } from './Chip.tsx';
 import { NumericField } from './NumericField.tsx';
-import { mono, sheet, theme } from './theme.ts';
+import { font, sheet, shape, theme } from './theme.ts';
 
 /**
  * Con que se puede hacer el mismo ejercicio.
@@ -278,9 +280,12 @@ export const SessionLog = memo(function SessionLog({
   useEffect(() => {
     report.current = onDraftChange;
   }, [onDraftChange]);
+  // El ejercicio abierto entra en las dependencias aunque no se escriba aqui: lo que se
+  // guarda lleva dentro cual era, y si no se reescribe al cambiar de ejercicio el
+  // borrador se queda apuntando al de antes.
   useEffect(() => {
     report.current({ weight: weightDraft, reps: repsDraft, rpe: rpeDraft, implement });
-  }, [weightDraft, repsDraft, rpeDraft, implement]);
+  }, [weightDraft, repsDraft, rpeDraft, implement, selectedExerciseId]);
 
   // Mid-exercise the useful default is the set he just did, because the weight
   // usually holds across a run of sets. Starting one, it is what he did last time
@@ -302,17 +307,24 @@ export const SessionLog = memo(function SessionLog({
     setRpeDraft(null);
   };
 
+  // Cambiar de ejercicio deja la tarjeta en blanco: lo escrito, la tecnica abierta y
+  // el implemento eran de otro ejercicio. Se ajusta en el render y no en `pick` porque
+  // el cambio tambien llega solo, cuando cierra las series de uno y se abre el
+  // siguiente del plan.
+  const [seen, setSeen] = useState(selectedExerciseId);
+  if (selectedExerciseId !== seen) {
+    setSeen(selectedExerciseId);
+    setWeightDraft(null);
+    setRepsDraft(null);
+    setRpeDraft(null);
+    setShowTechnique(false);
+    setImplement(null);
+  }
+
   // Estable, para que los renglones de la lista no se rearmen solo porque la funcion
   // de tocarlos es otra en cada render.
   const pick = useCallback(
-    (exerciseId: string) => {
-      setWeightDraft(null);
-      setRepsDraft(null);
-      setRpeDraft(null);
-      setShowTechnique(false);
-      setImplement(null);
-      onSelectExercise(exerciseId);
-    },
+    (exerciseId: string) => onSelectExercise(exerciseId),
     [onSelectExercise],
   );
 
@@ -383,45 +395,64 @@ export const SessionLog = memo(function SessionLog({
 
   return (
     <View style={styles.wrapper}>
-      <View style={styles.header}>
-        <Text style={styles.heading}>Volumen de hoy</Text>
-        <Text style={styles.volume}>
-          {Math.round(fromKg(sessionVolume, unit))} {unit}
-        </Text>
-      </View>
+      {/* Lo que lleva movido y cuanto lleva dentro, que son las dos cosas que mira
+          cuando levanta la vista del banco. */}
+      <Card>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.heading}>VOLUMEN DE HOY</Text>
+            <Text style={styles.volume}>
+              {Math.round(fromKg(sessionVolume, unit))} {unit}
+            </Text>
+          </View>
+          {startedAt !== null && (
+            <View style={styles.clockSide}>
+              <Text style={styles.heading}>{finishedAt === null ? 'ENTRENANDO' : 'DURÓ'}</Text>
+              <Text style={styles.sessionClock}>
+                {finishedAt === null ? (
+                  <Elapsed key={startedAt} since={startedAt} />
+                ) : (
+                  clock((finishedAt - startedAt) / 1000)
+                )}
+              </Text>
+            </View>
+          )}
+        </View>
+      </Card>
 
       <>
         {/* Lista y no fila de chips: los nombres son largos, cada chip ocupaba un
-            renglon entero igual, y asi se ve de un vistazo lo que falta de cada uno. */}
-        <View style={styles.exerciseList}>
-          {visibleExercises.map((item) => (
-            <ExerciseRow
-              key={item.id}
-              item={item}
-              done={setsDoneByExercise.get(item.id) ?? 0}
-              planned={plannedByExercise.get(item.id)}
-              selected={item.id === selectedExerciseId}
-              onPick={pick}
-            />
-          ))}
+            renglon entero igual, y asi se ve de un vistazo lo que falta de cada uno.
+            El orden es alfabetico a proposito: se busca por nombre, no por plan. */}
+        <Card title="Ejercicios">
+          <View style={styles.exerciseList}>
+            {visibleExercises.map((item) => (
+              <ExerciseRow
+                key={item.id}
+                item={item}
+                done={setsDoneByExercise.get(item.id) ?? 0}
+                planned={plannedByExercise.get(item.id)}
+                selected={item.id === selectedExerciseId}
+                onPick={pick}
+              />
+            ))}
+          </View>
 
           {inPlan.length > 0 && inPlan.length < exercises.length && (
-            <Pressable
+            <Button
+              label={showAll ? 'Solo la rutina de hoy' : 'Ver todos los ejercicios'}
               accessibilityLabel={
                 showAll ? 'Ver solo la rutina de hoy' : 'Ver todos los ejercicios'
               }
+              variant="ghost"
               onPress={() => setShowAll((open) => !open)}
-              style={({ pressed }) => [styles.more, pressed && styles.pressedSoft]}
-            >
-              <Text style={styles.moreText}>
-                {showAll ? 'solo la rutina de hoy' : 'ver todos los ejercicios'}
-              </Text>
-            </Pressable>
+              style={styles.more}
+            />
           )}
-        </View>
+        </Card>
 
         {exercise && (
-          <>
+          <Card title={exercise.name_es}>
             {/* Spec 6.4 order: last session's sets first and largest, then the marks. */}
             <View style={styles.machineRow}>
               {exercise.equipment && (
@@ -441,25 +472,13 @@ export const SessionLog = memo(function SessionLog({
               )}
               {swappable &&
                 IMPLEMENTS.map((option) => (
-                  <Pressable
+                  <Chip
                     key={option.id}
+                    label={option.short}
                     accessibilityLabel={option.long}
+                    selected={doneWith === option.id}
                     onPress={() => setImplement(option.id)}
-                    style={({ pressed }) => [
-                      styles.implement,
-                      doneWith === option.id && styles.implementOn,
-                      pressed && styles.pressedSoft,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.implementText,
-                        doneWith === option.id && styles.implementTextOn,
-                      ]}
-                    >
-                      {option.short}
-                    </Text>
-                  </Pressable>
+                  />
                 ))}
             </View>
 
@@ -701,65 +720,54 @@ export const SessionLog = memo(function SessionLog({
                 El peso es el de una mancuerna; el volumen cuenta las dos.
               </Text>
             )}
-          </>
+          </Card>
         )}
 
         {finishedAt === null ? (
           <Button
             label="Terminar entreno"
             icon={Check}
+            size="large"
             block
             accessibilityLabel="Terminar entreno"
             onPress={onFinish}
             style={styles.finish}
           />
         ) : (
-          <View style={styles.finishedRow}>
+          <Card tone="warn">
             <Text style={styles.finished}>Entreno terminado a las {hhmm(finishedAt)}</Text>
-            <Pressable accessibilityLabel="Seguir entrenando" onPress={() => setReopening(true)}>
-              <Text style={styles.reopen}>seguir entrenando</Text>
-            </Pressable>
-
             {/* Pegado al boton y no un modal: el teclado de la app vive en la raiz y
                 un modal de iOS lo dejaria debajo. */}
-            {reopening && (
-              <View style={styles.confirm}>
+            {reopening ? (
+              <>
                 <Text style={styles.confirmText}>
                   ¿Seguir entrenando? El entreno vuelve a quedar abierto.
                 </Text>
                 <View style={styles.confirmButtons}>
-                  <Pressable
-                    accessibilityLabel="No seguir entrenando"
-                    onPress={() => setReopening(false)}
-                  >
-                    <Text style={styles.confirmNo}>No</Text>
-                  </Pressable>
-                  <Pressable
+                  <Button
+                    label="Sí, seguir"
                     accessibilityLabel="Sí, seguir entrenando"
+                    variant="primary"
                     onPress={() => {
                       setReopening(false);
                       onReopen();
                     }}
-                    style={styles.confirmYes}
-                  >
-                    <Text style={styles.confirmYesText}>Sí, seguir</Text>
-                  </Pressable>
+                  />
+                  <Button
+                    label="No"
+                    accessibilityLabel="No seguir entrenando"
+                    onPress={() => setReopening(false)}
+                  />
                 </View>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* Con el entreno cerrado el reloj se para en lo que duro: si no, seguia
-            corriendo toda la noche. */}
-        {startedAt !== null && (
-          <Text style={styles.sessionClock}>
-            {finishedAt === null ? (
-              <Elapsed key={startedAt} since={startedAt} prefix="Entrenando " />
+              </>
             ) : (
-              `Duró ${clock((finishedAt - startedAt) / 1000)}`
+              <Button
+                label="Seguir entrenando"
+                accessibilityLabel="Seguir entrenando"
+                onPress={() => setReopening(true)}
+              />
             )}
-          </Text>
+          </Card>
         )}
       </>
     </View>
@@ -767,20 +775,226 @@ export const SessionLog = memo(function SessionLog({
 });
 
 const styles = sheet((theme) => ({
+  wrapper: {
+    alignSelf: 'stretch',
+    gap: 12,
+  },
   // Lo que se ve en el instante del toque, antes de que el dato viaje a ningun lado.
   // Sin esto, entre el dedo y el numero no pasaba nada y el boton parecia trabado.
   pressedSoft: {
     opacity: 0.55,
   },
-  stepPressed: {
-    backgroundColor: theme.accent,
+
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
   },
-  grid: {
+  clockSide: {
+    alignItems: 'flex-end',
+  },
+  heading: {
+    fontSize: 11,
+    fontFamily: font.black,
+    letterSpacing: 1,
+    color: theme.textFaint,
+  },
+  volume: {
+    fontSize: 30,
+    fontFamily: font.display,
+    color: theme.text,
+    fontVariant: ['tabular-nums'],
+  },
+  sessionClock: {
+    fontSize: 30,
+    fontFamily: font.display,
+    color: theme.text,
+    fontVariant: ['tabular-nums'],
+  },
+
+  exerciseList: {
+    alignSelf: 'stretch',
+  },
+  exerciseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 46,
+    paddingHorizontal: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.lineSoft,
+  },
+  // El que esta abierto se pinta de amarillo entero: a un metro se ve cual es.
+  exerciseRowSelected: {
+    backgroundColor: theme.accent,
+    borderBottomColor: theme.line,
+  },
+  exerciseMark: {
+    width: 22,
+    alignItems: 'center',
+  },
+  exerciseRowText: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: font.bold,
+    color: theme.text,
+  },
+  exerciseRowTextSelected: {
+    fontFamily: font.black,
+    color: theme.accentInk,
+  },
+  exerciseRowTextDone: {
+    color: theme.textFaint,
+  },
+  exerciseCount: {
+    fontSize: 14,
+    fontFamily: font.black,
+    color: theme.textDim,
+    fontVariant: ['tabular-nums'],
+  },
+  more: {
+    alignSelf: 'flex-start',
+  },
+
+  machineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  machine: {
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.textFaint,
+  },
+  info: {
+    width: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: 13,
+    backgroundColor: theme.surfaceHigh,
+  },
+  infoText: {
+    fontSize: 14,
+    fontFamily: font.black,
+    color: theme.text,
+  },
+  technique: {
+    gap: 4,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.surfaceHigh,
+    padding: 10,
+  },
+  techniqueLine: {
+    fontSize: 13,
+    fontFamily: font.regular,
+    color: theme.text,
+  },
+
+  rest: {
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.textDim,
+    fontVariant: ['tabular-nums'],
+  },
+  dropOff: {
+    fontSize: 12,
+    fontFamily: font.regular,
+    color: theme.textFaint,
+  },
+  lastLabel: {
+    fontSize: 11,
+    fontFamily: font.black,
+    letterSpacing: 0.8,
+    color: theme.textFaint,
+    textTransform: 'uppercase',
+  },
+  lastSets: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  // Una serie de la vez pasada: se toca para copiarla, asi que se ve tocable.
+  lastSet: {
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.surface,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    minWidth: 72,
+  },
+  lastSetIndex: {
+    fontSize: 10,
+    fontFamily: font.bold,
+    color: theme.textFaint,
+    fontVariant: ['tabular-nums'],
+  },
+  lastSetLoad: {
+    fontSize: 15,
+    fontFamily: font.black,
+    color: theme.text,
+    fontVariant: ['tabular-nums'],
+  },
+  lastSetReps: {
+    fontSize: 12,
+    fontFamily: font.bold,
+    color: theme.textDim,
+    fontVariant: ['tabular-nums'],
+  },
+  marks: {
+    fontSize: 12,
+    fontFamily: font.regular,
+    color: theme.textFaint,
+    fontVariant: ['tabular-nums'],
+  },
+
+  setRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 10,
     borderTopWidth: 1,
+    borderTopColor: theme.lineSoft,
+    paddingTop: 7,
+  },
+  setText: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: font.bold,
+    color: theme.text,
+    fontVariant: ['tabular-nums'],
+  },
+  remove: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  removeText: {
+    fontSize: 12,
+    fontFamily: font.bold,
+    color: theme.danger,
+  },
+  planned: {
+    fontSize: 13,
+    fontFamily: font.black,
+    color: theme.textDim,
+    fontVariant: ['tabular-nums'],
+  },
+
+  // Cuatro cuadrantes: peso y RPE arriba, repeticiones y el boton abajo. El pulgar
+  // sabe donde va sin leer, que es lo que hace que se anote entre serie y serie.
+  grid: {
+    gap: 10,
+    borderTopWidth: shape.border,
     borderTopColor: theme.line,
     paddingTop: 12,
-    marginTop: 4,
+    marginTop: 2,
   },
   gridRow: {
     flexDirection: 'row',
@@ -788,33 +1002,33 @@ const styles = sheet((theme) => ({
   },
   cell: {
     flex: 1,
-    minWidth: 0,
-    gap: 4,
+    gap: 6,
   },
   cellHead: {
     flexDirection: 'row',
     alignItems: 'center',
-    // Pegado a su etiqueta: al otro extremo quedaba junto al rotulo del RPE y
-    // parecia decir "kg RPE".
-    gap: 8,
+    justifyContent: 'space-between',
     minHeight: 26,
   },
   cellLabel: {
     fontSize: 11,
-    color: theme.textGhost,
-    fontFamily: mono,
+    fontFamily: font.black,
+    letterSpacing: 1,
+    color: theme.textFaint,
+    textTransform: 'uppercase',
   },
   unit: {
-    borderWidth: 1,
-    borderColor: theme.accent,
+    borderWidth: shape.border,
+    borderColor: theme.line,
     borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
+    backgroundColor: theme.accent,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
   },
   unitText: {
     fontSize: 12,
-    color: theme.accent,
-    fontFamily: mono,
+    fontFamily: font.black,
+    color: theme.accentInk,
   },
   cellRow: {
     flexDirection: 'row',
@@ -824,307 +1038,57 @@ const styles = sheet((theme) => ({
   step: {
     width: 42,
     minHeight: 52,
-    borderWidth: 1,
-    borderColor: theme.lineStrong,
-    borderRadius: 8,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.surface,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  stepPressed: {
+    backgroundColor: theme.accent,
   },
   cellInput: {
     flex: 1,
     minWidth: 0,
     minHeight: 52,
-    borderWidth: 1,
-    borderColor: theme.lineStrong,
-    borderRadius: 8,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.surface,
     textAlign: 'center',
-    fontSize: 20,
+    fontSize: 21,
+    fontFamily: font.black,
     color: theme.text,
-    fontFamily: mono,
+    fontVariant: ['tabular-nums'],
   },
   cellInputEditing: {
-    borderColor: theme.accent,
+    backgroundColor: theme.surfaceHigh,
   },
   serie: {
     minHeight: 52,
   },
   perSide: {
-    fontSize: 11,
-    color: theme.textGhost,
-    fontFamily: mono,
-  },
-  exerciseList: {
-    borderTopWidth: 1,
-    borderTopColor: theme.line,
-  },
-  exerciseRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    minHeight: 43,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.lineSoft,
-    paddingHorizontal: 4,
-  },
-  exerciseRowSelected: {
-    backgroundColor: theme.surfaceHigh,
-    borderLeftWidth: 2,
-    borderLeftColor: theme.accent,
-    paddingHorizontal: 8,
-  },
-  exerciseMark: {
-    width: 18,
-    alignItems: 'center',
-  },
-  exerciseRowText: {
-    flex: 1,
-    fontSize: 14,
-    color: theme.textDim,
-    fontFamily: mono,
-  },
-  exerciseRowTextSelected: {
-    color: theme.text,
-  },
-  exerciseRowTextDone: {
-    color: theme.ok,
-  },
-  exerciseCount: {
-    fontSize: 13,
-    color: theme.textGhost,
-    fontFamily: mono,
-  },
-  finish: {
-    marginTop: 18,
-  },
-  wrapper: {
-    alignSelf: 'stretch',
-    gap: 8,
-    borderTopWidth: 1,
-    borderTopColor: theme.line,
-    paddingTop: 12,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-  },
-  heading: {
-    fontSize: 14,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  volume: {
-    fontSize: 11,
-    color: theme.textGhost,
-    fontFamily: mono,
-  },
-  planned: {
-    fontSize: 11,
-    color: theme.textFaint,
-    fontFamily: mono,
-  },
-  more: {
-    paddingHorizontal: 4,
-    paddingVertical: 5,
-  },
-  moreText: {
-    fontSize: 11,
-    color: theme.textFaint,
-    textDecorationLine: 'underline',
-    fontFamily: mono,
-  },
-  machineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  machine: {
-    fontSize: 11,
-    color: theme.textFaint,
-    fontFamily: mono,
-  },
-  info: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 9,
-    width: 18,
-    height: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  infoText: {
-    fontSize: 11,
-    color: theme.textFaint,
-    fontFamily: mono,
-  },
-  implement: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  implementOn: {
-    borderColor: theme.accent,
-    backgroundColor: theme.accent,
-  },
-  implementText: {
-    fontSize: 10,
-    color: theme.textGhost,
-    fontFamily: mono,
-  },
-  implementTextOn: {
-    color: theme.accentInk,
-  },
-  technique: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 8,
-    padding: 10,
-    gap: 3,
-  },
-  techniqueLine: {
     fontSize: 12,
-    color: theme.textDim,
+    fontFamily: font.regular,
+    color: theme.textFaint,
   },
-  rest: {
-    fontSize: 11,
-    color: theme.textGhost,
-    fontFamily: mono,
-  },
-  restEstimate: {
-    fontSize: 11,
-    color: theme.textGhost,
-    marginTop: -4,
-    fontFamily: mono,
-  },
-  dropOff: {
-    fontSize: 11,
-    color: theme.warn,
-  },
-  lastLabel: {
-    fontSize: 11,
-    color: theme.textGhost,
-    marginTop: 4,
-    fontFamily: mono,
-  },
-  lastSets: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
+
+  finish: {
     marginTop: 2,
   },
-  lastSet: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    minWidth: 78,
-  },
-  lastSetIndex: {
-    fontSize: 9,
-    fontFamily: mono,
-    color: theme.textGhost,
-  },
-  lastSetLoad: {
+  finished: {
     fontSize: 15,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  lastSetReps: {
-    fontSize: 15,
-    fontFamily: mono,
-    color: theme.textFaint,
-  },
-  marks: {
-    fontSize: 11,
-    color: theme.textGhost,
-    fontFamily: mono,
-  },
-  setRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  setText: {
-    fontSize: 13,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  remove: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  removeText: {
-    fontSize: 11,
-    color: theme.danger,
-    fontFamily: mono,
-  },
-  finishedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  confirm: {
-    position: 'absolute',
-    right: 0,
-    bottom: '100%',
-    marginBottom: 6,
-    width: 236,
-    borderWidth: 1,
-    borderColor: theme.accent,
-    borderRadius: 8,
-    backgroundColor: theme.bg,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    gap: 8,
+    fontFamily: font.black,
+    color: theme.accentInk,
   },
   confirmText: {
-    fontSize: 11,
-    fontFamily: mono,
-    color: theme.text,
+    fontSize: 13,
+    fontFamily: font.regular,
+    color: theme.accentInk,
   },
   confirmButtons: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 14,
-  },
-  confirmNo: {
-    fontSize: 12,
-    fontFamily: mono,
-    color: theme.textFaint,
-  },
-  confirmYes: {
-    borderWidth: 1,
-    borderColor: theme.lineStrong,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  confirmYesText: {
-    fontSize: 12,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  reopen: {
-    fontSize: 11,
-    fontFamily: mono,
-    color: theme.accent,
-  },
-  sessionClock: {
-    fontSize: 12,
-    color: theme.textGhost,
-    fontFamily: mono,
-    textAlign: 'center',
-    marginTop: 10,
-  },
-  finished: {
-    fontSize: 12,
-    color: theme.textFaint,
-    marginTop: 16,
-    fontFamily: mono,
+    gap: 8,
   },
 }));

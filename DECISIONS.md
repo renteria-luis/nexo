@@ -185,3 +185,25 @@ calendario: un día sin nota o por debajo de 70 corta, hoy suma cuando pasa de 7
 mientras no llega no corta, y rellenar un día viejo vuelve a unir la racha.
 Rejected: Dejar el modo oscuro escondido detrás de un ajuste. Media pantalla sin
 terminar en dos paletas es el doble de trabajo por cada pantalla que falta.
+
+## 2026-09-26 — El orden del plan mueve el selector de ejercicios
+Context: Dentro del entreno la lista está en orden alfabético (bien, así se busca por
+nombre), pero entonces tenía que acordarse de cuál puso segundo en el plan y leerlos uno
+por uno entre serie y serie.
+Decision: El orden en que aparecen los ejercicios al aprobar el plan es el orden en que
+piensa hacerlos. Al empezar se abre el primero, y al completar las series planeadas de
+uno se abre solo el siguiente que le falte, dando la vuelta para recoger el que se saltó
+por una máquina ocupada. No escribe nada ni entra en ninguna cuenta, y se puede seguir
+eligiendo a mano.
+Rejected: Ordenar la lista del entreno por el plan. Buscar un ejercicio concreto se hace
+por nombre, y con el orden del plan hay que recorrerla entera.
+
+## 2026-09-26 — El orden de hoy se cambia arrastrando, antes de empezar
+Context: Pidió poder mover los ejercicios del plan antes de darle empezar, y él mismo
+propuso mantener apretado un par de cientos de milisegundos para despegar la fila.
+Decision: Arrastre con el PanResponder de siempre, hold de 250 ms para despegar, la fila
+sigue al dedo y las otras se abren para hacerle sitio; al soltar se renumeran las
+posiciones guardadas. Mientras hay una fila despegada la pantalla no se desplaza.
+Rejected: Flechas de subir y bajar por fila (más simple y sin gestos, pero mover el
+séptimo al primer sitio son seis toques) y una librería de arrastre (todas piden
+Reanimated, que es lo que tumbó la app el 21 de septiembre).

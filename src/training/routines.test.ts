@@ -17,6 +17,7 @@ import {
   loadRoutinePlan,
   loadSessionPlan,
   saveSessionPlan,
+  nextPendingExercise,
   trimRoutine,
 } from './routines.ts';
 import { startSession } from './sessions.ts';
@@ -202,4 +203,65 @@ test('en el gimnasio que tiene la maquina, el plan sale con la maquina', async (
   assert.equal(lateral(fanshawe), 'lateral-raise-cable');
   // Sin gimnasio elegido no hay nada que resolver.
   assert.equal(lateral(anywhere), 'lateral-raise-cable');
+});
+
+test('el selector pasa al siguiente que le falta y recoge el que se salto', () => {
+  const order = ['press', 'pec-deck', 'triceps', 'laterales'];
+  const planned = new Map([
+    ['press', 3],
+    ['pec-deck', 3],
+    ['triceps', 2],
+    ['laterales', 2],
+  ]);
+
+  // Lo normal: cerro el primero y sigue el segundo.
+  assert.equal(nextPendingExercise('press', order, new Map([['press', 3]]), planned), 'pec-deck');
+
+  // Con el segundo ya hecho, se lo salta.
+  assert.equal(
+    nextPendingExercise(
+      'press',
+      order,
+      new Map([
+        ['press', 3],
+        ['pec-deck', 3],
+      ]),
+      planned,
+    ),
+    'triceps',
+  );
+
+  // Y si el que se salto fue uno de antes, al cerrar el ultimo da la vuelta y lo recoge.
+  assert.equal(
+    nextPendingExercise(
+      'laterales',
+      order,
+      new Map([
+        ['press', 3],
+        ['triceps', 2],
+        ['laterales', 2],
+      ]),
+      planned,
+    ),
+    'pec-deck',
+  );
+
+  // Con todo hecho no mueve nada.
+  assert.equal(
+    nextPendingExercise(
+      'laterales',
+      order,
+      new Map([
+        ['press', 3],
+        ['pec-deck', 3],
+        ['triceps', 2],
+        ['laterales', 2],
+      ]),
+      planned,
+    ),
+    null,
+  );
+
+  // Un ejercicio que no estaba en el plan no lleva a ningun lado.
+  assert.equal(nextPendingExercise('remo', order, new Map(), planned), null);
 });

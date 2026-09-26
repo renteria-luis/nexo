@@ -205,6 +205,41 @@ The recipe, as applied in `src/ui/charts/`:
 - Available SVG primitives if something more is wanted: `Pattern` (a hatch or dot fill
   reads very neobrutalist), `Polygon` (the star), `Mask`, `ClipPath`, `Text`, `TSpan`.
 
+### Dragging a list, without Reanimated
+
+`SessionPlanner`'s order list is the one draggable thing in the app, and it is built on
+`PanResponder` and `Animated` only, for the same reason the sliders are not: every drag
+library in React Native pulls in Reanimated, and Reanimated is what crashed the app on
+2026-09-21 (`docs/sliders.md`).
+
+What makes it work, and what to copy if another list ever needs it:
+
+- **A hold arms it.** The row's handle starts a 250 ms timer on `onTouchStart`; only when
+  it fires does the pan responder start claiming moves
+  (`onMoveShouldSetPanResponderCapture` reads a ref, not state, because the gesture runs
+  outside the render). A plain swipe still scrolls the page.
+- **Both gestures around it are switched off while a row is lifted.** `Screen` takes
+  `scrollEnabled` for the vertical scroll, and `SwipeLock` (a context above the
+  navigation) turns off the tab carousel's `swipeEnabled`. The carousel's recogniser is
+  native: a millimetre sideways and it claims the touch, the pan responder is told it was
+  terminated and the row drops. The pan responder also answers
+  `onPanResponderTerminationRequest: () => false`, which refuses the same theft from the
+  JavaScript side.
+- **Dropping is one state change and nothing else.** The lifted row is identified by the
+  exercise's id, not by its position, and the animated value is reset when the drag
+  *starts*, not when it ends. Keyed by position, a frame where the new order had landed
+  but the highlight had not cleared painted the row that had just taken that slot: the
+  flash the owner saw on release. Resetting the animated value at the end had the same
+  shape of problem for the position, because an animated value travels to the view by its
+  own channel and not with the render.
+- **One fixed row height** (`ROW`), so the landing index is `round(dy / ROW)` instead of a
+  table of measured heights.
+- **The lifted row uses an `Animated.Value`** (no re-render per move) and the rows it
+  passes shift by `±ROW` from state, which changes only when the landing index does.
+- **The handle is the number and the name, not the whole row**, so holding a stepper
+  button does not lift anything.
+- Lifted looks lifted: yellow fill, `hardShadow(5)` and `zIndex: 2`.
+
 ## 8. Sliders
 
 Researched and written up separately in `docs/sliders.md`: the pager steals the
@@ -249,8 +284,15 @@ Done: `theme.ts` (one light palette), `Button` (with `loading`), `Card`, `Chip`,
 `DisciplineGrid`, the three charts, `TargetsCard`, `PalettePicker`, `TodayLog`,
 `DayDialog`, the Ajustes controls, and the **Hoy** screen.
 
-Left, screen by screen: Entreno (`TrainingScreen`, `SessionPlanner`, `SessionLog`),
-Comida (`NutritionScreen`, `FoodLog`, `FoodPicker`, `FoodForm`, `PortionMacros`,
+Also done: **Entreno**, both halves of it — the planner before the session
+(`SessionPlanner`: the four decisions in one card with a rule between each, then the
+numbered order of the day) and the session itself (`TrainingScreen` + `SessionLog`: a
+card for the routine and the crowd, one for volume and the clock, one for the exercise
+list, one for the open exercise with its form). The numbers in the planner's list are the
+one place numbered markers are used, because there the order is the content: it is the
+order he will train in, and the selector inside the session follows it (spec 8.5).
+
+Left, screen by screen: Comida (`NutritionScreen`, `FoodLog`, `FoodPicker`, `FoodForm`, `PortionMacros`,
 `BatchPanel`, `FoodsScreen`), Ofertas (`DealsScreen`), the pushed screens (`DayScreen`,
 `ChartsScreen`, `RecordsScreen`, `WeekSummaryScreen`, `ReadingsScreen`,
 `RoutineNotesScreen`, `ExperimentsScreen`, `PendingScreen`), and the rest of

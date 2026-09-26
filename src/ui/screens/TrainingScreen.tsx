@@ -1,15 +1,20 @@
 import { useNavigation } from '@react-navigation/native';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Text, View } from 'react-native';
 
 import { useAppData } from '../../shell/AppData.tsx';
+import { Button } from '../Button.tsx';
+import { Card } from '../Card.tsx';
+import { ChevronRight } from '../icons.ts';
+import { nextPendingExercise } from '../../training/routines.ts';
 import type { Implement } from '../../training/sessions.ts';
 import { Chip } from '../Chip.tsx';
 import { SessionLog } from '../SessionLog.tsx';
 import { SessionPlanner } from '../SessionPlanner.tsx';
+import { useSwipeLock } from '../SwipeLock.tsx';
 
 import { Screen } from './Screen.tsx';
-import { mono, sheet } from '../theme.ts';
+import { font, sheet } from '../theme.ts';
 
 export function TrainingScreen() {
   const {
@@ -33,6 +38,17 @@ export function TrainingScreen() {
     navigate: (name: string, params?: { routineId?: string }) => void;
   }>();
   const [changingRoutine, setChangingRoutine] = useState(false);
+  // Mientras arrastra un ejercicio del orden, la pantalla no se desplaza ni se puede
+  // pasar de pestana: los dos gestos le quitarian el toque al arrastre.
+  const [dragging, setDragging] = useState(false);
+  const { setLocked } = useSwipeLock();
+  const holdScreen = useCallback(
+    (held: boolean) => {
+      setDragging(held);
+      setLocked(held);
+    },
+    [setLocked],
+  );
 
   // Todo esto se calcula arriba y una sola vez por cambio de datos, para que el
   // registro del entreno reciba siempre los mismos objetos y pueda saltarse su propio
@@ -58,6 +74,33 @@ export function TrainingScreen() {
   );
 
   const planExerciseIds = useMemo(() => (plan ?? []).map((entry) => entry.exerciseId), [plan]);
+
+  /**
+   * Cerrar las series de un ejercicio abre el siguiente del plan.
+   *
+   * Es solo para ahorrar toques: no escribe nada ni cambia ninguna cuenta, y se puede
+   * seguir eligiendo a mano. Salta exactamente en la serie que completa lo planeado
+   * (una cuarta serie de un ejercicio de tres no lo mueve), y si se salto uno, al
+   * cerrar el que estaba haciendo la vuelta lo recoge.
+   */
+  const closed = useRef<{ id: string | null; done: number }>({ id: null, done: 0 });
+  useEffect(() => {
+    const before = closed.current;
+    const done = exerciseId === null ? 0 : (setsDoneByExercise.get(exerciseId) ?? 0);
+    closed.current = { id: exerciseId, done };
+
+    if (exerciseId === null || before.id !== exerciseId) return;
+    if (done <= before.done) return;
+    if (done !== plannedByExercise.get(exerciseId)) return;
+
+    const next = nextPendingExercise(
+      exerciseId,
+      planExerciseIds,
+      setsDoneByExercise,
+      plannedByExercise,
+    );
+    if (next !== null && next !== exerciseId) selectExercise(next);
+  }, [exerciseId, setsDoneByExercise, plannedByExercise, planExerciseIds, selectExercise]);
 
   const changeUnit = useCallback(
     (next: 'kg' | 'lb') => saveSetting('weight_unit', next),
@@ -85,17 +128,31 @@ export function TrainingScreen() {
   );
 
   // Empezar un entreno y que no haya nada donde escribir es un toque de mas en cada
-  // sesion, asi que queda abierto el ejercicio en el que estaba, o el primero del
-  // plan si es la primera vez que entra hoy.
+  // sesion, asi que queda abierto el ejercicio en el que estaba, o el primero del orden
+  // que aprobo si es la primera vez que entra hoy.
+  //
+  // Lo que quedo a medio escribir solo manda si su ejercicio sigue estando en el plan.
+  // Sin esa condicion, un borrador de otro dia abria un ejercicio que hoy no toca: le
+  // salio remo al empezar un dia de empuje, porque ese era el ejercicio en el que estaba
+  // cuando probo el dia de tiron.
   const saved = state.phase === 'ready' ? state.loaded.sessionDraft : null;
+  const drafted = saved?.exerciseId ?? null;
   const first =
-    state.phase === 'ready'
-      ? (saved?.exerciseId ?? state.loaded.plan[0]?.exerciseId ?? null)
-      : null;
-  const hasSession = state.phase === 'ready' && state.loaded.today.session !== null;
+    drafted !== null && plannedByExercise.has(drafted) ? drafted : (planExerciseIds[0] ?? null);
+
+  // Y se elige una vez por sesion, no una vez por "no hay nada elegido": al empezar otra
+  // sesion en la misma sentada seguia puesto el ejercicio de la anterior, y entonces esto
+  // no elegia nada.
+  const chosen = useRef<string | null>(null);
   useEffect(() => {
-    if (hasSession && exerciseId === null && first !== null) selectExercise(first);
-  }, [hasSession, exerciseId, first, selectExercise]);
+    if (openSessionId === null) {
+      chosen.current = null;
+      return;
+    }
+    if (chosen.current === openSessionId) return;
+    chosen.current = openSessionId;
+    if (first !== null) selectExercise(first);
+  }, [openSessionId, first, selectExercise]);
 
   if (state.phase !== 'ready') return <Screen title="Entreno">{null}</Screen>;
 
@@ -105,7 +162,7 @@ export function TrainingScreen() {
   const routine = loaded.routines.find((item) => item.id === session?.routine_id) ?? null;
 
   return (
-    <Screen title="Entreno">
+    <Screen title="Entreno" scrollEnabled={!dragging}>
       {session === null ? (
         <SessionPlanner
           routines={loaded.routines}
@@ -115,29 +172,49 @@ export function TrainingScreen() {
           onStart={beginSession}
           restDay={loaded.today.log?.rest_day === 1}
           onRestDay={() => logDay({ restDay: true })}
+          onDragging={holdScreen}
         />
       ) : (
         <>
-          {/* La rutina a la izquierda y el gentio arriba a la derecha: dos cosas que
-              se miran al llegar y ninguna despues, asi que comparten el renglon de
-              arriba y no gastan alto en el medio de la pantalla. */}
-          <View style={styles.topRow}>
-            <View style={styles.routineRow}>
-              <Text style={styles.routineText}>{routine ? routine.name : 'Sin rutina'}</Text>
-              <Pressable
+          {/* La rutina y el gentio: dos cosas que se miran al llegar y ninguna
+              despues, asi que comparten la cartilla de arriba y no gastan alto en el
+              medio de la pantalla. */}
+          <Card>
+            <View style={styles.topRow}>
+              <View style={styles.routineSide}>
+                <Text style={styles.label}>RUTINA DE HOY</Text>
+                <Text style={styles.routineText}>{routine ? routine.name : 'Sin rutina'}</Text>
+              </View>
+              <Button
+                label={changingRoutine ? 'Dejar así' : 'Cambiar'}
                 accessibilityLabel="Cambiar la rutina de hoy"
+                variant="ghost"
                 onPress={() => setChangingRoutine((open) => !open)}
-                style={({ pressed }) => [styles.change, pressed && styles.pressedSoft]}
-              >
-                <Text style={styles.changeText}>{changingRoutine ? 'dejar así' : 'cambiar'}</Text>
-              </Pressable>
+              />
             </View>
+
+            {changingRoutine && (
+              <View style={styles.chips}>
+                {loaded.routines.map((item) => (
+                  <Chip
+                    key={item.id}
+                    label={item.name}
+                    accessibilityLabel={`Cambiar a ${item.name}`}
+                    selected={item.id === session.routine_id}
+                    onPress={() => {
+                      switchRoutine(item.id);
+                      setChangingRoutine(false);
+                    }}
+                  />
+                ))}
+              </View>
+            )}
 
             {/* Spec 8.5: se pregunta al llegar y aparte de empezar, asi que no esta en
                 el camino critico. Spec 5.4 la deja fuera de una sesion escrita despues. */}
-            <View style={styles.crowdSide}>
-              <Text style={styles.crowdLabel}>gym crowd:</Text>
-              <View style={styles.crowdChips}>
+            <View style={styles.crowdRow}>
+              <Text style={styles.label}>GENTÍO</Text>
+              <View style={styles.chips}>
                 {(
                   [
                     ['empty', 'vacío'],
@@ -155,24 +232,7 @@ export function TrainingScreen() {
                 ))}
               </View>
             </View>
-          </View>
-
-          {changingRoutine && (
-            <View style={styles.chips}>
-              {loaded.routines.map((item) => (
-                <Chip
-                  key={item.id}
-                  label={item.name}
-                  accessibilityLabel={`Cambiar a ${item.name}`}
-                  selected={item.id === session.routine_id}
-                  onPress={() => {
-                    switchRoutine(item.id);
-                    setChangingRoutine(false);
-                  }}
-                />
-              ))}
-            </View>
-          )}
+          </Card>
 
           <SessionLog
             exercises={loaded.exercise.exercises}
@@ -200,79 +260,50 @@ export function TrainingScreen() {
         </>
       )}
 
-      {/* At the bottom and small: reference material, not part of logging a set. */}
-      <Pressable
+      {/* Al final: material de consulta, no parte de anotar una serie. */}
+      <Button
+        label="Recomendaciones de rutina"
         accessibilityLabel="Ver recomendaciones de rutina"
+        icon={ChevronRight}
         onPress={() =>
           navigation.navigate('Recomendaciones', { routineId: session?.routine_id ?? undefined })
         }
-        style={({ pressed }) => [styles.notesLink, pressed && styles.pressedSoft]}
-      >
-        <Text style={styles.notesLinkText}>Recomendaciones de rutina ›</Text>
-      </Pressable>
+        style={styles.notesLink}
+      />
     </Screen>
   );
 }
 
 const styles = sheet((theme) => ({
-  // La respuesta del dedo, en el instante del toque.
-  pressedSoft: {
-    opacity: 0.55,
-  },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 8,
+    gap: 10,
   },
-  routineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  routineSide: {
     flexShrink: 1,
   },
-  crowdSide: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexShrink: 1,
-  },
-  crowdLabel: {
+  label: {
     fontSize: 11,
-    color: theme.textGhost,
-    fontFamily: mono,
-  },
-  crowdChips: {
-    flexDirection: 'row',
-    gap: 4,
+    fontFamily: font.black,
+    letterSpacing: 1,
+    color: theme.textFaint,
   },
   routineText: {
-    fontSize: 13,
-    fontFamily: mono,
+    fontSize: 18,
+    fontFamily: font.black,
     color: theme.text,
   },
-  change: {
-    paddingVertical: 4,
-  },
-  changeText: {
-    fontSize: 11,
-    color: theme.textFaint,
-    textDecorationLine: 'underline',
+  crowdRow: {
+    gap: 8,
   },
   chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 5,
+    gap: 8,
   },
   notesLink: {
-    alignSelf: 'flex-start',
-    marginTop: 16,
-    paddingVertical: 6,
-  },
-  notesLinkText: {
-    fontSize: 12,
-    color: theme.textFaint,
-    fontFamily: mono,
+    marginTop: 4,
   },
 }));
