@@ -18,6 +18,7 @@ import {
 import { shortDate } from '../core/dates.ts';
 
 import { FoodPicker } from './FoodPicker.tsx';
+import { PortionMacros } from './PortionMacros.tsx';
 import { NumericField } from './NumericField.tsx';
 import { mono, theme } from './theme.ts';
 
@@ -91,6 +92,8 @@ export function FoodLog({
     return mealSlotAtHour(now.getHours(), now.getMinutes());
   });
   const repeatable = history.lastMealBySlot.get(slot) ?? null;
+  // Una burbuja abierta a la vez: la de otra porcion se cierra sola.
+  const [openPortion, setOpenPortion] = useState<string | null>(null);
 
   const selected = foods.find((food) => food.id === foodId) ?? null;
   const parsed = Number(quantity);
@@ -113,8 +116,15 @@ export function FoodLog({
     // boton o una fila se quedan con el toque antes de llegar aqui.
     <View
       style={styles.wrapper}
-      onStartShouldSetResponder={foodId === null ? undefined : () => true}
-      onResponderRelease={foodId === null ? undefined : () => setFoodId(null)}
+      onStartShouldSetResponder={foodId === null && openPortion === null ? undefined : () => true}
+      onResponderRelease={
+        foodId === null && openPortion === null
+          ? undefined
+          : () => {
+              setFoodId(null);
+              setOpenPortion(null);
+            }
+      }
     >
       {/* The targets card above also says "Calorías" and "Proteína"; this heading is
           what keeps the eaten figures from being read as the target ones. */}
@@ -176,18 +186,32 @@ export function FoodLog({
       )}
 
       {portions.map((portion) => (
-        <View key={portion.entryId} style={styles.entry}>
-          <View style={styles.entryText}>
-            <Text style={styles.entryName}>{portionLabel(portion.food, portion.quantity)}</Text>
-            <Text style={styles.entryMeta}>{portion.mealSlot}</Text>
+        <View key={portion.entryId}>
+          <View style={styles.entry}>
+            <Pressable
+              accessibilityLabel={`Qué aporta ${portion.food.name}`}
+              onPress={() =>
+                setOpenPortion(openPortion === portion.entryId ? null : portion.entryId)
+              }
+              style={[styles.info, openPortion === portion.entryId && styles.infoOn]}
+            >
+              <Text style={styles.infoText}>i</Text>
+            </Pressable>
+            <View style={styles.entryText}>
+              <Text style={styles.entryName}>{portionLabel(portion.food, portion.quantity)}</Text>
+              <Text style={styles.entryMeta}>{portion.mealSlot}</Text>
+            </View>
+            <Pressable
+              accessibilityLabel={`Quitar ${portion.food.name}`}
+              onPress={() => onRemove(portion.entryId)}
+              style={styles.remove}
+            >
+              <Text style={styles.removeText}>quitar</Text>
+            </Pressable>
           </View>
-          <Pressable
-            accessibilityLabel={`Quitar ${portion.food.name}`}
-            onPress={() => onRemove(portion.entryId)}
-            style={styles.remove}
-          >
-            <Text style={styles.removeText}>quitar</Text>
-          </Pressable>
+          {openPortion === portion.entryId && (
+            <PortionMacros food={portion.food} quantity={portion.quantity} />
+          )}
         </View>
       ))}
 
@@ -323,9 +347,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
     borderTopWidth: 1,
     borderTopColor: theme.line,
     paddingTop: 6,
+  },
+  info: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: theme.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoOn: {
+    borderColor: theme.accent,
+    backgroundColor: theme.surfaceHigh,
+  },
+  infoText: {
+    fontSize: 12,
+    color: theme.textFaint,
+    fontFamily: mono,
   },
   entryText: {
     flexShrink: 1,

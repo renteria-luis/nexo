@@ -16,11 +16,17 @@ import { Screen } from './Screen.tsx';
  * se cambia lo que significa cada cosa. Mezclarlos era lo que llenaba la pantalla de
  * registro de botones que no usa mientras come.
  */
-function macros(food: NutritionFoodRow): string {
+/** Todo lo que dice la ficha, para no tener que abrirla solo para mirarla. */
+function macros(food: NutritionFoodRow): { head: string; tail: string } {
   const per = referenceAmount(food);
   const unit = food.unit_kind === 'count' ? food.base_unit : `100 ${food.base_unit}`;
-  const carbs = food.carbs_g === null ? '· carbos —' : `· ${roundAmount(food.carbs_g * per)} C`;
-  return `${unit} · ${roundAmount(food.kcal * per)} kcal · ${roundAmount(food.protein_g * per)} P ${carbs}`;
+  const of = (value: number | null, suffix: string) =>
+    value === null ? '—' : `${roundAmount(Math.round(value * per * 100) / 100)}${suffix}`;
+
+  return {
+    head: `${unit} · ${of(food.kcal, '')} kcal · ${of(food.protein_g, ' g')} P · ${of(food.carbs_g, ' g')} C`,
+    tail: `grasa ${of(food.fat_g, ' g')} · azúcar ${of(food.sugar_g, ' g')} · sodio ${of(food.sodium_mg, ' mg')}`,
+  };
 }
 
 export function FoodsScreen() {
@@ -113,7 +119,8 @@ export function FoodsScreen() {
           style={styles.row}
         >
           <Text style={styles.name}>{food.name}</Text>
-          <Text style={styles.macros}>{macros(food)}</Text>
+          <Text style={styles.macros}>{macros(food).head}</Text>
+          <Text style={styles.macros}>{macros(food).tail}</Text>
           {food.keywords !== null && <Text style={styles.keywords}>{food.keywords}</Text>}
         </Pressable>
       ))}
