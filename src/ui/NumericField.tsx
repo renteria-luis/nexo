@@ -62,6 +62,10 @@ export function NumericField({
   // teclado por primera vez el campo pierde el foco, y con el se perdia la raya.
   const [mine, setMine] = useState<PadTarget | null>(null);
   const writing = mine !== null && pad.target === mine;
+  // La misma entrada en una referencia, para poder mirarla desde el onBlur, y un
+  // seguro para no pelearse con el sistema si el foco se va por otra razon.
+  const owned = useRef<PadTarget | null>(null);
+  const restored = useRef(0);
   const notify = useRef(onChange);
   const commit = useRef(onCommit);
 
@@ -121,19 +125,46 @@ export function NumericField({
         onFocus?.();
         // El teclado tapa la mitad de abajo de la pantalla: lo que se escribe se sube.
         reveal(reveals?.current ?? input.current);
+        // Recuperar el foco no abre nada nuevo: con otra entrada, el teclado cerraria
+        // la anterior, y la anterior es la de este mismo campo.
+        const already = owned.current;
+        if (already !== null) {
+          pad.open(already);
+          return;
+        }
+
         const target: PadTarget = {
           onKey: apply,
           allowDecimal,
           onClose: () => {
-            setMine(null);
+            // Solo si sigue siendo la suya: si el teclado ya paso a otro campo, esto
+            // llega tarde y no tiene que borrar nada.
+            if (owned.current === target) {
+              owned.current = null;
+              setMine(null);
+            }
             input.current?.blur();
           },
         };
+        owned.current = target;
+        restored.current = 0;
         setMine(target);
         pad.open(target);
       }}
       onBlur={() => {
         onBlur?.();
+
+        // Un desenfoque que no pidio nadie: el teclado de la app al abrirse se queda con
+        // el toque, y la pantalla al subir el contenido lo vuelve a quitar. Con el foco
+        // se va el cursor, y el campo queda pintado pero sin la raya que dice donde esta
+        // escribiendo. Mientras el teclado siga siendo suyo, se recupera; con un tope,
+        // para no pelearse con el sistema si el foco se va por otra razon.
+        if (owned.current !== null && restored.current < 3) {
+          restored.current += 1;
+          requestAnimationFrame(() => input.current?.focus());
+          return;
+        }
+
         onCommit?.();
       }}
       style={[style, writing && focusedStyle]}

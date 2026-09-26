@@ -1,3 +1,4 @@
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
 import { Text, TextInput, View, type StyleProp, type TextStyle } from 'react-native';
 
@@ -113,10 +114,99 @@ function SavedNumber({
   );
 }
 
+/**
+ * La lista del catalogo. La ficha de un ejercicio es otra ruta a proposito: asi el gesto
+ * de volver del telefono vuelve a la lista, que es de donde salio, y no dos pantallas
+ * atras a Ajustes.
+ */
 export function ExercisesScreen() {
+  const { state, loadCatalog } = useAppData();
+  const navigation = useNavigation<{
+    navigate: (name: string, params: { exerciseId: string }) => void;
+  }>();
+
+  const [list, setList] = useState<CatalogEntry[] | null>(null);
+  const [search, setSearch] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Se vuelve a leer cada vez que se entra: al volver de una ficha, lo que cambio ahi
+    // tiene que verse aqui.
+    const unsubscribe = navigation as unknown as {
+      addListener?: (event: string, run: () => void) => () => void;
+    };
+    loadCatalog()
+      .then(setList)
+      .catch((error: unknown) => {
+        console.error(error);
+        setProblem(error instanceof Error ? error.message : String(error));
+      });
+    return unsubscribe.addListener?.('focus', () => {
+      loadCatalog()
+        .then(setList)
+        .catch((error: unknown) => console.error(error));
+    });
+  }, [loadCatalog, navigation]);
+
+  if (state.phase !== 'ready') return <Screen title="Ejercicios">{null}</Screen>;
+
+  const shown = (list ?? []).filter((item) => matchesSearch([item.name, item.muscle], search));
+
+  return (
+    <Screen title="Ejercicios">
+      <Text style={styles.intro}>
+        Todo lo que la app sabe de cada ejercicio, para cambiarlo sin pedirlo: con qué se puede
+        hacer, qué dice su (i), en qué gimnasio lo tienes y cuántas series le toca en cada rutina y
+        con cada tiempo.
+      </Text>
+
+      <TextInput
+        value={search}
+        onChangeText={setSearch}
+        autoCapitalize="none"
+        autoCorrect={false}
+        accessibilityLabel="Buscar un ejercicio"
+        placeholder="Buscar"
+        placeholderTextColor={theme.textGhost}
+        style={styles.search}
+      />
+
+      {problem && <Text style={styles.problem}>{problem}</Text>}
+
+      <Card>
+        {shown.map((item, index) => (
+          <View key={item.id} style={[styles.row, index > 0 && styles.ruled]}>
+            <View style={styles.rowText}>
+              <Text style={styles.rowName}>{item.name}</Text>
+              <Text style={styles.rowDetail}>
+                {MUSCLE_ES[item.muscle] ?? item.muscle}
+                {item.implements.length > 1
+                  ? ` · ${item.implements.map((option) => IMPLEMENT_ES[option].toLowerCase()).join(', ')}`
+                  : ''}
+                {item.routines > 0
+                  ? ` · en ${item.routines} rutina${item.routines > 1 ? 's' : ''}`
+                  : ' · suelto'}
+              </Text>
+            </View>
+            <Button
+              label="Abrir"
+              accessibilityLabel={`Editar ${item.name}`}
+              variant="ghost"
+              icon={ChevronRight}
+              onPress={() => navigation.navigate('Ejercicio', { exerciseId: item.id })}
+            />
+          </View>
+        ))}
+        {shown.length === 0 && <Text style={styles.hint}>Ningún ejercicio con ese nombre.</Text>}
+      </Card>
+    </Screen>
+  );
+}
+
+/** La ficha de un ejercicio: todo lo suyo, y cada cambio se guarda solo. */
+export function ExerciseScreen() {
   const {
     state,
-    loadCatalog,
     loadExercise,
     editExercise,
     editExerciseNote,
@@ -125,10 +215,10 @@ export function ExercisesScreen() {
     editRoutineReps,
     editRoutineTier,
   } = useAppData();
+  const route = useRoute<RouteProp<Record<string, { exerciseId: string }>, string>>();
+  const navigation = useNavigation<{ setOptions: (options: { title: string }) => void }>();
+  const exerciseId = route.params.exerciseId;
 
-  const [list, setList] = useState<CatalogEntry[] | null>(null);
-  const [search, setSearch] = useState('');
-  const [openId, setOpenId] = useState<string | null>(null);
   const [card, setCard] = useState<ExerciseCard | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -137,17 +227,16 @@ export function ExercisesScreen() {
     setProblem(error instanceof Error ? error.message : String(error));
   }, []);
 
-  const reloadList = useCallback(() => {
-    loadCatalog().then(setList).catch(complain);
-  }, [loadCatalog, complain]);
+  const reload = useCallback(() => {
+    loadExercise(exerciseId).then(setCard).catch(complain);
+  }, [loadExercise, exerciseId, complain]);
 
-  const reloadCard = useCallback(() => {
-    if (openId === null) return;
-    loadExercise(openId).then(setCard).catch(complain);
-  }, [loadExercise, openId, complain]);
+  useEffect(reload, [reload]);
 
-  useEffect(reloadList, [reloadList]);
-  useEffect(reloadCard, [reloadCard]);
+  const name = card?.exercise.name_es;
+  useEffect(() => {
+    if (name !== undefined) navigation.setOptions({ title: name });
+  }, [navigation, name]);
 
   /** Cada cambio se guarda solo y la ficha se vuelve a leer de la base. */
   const after = useCallback(
@@ -155,89 +244,22 @@ export function ExercisesScreen() {
       work
         .then(() => {
           setProblem(null);
-          reloadCard();
-          reloadList();
+          reload();
         })
         .catch(complain);
     },
-    [reloadCard, reloadList, complain],
+    [reload, complain],
   );
 
-  if (state.phase !== 'ready') return <Screen title="Ejercicios">{null}</Screen>;
-
-  if (openId === null || card === null) {
-    const shown = (list ?? []).filter((item) => matchesSearch([item.name, item.muscle], search));
-
-    return (
-      <Screen title="Ejercicios">
-        <Text style={styles.intro}>
-          Todo lo que la app sabe de cada ejercicio, para cambiarlo sin pedirlo: con qué se puede
-          hacer, qué dice su (i), en qué gimnasio lo tienes y cuántas series le toca en cada rutina
-          y con cada tiempo.
-        </Text>
-
-        <TextInput
-          value={search}
-          onChangeText={setSearch}
-          autoCapitalize="none"
-          autoCorrect={false}
-          accessibilityLabel="Buscar un ejercicio"
-          placeholder="Buscar"
-          placeholderTextColor={theme.textGhost}
-          style={styles.search}
-        />
-
-        {problem && <Text style={styles.problem}>{problem}</Text>}
-
-        <Card>
-          {shown.map((item, index) => (
-            <View key={item.id} style={[styles.row, index > 0 && styles.ruled]}>
-              <View style={styles.rowText}>
-                <Text style={styles.rowName}>{item.name}</Text>
-                <Text style={styles.rowDetail}>
-                  {MUSCLE_ES[item.muscle] ?? item.muscle}
-                  {item.implements.length > 1
-                    ? ` · ${item.implements.map((option) => IMPLEMENT_ES[option].toLowerCase()).join(', ')}`
-                    : ''}
-                  {item.routines > 0
-                    ? ` · en ${item.routines} rutina${item.routines > 1 ? 's' : ''}`
-                    : ' · suelto'}
-                </Text>
-              </View>
-              <Button
-                label="Abrir"
-                accessibilityLabel={`Editar ${item.name}`}
-                variant="ghost"
-                icon={ChevronRight}
-                onPress={() => {
-                  setCard(null);
-                  setOpenId(item.id);
-                }}
-              />
-            </View>
-          ))}
-          {shown.length === 0 && <Text style={styles.hint}>Ningún ejercicio con ese nombre.</Text>}
-        </Card>
-      </Screen>
-    );
-  }
+  if (state.phase !== 'ready' || card === null) return <Screen>{null}</Screen>;
 
   const exercise = card.exercise;
 
   return (
-    <Screen title="Ejercicios">
-      <Button
-        label="Volver a la lista"
-        accessibilityLabel="Volver a la lista"
-        onPress={() => {
-          setOpenId(null);
-          setCard(null);
-        }}
-      />
-
+    <Screen>
       {problem && <Text style={styles.problem}>{problem}</Text>}
 
-      <Card title={exercise.name_es}>
+      <Card>
         <Text style={styles.hint}>
           {MUSCLE_ES[exercise.primary_muscle] ?? exercise.primary_muscle} ·{' '}
           {exercise.equipment_type}

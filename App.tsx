@@ -14,7 +14,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { AppDataProvider, useAppData } from './src/shell/AppData.tsx';
 import { enabledTabs, type ModuleRegistry } from './src/modules/registry.ts';
 import { DealsScreen } from './src/ui/screens/DealsScreen.tsx';
-import { ExercisesScreen } from './src/ui/screens/ExercisesScreen.tsx';
+import { ExerciseScreen, ExercisesScreen } from './src/ui/screens/ExercisesScreen.tsx';
 import { ExperimentsScreen } from './src/ui/screens/ExperimentsScreen.tsx';
 import { NutritionScreen } from './src/ui/screens/NutritionScreen.tsx';
 import { PendingScreen } from './src/ui/screens/PendingScreen.tsx';
@@ -274,6 +274,8 @@ function Navigation() {
             headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
           })}
         />
+        {/* La ficha es su propia pantalla: asi el gesto de volver regresa a la lista. */}
+        <RootStack.Screen name="Ejercicio" component={ExerciseScreen} />
         <RootStack.Screen
           name="Alimentos"
           component={FoodsScreen}

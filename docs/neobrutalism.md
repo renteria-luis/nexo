@@ -222,13 +222,14 @@ What makes it work, and what to copy if another list ever needs it:
   thing you can see.) The pan responder still lives on the list and claims moves while a
   row is held (`onMoveShouldSetPanResponderCapture` reads a ref, not state, because the
   gesture runs outside the render).
-- **Both gestures around it are switched off while a row is lifted.** `Screen` takes
-  `scrollEnabled` for the vertical scroll, and `SwipeLock` (a context above the
-  navigation) turns off the tab carousel's `swipeEnabled`. The carousel's recogniser is
-  native: a millimetre sideways and it claims the touch, the pan responder is told it was
-  terminated and the row drops. The pan responder also answers
-  `onPanResponderTerminationRequest: () => false`, which refuses the same theft from the
-  JavaScript side.
+- **Nothing around it gets switched off.** It answers
+  `onPanResponderTerminationRequest: () => false`, so the scroll and the tab carousel ask
+  for the touch and are told no. Turning them off by state was worse in two ways: the
+  state lands a frame late, so the drag only started if he held still first, and changing
+  `scrollEnabled` (or the pager's `swipeEnabled`) with a finger down makes iOS cancel the
+  touch — after which neither the release nor the cancel arrives and the row stays
+  hanging mid-screen. `onPanResponderEnd` is wired to the same drop handler as a last
+  guard, because it fires for both endings.
 - **Dropping is one state change and nothing else.** The lifted row is identified by the
   exercise's id, not by its position, and the animated value is reset when the drag
   *starts*, not when it ends. Keyed by position, a frame where the new order had landed

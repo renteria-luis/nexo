@@ -51,9 +51,9 @@ export function Screen({
   /** Lo que va encima de la pantalla entera, fuera del scroll y sin ser un modal. */
   overlay?: ReactNode;
   /**
-   * Apagado mientras se arrastra algo de dentro. Un arrastre vertical dentro de un
-   * scroll es ambiguo y el scroll gana siempre: la unica forma de que el dedo mueva
-   * la fila y no la pantalla es que la pantalla deje de escuchar mientras dura.
+   * Apagado mientras se arrastra algo de dentro. Tomar el toque no basta: el scroll es
+   * nativo y se lo lleva igual, asi que mientras dura el arrastre la pantalla deja de
+   * escuchar.
    */
   scrollEnabled?: boolean;
 }) {
@@ -94,8 +94,11 @@ export function Screen({
       // Un toque en un boton con el teclado abierto lo pulsa a la primera; uno en
       // cualquier otro sitio sigue cerrando el teclado.
       keyboardShouldPersistTaps="handled"
-      // Y arrastrar hacia abajo lo baja siguiendo el dedo.
-      keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+      // Y arrastrar hacia abajo lo baja siguiendo el dedo. Con el teclado de la app
+      // abierto no hay teclado del sistema que bajar, y en cambio si hay contenido que
+      // se desplaza solo para dejar el campo a la vista: con esto puesto, ese
+      // desplazamiento le quitaba el foco al campo y con el, el cursor.
+      keyboardDismissMode={pad.isOpen ? 'none' : Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       style={styles.scroll}
       // Con el teclado de la app abierto, el contenido se puede seguir subiendo para
       // sacar de debajo el campo que se esta escribiendo.

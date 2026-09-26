@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -44,20 +52,25 @@ export function useNumberPad(): PadApi {
 export function NumberPadHost({ children }: { children: ReactNode }) {
   const [target, setTarget] = useState<PadTarget | null>(null);
   const insets = useSafeAreaInsets();
+  // El mismo dato en una referencia para poder avisar al campo que suelta fuera del
+  // render. Avisarle desde dentro del cambio de estado era avisarle mientras React
+  // pintaba, y React se comia ese aviso: el campo viejo se quedaba marcado y el nuevo
+  // salia sin marcar.
+  const current = useRef<PadTarget | null>(null);
 
   const close = useCallback(() => {
-    setTarget((current) => {
-      current?.onClose();
-      return null;
-    });
+    const previous = current.current;
+    current.current = null;
+    setTarget(null);
+    previous?.onClose();
   }, []);
 
   const open = useCallback((next: PadTarget) => {
-    setTarget((current) => {
-      // Saltar de un campo a otro suelta el anterior sin cerrar el teclado.
-      if (current && current !== next) current.onClose();
-      return next;
-    });
+    const previous = current.current;
+    current.current = next;
+    setTarget(next);
+    // Saltar de un campo a otro suelta el anterior sin cerrar el teclado.
+    if (previous && previous !== next) previous.onClose();
   }, []);
 
   const api = useMemo(

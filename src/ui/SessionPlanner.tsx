@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Animated, PanResponder, Pressable, Text, View } from 'react-native';
 
 import type { GymLocation } from '../core/geo.ts';
@@ -91,6 +91,116 @@ function Field({
  * Mientras una fila esta despegada, la pantalla deja de desplazarse: un arrastre
  * vertical dentro de un scroll es ambiguo y el scroll gana siempre.
  */
+/**
+ * Una fila del orden, con su propio gesto.
+ *
+ * El gesto vive en cada asa y no en la lista entera, y reclama el toque **al apoyar el
+ * dedo** (`onStartShouldSetPanResponderCapture`), no al moverlo. Esa es la diferencia
+ * entre arrastrar y no: el desplazamiento de la pantalla es nativo y empieza con el
+ * primer milimetro, asi que pedirlo despues llegaba tarde y se iba la pantalla en vez de
+ * la fila.
+ *
+ * Y con el toque tomado desde el principio no hace falta apagar nada alrededor: el
+ * desplazamiento de la pantalla y el de las pestanas preguntan antes de llevarselo y
+ * aqui se les dice que no (`onPanResponderTerminationRequest`). Apagarlos por estado era
+ * ademas lo que dejaba filas colgadas: cambiar esas propiedades con el dedo encima hace
+ * que iOS cancele el toque, y entonces no llegaba ni el soltar ni el aviso de cancelado.
+ */
+const OrderRow = memo(function OrderRow({
+  exercise,
+  index,
+  lifted,
+  shift,
+  pan,
+  onLift,
+  onMove,
+  onDrop,
+  onOverride,
+}: {
+  exercise: PlannedExercise;
+  index: number;
+  lifted: boolean;
+  shift: number;
+  pan: Animated.Value;
+  onLift: (exerciseId: string, index: number) => void;
+  onMove: (dy: number) => void;
+  onDrop: () => void;
+  onOverride: (exerciseId: string, direction: 1 | -1) => void;
+}) {
+  const drag = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponderCapture: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponderCapture: () => true,
+        // Que nadie se lo quite a medias: el carrusel de pestanas lo pedia en cuanto el
+        // dedo se iba un poco a un lado.
+        onPanResponderTerminationRequest: () => false,
+        onShouldBlockNativeResponder: () => true,
+        onPanResponderGrant: () => onLift(exercise.exerciseId, index),
+        onPanResponderMove: (_event, gesture) => onMove(gesture.dy),
+        onPanResponderRelease: onDrop,
+        onPanResponderTerminate: onDrop,
+        // Y por si acaso: este llega tanto al soltar como al cancelar, y soltar dos
+        // veces no hace nada.
+        onPanResponderEnd: onDrop,
+      }),
+    [exercise.exerciseId, index, onLift, onMove, onDrop],
+  );
+
+  return (
+    <Animated.View
+      // Mientras se mueve, la fila se dibuja una vez y se desplaza esa imagen: la sombra
+      // dura, que iOS recalcula en cada cuadro, es lo que hacia que el arrastre se
+      // sintiera pesado.
+      shouldRasterizeIOS={lifted}
+      style={[
+        styles.row,
+        index > 0 && styles.ruled,
+        lifted && styles.rowLifted,
+        { transform: [{ translateY: lifted ? pan : shift }] },
+      ]}
+    >
+      {/* El asa, y lo unico que arrastra: el resto de la fila queda libre para leer,
+          desplazar la pantalla y tocar los botones de series. */}
+      <View
+        accessibilityLabel={`Mover ${exercise.name} de sitio`}
+        style={styles.handle}
+        {...drag.panHandlers}
+      >
+        <GripLines size={20} color={theme.textFaint} strokeWidth={2.5} />
+      </View>
+
+      <View style={styles.rowText}>
+        <Text style={styles.exercise} numberOfLines={2}>
+          {exercise.name}
+        </Text>
+        <Text style={styles.detail} numberOfLines={1}>
+          {exercise.sets} × {reps(exercise)} · {TIER_ES[exercise.tier]} · desc.{' '}
+          {Math.round(exercise.restSeconds / 60)} min
+          {exercise.unilateral ? ' · por brazo' : ''}
+        </Text>
+      </View>
+
+      <Pressable
+        accessibilityLabel={`Una serie menos de ${exercise.name}`}
+        onPress={() => onOverride(exercise.exerciseId, -1)}
+        style={({ pressed }) => [styles.nudge, pressed && styles.nudgePressed]}
+      >
+        <Text style={styles.nudgeText}>−</Text>
+      </Pressable>
+      <Pressable
+        accessibilityLabel={`Una serie más de ${exercise.name}`}
+        onPress={() => onOverride(exercise.exerciseId, 1)}
+        style={({ pressed }) => [styles.nudge, pressed && styles.nudgePressed]}
+      >
+        <Text style={styles.nudgeText}>+</Text>
+      </Pressable>
+    </Animated.View>
+  );
+});
+
 function Order({
   exercises,
   onReorder,
@@ -129,109 +239,76 @@ function Order({
     [onDragging, pan],
   );
 
-  const stop = useCallback(() => {
-    const id = holding.current;
-    const from = started.current;
-    const to = landing.current;
-    holding.current = null;
-    started.current = null;
-    landing.current = null;
+  const stop = useCallback(
+    (commit = true) => {
+      const id = holding.current;
+      const from = started.current;
+      const to = landing.current;
+      holding.current = null;
+      started.current = null;
+      landing.current = null;
 
-    // Se limpia siempre, haya habido arrastre o no. Si solo se limpiaba cuando lo habia,
-    // un segundo aviso de soltar (llegan dos: el del dedo y el del gesto) podia dejar
-    // puesto lo despegado y las filas se quedaban corridas, montadas unas sobre otras.
-    // Soltar es un solo cambio de estado y ninguna animacion: la fila deja de seguir al
-    // dedo porque deja de estar despegada, no porque se mueva un valor animado por otro
-    // camino que puede llegar un cuadro despues.
-    setHeld(null);
-    setTarget(null);
-    onDragging(false);
-    if (id !== null && from !== null && to !== null && to !== from) onReorder(from, to);
-  }, [onDragging, onReorder]);
+      // Y el valor animado a cero tambien aqui, no solo al empezar. El ultimo
+      // movimiento puede llegar a la vista despues del render que la suelta, y entonces
+      // la fila se queda corrida encima de otra: por eso pasaba mas cuanto mas rapido
+      // se soltaba, que es cuando el movimiento y el soltar caen en el mismo cuadro.
+      pan.setValue(0);
 
-  const drag = useMemo(() => {
-    // Los manejadores corren al arrastrar, nunca durante el render, que es lo unico
-    // que la regla de las referencias quiere evitar.
-    // eslint-disable-next-line react-hooks/refs
-    return PanResponder.create({
-      onMoveShouldSetPanResponderCapture: () => holding.current !== null,
-      // Que nadie se lo quite a medias: el carrusel de pestanas lo pedia en cuanto el
-      // dedo se iba un poco a un lado.
-      onPanResponderTerminationRequest: () => false,
-      onShouldBlockNativeResponder: () => true,
-      onPanResponderMove: (_event, gesture) => {
-        const from = started.current;
-        if (from === null) return;
-        pan.setValue(gesture.dy);
-        const to = Math.max(0, Math.min(count - 1, from + Math.round(gesture.dy / ROW)));
-        if (to !== landing.current) {
-          landing.current = to;
-          setTarget(to);
-        }
-      },
-      onPanResponderRelease: stop,
-      onPanResponderTerminate: stop,
-    });
-  }, [count, pan, stop]);
+      // Se limpia siempre, haya habido arrastre o no. Si solo se limpiaba cuando lo
+      // habia, un segundo aviso de soltar podia dejar puesto lo despegado y las filas se
+      // quedaban corridas, montadas unas sobre otras.
+      setHeld(null);
+      setTarget(null);
+      if (id === null) return;
+
+      onDragging(false);
+      if (commit && from !== null && to !== null && to !== from) onReorder(from, to);
+    },
+    [onDragging, onReorder, pan],
+  );
+
+  const move = useCallback(
+    (dy: number) => {
+      const from = started.current;
+      if (from === null) return;
+
+      // Fuera de la lista se suelta solo y vuelve a su sitio, sin mover nada: sacar una
+      // fila a la cartilla de arriba no significa nada, y dejarla ahi colgada menos.
+      if (dy < -(from + 1) * ROW || dy > (count - from) * ROW) {
+        stop(false);
+        return;
+      }
+
+      pan.setValue(dy);
+      // Medio renglon es el cambio: a partir de ahi la fila tapa mas de la mitad de la
+      // de al lado, y soltarla ahi es cambiarlas de sitio.
+      const to = Math.max(0, Math.min(count - 1, from + Math.round(dy / ROW)));
+      if (to !== landing.current) {
+        landing.current = to;
+        setTarget(to);
+      }
+    },
+    [count, pan, stop],
+  );
 
   const from = held === null ? null : exercises.findIndex((item) => item.exerciseId === held);
 
   return (
-    <View {...drag.panHandlers}>
-      {exercises.map((exercise, index) => {
-        const lifted = exercise.exerciseId === held;
-        return (
-          <Animated.View
-            key={exercise.exerciseId}
-            style={[
-              styles.row,
-              index > 0 && styles.ruled,
-              lifted && styles.rowLifted,
-              { transform: [{ translateY: lifted ? pan : shiftFor(index, from, target) }] },
-            ]}
-          >
-            {/* El asa, y lo unico que arrastra. Ocupa todo el alto de la fila para que
-                sea facil de agarrar, y lleva el numero debajo de las rayas porque el
-                orden es justo lo que se esta cambiando. */}
-            <View
-              accessibilityLabel={`Mover ${exercise.name} de sitio`}
-              onTouchStart={() => lift(exercise.exerciseId, index)}
-              onTouchEnd={stop}
-              onTouchCancel={stop}
-              style={styles.handle}
-            >
-              <GripLines size={18} color={theme.textFaint} strokeWidth={2.5} />
-              <View style={styles.number}>
-                <Text style={styles.numberText}>{index + 1}</Text>
-              </View>
-            </View>
-            <View style={styles.rowText}>
-              <Text style={styles.exercise} numberOfLines={2}>
-                {exercise.name}
-              </Text>
-              <Text style={styles.detail} numberOfLines={1}>
-                {exercise.sets} × {reps(exercise)} · {TIER_ES[exercise.tier]} · desc.{' '}
-                {Math.round(exercise.restSeconds / 60)} min
-                {exercise.unilateral ? ' · por brazo' : ''}
-              </Text>
-            </View>
-            <Pressable
-              accessibilityLabel={`Una serie menos de ${exercise.name}`}
-              onPress={() => onOverride(exercise.exerciseId, -1)}
-              style={({ pressed }) => [styles.nudge, pressed && styles.nudgePressed]}
-            >
-              <Text style={styles.nudgeText}>−</Text>
-            </Pressable>
-            <Pressable
-              accessibilityLabel={`Una serie más de ${exercise.name}`}
-              onPress={() => onOverride(exercise.exerciseId, 1)}
-              style={({ pressed }) => [styles.nudge, pressed && styles.nudgePressed]}
-            >
-              <Text style={styles.nudgeText}>+</Text>
-            </Pressable>
-          </Animated.View>
-        );
-      })}
+    <View>
+      {exercises.map((exercise, index) => (
+        <OrderRow
+          key={exercise.exerciseId}
+          exercise={exercise}
+          index={index}
+          lifted={exercise.exerciseId === held}
+          shift={shiftFor(index, from, target)}
+          pan={pan}
+          onLift={lift}
+          onMove={move}
+          onDrop={stop}
+          onOverride={onOverride}
+        />
+      ))}
     </View>
   );
 }
@@ -252,7 +329,7 @@ export type SessionPlannerProps = {
   /** Spec 4.3: un descanso dicho a tiempo no es un entreno fallado. */
   restDay: boolean;
   onRestDay: () => void;
-  /** Para que la pantalla deje de desplazarse mientras arrastra una fila del orden. */
+  /** Para que la pantalla no se desplace mientras arrastra una fila del orden. */
   onDragging: (dragging: boolean) => void;
 };
 
@@ -434,7 +511,7 @@ export function SessionPlanner({
         <Card title="El orden de hoy">
           <Text style={styles.note}>
             En este orden los vas a hacer, y al completar las series de uno allá adentro se abre el
-            siguiente solo. Mantén apretado un ejercicio para moverlo de sitio. Con − y + le quitas
+            siguiente solo. Arrástralo de las tres rayas para moverlo de sitio. Con − y + le quitas
             o le pones series.
           </Text>
 
@@ -552,29 +629,12 @@ const styles = sheet((theme) => ({
   },
   // Columna estrecha y de todo el alto: facil de agarrar y no le quita sitio al nombre.
   handle: {
-    width: 34,
+    width: 36,
     alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
   },
   // El numero es el orden de verdad, no un adorno: es el que sigue el selector.
-  number: {
-    width: 26,
-    height: 26,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: shape.border,
-    borderColor: theme.line,
-    borderRadius: 6,
-    backgroundColor: theme.accent,
-  },
-  numberText: {
-    fontSize: 14,
-    fontFamily: font.black,
-    color: theme.accentInk,
-    fontVariant: ['tabular-nums'],
-  },
   rowText: {
     flex: 1,
     gap: 1,

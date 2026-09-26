@@ -38,8 +38,8 @@ export function TrainingScreen() {
     navigate: (name: string, params?: { routineId?: string }) => void;
   }>();
   const [changingRoutine, setChangingRoutine] = useState(false);
-  // Mientras arrastra un ejercicio del orden, la pantalla no se desplaza ni se puede
-  // pasar de pestana: los dos gestos le quitarian el toque al arrastre.
+  // Mientras arrastra una fila del orden, ni la pantalla se desplaza ni se pasa de
+  // pestana: los dos gestos son nativos y se llevan el toque aunque este tomado.
   const [dragging, setDragging] = useState(false);
   const { setLocked } = useSwipeLock();
   const holdScreen = useCallback(
