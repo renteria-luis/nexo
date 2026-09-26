@@ -1,13 +1,13 @@
 import { useNavigation } from '@react-navigation/native';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { useAppData } from '../../shell/AppData.tsx';
 import { SessionLog } from '../SessionLog.tsx';
 import { SessionPlanner } from '../SessionPlanner.tsx';
 
 import { Screen } from './Screen.tsx';
-import { mono, theme } from '../theme.ts';
+import { mono, sheet } from '../theme.ts';
 
 export function TrainingScreen() {
   const {
@@ -195,7 +195,7 @@ export function TrainingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -292,4 +292,4 @@ const styles = StyleSheet.create({
     color: theme.textFaint,
     fontFamily: mono,
   },
-});
+}));

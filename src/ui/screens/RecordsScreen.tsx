@@ -1,6 +1,6 @@
 import { useNavigation } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { shortDate } from '../../core/dates.ts';
 import { scoreText } from '../../core/day-report.ts';
@@ -16,7 +16,7 @@ import {
 } from '../../shell/records.ts';
 import { ChevronRight } from 'lucide-react-native';
 
-import { mono, theme } from '../theme.ts';
+import { mono, sheet, theme } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
 
@@ -124,7 +124,7 @@ export function RecordsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   label: {
     fontSize: 11,
     color: theme.textGhost,
@@ -193,4 +193,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: theme.danger,
   },
-});
+}));

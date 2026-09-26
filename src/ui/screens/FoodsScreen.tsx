@@ -1,11 +1,11 @@
 import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../../db/types.ts';
 import { matchesSearch, referenceAmount, roundAmount } from '../../nutrition/index.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 import { FoodForm } from '../FoodForm.tsx';
-import { mono, theme } from '../theme.ts';
+import { mono, sheet, theme } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
 
@@ -178,7 +178,7 @@ function SearchField({ value, onChange }: { value: string; onChange: (next: stri
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   hint: {
     fontSize: 11,
     color: theme.textGhost,
@@ -275,4 +275,4 @@ const styles = StyleSheet.create({
     fontFamily: mono,
     color: theme.accent,
   },
-});
+}));

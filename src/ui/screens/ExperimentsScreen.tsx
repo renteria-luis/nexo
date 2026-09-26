@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 
 import { todayIso } from '../../core/dates.ts';
 import type { ExperimentWithReadings } from '../../core/experiments.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 
 import { Screen } from './Screen.tsx';
-import { mono, theme } from '../theme.ts';
+import { mono, sheet, theme } from '../theme.ts';
 
 /** Spec 7.5 point 3, the test the spec actually proposes. Placeholders, not defaults. */
 const DAIRY = {
@@ -239,7 +239,7 @@ export function ExperimentsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   intro: {
     fontSize: 12,
     color: theme.textFaint,
@@ -367,4 +367,4 @@ const styles = StyleSheet.create({
     color: theme.textFaint,
     fontFamily: mono,
   },
-});
+}));

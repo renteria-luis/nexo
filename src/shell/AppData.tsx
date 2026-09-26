@@ -24,6 +24,7 @@ import { reEntryBanner, type ReEntryBanner } from '../core/re-entry.ts';
 import {
   clearSetting,
   paletteFrom,
+  themeFrom,
   stepsAdviceDeclinedFrom,
   stepsTargetFrom,
   profileFrom,
@@ -33,6 +34,7 @@ import {
   weightUnitFrom,
   writeSetting,
   type SettingKey,
+  type ThemeSettings,
   type Settings,
 } from '../core/settings.ts';
 import {
@@ -159,6 +161,8 @@ export type Loaded = {
   days: ScoredDay[];
   settings: Settings;
   palette: PaletteId;
+  /** Claro, oscuro, lo que diga el telefono, o por horario. */
+  skin: ThemeSettings;
   unit: WeightUnit;
   readapting: ReEntryBanner | null;
   today: AssembledDay;
@@ -287,6 +291,7 @@ async function load(exerciseId: string | null): Promise<Loaded> {
     })(),
     settings,
     palette: paletteFrom(settings),
+    skin: themeFrom(settings),
     unit: weightUnitFrom(settings),
     readapting: reEntryBanner(reEntryFrom(settings), today),
     today: assembled,

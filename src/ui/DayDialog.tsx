@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, Text, View } from 'react-native';
 
 import { shortDate } from '../core/dates.ts';
 import { hoursAndMinutes, litres, scoreText, thousands } from '../core/day-report.ts';
 import { fromKg, type WeightUnit } from '../core/units.ts';
 import type { DayDetail } from '../shell/records.ts';
 
-import { mono, theme } from './theme.ts';
+import { mono, sheet } from './theme.ts';
 
 const MISSING = '—';
 
@@ -125,7 +125,7 @@ export function DayDialog({ date, unit, load, onClose, onOpenDetail }: DayDialog
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.72)',
@@ -210,4 +210,4 @@ const styles = StyleSheet.create({
     color: theme.accentInk,
     fontFamily: mono,
   },
-});
+}));

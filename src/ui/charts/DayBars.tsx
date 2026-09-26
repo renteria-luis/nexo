@@ -1,9 +1,9 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Svg, { Rect } from 'react-native-svg';
+import { Pressable, Text, View } from 'react-native';
+import Svg, { Line, Rect } from 'react-native-svg';
 
 import { shortDate, type IsoDate } from '../../core/dates.ts';
 import type { Band, Point } from '../../shell/charts.ts';
-import { mono, theme } from '../theme.ts';
+import { font, hardShadow, sheet, shape, theme } from '../theme.ts';
 
 const HEIGHT = 110;
 /** Lo que mide el globito, para poder centrarlo sobre la barra sin salirse. */
@@ -41,7 +41,9 @@ export function DayBars({
 
   const top = Math.max(max ?? 0, ...points.map((point) => point.value), band?.to ?? 0) || 1;
   const step = width / points.length;
-  const barWidth = Math.max(2, step - 2);
+  // El borde se dibuja a caballo del contorno, asi que la barra se estrecha lo que
+  // mide ese trazo para que dos barras vecinas no se toquen.
+  const barWidth = Math.max(2, step - 3);
   const y = (value: number) => HEIGHT - (value / top) * HEIGHT;
 
   const inside = (value: number) => !band || (value >= band.from && value <= band.to);
@@ -67,16 +69,24 @@ export function DayBars({
         {points.map((point, index) => (
           <Rect
             key={point.date}
-            x={index * step + 1}
+            x={index * step + 1.5}
             y={y(point.value)}
             width={barWidth}
-            height={Math.max(1, HEIGHT - y(point.value))}
-            fill={
-              open === index ? theme.accent : inside(point.value) ? theme.ok : theme.textGhost
-            }
-            rx={1}
+            height={Math.max(2, HEIGHT - y(point.value))}
+            fill={open === index ? theme.accent : inside(point.value) ? theme.ok : theme.lineSoft}
+            stroke={theme.line}
+            strokeWidth={1.5}
           />
         ))}
+        {/* La linea de base va encima de las barras: es el suelo del dibujo. */}
+        <Line
+          x1={0}
+          y1={HEIGHT - 1}
+          x2={width}
+          y2={HEIGHT - 1}
+          stroke={theme.line}
+          strokeWidth={2}
+        />
       </Svg>
 
       {/* Las zonas de toque van encima del dibujo: una por barra y del ancho del
@@ -102,8 +112,9 @@ export function DayBars({
             <Pressable
               accessibilityLabel={`Ver los detalles del ${points[open].date}`}
               onPress={() => onOpenDay(points[open].date)}
+              style={styles.bubbleButton}
             >
-              <Text style={styles.bubbleLink}>detalles ›</Text>
+              <Text style={styles.bubbleLink}>Detalles</Text>
             </Pressable>
           )}
         </View>
@@ -120,7 +131,7 @@ export function DayBars({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   touch: {
     position: 'absolute',
     top: 0,
@@ -130,43 +141,56 @@ const styles = StyleSheet.create({
   bubble: {
     position: 'absolute',
     top: 6,
-    borderWidth: 1,
-    borderColor: theme.accent,
-    borderRadius: 8,
-    backgroundColor: theme.bg,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.surface,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    gap: 2,
+    gap: 3,
+    alignItems: 'flex-start',
+    ...hardShadow(theme, 3),
   },
   bubbleDate: {
-    fontSize: 10,
-    color: theme.textGhost,
-    fontFamily: mono,
+    fontSize: 11,
+    color: theme.textFaint,
+    fontFamily: font.bold,
   },
   bubbleValue: {
-    fontSize: 15,
+    fontSize: 18,
     color: theme.text,
-    fontFamily: mono,
+    fontFamily: font.black,
+    fontVariant: ['tabular-nums'],
+  },
+  bubbleButton: {
+    marginTop: 2,
+    backgroundColor: theme.accent,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: 5,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
   },
   bubbleLink: {
     fontSize: 11,
-    color: theme.accent,
-    fontFamily: mono,
-    paddingTop: 4,
+    color: theme.accentInk,
+    fontFamily: font.black,
   },
   axis: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 4,
+    marginTop: 6,
   },
   axisText: {
-    fontSize: 10,
-    color: theme.textGhost,
-    fontFamily: mono,
+    fontSize: 11,
+    color: theme.textFaint,
+    fontFamily: font.bold,
+    fontVariant: ['tabular-nums'],
   },
   empty: {
-    fontSize: 12,
-    color: theme.textGhost,
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.textFaint,
     paddingVertical: 12,
   },
-});
+}));

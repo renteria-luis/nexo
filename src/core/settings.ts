@@ -28,7 +28,10 @@ export type SettingKey =
   | 'steps_advice_declined'
   | 'session_draft'
   | 'nudges_enabled'
-  | 'nudges_off';
+  | 'nudges_off'
+  | 'theme_mode'
+  | 'theme_dark_from'
+  | 'theme_dark_to';
 
 export type Settings = ReadonlyMap<string, string>;
 
@@ -48,6 +51,10 @@ const DEFAULTS: Partial<Record<SettingKey, string>> = {
   // Spec 18: los avisos vienen encendidos, y cada tipo se apaga por su lado.
   nudges_enabled: 'true',
   nudges_off: '',
+  // El neobrutalismo nace claro; lo oscuro es una opcion suya.
+  theme_mode: 'claro',
+  theme_dark_from: '20',
+  theme_dark_to: '7',
 };
 
 export async function readSettings(db: SQLiteDatabase): Promise<Settings> {
@@ -89,6 +96,7 @@ function asNumber(settings: Settings, key: SettingKey): number | null {
 const PALETTES = new Set<string>(['deutan', 'standard', 'tritan']);
 const PHASES = new Set<string>(['recomp', 'cut', 'maintain', 'bulk']);
 const WEIGHT_UNITS = new Set<string>(['lb', 'kg']);
+const THEME_MODES = new Set<string>(['claro', 'oscuro', 'sistema', 'horario']);
 
 export function paletteFrom(settings: Settings): PaletteId {
   const value = raw(settings, 'palette');
@@ -123,6 +131,22 @@ export function targetsChangeSeenFrom(settings: Settings): IsoDate | null {
 
 export function treatMissingSleepAsZero(settings: Settings): boolean {
   return raw(settings, 'treat_missing_sleep_as_zero') === 'true';
+}
+
+export type ThemeSettings = {
+  mode: 'claro' | 'oscuro' | 'sistema' | 'horario';
+  darkFrom: number;
+  darkTo: number;
+};
+
+/** Como quiere ver la app: claro, oscuro, lo que diga el telefono, o por horario. */
+export function themeFrom(settings: Settings): ThemeSettings {
+  const mode = raw(settings, 'theme_mode');
+  return {
+    mode: (mode !== null && THEME_MODES.has(mode) ? mode : 'claro') as ThemeSettings['mode'],
+    darkFrom: asNumber(settings, 'theme_dark_from') as number,
+    darkTo: asNumber(settings, 'theme_dark_to') as number,
+  };
 }
 
 /** Spec 18: el interruptor general. Apagado no se programa ni uno. */
@@ -201,6 +225,11 @@ export function settingProblem(key: SettingKey, value: string): string | null {
     // Lo escribe la app al apagar un tipo de aviso, no el.
     case 'nudges_off':
       return null;
+    case 'theme_mode':
+      return THEME_MODES.has(trimmed) ? null : 'no es un modo de apariencia';
+    case 'theme_dark_from':
+    case 'theme_dark_to':
+      return inRange(trimmed, 0, 23, 'una hora entre 0 y 23');
     case 'height_cm':
       return inRange(trimmed, 100, 250, 'una estatura en centímetros');
     case 'activity_factor':

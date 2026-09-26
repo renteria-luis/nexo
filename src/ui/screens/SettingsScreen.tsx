@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Eye, EyeOff } from 'lucide-react-native';
 
 import type { PaletteId } from '../../core/palettes.ts';
@@ -7,16 +7,32 @@ import {
   nudgesEnabled,
   nudgesOffFrom,
   settingProblem,
+  themeFrom,
   type SettingKey,
   type Settings,
 } from '../../core/settings.ts';
 import { DEFAULT_NUDGE_RULES, type NudgeKind } from '../../core/nudges.ts';
 
 import { isBodyWeightKg } from '../../core/daily-log.ts';
+import { Button } from '../Button.tsx';
+import { Chip } from '../Chip.tsx';
 import { NUMBER_PAD_HEIGHT, useNumberPad } from '../NumberPadHost.tsx';
 import { NumericField } from '../NumericField.tsx';
 import { PalettePicker } from '../PalettePicker.tsx';
-import { mono, theme } from '../theme.ts';
+import { font, sheet, shape, theme } from '../theme.ts';
+
+/** Spec 4.5 aparte: esto es la piel de la app, no las paletas del daltonismo. */
+const THEME_MODES: { value: string; label: string }[] = [
+  { value: 'claro', label: 'Claro' },
+  { value: 'oscuro', label: 'Oscuro' },
+  { value: 'sistema', label: 'Como el iPhone' },
+  { value: 'horario', label: 'Por horario' },
+];
+
+const DARK_HOURS: { key: SettingKey; label: string }[] = [
+  { key: 'theme_dark_from', label: 'Oscuro desde (hora)' },
+  { key: 'theme_dark_to', label: 'Y hasta (hora)' },
+];
 
 const PHASES: { value: string; label: string }[] = [
   { value: 'recomp', label: 'Recomposición' },
@@ -159,6 +175,7 @@ export function SettingsScreen({
   };
 
   const phase = settings.get('phase') ?? 'recomp';
+  const skin = themeFrom(settings);
 
   return (
     // Scrolls on its own rather than through the shared Screen frame: this one is
@@ -251,14 +268,12 @@ export function SettingsScreen({
         <Text style={styles.label}>Fase</Text>
         <View style={styles.options}>
           {PHASES.map((option) => (
-            <Pressable
+            <Chip
               key={option.value}
-              accessibilityRole="radio"
+              label={option.label}
+              selected={option.value === phase}
               onPress={() => onSaveSetting('phase', option.value)}
-              style={[styles.option, option.value === phase && styles.optionSelected]}
-            >
-              <Text style={styles.optionText}>{option.label}</Text>
-            </Pressable>
+            />
           ))}
         </View>
       </View>
@@ -266,17 +281,12 @@ export function SettingsScreen({
       <Text style={styles.heading}>Unidad de peso</Text>
       <View style={styles.options}>
         {(['lb', 'kg'] as const).map((option) => (
-          <Pressable
+          <Chip
             key={option}
-            accessibilityRole="radio"
+            label={option === 'lb' ? 'Libras' : 'Kilos'}
+            selected={(settings.get('weight_unit') ?? 'lb') === option}
             onPress={() => onSaveSetting('weight_unit', option)}
-            style={[
-              styles.option,
-              (settings.get('weight_unit') ?? 'lb') === option && styles.optionSelected,
-            ]}
-          >
-            <Text style={styles.optionText}>{option === 'lb' ? 'Libras' : 'Kilos'}</Text>
-          </Pressable>
+          />
         ))}
       </View>
       <Text style={styles.hint}>
@@ -321,24 +331,23 @@ export function SettingsScreen({
         que ignores tres veces seguidas se calla una semana solo.
       </Text>
       <View style={styles.options}>
-        <Pressable
-          accessibilityRole="radio"
+        <Chip
+          label={nudgesOn ? 'Encendidos' : 'Apagados'}
           accessibilityLabel={nudgesOn ? 'Apagar todos los avisos' : 'Encender los avisos'}
+          selected={nudgesOn}
           onPress={() => onSaveSetting('nudges_enabled', nudgesOn ? 'false' : 'true')}
-          style={[styles.option, nudgesOn && styles.optionSelected]}
-        >
-          <Text style={styles.optionText}>{nudgesOn ? 'encendidos' : 'apagados'}</Text>
-        </Pressable>
+        />
       </View>
       {nudgesOn && (
         <View style={styles.options}>
           {NUDGE_SWITCHES.map((nudge) => {
             const on = !nudgesOff.includes(nudge.kind);
             return (
-              <Pressable
+              <Chip
                 key={nudge.kind}
-                accessibilityRole="radio"
+                label={nudge.label}
                 accessibilityLabel={`${on ? 'Apagar' : 'Encender'} los avisos de ${nudge.label}`}
+                selected={on}
                 onPress={() =>
                   onSaveSetting(
                     'nudges_off',
@@ -348,16 +357,55 @@ export function SettingsScreen({
                     ).join(','),
                   )
                 }
-                style={[styles.option, on && styles.optionSelected]}
-              >
-                <Text style={styles.optionText}>{nudge.label}</Text>
-              </Pressable>
+              />
             );
           })}
         </View>
       )}
 
+      <Text style={styles.heading}>Apariencia</Text>
+      <View style={styles.options}>
+        {THEME_MODES.map((option) => (
+          <Chip
+            key={option.value}
+            label={option.label}
+            accessibilityLabel={`Ver la app en modo ${option.label}`}
+            selected={option.value === skin.mode}
+            onPress={() => onSaveSetting('theme_mode', option.value)}
+          />
+        ))}
+      </View>
+      <Text style={styles.hint}>
+        Claro es como se diseñó la app. Oscuro es la misma cosa con la tinta al revés. Como el
+        iPhone sigue lo que tengas puesto en el sistema, y por horario lo cambia solo a las horas
+        que digas.
+      </Text>
+      {skin.mode === 'horario' &&
+        DARK_HOURS.map((hour) => {
+          const draft = drafts[hour.key] ?? settings.get(hour.key) ?? '';
+          return (
+            <View key={hour.key} style={styles.field}>
+              <Text style={styles.label}>{hour.label}</Text>
+              <NumericField
+                value={draft}
+                onChange={(text) => setDrafts((current) => ({ ...current, [hour.key]: text }))}
+                accessibilityLabel={hour.label}
+                onCommit={() => commit(hour.key)}
+                onFocus={() => setEditing(hour.key)}
+                onBlur={() => setEditing(null)}
+                style={[styles.input, refused[hour.key] ? styles.inputBad : null]}
+              />
+              {refused[hour.key] ? (
+                <Text style={styles.problem}>Sin guardar: {refused[hour.key]}</Text>
+              ) : null}
+            </View>
+          );
+        })}
+
       <Text style={styles.heading}>Paleta</Text>
+      <Text style={styles.hint}>
+        Solo para los cuadritos de la cuadrícula. El resto de la app no cambia de color con esto.
+      </Text>
       <PalettePicker selected={palette} onSelect={onSelectPalette} />
 
       <Text style={styles.heading}>Respaldo</Text>
@@ -366,7 +414,8 @@ export function SettingsScreen({
         de teléfono, y es el mismo archivo que usarás para entrenar un modelo más adelante.
       </Text>
       <View style={styles.options}>
-        <Pressable
+        <Button
+          label="Exportar"
           accessibilityLabel="Exportar todo a un archivo"
           disabled={busy}
           onPress={() => {
@@ -385,15 +434,14 @@ export function SettingsScreen({
               })
               .finally(() => setBusy(false));
           }}
-          style={styles.option}
-        >
-          <Text style={styles.optionText}>Exportar</Text>
-        </Pressable>
+        />
 
         {confirmingImport ? (
           <>
-            <Pressable
+            <Button
+              label="Sí, reemplazar lo que hay"
               accessibilityLabel="Confirmar importación"
+              variant="danger"
               disabled={busy}
               onPress={() => {
                 setConfirmingImport(false);
@@ -417,27 +465,20 @@ export function SettingsScreen({
                   })
                   .finally(() => setBusy(false));
               }}
-              style={[styles.option, styles.danger]}
-            >
-              <Text style={styles.dangerText}>Sí, reemplazar lo que hay</Text>
-            </Pressable>
-            <Pressable
+            />
+            <Button
+              label="Cancelar"
               accessibilityLabel="Cancelar importación"
               onPress={() => setConfirmingImport(false)}
-              style={styles.option}
-            >
-              <Text style={styles.optionText}>Cancelar</Text>
-            </Pressable>
+            />
           </>
         ) : (
-          <Pressable
+          <Button
+            label="Importar"
             accessibilityLabel="Importar desde un archivo"
             disabled={busy}
             onPress={() => setConfirmingImport(true)}
-            style={styles.option}
-          >
-            <Text style={styles.optionText}>Importar</Text>
-          </Pressable>
+          />
         )}
       </View>
       {backupNote && <Text style={styles.hint}>{backupNote}</Text>}
@@ -449,38 +490,33 @@ export function SettingsScreen({
       </Text>
       {confirmingReset ? (
         <View style={styles.options}>
-          <Pressable
+          <Button
+            label="Sí, borrar todo lo registrado"
             accessibilityLabel="Confirmar borrado"
+            variant="danger"
             onPress={() => {
               setConfirmingReset(false);
               onResetDatabase();
             }}
-            style={[styles.option, styles.danger]}
-          >
-            <Text style={styles.dangerText}>Sí, borrar todo lo registrado</Text>
-          </Pressable>
-          <Pressable
+          />
+          <Button
+            label="Cancelar"
             accessibilityLabel="Cancelar borrado"
             onPress={() => setConfirmingReset(false)}
-            style={styles.option}
-          >
-            <Text style={styles.optionText}>Cancelar</Text>
-          </Pressable>
+          />
         </View>
       ) : (
-        <Pressable
+        <Button
+          label="Borrar la base de datos"
           accessibilityLabel="Borrar la base de datos"
           onPress={() => setConfirmingReset(true)}
-          style={styles.option}
-        >
-          <Text style={styles.optionText}>Borrar la base de datos</Text>
-        </Pressable>
+        />
       )}
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   scroll: {
     flex: 1,
     backgroundColor: theme.bg,
@@ -506,82 +542,62 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   revealText: {
-    fontSize: 11,
+    fontSize: 12,
     color: theme.textFaint,
-    fontFamily: mono,
+    fontFamily: font.bold,
   },
   masked: {
     fontSize: 15,
     color: theme.textFaint,
-    fontFamily: mono,
+    fontFamily: font.black,
     letterSpacing: 2,
   },
   heading: {
-    fontSize: 14,
-    marginTop: 8,
-    fontFamily: mono,
+    fontSize: 19,
+    marginTop: 14,
+    fontFamily: font.black,
     color: theme.text,
   },
   warning: {
-    fontSize: 11,
-    color: theme.textGhost,
+    fontSize: 12,
+    color: theme.textFaint,
+    fontFamily: font.bold,
   },
   field: {
-    gap: 3,
+    gap: 4,
   },
   label: {
-    fontSize: 12,
-    color: theme.textDim,
-    fontFamily: mono,
+    fontSize: 13,
+    color: theme.text,
+    fontFamily: font.bold,
   },
   input: {
-    borderWidth: 1,
-    borderColor: theme.lineSoft,
-    borderRadius: 6,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.surface,
     paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 14,
-    fontFamily: mono,
+    paddingVertical: 9,
+    fontSize: 15,
+    fontFamily: font.bold,
     color: theme.text,
   },
   inputBad: {
     borderColor: theme.danger,
   },
   hint: {
-    fontSize: 10,
-    color: theme.textGhost,
+    fontSize: 12,
+    color: theme.textFaint,
+    fontFamily: font.regular,
   },
   problem: {
-    fontSize: 10,
+    fontSize: 12,
     color: theme.danger,
+    fontFamily: font.bold,
   },
   options: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
   },
-  option: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  optionSelected: {
-    borderColor: theme.lineStrong,
-    backgroundColor: theme.surfaceHigh,
-  },
-  optionText: {
-    fontSize: 12,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  danger: {
-    borderColor: theme.danger,
-  },
-  dangerText: {
-    fontSize: 12,
-    color: theme.danger,
-    fontFamily: mono,
-  },
-});
+}));

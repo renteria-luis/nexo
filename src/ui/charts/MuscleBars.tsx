@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { shortDate } from '../../core/dates.ts';
 import type { Band, MuscleBar } from '../../shell/charts.ts';
 import { MUSCLE_ES } from '../muscles.ts';
-import { mono, theme } from '../theme.ts';
+import { font, sheet, shape } from '../theme.ts';
 
 /**
  * Cuantas series directas se llevo cada musculo en los ultimos siete dias, con la
@@ -83,12 +83,12 @@ export function MuscleBars({ bars, band }: { bars: MuscleBar[]; band: Band }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   wrapper: {
-    gap: 9,
+    gap: 12,
   },
   row: {
-    gap: 3,
+    gap: 4,
   },
   head: {
     flexDirection: 'row',
@@ -96,15 +96,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   label: {
-    fontSize: 11,
-    color: theme.textDim,
-    fontFamily: mono,
+    fontSize: 13,
+    color: theme.text,
+    fontFamily: font.black,
   },
   track: {
     flex: 1,
-    height: 14,
+    height: 18,
     backgroundColor: theme.surface,
-    borderRadius: 3,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: 5,
     overflow: 'hidden',
     justifyContent: 'center',
   },
@@ -115,9 +117,12 @@ const styles = StyleSheet.create({
     backgroundColor: theme.okBg,
   },
   bar: {
-    height: 14,
+    height: 18,
     backgroundColor: theme.ok,
-    borderRadius: 3,
+    // El corte de tinta a la derecha es donde termina la serie: sin el, dos colores
+    // claros seguidos no dejan ver donde acaba la barra.
+    borderRightWidth: shape.border,
+    borderRightColor: theme.line,
   },
   barBelow: {
     backgroundColor: theme.warn,
@@ -126,9 +131,10 @@ const styles = StyleSheet.create({
     backgroundColor: theme.info,
   },
   value: {
-    fontSize: 11,
+    fontSize: 13,
     color: theme.text,
-    fontFamily: mono,
+    fontFamily: font.black,
+    fontVariant: ['tabular-nums'],
   },
   source: {
     flexDirection: 'row',
@@ -138,23 +144,25 @@ const styles = StyleSheet.create({
   },
   sourceName: {
     flexShrink: 1,
-    fontSize: 10,
-    color: theme.textFaint,
-    fontFamily: mono,
+    fontSize: 12,
+    color: theme.textDim,
+    fontFamily: font.bold,
   },
   sourceMeta: {
-    fontSize: 10,
-    color: theme.textGhost,
-    fontFamily: mono,
+    fontSize: 12,
+    color: theme.textFaint,
+    fontFamily: font.regular,
+    fontVariant: ['tabular-nums'],
   },
   footer: {
-    fontSize: 10,
-    color: theme.textGhost,
-    fontFamily: mono,
+    fontSize: 12,
+    color: theme.textFaint,
+    fontFamily: font.regular,
     marginTop: 2,
   },
   empty: {
-    fontSize: 12,
-    color: theme.textGhost,
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.textFaint,
   },
-});
+}));

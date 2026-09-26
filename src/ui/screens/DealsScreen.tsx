@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, Text, View } from 'react-native';
 
 import { todayIso } from '../../core/dates.ts';
 import { comparedToUsual, proteinPerDollar, type DealWithContext } from '../../deals/index.ts';
@@ -7,7 +7,7 @@ import type { DealsDiscountRow } from '../../db/types.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 
 import { Screen } from './Screen.tsx';
-import { mono, theme } from '../theme.ts';
+import { mono, sheet } from '../theme.ts';
 
 /** Spec 16.3 rule 5: a gap is drawn as a gap, never filled in from somewhere else. */
 const MISSING = '—';
@@ -223,7 +223,7 @@ export function DealsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -358,4 +358,4 @@ const styles = StyleSheet.create({
     color: theme.textDim,
     fontFamily: mono,
   },
-});
+}));

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, Text, View } from 'react-native';
 
 import { CRITERION_WEIGHTS, type CriterionId } from '../../core/discipline.ts';
 import { groupByTopic, type StudyTopic } from '../../core/studies.ts';
@@ -7,7 +7,7 @@ import type { CoreStudyRow } from '../../db/types.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 
 import { Screen } from './Screen.tsx';
-import { mono, theme } from '../theme.ts';
+import { mono, sheet } from '../theme.ts';
 
 const TOPIC_ES: Record<string, string> = {
   sleep: 'Sueño',
@@ -115,7 +115,7 @@ export function ReadingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   intro: {
     fontSize: 12,
     color: theme.textFaint,
@@ -168,4 +168,4 @@ const styles = StyleSheet.create({
     color: theme.textDim,
     fontFamily: mono,
   },
-});
+}));

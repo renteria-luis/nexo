@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import type { GymLocation } from '../core/geo.ts';
 import type { Company, TrainingRoutineRow } from '../db/types.ts';
@@ -8,7 +8,7 @@ import type { PlannedExercise, RoutinePlan, TimeBudget } from '../training/index
 import { Moon, Play } from 'lucide-react-native';
 
 import { Button } from './Button.tsx';
-import { mono, theme } from './theme.ts';
+import { mono, sheet } from './theme.ts';
 
 const BUDGETS: { id: TimeBudget; label: string }[] = [
   { id: 'completo', label: 'Completo' },
@@ -291,7 +291,7 @@ export function SessionPlanner({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   start: {
     marginTop: 6,
   },
@@ -388,4 +388,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 8,
   },
-});
+}));

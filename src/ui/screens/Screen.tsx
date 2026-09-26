@@ -1,18 +1,11 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, Text, View } from 'react-native';
 
 import { useAppData } from '../../shell/AppData.tsx';
+import { Button } from '../Button.tsx';
 import { NUMBER_PAD_HEIGHT, useNumberPad } from '../NumberPadHost.tsx';
-import { mono, theme } from '../theme.ts';
+import { font, sheet, shape } from '../theme.ts';
 
 /**
  * The frame every tab shares: scrolls, paints the full height so nothing shows
@@ -51,12 +44,7 @@ export function Screen({
       // sacar de debajo el campo que se esta escribiendo.
       contentContainerStyle={[styles.content, pad.isOpen && { paddingBottom: NUMBER_PAD_HEIGHT }]}
     >
-      {title ? (
-        <Text style={styles.title}>
-          <Text style={styles.prompt}>$ </Text>
-          {title.toLowerCase()}
-        </Text>
-      ) : null}
+      {title ? <Text style={styles.title}>{title}</Text> : null}
 
       {state.phase === 'opening' && <ActivityIndicator accessibilityLabel="Abriendo la base" />}
 
@@ -67,32 +55,29 @@ export function Screen({
               aqui. Borra y reconstruye: se pierde lo registrado, por eso pregunta. */}
           {confirming ? (
             <View style={styles.failureButtons}>
-              <Pressable
+              <Button
+                label="Sí, borrar y empezar de cero"
                 accessibilityLabel="Confirmar borrado"
+                variant="danger"
+                block
                 onPress={() => {
                   setConfirming(false);
                   resetDatabase();
                 }}
-                style={styles.danger}
-              >
-                <Text style={styles.dangerText}>Sí, borrar y empezar de cero</Text>
-              </Pressable>
-              <Pressable
+              />
+              <Button
+                label="Cancelar"
                 accessibilityLabel="Cancelar borrado"
+                block
                 onPress={() => setConfirming(false)}
-                style={styles.cancel}
-              >
-                <Text style={styles.cancelText}>Cancelar</Text>
-              </Pressable>
+              />
             </View>
           ) : (
-            <Pressable
+            <Button
+              label="Borrar la base de datos"
               accessibilityLabel="Borrar la base de datos"
               onPress={() => setConfirming(true)}
-              style={styles.cancel}
-            >
-              <Text style={styles.cancelText}>Borrar la base de datos</Text>
-            </Pressable>
+            />
           )}
         </View>
       )}
@@ -113,7 +98,7 @@ export function Screen({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   stack: {
     flex: 1,
   },
@@ -133,6 +118,9 @@ const styles = StyleSheet.create({
   scroll: {
     flex: 1,
     backgroundColor: theme.bg,
+    // La raya que cierra el encabezado: el nativo no deja ponerle borde a el.
+    borderTopWidth: shape.border,
+    borderTopColor: theme.line,
   },
   content: {
     flexGrow: 1,
@@ -143,12 +131,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   title: {
-    fontSize: 20,
-    fontFamily: mono,
+    fontSize: 26,
+    fontFamily: font.black,
     color: theme.text,
-  },
-  prompt: {
-    color: theme.accent,
+    marginBottom: 2,
   },
   failure: {
     gap: 12,
@@ -159,34 +145,10 @@ const styles = StyleSheet.create({
     gap: 8,
     alignSelf: 'stretch',
   },
-  danger: {
-    borderWidth: 1,
-    borderColor: theme.danger,
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  dangerText: {
-    fontSize: 13,
-    color: theme.danger,
-    fontFamily: mono,
-  },
-  cancel: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  cancelText: {
-    fontSize: 13,
-    color: theme.textDim,
-    fontFamily: mono,
-  },
   error: {
     fontSize: 14,
+    fontFamily: font.bold,
     color: theme.danger,
     textAlign: 'center',
   },
-});
+}));

@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
+import { Command as CommandIcon } from 'lucide-react-native';
 
 import { COMMAND_HELP, parseCommand, type Command } from '../core/commands.ts';
 import { toKg } from '../core/units.ts';
 import { useAppData } from '../shell/AppData.tsx';
 
-import { mono, theme } from './theme.ts';
+import { Button } from './Button.tsx';
+import { font, hardShadow, sheet, shape, theme } from './theme.ts';
 
 /**
  * El prompt del nucleo. Todo lo que hay aqui se puede hacer tocando botones; esto es
@@ -72,7 +74,9 @@ export function CommandBar() {
   return (
     <View style={styles.wrapper}>
       <View style={styles.line}>
-        <Text style={styles.prompt}>$</Text>
+        <View style={styles.badge}>
+          <CommandIcon size={14} color={theme.accentInk} strokeWidth={2.5} />
+        </View>
         <TextInput
           value={draft}
           onChangeText={setDraft}
@@ -96,68 +100,69 @@ export function CommandBar() {
               {row}
             </Text>
           ))}
-          <Pressable
+          <Button
+            label="Cerrar"
             accessibilityLabel="Cerrar la ayuda"
+            variant="ghost"
             onPress={() => setShowHelp(false)}
             style={styles.close}
-          >
-            <Text style={styles.closeText}>cerrar</Text>
-          </Pressable>
+          />
         </View>
       )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   wrapper: {
-    borderWidth: 1,
+    borderWidth: shape.border,
     borderColor: theme.line,
-    borderRadius: 6,
+    borderRadius: shape.radius,
     backgroundColor: theme.surface,
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 4,
+    paddingVertical: 8,
+    gap: 6,
+    ...hardShadow(theme),
   },
   line: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  prompt: {
-    fontSize: 14,
-    fontFamily: mono,
-    color: theme.accent,
+  badge: {
+    width: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.accent,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
   },
   input: {
     flex: 1,
-    fontSize: 13,
-    fontFamily: mono,
+    fontSize: 14,
+    fontFamily: font.bold,
     color: theme.text,
     paddingVertical: 6,
   },
   note: {
-    fontSize: 11,
+    fontSize: 12,
+    fontFamily: font.bold,
     color: theme.textFaint,
   },
   help: {
-    gap: 2,
-    borderTopWidth: 1,
+    gap: 3,
+    borderTopWidth: shape.border,
     borderTopColor: theme.line,
-    paddingTop: 6,
+    paddingTop: 8,
   },
   helpRow: {
-    fontSize: 11,
-    fontFamily: mono,
+    fontSize: 12,
+    fontFamily: font.regular,
     color: theme.textDim,
   },
   close: {
     alignSelf: 'flex-start',
-    paddingVertical: 4,
   },
-  closeText: {
-    fontSize: 11,
-    fontFamily: mono,
-    color: theme.textGhost,
-  },
-});
+}));

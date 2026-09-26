@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import {
   isBodyWeightKg,
@@ -10,7 +10,7 @@ import {
 import { addDays, shortDate } from '../core/dates.ts';
 import type { CoreDailyLogRow, NutritionContainerRow, SleepSource } from '../db/types.ts';
 import { NumericField } from './NumericField.tsx';
-import { mono, theme } from './theme.ts';
+import { mono, sheet } from './theme.ts';
 
 const SLEEP_SOURCES: { value: SleepSource; label: string }[] = [
   { value: 'autosleep', label: 'AutoSleep' },
@@ -224,7 +224,7 @@ export function TodayLog({ log, containers, waterTargetMl, lastWeight, onLog }: 
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   wrapper: {
     alignSelf: 'stretch',
     gap: 12,
@@ -282,4 +282,4 @@ const styles = StyleSheet.create({
     fontFamily: mono,
     color: theme.text,
   },
-});
+}));

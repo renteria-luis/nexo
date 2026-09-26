@@ -1,7 +1,8 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { fatBand, kcalBand, proteinBand, type TargetValues } from '../core/targets.ts';
-import { mono, theme } from './theme.ts';
+import { Card } from './Card.tsx';
+import { font, sheet } from './theme.ts';
 
 function Row({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
@@ -21,8 +22,7 @@ export function TargetsCard({ targets }: { targets: TargetValues }) {
   const fat = fatBand(targets);
 
   return (
-    <View style={styles.card}>
-      <Text style={styles.heading}>Metas de hoy</Text>
+    <Card title="Metas de hoy">
       <Text style={styles.basis}>Calculadas sobre {targets.weightBasisKg} kg</Text>
 
       <Row
@@ -51,29 +51,16 @@ export function TargetsCard({ targets }: { targets: TargetValues }) {
         value={`${Math.floor(targets.sleepMinutes / 60)} h ${targets.sleepMinutes % 60} min`}
       />
       <Row label="Pasos" value={`${targets.steps}`} />
-    </View>
+    </Card>
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    alignSelf: 'stretch',
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 8,
-    padding: 12,
-    gap: 6,
-  },
-  heading: {
-    fontSize: 14,
-    fontFamily: mono,
-    color: theme.text,
-  },
+const styles = sheet((theme) => ({
   basis: {
-    fontSize: 11,
-    color: theme.textGhost,
-    marginBottom: 4,
-    fontFamily: mono,
+    fontSize: 12,
+    color: theme.textFaint,
+    marginBottom: 2,
+    fontFamily: font.regular,
   },
   row: {
     flexDirection: 'row',
@@ -82,20 +69,23 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   label: {
-    fontSize: 13,
-    color: theme.textDim,
-    fontFamily: mono,
+    fontSize: 14,
+    color: theme.text,
+    fontFamily: font.bold,
   },
   values: {
     alignItems: 'flex-end',
   },
   value: {
-    fontSize: 13,
-    fontFamily: mono,
+    fontSize: 14,
+    fontFamily: font.black,
     color: theme.text,
+    fontVariant: ['tabular-nums'],
   },
   note: {
     fontSize: 11,
-    color: theme.textGhost,
+    color: theme.textFaint,
+    fontFamily: font.regular,
+    fontVariant: ['tabular-nums'],
   },
-});
+}));

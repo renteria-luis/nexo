@@ -1,9 +1,9 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../db/types.ts';
 import { referenceAmount, roundAmount, unitLabel } from '../nutrition/index.ts';
 
-import { mono, theme } from './theme.ts';
+import { mono, sheet } from './theme.ts';
 
 /**
  * Lo que aporta una porcion, sin repetir el nombre del alimento.
@@ -61,7 +61,7 @@ export function PortionMacros({ food, quantity }: PortionMacrosProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   bubble: {
     borderWidth: 1,
     borderColor: theme.accent,
@@ -100,4 +100,4 @@ const styles = StyleSheet.create({
     color: theme.textGhost,
     fontFamily: mono,
   },
-});
+}));

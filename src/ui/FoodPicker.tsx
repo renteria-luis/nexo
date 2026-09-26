@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../db/types.ts';
 import { matchesSearch, roundAmount, type FoodHistory } from '../nutrition/index.ts';
 
-import { mono, theme } from './theme.ts';
+import { mono, sheet, theme } from './theme.ts';
 
 /**
  * De donde elige el alimento que va a anotar.
@@ -185,7 +185,7 @@ export function FoodPicker({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   picker: {
     gap: 2,
   },
@@ -268,4 +268,4 @@ const styles = StyleSheet.create({
     color: theme.textGhost,
     paddingVertical: 8,
   },
-});
+}));

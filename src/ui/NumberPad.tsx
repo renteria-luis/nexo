@@ -1,8 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
-import { Animated, PanResponder, StyleSheet, Text, View } from 'react-native';
+import { Animated, PanResponder, Text, View } from 'react-native';
 import { Delete, X } from 'lucide-react-native';
 
-import { mono, theme } from './theme.ts';
+import { font, hardShadow, pressed, sheet, shape, theme } from './theme.ts';
 
 /**
  * El teclado de la app: las teclas y el gesto para esconderlo.
@@ -170,54 +170,59 @@ export function NumberPad({ onKey, onClose, allowDecimal, bottomInset }: NumberP
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   pad: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    gap: 6,
+    gap: 8,
     paddingHorizontal: 16,
-    paddingTop: 6,
+    paddingTop: 8,
     backgroundColor: theme.bg,
-    borderTopWidth: 1,
+    borderTopWidth: shape.border,
     borderTopColor: theme.line,
   },
   grip: {
     alignSelf: 'center',
-    width: 44,
-    height: 4,
-    borderRadius: 2,
+    width: 48,
+    height: 6,
+    borderRadius: 3,
+    borderWidth: 1,
+    borderColor: theme.line,
     backgroundColor: theme.line,
     marginBottom: 4,
   },
   row: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 8,
   },
   key: {
     flex: 1,
     minWidth: 0,
-    minHeight: 32,
-    borderWidth: 1,
-    borderColor: theme.lineStrong,
-    borderRadius: 8,
+    minHeight: 34,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
     backgroundColor: theme.surface,
     alignItems: 'center',
     justifyContent: 'center',
+    ...hardShadow(theme, 3),
   },
   keyPressed: {
     backgroundColor: theme.accent,
-    borderColor: theme.accent,
+    ...pressed(3),
   },
   keyOff: {
     borderColor: theme.lineSoft,
     backgroundColor: 'transparent',
+    shadowOpacity: 0,
   },
   keyText: {
-    fontSize: 20,
+    fontSize: 21,
     color: theme.text,
-    fontFamily: mono,
+    fontFamily: font.black,
+    fontVariant: ['tabular-nums'],
   },
   keyTextPressed: {
     color: theme.accentInk,
@@ -226,8 +231,8 @@ const styles = StyleSheet.create({
     color: theme.textGhost,
   },
   clearText: {
-    fontSize: 16,
-    color: theme.textFaint,
-    fontFamily: mono,
+    fontSize: 17,
+    color: theme.text,
+    fontFamily: font.black,
   },
-});
+}));

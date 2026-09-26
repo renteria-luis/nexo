@@ -1,6 +1,6 @@
 import { useNavigation } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, Text, useWindowDimensions, View } from 'react-native';
 
 import { scoreText } from '../../core/day-report.ts';
 
@@ -10,7 +10,7 @@ import type { ChartsData } from '../../shell/charts.ts';
 import { DayBars } from '../charts/DayBars.tsx';
 import { LineChart } from '../charts/LineChart.tsx';
 import { MuscleBars } from '../charts/MuscleBars.tsx';
-import { mono, theme } from '../theme.ts';
+import { mono, sheet, theme } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
 
@@ -222,7 +222,7 @@ export function ChartsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   sheet: {
     gap: 12,
   },
@@ -277,4 +277,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: theme.danger,
   },
-});
+}));

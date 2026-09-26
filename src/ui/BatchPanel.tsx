@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../db/types.ts';
 import { MEAL_SLOTS, roundAmount } from '../nutrition/index.ts';
 import type { BatchStart, OpenBatch } from '../shell/AppData.tsx';
 import { NumericField } from './NumericField.tsx';
-import { mono, theme } from './theme.ts';
+import { mono, sheet, theme } from './theme.ts';
 
 function parse(value: string): number {
   return value.trim() === '' ? Number.NaN : Number(value);
@@ -294,7 +294,7 @@ export function BatchPanel({ batches, foods, onStart, onEat }: BatchPanelProps) 
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   wrapper: {
     alignSelf: 'stretch',
     gap: 8,
@@ -442,4 +442,4 @@ const styles = StyleSheet.create({
     color: theme.textFaint,
     fontFamily: mono,
   },
-});
+}));

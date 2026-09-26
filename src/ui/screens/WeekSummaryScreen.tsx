@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { addDays, todayIso, weekStart } from '../../core/dates.ts';
 import { fromKg } from '../../core/units.ts';
@@ -9,7 +9,7 @@ import { SET_BAND, type Comparison, type MuscleWeek, type WeekSummary } from '..
 import { MUSCLE_ES } from '../muscles.ts';
 
 import { Screen } from './Screen.tsx';
-import { mono, theme } from '../theme.ts';
+import { mono, sheet } from '../theme.ts';
 
 const BAND_ES: Record<MuscleWeek['band'], string> = {
   below: 'bajo la banda',
@@ -160,7 +160,7 @@ export function WeekSummaryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   nav: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -230,4 +230,4 @@ const styles = StyleSheet.create({
     fontFamily: mono,
     color: theme.text,
   },
-});
+}));

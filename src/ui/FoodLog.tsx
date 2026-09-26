@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../db/types.ts';
 import {
@@ -20,7 +20,7 @@ import { shortDate } from '../core/dates.ts';
 import { FoodPicker } from './FoodPicker.tsx';
 import { PortionMacros } from './PortionMacros.tsx';
 import { NumericField } from './NumericField.tsx';
-import { mono, theme } from './theme.ts';
+import { mono, sheet } from './theme.ts';
 
 function Total({
   label,
@@ -305,7 +305,7 @@ export function FoodLog({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   wrapper: {
     alignSelf: 'stretch',
     gap: 10,
@@ -472,4 +472,4 @@ const styles = StyleSheet.create({
     fontFamily: mono,
     color: theme.text,
   },
-});
+}));

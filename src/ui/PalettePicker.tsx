@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { Check } from 'lucide-react-native';
 
 import {
   PALETTE_NAMES,
@@ -8,8 +9,9 @@ import {
   type PaletteId,
 } from '../core/palettes.ts';
 
+import { Card } from './Card.tsx';
 import { ScoreCell } from './DisciplineGrid.tsx';
-import { mono, theme } from './theme.ts';
+import { font, sheet, shape, theme } from './theme.ts';
 
 const ORDER: PaletteId[] = ['deutan', 'standard', 'tritan'];
 
@@ -30,17 +32,19 @@ export function PalettePicker({
       {ORDER.map((palette) => {
         const isSelected = palette === selected;
         return (
-          <Pressable
+          <Card
             key={palette}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: isSelected }}
+            accessibilityLabel={`Usar la paleta ${PALETTE_NAMES[palette]}`}
             onPress={() => onSelect(palette)}
-            style={[styles.option, isSelected && styles.optionSelected]}
+            // Elegida se levanta del papel; las otras dos se quedan planas.
+            raised={isSelected}
           >
-            <Text style={styles.name}>
-              {isSelected ? '● ' : '○ '}
-              {PALETTE_NAMES[palette]}
-            </Text>
+            <View style={styles.head}>
+              <View style={[styles.mark, isSelected && styles.markOn]}>
+                {isSelected ? <Check size={13} color={theme.accentInk} strokeWidth={3} /> : null}
+              </View>
+              <Text style={styles.name}>{PALETTE_NAMES[palette]}</Text>
+            </View>
             <View style={styles.sample}>
               {PREVIEW_SCORES.map((score) => (
                 <ScoreCell
@@ -52,31 +56,39 @@ export function PalettePicker({
               ))}
             </View>
             <Text style={styles.scale}>0 a 100</Text>
-          </Pressable>
+          </Card>
         );
       })}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   list: {
     alignSelf: 'stretch',
     gap: 10,
   },
-  option: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 8,
-    padding: 10,
-    gap: 6,
+  head: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  optionSelected: {
-    borderColor: theme.lineStrong,
+  mark: {
+    width: 20,
+    height: 20,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: 5,
+    backgroundColor: theme.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markOn: {
+    backgroundColor: theme.accent,
   },
   name: {
-    fontSize: 13,
-    fontFamily: mono,
+    fontSize: 15,
+    fontFamily: font.black,
     color: theme.text,
   },
   sample: {
@@ -84,8 +96,8 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   scale: {
-    fontSize: 10,
-    color: theme.textGhost,
-    fontFamily: mono,
+    fontSize: 11,
+    color: theme.textFaint,
+    fontFamily: font.bold,
   },
-});
+}));

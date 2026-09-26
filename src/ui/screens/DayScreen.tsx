@@ -1,6 +1,6 @@
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { shortDate, todayIso } from '../../core/dates.ts';
 import { scoreText } from '../../core/day-report.ts';
@@ -12,7 +12,7 @@ import { fromKg } from '../../core/units.ts';
 import { DayTraining } from '../DayTraining.tsx';
 import { FoodLog } from '../FoodLog.tsx';
 import { TodayLog } from '../TodayLog.tsx';
-import { mono, theme } from '../theme.ts';
+import { mono, sheet } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
 
@@ -234,7 +234,7 @@ export function DayScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   head: {
     flexDirection: 'row',
     alignItems: 'baseline',
@@ -331,4 +331,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: theme.danger,
   },
-});
+}));

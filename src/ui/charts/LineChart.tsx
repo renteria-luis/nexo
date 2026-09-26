@@ -1,9 +1,9 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import Svg, { Circle, Line, Path } from 'react-native-svg';
 
 import { shortDate } from '../../core/dates.ts';
 import type { Point } from '../../shell/charts.ts';
-import { mono, theme } from '../theme.ts';
+import { font, sheet, theme } from '../theme.ts';
 
 const HEIGHT = 130;
 const PADDING = 6;
@@ -57,7 +57,7 @@ export function LineChart({
           x2={width}
           y2={HEIGHT - 1}
           stroke={theme.line}
-          strokeWidth={1}
+          strokeWidth={2}
         />
         {series.map((line, index) => (
           <Path
@@ -66,7 +66,9 @@ export function LineChart({
               .map((point, i) => `${i === 0 ? 'M' : 'L'} ${x(point.date)} ${y(point.value)}`)
               .join(' ')}
             stroke={line.color}
-            strokeWidth={1.75}
+            strokeWidth={3}
+            strokeLinecap="round"
+            strokeLinejoin="round"
             fill="none"
           />
         ))}
@@ -78,8 +80,10 @@ export function LineChart({
                 key={`${line.color}-${point.date}`}
                 cx={x(point.date)}
                 cy={y(point.value)}
-                r={2}
+                r={3.5}
                 fill={line.color}
+                stroke={theme.line}
+                strokeWidth={1.5}
               />
             )),
           )}
@@ -96,20 +100,22 @@ export function LineChart({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   axis: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 4,
+    marginTop: 6,
   },
   axisText: {
-    fontSize: 10,
-    color: theme.textGhost,
-    fontFamily: mono,
+    fontSize: 11,
+    color: theme.textFaint,
+    fontFamily: font.bold,
+    fontVariant: ['tabular-nums'],
   },
   empty: {
-    fontSize: 12,
-    color: theme.textGhost,
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.textFaint,
     paddingVertical: 12,
   },
-});
+}));

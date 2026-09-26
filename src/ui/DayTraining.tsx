@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { formatWeight, toKg, type WeightUnit } from '../core/units.ts';
 import type { TrainingRoutineRow } from '../db/types.ts';
@@ -7,7 +7,7 @@ import type { DayExercise } from '../shell/records.ts';
 import type { CatalogExercise } from '../training/queries.ts';
 
 import { NumericField } from './NumericField.tsx';
-import { mono, theme } from './theme.ts';
+import { mono, sheet } from './theme.ts';
 
 function clock(seconds: number): string {
   const whole = Math.max(0, Math.round(seconds));
@@ -220,7 +220,7 @@ export function DayTraining({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   block: {
     gap: 8,
   },
@@ -344,4 +344,4 @@ const styles = StyleSheet.create({
     color: theme.accent,
     fontFamily: mono,
   },
-});
+}));

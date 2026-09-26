@@ -1,7 +1,7 @@
-import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { LucideIcon } from 'lucide-react-native';
 
-import { mono, theme } from './theme.ts';
+import { font, hardShadow, pressed as pressedInto, sheet, shape, theme } from './theme.ts';
 
 /**
  * El boton de la app, en tres pesos.
@@ -10,6 +10,9 @@ import { mono, theme } from './theme.ts';
  * y porque con el telefono en una mano y una mancuerna en la otra lo que decide si
  * algo se puede tocar es el area, no el color. Apple pide 44 puntos de alto minimo y
  * los dos tamanos de aqui empiezan ahi.
+ *
+ * Al presionarlo se mete dentro de su propia sombra en vez de aclararse: se nota con
+ * el rabillo del ojo y sin mirar la pantalla, que es el punto en el gimnasio.
  */
 export type ButtonProps = {
   label: string;
@@ -25,12 +28,19 @@ export type ButtonProps = {
   style?: StyleProp<ViewStyle>;
 };
 
-const TINT: Record<NonNullable<ButtonProps['variant']>, string> = {
-  primary: theme.accentInk,
-  secondary: theme.text,
-  ghost: theme.textFaint,
-  danger: theme.danger,
-};
+/** La tinta se lee al pintar, no al cargar el archivo: la paleta cambia en caliente. */
+function tintFor(variant: NonNullable<ButtonProps['variant']>): string {
+  switch (variant) {
+    case 'primary':
+      return theme.accentInk;
+    case 'danger':
+      return theme.accentInk;
+    case 'ghost':
+      return theme.textFaint;
+    case 'secondary':
+      return theme.text;
+  }
+}
 
 export function Button({
   label,
@@ -43,7 +53,7 @@ export function Button({
   accessibilityLabel,
   style,
 }: ButtonProps) {
-  const tint = disabled ? theme.textGhost : TINT[variant];
+  const tint = disabled ? theme.textGhost : tintFor(variant);
 
   return (
     <Pressable
@@ -58,12 +68,13 @@ export function Button({
         styles[variant],
         block && styles.block,
         disabled && styles.disabled,
-        pressed && !disabled && styles.pressed,
+        pressed && !disabled && variant !== 'ghost' && styles.pressed,
+        pressed && variant === 'ghost' && styles.pressedGhost,
         style,
       ]}
     >
       <View style={styles.inner}>
-        {Icon ? <Icon size={size === 'large' ? 18 : 16} color={tint} strokeWidth={1.75} /> : null}
+        {Icon ? <Icon size={size === 'large' ? 18 : 16} color={tint} strokeWidth={2.25} /> : null}
         <Text style={[styles.label, size === 'large' && styles.labelLarge, { color: tint }]}>
           {label}
         </Text>
@@ -72,14 +83,16 @@ export function Button({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   base: {
     minHeight: 44,
-    borderRadius: 8,
-    borderWidth: 1,
+    borderRadius: shape.radius,
+    borderWidth: shape.border,
+    borderColor: theme.line,
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    ...hardShadow(theme),
   },
   large: {
     minHeight: 52,
@@ -94,36 +107,36 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   label: {
-    fontSize: 14,
-    fontFamily: mono,
+    fontSize: 15,
+    fontFamily: font.black,
     textAlign: 'center',
   },
   labelLarge: {
-    fontSize: 16,
+    fontSize: 17,
   },
   primary: {
     backgroundColor: theme.accent,
-    borderColor: theme.accent,
   },
   secondary: {
     backgroundColor: theme.surface,
-    borderColor: theme.lineStrong,
   },
   ghost: {
     backgroundColor: 'transparent',
-    borderColor: 'transparent',
+    borderWidth: 0,
     minHeight: 40,
     paddingHorizontal: 8,
+    shadowOpacity: 0,
   },
   danger: {
-    backgroundColor: 'transparent',
-    borderColor: theme.danger,
+    backgroundColor: theme.danger,
   },
   disabled: {
     backgroundColor: 'transparent',
-    borderColor: theme.line,
+    borderColor: theme.lineSoft,
+    shadowOpacity: 0,
   },
-  pressed: {
-    opacity: 0.72,
+  pressed: pressedInto(),
+  pressedGhost: {
+    opacity: 0.6,
   },
-});
+}));

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../db/types.ts';
 import {
@@ -12,7 +12,7 @@ import {
 } from '../nutrition/index.ts';
 
 import { NumericField } from './NumericField.tsx';
-import { mono, theme } from './theme.ts';
+import { mono, sheet, theme } from './theme.ts';
 
 /**
  * La ficha de un alimento: la misma para crear uno nuevo y para corregir uno que ya
@@ -308,7 +308,7 @@ function Field({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   sheet: {
     // Sin flex: mide lo que mida su contenido, y solo se limita para no desbordar.
     alignSelf: 'stretch',
@@ -466,4 +466,4 @@ const styles = StyleSheet.create({
     fontFamily: mono,
     color: theme.text,
   },
-});
+}));

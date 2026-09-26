@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { useAppData, WEEKS_SHOWN } from '../../shell/AppData.tsx';
 import { addDays, dateAndTime, todayIso, weekStart } from '../../core/dates.ts';
@@ -25,7 +25,7 @@ import { TodayLog } from '../TodayLog.tsx';
 
 import { Screen } from './Screen.tsx';
 import { CommandBar } from '../CommandBar.tsx';
-import { mono, theme } from '../theme.ts';
+import { mono, sheet, theme } from '../theme.ts';
 
 /** A one line read on a module, with the way into it. */
 function ModuleCard({
@@ -310,7 +310,7 @@ export function TodayScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   change: {
     borderWidth: 1,
     borderColor: theme.line,
@@ -454,4 +454,4 @@ const styles = StyleSheet.create({
     fontFamily: mono,
     color: theme.text,
   },
-});
+}));

@@ -1,11 +1,11 @@
 import { useRoute } from '@react-navigation/native';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { useAppData } from '../../shell/AppData.tsx';
 
 import { Screen } from './Screen.tsx';
-import { mono, theme } from '../theme.ts';
+import { mono, sheet } from '../theme.ts';
 
 type RoutineId = 'push' | 'pull' | 'legs';
 
@@ -161,7 +161,7 @@ export function RoutineNotesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   intro: {
     fontSize: 13,
     color: theme.textDim,
@@ -219,4 +219,4 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: theme.textGhost,
   },
-});
+}));

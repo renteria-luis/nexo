@@ -1,13 +1,13 @@
 import { useAppData } from '../../shell/AppData.tsx';
 import { proteinBand } from '../../core/targets.ts';
 import { useNavigation } from '@react-navigation/native';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, Text } from 'react-native';
 
 import { BatchPanel } from '../BatchPanel.tsx';
 import { FoodLog } from '../FoodLog.tsx';
 
 import { Screen } from './Screen.tsx';
-import { mono, theme } from '../theme.ts';
+import { mono, sheet } from '../theme.ts';
 
 export function NutritionScreen() {
   const { state, addFood, repeatMeal, removeFood, startBatch, eatBatchPortion } = useAppData();
@@ -51,7 +51,7 @@ export function NutritionScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   link: {
     alignSelf: 'flex-start',
     marginTop: 16,
@@ -62,4 +62,4 @@ const styles = StyleSheet.create({
     color: theme.textFaint,
     fontFamily: mono,
   },
-});
+}));

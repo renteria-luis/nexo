@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { Check, Circle, Minus, Plus } from 'lucide-react-native';
 
 import { shortDate } from '../core/dates.ts';
@@ -16,7 +16,7 @@ import type { Implement } from '../training/sessions.ts';
 
 import { Button } from './Button.tsx';
 import { NumericField } from './NumericField.tsx';
-import { mono, theme } from './theme.ts';
+import { mono, sheet, theme } from './theme.ts';
 
 /**
  * Con que se puede hacer el mismo ejercicio.
@@ -688,7 +688,7 @@ export function SessionLog({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   grid: {
     gap: 10,
     borderTopWidth: 1,
@@ -1041,4 +1041,4 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontFamily: mono,
   },
-});
+}));

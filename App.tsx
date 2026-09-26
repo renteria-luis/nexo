@@ -4,11 +4,12 @@ import {
   NavigationContainer,
   useNavigation,
   useNavigationContainerRef,
+  type NavigationState,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, Text } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppDataProvider, useAppData } from './src/shell/AppData.tsx';
@@ -28,8 +29,16 @@ import { TodayScreen } from './src/ui/screens/TodayScreen.tsx';
 import { TrainingScreen } from './src/ui/screens/TrainingScreen.tsx';
 import { Dumbbell, LayoutGrid, Tag, Utensils, Wallet, type LucideIcon } from 'lucide-react-native';
 
+import {
+  Nunito_400Regular,
+  Nunito_700Bold,
+  Nunito_800ExtraBold,
+  useFonts,
+} from '@expo-google-fonts/nunito';
+
 import { NumberPadHost, useNumberPad } from './src/ui/NumberPadHost.tsx';
-import { mono, theme } from './src/ui/theme.ts';
+import { ThemeSkin } from './src/ui/ThemeSkin.tsx';
+import { DARK, font, sheet, shape, theme } from './src/ui/theme.ts';
 import { WeekSummaryScreen } from './src/ui/screens/WeekSummaryScreen.tsx';
 
 const Tabs = createMaterialTopTabNavigator();
@@ -37,18 +46,22 @@ const RootStack = createNativeStackNavigator();
 
 // Sin esto, React Navigation pinta sus propios fondos claros detras de cada pantalla
 // y se ve un destello blanco cada vez que se abre una.
-const navigationTheme = {
-  ...DarkTheme,
-  colors: {
-    ...DarkTheme.colors,
-    background: theme.bg,
-    card: theme.bg,
-    text: theme.text,
-    border: theme.line,
-    primary: theme.accent,
-    notification: theme.danger,
-  },
-};
+// Se llama al montar, que es justo cuando la piel acaba de cambiar de paleta.
+function navigationTheme() {
+  return {
+    ...DarkTheme,
+    dark: theme === DARK,
+    colors: {
+      ...DarkTheme.colors,
+      background: theme.bg,
+      card: theme.surface,
+      text: theme.text,
+      border: theme.line,
+      primary: theme.accent,
+      notification: theme.danger,
+    },
+  };
+}
 
 /**
  * Spec 17.3: every module declares its own slot and its own flag. Deals and Finance
@@ -191,7 +204,13 @@ const NUDGE_ROUTES: Record<string, string> = {
   semana: 'Resumen semanal',
 };
 
-function Navigation() {
+function Navigation({
+  initialState,
+  onState,
+}: {
+  initialState: NavigationState | undefined;
+  onState: (state: NavigationState | undefined) => void;
+}) {
   const pad = useNumberPad();
   const { nudgeTarget, clearNudgeTarget } = useAppData();
   const navigation = useNavigationContainerRef();
@@ -204,12 +223,23 @@ function Navigation() {
   }, [nudgeTarget, clearNudgeTarget, navigation]);
 
   return (
-    <NavigationContainer ref={navigation} theme={navigationTheme} onStateChange={pad.close}>
+    <NavigationContainer
+      ref={navigation}
+      theme={navigationTheme()}
+      initialState={initialState}
+      onStateChange={(state) => {
+        onState(state);
+        pad.close();
+      }}
+    >
       <RootStack.Navigator
         screenOptions={{
-          headerStyle: { backgroundColor: theme.bg },
+          // El encabezado nativo solo deja cambiarle el color: la raya negra de
+          // debajo la pone el borde de arriba de cada pantalla.
+          headerStyle: { backgroundColor: theme.surface },
+          headerShadowVisible: false,
           headerTintColor: theme.text,
-          headerTitleStyle: { fontFamily: mono, fontSize: 15 },
+          headerTitleStyle: { fontFamily: font.black, fontSize: 19, color: theme.text },
           contentStyle: { backgroundColor: theme.bg },
         }}
       >
@@ -217,8 +247,7 @@ function Navigation() {
           name="nexo"
           component={TabsScreen}
           options={({ navigation }) => ({
-            // El nombre de la ruta es el titulo, y aqui el titulo es un prompt.
-            title: 'nexo:~$',
+            title: 'nexo',
             headerRight: () => (
               <HeaderButton label="Ajustes" onPress={() => navigation.navigate('Ajustes')} />
             ),
@@ -295,48 +324,89 @@ function Navigation() {
   );
 }
 
+/**
+ * La piel lee de los ajustes si toca claro u oscuro. Vive dentro del proveedor de
+ * datos porque de ahi salen los ajustes, y por fuera de la navegacion porque al
+ * cambiar de paleta monta el arbol de nuevo.
+ */
+/**
+ * Donde estaba parado, para devolverlo ahi cuando la piel cambia.
+ *
+ * Cambiar de modo monta la navegacion de nuevo para que todo se pinte con la paleta
+ * nueva, y eso la devolveria al inicio: cambiar el modo desde Ajustes lo echaba a
+ * Hoy. Vive fuera del componente porque el componente es justo lo que se desmonta.
+ */
+let place: NavigationState | undefined;
+
+function Skin() {
+  const { state } = useAppData();
+  const skin = state.phase === 'ready' ? state.loaded.skin : DEFAULT_SKIN;
+
+  return (
+    <ThemeSkin mode={skin.mode} darkFrom={skin.darkFrom} darkTo={skin.darkTo}>
+      <Navigation
+        initialState={place}
+        onState={(next) => {
+          place = next;
+        }}
+      />
+      <StatusBar style={theme === DARK ? 'light' : 'dark'} />
+    </ThemeSkin>
+  );
+}
+
+const DEFAULT_SKIN = { mode: 'claro' as const, darkFrom: 20, darkTo: 7 };
+
 export default function App() {
+  // Sin la fuente cargada el primer cuadro sale con la del sistema y salta a la
+  // buena, que se ve peor que esperar dos parpadeos.
+  const [ready] = useFonts({ Nunito_400Regular, Nunito_700Bold, Nunito_800ExtraBold });
+  if (!ready) return null;
+
   return (
     <SafeAreaProvider>
       <NumberPadHost>
         <AppDataProvider>
-          <Navigation />
-          <StatusBar style="light" />
+          <Skin />
         </AppDataProvider>
       </NumberPadHost>
     </SafeAreaProvider>
   );
 }
 
-const styles = StyleSheet.create({
+const styles = sheet((theme) => ({
   tabBar: {
-    backgroundColor: theme.bg,
-    borderTopWidth: 1,
+    backgroundColor: theme.surface,
+    borderTopWidth: shape.border,
     borderTopColor: theme.line,
   },
   tabItem: {
     paddingHorizontal: 4,
-    paddingTop: 7,
+    paddingTop: 8,
     paddingBottom: 8,
   },
   tabLabel: {
     fontSize: 11,
     textTransform: 'lowercase',
-    fontWeight: '400',
-    fontFamily: mono,
+    fontFamily: font.bold,
     marginTop: 4,
   },
+  // Con la barra abajo la raya sale arriba, encima del borde: es la pestana activa.
   tabIndicator: {
     backgroundColor: theme.accent,
-    height: 2,
+    height: 4,
   },
   headerButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: theme.accent,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
   },
   headerButtonText: {
     fontSize: 13,
-    fontFamily: mono,
-    color: theme.accent,
+    fontFamily: font.black,
+    color: theme.accentInk,
   },
-});
+}));
