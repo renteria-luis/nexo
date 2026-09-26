@@ -131,9 +131,10 @@ const styles = sheet((theme) => ({
     gap: 12,
   },
   title: {
-    fontSize: 26,
-    fontFamily: font.black,
+    fontSize: 27,
+    fontFamily: font.display,
     color: theme.text,
+    letterSpacing: -0.5,
     marginBottom: 2,
   },
   failure: {

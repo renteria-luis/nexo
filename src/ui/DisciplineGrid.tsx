@@ -5,13 +5,13 @@ import { todayIso } from '../core/dates.ts';
 import type { GridWeek } from '../core/heatmap.ts';
 import { font, hardShadow, sheet, shape } from './theme.ts';
 
-const CELL = 22;
-const GAP = 3;
+const GAP = 2;
 const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
 type CellProps = {
   color: string;
   fill: number;
+  /** Con medida propia se dibuja de ese tamano; sin ella llena la columna. */
   size?: number;
   /** Hoy es el unico cuadrito con relieve: se encuentra sin buscarlo. */
   today?: boolean;
@@ -24,9 +24,15 @@ type CellProps = {
  * El borde fino de cada cuadrito es lo que hace que la cuadricula se lea como papel
  * cuadriculado en vez de como un monton de manchas de color.
  */
-export function ScoreCell({ color, fill, size = CELL, today = false }: CellProps) {
+export function ScoreCell({ color, fill, size, today = false }: CellProps) {
   return (
-    <View style={[styles.cell, today && styles.cellToday, { width: size, height: size }]}>
+    <View
+      style={[
+        styles.cell,
+        today && styles.cellToday,
+        size === undefined ? styles.cellFills : { width: size, height: size },
+      ]}
+    >
       <View style={[styles.fill, { backgroundColor: color, height: `${fill * 100}%` }]} />
     </View>
   );
@@ -36,6 +42,10 @@ export function ScoreCell({ color, fill, size = CELL, today = false }: CellProps
  * Memoizada porque es lo mas caro que se dibuja en la app: ochenta y cuatro cuadritos
  * tocables, cientos de elementos. Mientras las semanas y el gesto sean los mismos
  * objetos, no se vuelve a armar aunque la pantalla se repinte por otra cosa.
+ *
+ * Las trece columnas se reparten el ancho que haya (`flex: 1`) y cada cuadrito es
+ * cuadrado por `aspectRatio`, asi que la cuadricula llena exactamente la cartilla en
+ * cualquier telefono. Con las celdas de medida fija sobraba un hueco a la derecha.
  */
 export const DisciplineGrid = memo(function DisciplineGrid({
   weeks,
@@ -47,48 +57,50 @@ export const DisciplineGrid = memo(function DisciplineGrid({
   const today = todayIso();
 
   return (
-    <View style={styles.panel}>
-      <View style={styles.grid}>
-        <View style={styles.column}>
-          {WEEKDAYS.map((label, index) => (
-            <View key={index} style={styles.weekdayLabel}>
-              <Text style={styles.weekdayText}>{label}</Text>
-            </View>
-          ))}
-        </View>
-
-        {weeks.map((week) => (
-          <View key={week.startsOn} style={styles.column}>
-            {week.cells.map((cell) => (
-              <Pressable
-                key={cell.date}
-                accessibilityLabel={`Ver el ${cell.date}`}
-                onPress={() => onOpenDay?.(cell.date)}
-              >
-                <ScoreCell color={cell.color} fill={cell.fill} today={cell.date === today} />
-              </Pressable>
-            ))}
+    <View style={styles.grid}>
+      <View style={styles.column}>
+        {WEEKDAYS.map((label, index) => (
+          <View key={index} style={styles.weekday}>
+            <Text style={styles.weekdayText}>{label}</Text>
           </View>
         ))}
       </View>
+
+      {weeks.map((week) => (
+        <View key={week.startsOn} style={styles.column}>
+          {week.cells.map((cell) => (
+            <Pressable
+              key={cell.date}
+              accessibilityLabel={`Ver el ${cell.date}`}
+              onPress={() => onOpenDay?.(cell.date)}
+              style={styles.touch}
+            >
+              <ScoreCell color={cell.color} fill={cell.fill} today={cell.date === today} />
+            </Pressable>
+          ))}
+        </View>
+      ))}
     </View>
   );
 });
 
 const styles = sheet((theme) => ({
-  panel: {
-    alignSelf: 'flex-start',
-  },
   grid: {
+    alignSelf: 'stretch',
     flexDirection: 'row',
     gap: GAP,
   },
   column: {
+    flex: 1,
     gap: GAP,
   },
-  weekdayLabel: {
-    width: CELL,
-    height: CELL,
+  touch: {
+    width: '100%',
+    aspectRatio: 1,
+  },
+  weekday: {
+    width: '100%',
+    aspectRatio: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -104,6 +116,10 @@ const styles = sheet((theme) => ({
     backgroundColor: theme.surfaceHigh,
     overflow: 'hidden',
     justifyContent: 'flex-end',
+  },
+  cellFills: {
+    flex: 1,
+    alignSelf: 'stretch',
   },
   cellToday: {
     borderWidth: shape.border,

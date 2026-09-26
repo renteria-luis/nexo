@@ -174,3 +174,14 @@ el plan se queda con la mejor que exista en el gimnasio de esa sesión. Sin gimn
 elegido manda lo que diga la rutina.
 Rejected: Una columna por gimnasio en la rutina. No escala y repite la misma pregunta
 para cada máquina nueva.
+
+## 2026-09-26 — Fuera el modo oscuro, y la racha se cuenta por calendario
+Context: El modo oscuro recién hecho se veía mal, y el rediseño todavía está a medias
+en modo claro. Aparte, preguntó qué cuenta como día de racha y resultó que la cuenta
+saltaba los huecos: un día sin nada anotado no rompía nada porque no estaba en la lista.
+Decision: Quitar el modo oscuro de raíz (una sola paleta, sin ajuste de apariencia) y
+volver a mirarlo cuando el modo claro esté terminado. Y contar la racha sobre el
+calendario: un día sin nota o por debajo de 70 corta, hoy suma cuando pasa de 70 y
+mientras no llega no corta, y rellenar un día viejo vuelve a unir la racha.
+Rejected: Dejar el modo oscuro escondido detrás de un ajuste. Media pantalla sin
+terminar en dos paletas es el doble de trabajo por cada pantalla que falta.

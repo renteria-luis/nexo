@@ -5,8 +5,9 @@
 // muy saturados. Al presionar, el elemento se mete dentro de su propia sombra. Esa
 // ultima regla es la que hace que un boton se sienta pulsado sin animar nada.
 //
-// El modo oscuro es el mismo lenguaje con la tinta al reves: el borde pasa a ser
-// claro y la sombra sigue siendo negra, asi que el relieve se mantiene.
+// Hubo un modo oscuro y se quito el 2026-09-26: se veia mal y el modo claro es el que
+// se esta terminando. Volveria como una segunda Palette y un cambio dentro de este
+// archivo, sin tocar ninguna pantalla.
 //
 // Las paletas del daltonismo (spec 4.5) no viven aqui: son solo para los cuadritos de
 // la cuadricula y estan en core/palettes.ts.
@@ -30,6 +31,8 @@ export type Palette = {
 
   accent: string;
   accentInk: string;
+  /** La misma tinta negra pero apagada, para lo secundario sobre un color plano. */
+  accentInkSoft: string;
 
   ok: string;
   okBg: string;
@@ -64,6 +67,7 @@ export const LIGHT: Palette = {
 
   accent: YELLOW,
   accentInk: '#121212',
+  accentInkSoft: 'rgba(18, 18, 18, 0.68)',
 
   ok: LIME,
   okBg: '#eaf8cf',
@@ -73,33 +77,6 @@ export const LIGHT: Palette = {
   info: BLUE,
   infoBg: '#e3ebff',
   infoLine: '#121212',
-};
-
-export const DARK: Palette = {
-  bg: '#1c1c1a',
-  surface: '#272725',
-  surfaceHigh: '#3a3733',
-  line: '#f5f1e8',
-  lineSoft: '#4a4641',
-  lineStrong: '#f5f1e8',
-  shadow: '#000000',
-
-  text: '#f5f1e8',
-  textDim: '#ded9cd',
-  textFaint: '#b4ae9f',
-  textGhost: '#918b7d',
-
-  accent: YELLOW,
-  accentInk: '#121212',
-
-  ok: LIME,
-  okBg: '#2b3a17',
-  warn: ORANGE,
-  warnBg: '#3d2a15',
-  danger: CORAL,
-  info: BLUE,
-  infoBg: '#1e2740',
-  infoLine: '#f5f1e8',
 };
 
 /** Las medidas que hacen el estilo: borde grueso, esquina poca y sombra desplazada. */
@@ -138,47 +115,32 @@ export const font = {
   regular: 'Nunito_400Regular',
   bold: 'Nunito_700Bold',
   black: 'Nunito_800ExtraBold',
+  /**
+   * La voz de la app: solo para el titulo de una pantalla y el numero grande de la
+   * nota. Archivo Black no tiene pesos ni cursivas, es una sola losa; usarla en mas
+   * sitios que esos dos convierte la pantalla en un cartel ilegible.
+   */
+  display: 'ArchivoBlack_400Regular',
 } as const;
 
 /** Nombre viejo de la fuente de datos. Ahora todo es Nunito, con cifras tabulares. */
 export const mono = font.bold;
 
-/**
- * La paleta viva. Se lee directamente donde hace falta un color suelto dentro del
- * JSX, y las hojas de estilo se rehacen solas cuando cambia.
- */
-export let theme: Palette = LIGHT;
-
-type Named = Record<string, unknown>;
-
-const registered: { target: Named; make: (palette: Palette) => Named }[] = [];
+/** La paleta de la app. Una sola: el modo oscuro se quito el 2026-09-26. */
+export const theme: Palette = LIGHT;
 
 /**
- * Una hoja de estilos que sabe rehacerse al cambiar de modo.
+ * Una hoja de estilos que recibe la paleta.
  *
- * Se usa igual que StyleSheet.create, pero recibiendo la paleta. Guarda el mismo
- * objeto y lo vuelve a llenar cuando el modo cambia, asi que ninguna pantalla tiene
- * que enterarse ni pasar nada por props.
+ * Se usa igual que StyleSheet.create. Existia para poder rehacer las hojas al cambiar
+ * de modo; ahora que hay una sola paleta se queda porque es como estan escritas las
+ * cuarenta hojas de la app, y porque el dia que vuelva el modo oscuro el cambio es
+ * otra vez de este archivo para dentro.
  */
 export function sheet<T extends StyleSheet.NamedStyles<T>>(
   // La misma forma que StyleSheet.create, para que un estilo mal escrito siga
   // fallando aqui y no en el telefono.
   make: (palette: Palette) => T,
 ): T {
-  const target = { ...StyleSheet.create(make(theme)) } as T;
-  registered.push({
-    target: target as unknown as Named,
-    make: make as unknown as (palette: Palette) => Named,
-  });
-  return target;
-}
-
-export function applyPalette(next: Palette): void {
-  if (next === theme) return;
-  theme = next;
-  for (const entry of registered) {
-    const fresh = entry.make(theme) as Named;
-    for (const key of Object.keys(entry.target)) delete entry.target[key];
-    Object.assign(entry.target, StyleSheet.create(fresh as never));
-  }
+  return StyleSheet.create(make(theme));
 }

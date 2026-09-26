@@ -9,7 +9,7 @@ import { Moon, Play } from './icons.ts';
 
 import { Button } from './Button.tsx';
 import { Chip } from './Chip.tsx';
-import { font, mono, sheet, shape } from './theme.ts';
+import { mono, sheet } from './theme.ts';
 
 const BUDGETS: { id: TimeBudget; label: string }[] = [
   { id: 'completo', label: 'Completo' },
@@ -132,9 +132,10 @@ export function SessionPlanner({
             }}
           />
         ))}
-        <Pressable
+        <Button
+          label="Usar mi ubicación"
           accessibilityLabel="Usar mi ubicación"
-          disabled={locating}
+          loading={locating}
           onPress={() => {
             setLocating(true);
             setWhereNote('Buscando…');
@@ -155,16 +156,7 @@ export function SessionPlanner({
               })
               .finally(() => setLocating(false));
           }}
-          style={({ pressed }) => [
-            styles.locate,
-            locating && styles.locateOn,
-            pressed && styles.pressedSoft,
-          ]}
-        >
-          <Text style={[styles.locateText, locating && styles.locateTextOn]}>
-            Usar mi ubicación
-          </Text>
-        </Pressable>
+        />
       </View>
       {whereNote && <Text style={styles.detail}>{whereNote}</Text>}
 
@@ -310,26 +302,6 @@ const styles = sheet((theme) => ({
     gap: 5,
   },
   // Este no elige nada, pide la ubicacion: se ve distinto de los chips a proposito.
-  locate: {
-    minHeight: 38,
-    borderWidth: shape.border,
-    borderColor: theme.line,
-    borderRadius: shape.radiusSmall,
-    paddingHorizontal: 12,
-    justifyContent: 'center',
-    backgroundColor: theme.surface,
-  },
-  locateOn: {
-    backgroundColor: theme.surfaceHigh,
-  },
-  locateText: {
-    fontSize: 13,
-    fontFamily: font.bold,
-    color: theme.textDim,
-  },
-  locateTextOn: {
-    color: theme.text,
-  },
   pressedSoft: {
     opacity: 0.55,
   },

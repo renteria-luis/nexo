@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import {
   isBodyWeightKg,
@@ -9,8 +9,12 @@ import {
 } from '../core/daily-log.ts';
 import { addDays, shortDate } from '../core/dates.ts';
 import type { CoreDailyLogRow, NutritionContainerRow, SleepSource } from '../db/types.ts';
+
+import { Chip } from './Chip.tsx';
+import { Droplets, Footprints, Moon, Pill, Scale, Wine, type LucideIcon } from './icons.ts';
 import { NumericField } from './NumericField.tsx';
-import { mono, sheet } from './theme.ts';
+import { Toggle } from './Toggle.tsx';
+import { font, sheet, shape, theme } from './theme.ts';
 
 const SLEEP_SOURCES: { value: SleepSource; label: string }[] = [
   { value: 'autosleep', label: 'AutoSleep' },
@@ -18,28 +22,34 @@ const SLEEP_SOURCES: { value: SleepSource; label: string }[] = [
   { value: 'manual', label: 'A mano' },
 ];
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {children}
-    </View>
-  );
-}
-
-function Chip({
-  label,
-  selected,
-  onPress,
+/**
+ * Un dato del dia, con su icono y su raya.
+ *
+ * El icono va en su propia cajita con borde, que es como el estilo marca un icono, y
+ * la raya de arriba separa un dato del siguiente sin gastar el alto que gastaria una
+ * cartilla por cada uno.
+ */
+function Field({
+  title,
+  icon: Icon,
+  first = false,
+  children,
 }: {
-  label: string;
-  selected?: boolean;
-  onPress: () => void;
+  title: string;
+  icon: LucideIcon;
+  first?: boolean;
+  children: React.ReactNode;
 }) {
   return (
-    <Pressable onPress={onPress} style={[styles.chip, selected && styles.chipSelected]}>
-      <Text style={styles.chipText}>{label}</Text>
-    </Pressable>
+    <View style={[styles.field, !first && styles.fieldRuled]}>
+      <View style={styles.head}>
+        <View style={styles.badge}>
+          <Icon size={15} color={theme.text} strokeWidth={2.5} />
+        </View>
+        <Text style={styles.title}>{title}</Text>
+      </View>
+      {children}
+    </View>
   );
 }
 
@@ -89,7 +99,7 @@ export function TodayLog({ log, containers, waterTargetMl, lastWeight, onLog }: 
 
   return (
     <View style={styles.wrapper}>
-      <Section title="Agua">
+      <Field title="Agua" icon={Droplets} first>
         <Text style={styles.value}>
           {(waterMl / 1000).toFixed(2)} L
           {waterTargetMl === null ? '' : ` de ${(waterTargetMl / 1000).toFixed(1)} L`}
@@ -104,9 +114,9 @@ export function TodayLog({ log, containers, waterTargetMl, lastWeight, onLog }: 
           ))}
           {waterMl > 0 && <Chip label="Reiniciar" onPress={() => onLog({ waterMl: 0 })} />}
         </View>
-      </Section>
+      </Field>
 
-      <Section title="Creatina">
+      <Field title="Creatina" icon={Pill}>
         <View style={styles.row}>
           <Chip
             label="Tomada"
@@ -119,9 +129,9 @@ export function TodayLog({ log, containers, waterTargetMl, lastWeight, onLog }: 
             onPress={() => onLog({ creatineTaken: false })}
           />
         </View>
-      </Section>
+      </Field>
 
-      <Section title="Peso">
+      <Field title="Peso" icon={Scale}>
         <View style={styles.row}>
           <NumericField
             value={weightDraft}
@@ -135,7 +145,7 @@ export function TodayLog({ log, containers, waterTargetMl, lastWeight, onLog }: 
             }}
             style={styles.input}
           />
-          <Text style={styles.weightNote}>
+          <Text style={styles.note}>
             {log?.weight_kg != null
               ? 'de hoy'
               : lastWeight
@@ -143,14 +153,14 @@ export function TodayLog({ log, containers, waterTargetMl, lastWeight, onLog }: 
                 : 'sin pesarte todavía'}
           </Text>
         </View>
-      </Section>
+      </Field>
 
-      <Section title="Sueño">
+      <Field title="Sueño" icon={Moon}>
         {/* La casilla es la noche anterior, y decirlo evita anotar la de anteanoche
             el dia que se levanta tarde. Se puntua en este dia porque es la noche que
             sostiene lo que haga hoy. */}
         {log?.date && (
-          <Text style={styles.weightNote}>
+          <Text style={styles.note}>
             la noche del {dayOfMonth(addDays(log.date, -1))} al {dayOfMonth(log.date)}
           </Text>
         )}
@@ -172,6 +182,8 @@ export function TodayLog({ log, containers, waterTargetMl, lastWeight, onLog }: 
             onCommit={commitSleep}
             style={styles.input}
           />
+        </View>
+        <View style={styles.row}>
           {SLEEP_SOURCES.map((source) => (
             <Chip
               key={source.value}
@@ -181,9 +193,9 @@ export function TodayLog({ log, containers, waterTargetMl, lastWeight, onLog }: 
             />
           ))}
         </View>
-      </Section>
+      </Field>
 
-      <Section title="Pasos">
+      <Field title="Pasos" icon={Footprints}>
         <NumericField
           value={stepsDraft}
           onChange={setStepsDraft}
@@ -197,9 +209,9 @@ export function TodayLog({ log, containers, waterTargetMl, lastWeight, onLog }: 
           }}
           style={styles.input}
         />
-      </Section>
+      </Field>
 
-      <Section title="Alcohol">
+      <Field title="Alcohol" icon={Wine}>
         <Text style={styles.value}>{drinks} tragos</Text>
         <View style={styles.row}>
           <Chip label="+1" onPress={() => onLog({ alcoholDrinks: drinks + 1 })} />
@@ -211,15 +223,18 @@ export function TodayLog({ log, containers, waterTargetMl, lastWeight, onLog }: 
             selected={log?.alcohol_drinks === 0}
             onPress={() => onLog({ alcoholDrinks: 0 })}
           />
-          {drinks > 0 && (
-            <Chip
-              label="Dentro de 6 h del entreno"
-              selected={log?.alcohol_after_training === 1}
-              onPress={() => onLog({ alcoholAfterTraining: log?.alcohol_after_training !== 1 })}
-            />
-          )}
         </View>
-      </Section>
+        {drinks > 0 && (
+          <View style={styles.switchRow}>
+            <Text style={styles.switchLabel}>Dentro de 6 h del entreno</Text>
+            <Toggle
+              value={log?.alcohol_after_training === 1}
+              accessibilityLabel="Fue dentro de 6 horas del entreno"
+              onChange={(next) => onLog({ alcoholAfterTraining: next })}
+            />
+          </View>
+        )}
+      </Field>
     </View>
   );
 }
@@ -227,59 +242,76 @@ export function TodayLog({ log, containers, waterTargetMl, lastWeight, onLog }: 
 const styles = sheet((theme) => ({
   wrapper: {
     alignSelf: 'stretch',
-    gap: 12,
   },
-  section: {
-    gap: 5,
+  field: {
+    gap: 7,
+    paddingVertical: 12,
   },
-  sectionTitle: {
-    fontSize: 12,
-    color: theme.textFaint,
-    fontFamily: mono,
+  fieldRuled: {
+    borderTopWidth: shape.border,
+    borderTopColor: theme.line,
+  },
+  head: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  badge: {
+    width: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: 6,
+    backgroundColor: theme.surfaceHigh,
+  },
+  title: {
+    fontSize: 15,
+    fontFamily: font.black,
+    color: theme.text,
   },
   value: {
-    fontSize: 14,
-    fontFamily: mono,
+    fontSize: 17,
+    fontFamily: font.black,
     color: theme.text,
+    fontVariant: ['tabular-nums'],
   },
   row: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
-  chip: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    minHeight: 38,
-    justifyContent: 'center',
-  },
-  chipSelected: {
-    borderColor: theme.lineStrong,
-    backgroundColor: theme.surfaceHigh,
-  },
-  chipText: {
+  note: {
     fontSize: 12,
-    fontFamily: mono,
-    color: theme.text,
+    color: theme.textFaint,
+    fontFamily: font.regular,
   },
-  weightNote: {
-    fontSize: 11,
-    color: theme.textGhost,
-    fontFamily: mono,
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    minHeight: 40,
+  },
+  switchLabel: {
+    flexShrink: 1,
+    fontSize: 14,
+    fontFamily: font.bold,
+    color: theme.text,
   },
   input: {
-    borderWidth: 1,
-    borderColor: theme.lineSoft,
-    borderRadius: 6,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.surface,
     paddingHorizontal: 10,
-    paddingVertical: 7,
-    fontSize: 14,
-    minWidth: 96,
-    fontFamily: mono,
+    paddingVertical: 9,
+    fontSize: 16,
+    minWidth: 92,
+    fontFamily: font.black,
     color: theme.text,
+    fontVariant: ['tabular-nums'],
   },
 }));

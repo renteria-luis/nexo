@@ -6,7 +6,8 @@ import { hoursAndMinutes, litres, scoreText, thousands } from '../core/day-repor
 import { fromKg, type WeightUnit } from '../core/units.ts';
 import type { DayDetail } from '../shell/records.ts';
 
-import { mono, sheet } from './theme.ts';
+import { Button } from './Button.tsx';
+import { font, hardShadow, sheet, shape } from './theme.ts';
 
 const MISSING = '—';
 
@@ -108,16 +109,13 @@ export function DayDialog({ date, unit, load, onClose, onOpenDetail }: DayDialog
           {problem && <Text style={styles.problem}>{problem}</Text>}
 
           <View style={styles.buttons}>
-            <Pressable accessibilityLabel="Cerrar" onPress={onClose} style={styles.close}>
-              <Text style={styles.closeText}>cerrar</Text>
-            </Pressable>
-            <Pressable
+            <Button label="Cerrar" accessibilityLabel="Cerrar" variant="ghost" onPress={onClose} />
+            <Button
+              label="Ver detalles"
               accessibilityLabel="Ver detalles del día"
+              variant="primary"
               onPress={onOpenDetail}
-              style={styles.open}
-            >
-              <Text style={styles.openText}>Ver detalles</Text>
-            </Pressable>
+            />
           </View>
         </Pressable>
       </Pressable>
@@ -136,11 +134,12 @@ const styles = sheet((theme) => ({
   card: {
     alignSelf: 'stretch',
     backgroundColor: theme.surface,
-    borderWidth: 1,
+    borderWidth: shape.border,
     borderColor: theme.line,
-    borderRadius: 10,
+    borderRadius: shape.radius,
     padding: 16,
     gap: 8,
+    ...hardShadow(theme),
   },
   head: {
     flexDirection: 'row',
@@ -148,18 +147,20 @@ const styles = sheet((theme) => ({
     justifyContent: 'space-between',
   },
   date: {
-    fontSize: 16,
+    fontSize: 17,
     color: theme.text,
-    fontFamily: mono,
+    fontFamily: font.black,
   },
   score: {
-    fontSize: 30,
+    fontSize: 34,
     color: theme.text,
-    fontFamily: mono,
+    fontFamily: font.display,
+    fontVariant: ['tabular-nums'],
   },
   why: {
-    fontSize: 11,
-    color: theme.warn,
+    fontSize: 12,
+    fontFamily: font.bold,
+    color: theme.textFaint,
   },
   row: {
     flexDirection: 'row',
@@ -168,18 +169,20 @@ const styles = sheet((theme) => ({
   },
   rowLabel: {
     fontSize: 12,
-    color: theme.textGhost,
-    fontFamily: mono,
+    color: theme.textFaint,
+    fontFamily: font.bold,
     width: 62,
   },
   rowValue: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 14,
     color: theme.text,
-    fontFamily: mono,
+    fontFamily: font.bold,
+    fontVariant: ['tabular-nums'],
   },
   problem: {
-    fontSize: 11,
+    fontSize: 12,
+    fontFamily: font.bold,
     color: theme.danger,
   },
   buttons: {
@@ -187,27 +190,5 @@ const styles = sheet((theme) => ({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 6,
-  },
-  close: {
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-  },
-  closeText: {
-    fontSize: 13,
-    color: theme.textGhost,
-    fontFamily: mono,
-  },
-  open: {
-    borderWidth: 1,
-    borderColor: theme.accent,
-    backgroundColor: theme.accent,
-    borderRadius: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-  },
-  openText: {
-    fontSize: 13,
-    color: theme.accentInk,
-    fontFamily: mono,
   },
 }));

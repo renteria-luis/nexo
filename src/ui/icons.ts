@@ -22,6 +22,7 @@ export { default as Eye } from 'lucide-react-native/icons/eye';
 export { default as EyeOff } from 'lucide-react-native/icons/eye-off';
 export { default as Footprints } from 'lucide-react-native/icons/footprints';
 export { default as LayoutGrid } from 'lucide-react-native/icons/layout-grid';
+export { default as LoaderCircle } from 'lucide-react-native/icons/loader-circle';
 export { default as Minus } from 'lucide-react-native/icons/minus';
 export { default as Moon } from 'lucide-react-native/icons/moon';
 export { default as Pill } from 'lucide-react-native/icons/pill';

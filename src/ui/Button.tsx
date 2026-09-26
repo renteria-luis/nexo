@@ -1,6 +1,15 @@
-import { Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import type { LucideIcon } from './icons.ts';
+import { useEffect, useState } from 'react';
+import {
+  Animated,
+  Easing,
+  Pressable,
+  Text,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 
+import { LoaderCircle, type LucideIcon } from './icons.ts';
 import { font, hardShadow, pressed as pressedInto, sheet, shape, theme } from './theme.ts';
 
 /**
@@ -21,6 +30,8 @@ export type ButtonProps = {
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
   size?: 'regular' | 'large';
   icon?: LucideIcon;
+  /** Mientras la accion tarda: gira en el sitio del icono y no acepta otro toque. */
+  loading?: boolean;
   disabled?: boolean;
   /** Ocupa todo el ancho. Lo normal para la accion principal de una pantalla. */
   block?: boolean;
@@ -48,36 +59,70 @@ export function Button({
   variant = 'secondary',
   size = 'regular',
   icon: Icon,
+  loading = false,
   disabled = false,
   block = false,
   accessibilityLabel,
   style,
 }: ButtonProps) {
   const tint = disabled ? theme.textGhost : tintFor(variant);
+  const large = size === 'large';
+  const glyph = large ? 18 : 16;
+  const [spin] = useState(() => new Animated.Value(0));
+
+  useEffect(() => {
+    if (!loading) return;
+    spin.setValue(0);
+    const turning = Animated.loop(
+      Animated.timing(spin, {
+        toValue: 1,
+        duration: 900,
+        easing: Easing.linear,
+        // Por el hilo nativo: gira aunque el hilo de JavaScript este ocupado con lo
+        // que se esta esperando, que es justo cuando se ve el giro. En el navegador se
+        // queda quieto, porque react-native-web no lleva rotaciones por ese hilo.
+        useNativeDriver: true,
+      }),
+    );
+    turning.start();
+    return () => turning.stop();
+  }, [loading, spin]);
 
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
+      accessibilityState={{ disabled: disabled || loading, busy: loading }}
+      disabled={disabled || loading}
       onPress={onPress}
       style={({ pressed }) => [
         styles.base,
-        size === 'large' && styles.large,
+        large && styles.large,
         styles[variant],
         block && styles.block,
         disabled && styles.disabled,
-        pressed && !disabled && variant !== 'ghost' && styles.pressed,
-        pressed && variant === 'ghost' && styles.pressedGhost,
+        pressed && !disabled && !loading && variant !== 'ghost' && styles.pressed,
+        pressed && !loading && variant === 'ghost' && styles.pressedGhost,
         style,
       ]}
     >
       <View style={styles.inner}>
-        {Icon ? <Icon size={size === 'large' ? 18 : 16} color={tint} strokeWidth={2.25} /> : null}
-        <Text style={[styles.label, size === 'large' && styles.labelLarge, { color: tint }]}>
-          {label}
-        </Text>
+        {loading ? (
+          <Animated.View
+            style={{
+              transform: [
+                {
+                  rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }),
+                },
+              ],
+            }}
+          >
+            <LoaderCircle size={glyph} color={tint} strokeWidth={2.5} />
+          </Animated.View>
+        ) : Icon ? (
+          <Icon size={glyph} color={tint} strokeWidth={2.25} />
+        ) : null}
+        <Text style={[styles.label, large && styles.labelLarge, { color: tint }]}>{label}</Text>
       </View>
     </Pressable>
   );

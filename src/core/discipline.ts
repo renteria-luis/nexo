@@ -1,6 +1,7 @@
 // The eight criteria of spec 4.1, the alcohol scale of 4.2 and the missed training
 // penalty of 4.3, built on the generic engine in scoring.ts.
 
+import { addDays, type IsoDate } from './dates.ts';
 import {
   alongCurve,
   dayScore,
@@ -367,21 +368,51 @@ export function advanceConsecutiveMissed(current: number, result: DisciplineResu
 /** Spec 4.4: a day counts towards the streak at seventy or better. */
 export const STREAK_THRESHOLD = 70;
 
-export function currentStreak(scores: readonly (number | null)[]): number {
-  let streak = 0;
-  for (let i = scores.length - 1; i >= 0; i -= 1) {
-    const score = scores[i];
-    if (score === null || score < STREAK_THRESHOLD) break;
+/** Un dia con su nota guardada. Los dias sin rastro no estan en la lista. */
+export type StreakDay = { date: IsoDate; score: number | null };
+
+/**
+ * La racha: dias seguidos de calendario con 70 o mas.
+ *
+ * Dos cosas que no son obvias y que definen que cuenta:
+ *
+ * 1. **Se cuenta sobre el calendario, no sobre los dias anotados.** Un dia sin nada
+ *    anotado no aparece en la lista, y si se recorriera la lista a secas ese hueco no
+ *    romperia nada: el dia de antes y el de despues quedarian pegados y la racha
+ *    seguiria como si el dia no hubiera existido.
+ * 2. **Hoy suma cuando llega a 70, y mientras no llega no rompe.** La nota sube a lo
+ *    largo del dia, asi que a media manana casi siempre esta por debajo; contarla como
+ *    un corte dejaria la racha en cero todas las mananas.
+ *
+ * Y de ahi sale la respuesta a "se recupera la racha": si. La nota de cada dia esta
+ * guardada y se rehace cuando se anota algo de ese dia, asi que anotar despues un dia
+ * que quedo en blanco lo devuelve a la cuenta y la racha se vuelve a unir.
+ */
+export function currentStreak(days: readonly StreakDay[], today: IsoDate): number {
+  const byDate = new Map(days.map((day) => [day.date, day.score]));
+  const counts = (date: IsoDate): boolean => {
+    const score = byDate.get(date);
+    return score !== undefined && score !== null && score >= STREAK_THRESHOLD;
+  };
+
+  let streak = counts(today) ? 1 : 0;
+  for (let back = 1; back <= days.length; back += 1) {
+    if (!counts(addDays(today, -back))) break;
     streak += 1;
   }
   return streak;
 }
 
-export function longestStreak(scores: readonly (number | null)[]): number {
+/** La racha mas larga, contada igual: por calendario, hueco corta. */
+export function longestStreak(days: readonly StreakDay[], today: IsoDate): number {
+  if (days.length === 0) return 0;
+  const byDate = new Map(days.map((day) => [day.date, day.score]));
+
   let longest = 0;
   let run = 0;
-  for (const score of scores) {
-    if (score !== null && score >= STREAK_THRESHOLD) {
+  for (let date = days[0].date; date <= today; date = addDays(date, 1)) {
+    const score = byDate.get(date);
+    if (score !== undefined && score !== null && score >= STREAK_THRESHOLD) {
       run += 1;
       longest = Math.max(longest, run);
     } else {

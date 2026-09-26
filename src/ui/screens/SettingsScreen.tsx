@@ -7,7 +7,6 @@ import {
   nudgesEnabled,
   nudgesOffFrom,
   settingProblem,
-  themeFrom,
   type SettingKey,
   type Settings,
 } from '../../core/settings.ts';
@@ -15,24 +14,13 @@ import { DEFAULT_NUDGE_RULES, type NudgeKind } from '../../core/nudges.ts';
 
 import { isBodyWeightKg } from '../../core/daily-log.ts';
 import { Button } from '../Button.tsx';
+import { Card } from '../Card.tsx';
 import { Chip } from '../Chip.tsx';
+import { Toggle } from '../Toggle.tsx';
 import { NUMBER_PAD_HEIGHT, useNumberPad } from '../NumberPadHost.tsx';
 import { NumericField } from '../NumericField.tsx';
 import { PalettePicker } from '../PalettePicker.tsx';
 import { font, sheet, shape, theme } from '../theme.ts';
-
-/** Spec 4.5 aparte: esto es la piel de la app, no las paletas del daltonismo. */
-const THEME_MODES: { value: string; label: string }[] = [
-  { value: 'claro', label: 'Claro' },
-  { value: 'oscuro', label: 'Oscuro' },
-  { value: 'sistema', label: 'Como el iPhone' },
-  { value: 'horario', label: 'Por horario' },
-];
-
-const DARK_HOURS: { key: SettingKey; label: string }[] = [
-  { key: 'theme_dark_from', label: 'Oscuro desde (hora)' },
-  { key: 'theme_dark_to', label: 'Y hasta (hora)' },
-];
 
 const PHASES: { value: string; label: string }[] = [
   { value: 'recomp', label: 'Recomposición' },
@@ -113,11 +101,11 @@ export type SettingsScreenProps = {
 
 /** Los cuatro que puede apagar por su lado. El resumen del domingo va con el cierre. */
 const NUDGE_SWITCHES: { kind: NudgeKind; label: string }[] = [
-  { kind: 'comida', label: 'comida' },
-  { kind: 'entreno', label: 'entreno' },
-  { kind: 'agua', label: 'agua' },
-  { kind: 'manana', label: 'mañana' },
-  { kind: 'cierre', label: 'cierre del día' },
+  { kind: 'comida', label: 'Comida' },
+  { kind: 'entreno', label: 'Entreno' },
+  { kind: 'agua', label: 'Agua' },
+  { kind: 'manana', label: 'Mañana' },
+  { kind: 'cierre', label: 'Cierre del día' },
 ];
 
 export function SettingsScreen({
@@ -145,7 +133,8 @@ export function SettingsScreen({
   // ciegas: el campo abierto se ve, y se vuelve a tapar al salir de el.
   const [editing, setEditing] = useState<string | null>(null);
   const [confirmingImport, setConfirmingImport] = useState(false);
-  const [busy, setBusy] = useState(false);
+  // Cual de las dos esta trabajando, para que gire solo el boton que se toco.
+  const [busy, setBusy] = useState<'exportar' | 'importar' | null>(null);
   const [backupNote, setBackupNote] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Partial<Record<SettingKey, string>>>({});
   const [weightDraft, setWeightDraft] = useState(
@@ -175,7 +164,6 @@ export function SettingsScreen({
   };
 
   const phase = settings.get('phase') ?? 'recomp';
-  const skin = themeFrom(settings);
 
   return (
     // Scrolls on its own rather than through the shared Screen frame: this one is
@@ -330,77 +318,44 @@ export function SettingsScreen({
         {DEFAULT_NUDGE_RULES.maxPerDay} al día, nada entre las 21:30 y las 7:30, y el tipo de aviso
         que ignores tres veces seguidas se calla una semana solo.
       </Text>
-      <View style={styles.options}>
-        <Chip
-          label={nudgesOn ? 'Encendidos' : 'Apagados'}
-          accessibilityLabel={nudgesOn ? 'Apagar todos los avisos' : 'Encender los avisos'}
-          selected={nudgesOn}
-          onPress={() => onSaveSetting('nudges_enabled', nudgesOn ? 'false' : 'true')}
-        />
-      </View>
-      {nudgesOn && (
-        <View style={styles.options}>
-          {NUDGE_SWITCHES.map((nudge) => {
-            const on = !nudgesOff.includes(nudge.kind);
-            return (
-              <Chip
-                key={nudge.kind}
-                label={nudge.label}
-                accessibilityLabel={`${on ? 'Apagar' : 'Encender'} los avisos de ${nudge.label}`}
-                selected={on}
-                onPress={() =>
+      {/* Un interruptor por aviso, uno debajo del otro: son cinco cosas que se
+          prenden y se apagan por su lado, y en chips no se veia cual estaba en cual. */}
+      <Card>
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Todos los avisos</Text>
+          <Toggle
+            value={nudgesOn}
+            accessibilityLabel={nudgesOn ? 'Apagar todos los avisos' : 'Encender los avisos'}
+            onChange={(next) => onSaveSetting('nudges_enabled', next ? 'true' : 'false')}
+          />
+        </View>
+        {/* Con el interruptor general apagado se quedan a la vista pero muertos: asi
+            se sabe que existen y la lista no salta de alto al prenderlos. */}
+        {NUDGE_SWITCHES.map((nudge) => {
+          const on = !nudgesOff.includes(nudge.kind);
+          return (
+            <View key={nudge.kind} style={[styles.switchRow, styles.switchRuled]}>
+              <Text style={[styles.switchLabel, !nudgesOn && styles.switchLabelOff]}>
+                {nudge.label}
+              </Text>
+              <Toggle
+                value={on}
+                disabled={!nudgesOn}
+                accessibilityLabel={`${on ? 'Apagar' : 'Encender'} los avisos de ${nudge.label.toLowerCase()}`}
+                onChange={(next) =>
                   onSaveSetting(
                     'nudges_off',
-                    (on
-                      ? [...nudgesOff, nudge.kind]
-                      : nudgesOff.filter((kind) => kind !== nudge.kind)
+                    (next
+                      ? nudgesOff.filter((kind) => kind !== nudge.kind)
+                      : [...nudgesOff, nudge.kind]
                     ).join(','),
                   )
                 }
               />
-            );
-          })}
-        </View>
-      )}
-
-      <Text style={styles.heading}>Apariencia</Text>
-      <View style={styles.options}>
-        {THEME_MODES.map((option) => (
-          <Chip
-            key={option.value}
-            label={option.label}
-            accessibilityLabel={`Ver la app en modo ${option.label}`}
-            selected={option.value === skin.mode}
-            onPress={() => onSaveSetting('theme_mode', option.value)}
-          />
-        ))}
-      </View>
-      <Text style={styles.hint}>
-        Claro es como se diseñó la app. Oscuro es la misma cosa con la tinta al revés. Como el
-        iPhone sigue lo que tengas puesto en el sistema, y por horario lo cambia solo a las horas
-        que digas.
-      </Text>
-      {skin.mode === 'horario' &&
-        DARK_HOURS.map((hour) => {
-          const draft = drafts[hour.key] ?? settings.get(hour.key) ?? '';
-          return (
-            <View key={hour.key} style={styles.field}>
-              <Text style={styles.label}>{hour.label}</Text>
-              <NumericField
-                value={draft}
-                onChange={(text) => setDrafts((current) => ({ ...current, [hour.key]: text }))}
-                accessibilityLabel={hour.label}
-                onCommit={() => commit(hour.key)}
-                onFocus={() => setEditing(hour.key)}
-                onBlur={() => setEditing(null)}
-                style={[styles.input, refused[hour.key] ? styles.inputBad : null]}
-              />
-              {refused[hour.key] ? (
-                <Text style={styles.problem}>Sin guardar: {refused[hour.key]}</Text>
-              ) : null}
             </View>
           );
         })}
+      </Card>
 
       <Text style={styles.heading}>Paleta</Text>
       <Text style={styles.hint}>
@@ -417,9 +372,10 @@ export function SettingsScreen({
         <Button
           label="Exportar"
           accessibilityLabel="Exportar todo a un archivo"
-          disabled={busy}
+          loading={busy === 'exportar'}
+          disabled={busy !== null}
           onPress={() => {
-            setBusy(true);
+            setBusy('exportar');
             setBackupNote('Escribiendo…');
             onExport()
               .then((outcome) => {
@@ -432,7 +388,7 @@ export function SettingsScreen({
               .catch((error: unknown) => {
                 setBackupNote(error instanceof Error ? error.message : String(error));
               })
-              .finally(() => setBusy(false));
+              .finally(() => setBusy(null));
           }}
         />
 
@@ -442,10 +398,11 @@ export function SettingsScreen({
               label="Sí, reemplazar lo que hay"
               accessibilityLabel="Confirmar importación"
               variant="danger"
-              disabled={busy}
+              loading={busy === 'importar'}
+              disabled={busy !== null}
               onPress={() => {
                 setConfirmingImport(false);
-                setBusy(true);
+                setBusy('importar');
                 setBackupNote('Leyendo el archivo…');
                 onImport()
                   .then((result) => {
@@ -463,7 +420,7 @@ export function SettingsScreen({
                   .catch((error: unknown) => {
                     setBackupNote(error instanceof Error ? error.message : String(error));
                   })
-                  .finally(() => setBusy(false));
+                  .finally(() => setBusy(null));
               }}
             />
             <Button
@@ -476,7 +433,8 @@ export function SettingsScreen({
           <Button
             label="Importar"
             accessibilityLabel="Importar desde un archivo"
-            disabled={busy}
+            loading={busy === 'importar'}
+            disabled={busy !== null}
             onPress={() => setConfirmingImport(true)}
           />
         )}
@@ -599,5 +557,26 @@ const styles = sheet((theme) => ({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    minHeight: 40,
+  },
+  switchRuled: {
+    borderTopWidth: shape.border,
+    borderTopColor: theme.line,
+    paddingTop: 6,
+  },
+  switchLabel: {
+    flexShrink: 1,
+    fontSize: 15,
+    fontFamily: font.bold,
+    color: theme.text,
+  },
+  switchLabelOff: {
+    color: theme.textGhost,
   },
 }));

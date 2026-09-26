@@ -16,7 +16,10 @@ export type CardTone = 'paper' | 'accent' | 'ok' | 'warn' | 'info' | 'danger';
 export type CardProps = {
   children: ReactNode;
   title?: string;
-  /** El color de la hoja. El color dice de que va la cartilla antes de leerla. */
+  /**
+   * El color de la hoja, plano y saturado como manda el estilo. Sobre cualquiera que
+   * no sea papel la tinta es negra en los dos modos, porque el color es el mismo.
+   */
   tone?: CardTone;
   /** Sin relieve, para lo que esta apagado o solo acompana. */
   raised?: boolean;
@@ -36,7 +39,9 @@ export function Card({
 }: CardProps) {
   const inside = (
     <>
-      {title ? <Text style={styles.title}>{title}</Text> : null}
+      {title ? (
+        <Text style={[styles.title, tone !== 'paper' && styles.titleOnColor]}>{title}</Text>
+      ) : null}
       {children}
     </>
   );
@@ -93,6 +98,9 @@ const styles = sheet((theme) => ({
     fontFamily: font.black,
     color: theme.text,
   },
+  titleOnColor: {
+    color: theme.accentInk,
+  },
   paper: {
     backgroundColor: theme.surface,
   },
@@ -100,13 +108,13 @@ const styles = sheet((theme) => ({
     backgroundColor: theme.accent,
   },
   ok: {
-    backgroundColor: theme.okBg,
+    backgroundColor: theme.ok,
   },
   warn: {
-    backgroundColor: theme.warnBg,
+    backgroundColor: theme.warn,
   },
   info: {
-    backgroundColor: theme.infoBg,
+    backgroundColor: theme.info,
   },
   danger: {
     backgroundColor: theme.danger,

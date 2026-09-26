@@ -371,13 +371,57 @@ test('water is judged against the training day target on a training day', () => 
 });
 
 test('streaks count days at seventy or better and stop at a gap', () => {
-  assert.equal(currentStreak([80, 90, 75]), 3);
-  assert.equal(currentStreak([80, 60, 75]), 1);
-  assert.equal(currentStreak([80, 90, null]), 0);
-  assert.equal(currentStreak([]), 0);
+  const day = (date: string, score: number | null) => ({ date, score });
+  const TODAY = '2026-09-26';
 
-  assert.equal(longestStreak([80, 90, 60, 75, 75, 75, 40]), 3);
-  assert.equal(longestStreak([null, null]), 0);
+  assert.equal(
+    currentStreak([day('2026-09-24', 80), day('2026-09-25', 90), day('2026-09-26', 75)], TODAY),
+    3,
+  );
+  assert.equal(
+    currentStreak([day('2026-09-24', 80), day('2026-09-25', 60), day('2026-09-26', 75)], TODAY),
+    1,
+  );
+  assert.equal(currentStreak([], TODAY), 0);
+
+  // Hoy todavia sin llegar a 70 no corta: la nota sube durante el dia.
+  assert.equal(
+    currentStreak([day('2026-09-24', 80), day('2026-09-25', 90), day('2026-09-26', 12)], TODAY),
+    2,
+  );
+
+  // Un dia sin nada anotado no esta en la lista, y aun asi rompe la racha: si no, el
+  // hueco se cerraria solo y la racha contaria dias que nunca existieron.
+  assert.equal(
+    currentStreak([day('2026-09-23', 90), day('2026-09-25', 90), day('2026-09-26', 90)], TODAY),
+    2,
+  );
+
+  // Y anotarlo despues la vuelve a unir, que es lo que pasa cuando rellena un dia viejo.
+  assert.equal(
+    currentStreak(
+      [day('2026-09-23', 90), day('2026-09-24', 75), day('2026-09-25', 90), day('2026-09-26', 90)],
+      TODAY,
+    ),
+    4,
+  );
+
+  assert.equal(
+    longestStreak(
+      [
+        day('2026-09-20', 80),
+        day('2026-09-21', 90),
+        day('2026-09-22', 60),
+        day('2026-09-23', 75),
+        day('2026-09-24', 75),
+        day('2026-09-25', 75),
+        day('2026-09-26', 40),
+      ],
+      TODAY,
+    ),
+    3,
+  );
+  assert.equal(longestStreak([day('2026-09-25', null), day('2026-09-26', null)], TODAY), 0);
 });
 
 test('el entreno vale por lo que movio contra lo que tocaba', () => {

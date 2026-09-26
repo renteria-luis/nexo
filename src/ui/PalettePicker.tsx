@@ -1,5 +1,4 @@
 import { Text, View } from 'react-native';
-import { Check } from './icons.ts';
 
 import {
   PALETTE_NAMES,
@@ -11,7 +10,8 @@ import {
 
 import { Card } from './Card.tsx';
 import { ScoreCell } from './DisciplineGrid.tsx';
-import { font, sheet, shape, theme } from './theme.ts';
+import { Toggle } from './Toggle.tsx';
+import { font, sheet } from './theme.ts';
 
 const ORDER: PaletteId[] = ['deutan', 'standard', 'tritan'];
 
@@ -34,16 +34,23 @@ export function PalettePicker({
         return (
           <Card
             key={palette}
-            accessibilityLabel={`Usar la paleta ${PALETTE_NAMES[palette]}`}
+            accessibilityLabel={`Paleta ${PALETTE_NAMES[palette]}`}
             onPress={() => onSelect(palette)}
             // Elegida se levanta del papel; las otras dos se quedan planas.
             raised={isSelected}
           >
             <View style={styles.head}>
-              <View style={[styles.mark, isSelected && styles.markOn]}>
-                {isSelected ? <Check size={13} color={theme.accentInk} strokeWidth={3} /> : null}
+              <View style={styles.headText}>
+                <Text style={styles.name}>{PALETTE_NAMES[palette]}</Text>
+                <Text style={styles.scale}>0 a 100</Text>
               </View>
-              <Text style={styles.name}>{PALETTE_NAMES[palette]}</Text>
+              {/* Siempre hay una paleta puesta, asi que apagar la que esta elegida no
+                  significa nada: cualquier toque en la fila elige la suya. */}
+              <Toggle
+                value={isSelected}
+                accessibilityLabel={`Usar la paleta ${PALETTE_NAMES[palette]}`}
+                onChange={() => onSelect(palette)}
+              />
             </View>
             <View style={styles.sample}>
               {PREVIEW_SCORES.map((score) => (
@@ -55,7 +62,6 @@ export function PalettePicker({
                 />
               ))}
             </View>
-            <Text style={styles.scale}>0 a 100</Text>
           </Card>
         );
       })}
@@ -71,20 +77,11 @@ const styles = sheet((theme) => ({
   head: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
+    gap: 10,
   },
-  mark: {
-    width: 20,
-    height: 20,
-    borderWidth: shape.border,
-    borderColor: theme.line,
-    borderRadius: 5,
-    backgroundColor: theme.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  markOn: {
-    backgroundColor: theme.accent,
+  headText: {
+    flexShrink: 1,
   },
   name: {
     fontSize: 15,
