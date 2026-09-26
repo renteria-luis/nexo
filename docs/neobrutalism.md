@@ -214,10 +214,14 @@ library in React Native pulls in Reanimated, and Reanimated is what crashed the 
 
 What makes it work, and what to copy if another list ever needs it:
 
-- **A hold arms it.** The row's handle starts a 250 ms timer on `onTouchStart`; only when
-  it fires does the pan responder start claiming moves
-  (`onMoveShouldSetPanResponderCapture` reads a ref, not state, because the gesture runs
-  outside the render). A plain swipe still scrolls the page.
+- **It drags from a handle and nothing else.** A 34 pt wide, full-height column with
+  lucide's three lines and the exercise's number under them: touching it lifts the row at
+  once, with no hold to wait for, and the rest of the row stays free for reading,
+  scrolling and the set steppers. (It started as a 250 ms hold on the whole row, and the
+  owner asked for the handle instead — a hold is a rule you have to remember, a grip is a
+  thing you can see.) The pan responder still lives on the list and claims moves while a
+  row is held (`onMoveShouldSetPanResponderCapture` reads a ref, not state, because the
+  gesture runs outside the render).
 - **Both gestures around it are switched off while a row is lifted.** `Screen` takes
   `scrollEnabled` for the vertical scroll, and `SwipeLock` (a context above the
   navigation) turns off the tab carousel's `swipeEnabled`. The carousel's recogniser is
@@ -239,6 +243,25 @@ What makes it work, and what to copy if another list ever needs it:
 - **The handle is the number and the name, not the whole row**, so holding a stepper
   button does not lift anything.
 - Lifted looks lifted: yellow fill, `hardShadow(5)` and `zIndex: 2`.
+
+### When the keypad covers what he is typing
+
+The app's own keypad is a fixed 220 pt overlay at the root, so there are no keyboard
+events to listen for and nothing scrolls out of the way by itself. `Screen` provides
+`useReveal()`, and `NumericField` calls it on focus:
+
+- The field asks to be revealed; a field can name **a whole block instead of itself**
+  (`reveals={ref}`), which is what the training form does — the weight box is useless
+  without the reps box and the "+ serie" button next to it, so the whole exercise card
+  comes up.
+- The maths is all in screen coordinates: measure the target and the screen frame with
+  `measureInWindow`, work out how much of the target falls below where the keypad starts,
+  and scroll by exactly that, never more than would push the block's own top off the top.
+  Measuring against the scroll content instead gave numbers in another origin and the
+  scroll came up short.
+- It only ever scrolls **up**: something already visible does not move.
+- One frame of `requestAnimationFrame` first, because the content has just grown a
+  220 pt tail to make room for the keypad and without that room the scroll clamps.
 
 ## 8. Sliders
 

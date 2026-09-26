@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { TextInput, type StyleProp, type TextStyle } from 'react-native';
+import { useEffect, useRef, useState, type RefObject } from 'react';
+import { TextInput, View, type StyleProp, type TextStyle } from 'react-native';
 
 import { useNumberPad } from './NumberPadHost.tsx';
+import { useReveal } from './screens/Screen.tsx';
 import { theme } from './theme.ts';
 
 /**
@@ -28,6 +29,12 @@ export type NumericFieldProps = {
   onBlur?: () => void;
   style?: StyleProp<TextStyle>;
   focusedStyle?: StyleProp<TextStyle>;
+  /**
+   * Lo que tiene que quedar encima del teclado al enfocar. Sin esto se sube el campo
+   * solo; con esto se sube el bloque entero, que es lo que hace falta cuando el campo
+   * no sirve de nada sin lo que tiene al lado.
+   */
+  reveals?: RefObject<View | null>;
 };
 
 /** Lo que se espera desde la ultima tecla: pasado esto ya no esta escribiendo. */
@@ -44,8 +51,10 @@ export function NumericField({
   onBlur,
   style,
   focusedStyle,
+  reveals,
 }: NumericFieldProps) {
   const pad = useNumberPad();
+  const reveal = useReveal();
   const input = useRef<TextInput>(null);
   const [draft, setDraft] = useState(value);
   const [focused, setFocused] = useState(false);
@@ -107,6 +116,8 @@ export function NumericField({
       onFocus={() => {
         setFocused(true);
         onFocus?.();
+        // El teclado tapa la mitad de abajo de la pantalla: lo que se escribe se sube.
+        reveal(reveals?.current ?? input.current);
         pad.open({
           onKey: apply,
           allowDecimal,
