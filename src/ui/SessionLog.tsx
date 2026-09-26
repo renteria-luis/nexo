@@ -10,7 +10,7 @@ import {
   type E1rmMark,
   type LoggedSet,
 } from '../training/calculations.ts';
-import { isPerSide, type CatalogExercise } from '../training/queries.ts';
+import { isPerSide, type CatalogExercise, type Swappable } from '../training/queries.ts';
 import type { SessionDraft } from '../core/session-draft.ts';
 import type { Implement } from '../training/sessions.ts';
 
@@ -27,7 +27,7 @@ import { font, sheet, shape, theme } from './theme.ts';
  * es todo lo que se movio. Sin la opcion de maquina habia que marcar mancuerna y el
  * volumen salia al doble.
  */
-const IMPLEMENTS: { id: Implement; short: string; long: string }[] = [
+const IMPLEMENTS: { id: Swappable; short: string; long: string }[] = [
   { id: 'dumbbell', short: 'mancuerna', long: 'Con mancuernas' },
   { id: 'cable', short: 'polea', long: 'En polea' },
   { id: 'machine', short: 'máquina', long: 'En máquina' },
@@ -338,12 +338,17 @@ export const SessionLog = memo(function SessionLog({
   // Las laterales y el martillo se hacen con mancuerna, en polea o en la maquina, y
   // el numero que escribe significa una cosa distinta en cada caso: con mancuerna es
   // el de una mano, con polea y con maquina ya es todo lo que movio.
-  const swappable =
-    exercise !== null &&
-    (exercise.equipment_type === 'dumbbell' ||
-      exercise.equipment_type === 'cable' ||
-      exercise.equipment_type === 'machine');
+  // Con mas de una forma de hacerlo hay algo que elegir; con una sola o ninguna, no.
+  const swappable = exercise !== null && exercise.implements.length > 1;
   const doneWith = implement ?? exercise?.equipment_type ?? null;
+  // La nota de la (i): la del implemento con el que lo esta haciendo, y si ese no tiene
+  // una propia, la general del ejercicio.
+  const note =
+    exercise === null
+      ? null
+      : ((doneWith === null ? undefined : exercise.notes.get(doneWith)) ??
+        exercise.notes.get('') ??
+        null);
   // Con mancuernas escribe lo que dice una, porque es lo que se lee agachado al
   // lado del rack. El volumen ya cuenta las dos por su cuenta.
   const perSide =
@@ -456,16 +461,13 @@ export const SessionLog = memo(function SessionLog({
             peso sin las repeticiones al lado no sirve de nada. */}
         {exercise && (
           <View ref={card} collapsable={false}>
-            <Card title={exercise.name_es}>
-              {/* Spec 6.4 order: last session's sets first and largest, then the marks. */}
-              <View style={styles.machineRow}>
-                {exercise.equipment && (
-                  <Text style={styles.machine}>
-                    {exercise.equipment.name_es}
-                    {exercise.equipment.model_code ? ` · ${exercise.equipment.model_code}` : ''}
-                  </Text>
-                )}
-                {exercise.technique_text && (
+            <Card>
+              {/* El nombre y su (i) en el mismo renglon, y los implementos debajo: el
+                  nombre de la maquina ya no se muestra, empujaba los botones fuera de
+                  sitio en cuanto era largo y no decia nada que el no supiera. */}
+              <View style={styles.exerciseHead}>
+                <Text style={styles.exerciseTitle}>{exercise.name_es}</Text>
+                {note !== null && (
                   <Pressable
                     accessibilityLabel={`Ver la tecnica de ${exercise.name_es}`}
                     onPress={() => setShowTechnique((open) => !open)}
@@ -474,25 +476,33 @@ export const SessionLog = memo(function SessionLog({
                     <Text style={styles.infoText}>i</Text>
                   </Pressable>
                 )}
-                {swappable &&
-                  IMPLEMENTS.map((option) => (
-                    <Chip
-                      key={option.id}
-                      label={option.short}
-                      accessibilityLabel={option.long}
-                      selected={doneWith === option.id}
-                      onPress={() => setImplement(option.id)}
-                    />
-                  ))}
               </View>
 
-              {showTechnique && exercise.technique_text && (
+              {showTechnique && note !== null && (
                 <View style={styles.technique}>
-                  {exercise.technique_text.split('\n').map((line) => (
+                  {note.split('\n').map((line) => (
                     <Text key={line} style={styles.techniqueLine}>
                       {line}
                     </Text>
                   ))}
+                </View>
+              )}
+
+              {/* Solo donde hay de verdad mas de una forma de hacerlo, que es un dato
+                  del ejercicio y ya no una suposicion por el tipo de equipo. */}
+              {swappable && (
+                <View style={styles.implements}>
+                  {IMPLEMENTS.filter((option) => exercise.implements.includes(option.id)).map(
+                    (option) => (
+                      <Chip
+                        key={option.id}
+                        label={option.short}
+                        accessibilityLabel={option.long}
+                        selected={doneWith === option.id}
+                        onPress={() => setImplement(option.id)}
+                      />
+                    ),
+                  )}
                 </View>
               )}
 
@@ -865,16 +875,22 @@ const styles = sheet((theme) => ({
     alignSelf: 'flex-start',
   },
 
-  machineRow: {
+  exerciseHead: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  exerciseTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontFamily: font.black,
+    color: theme.text,
+  },
+  implements: {
+    flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-  },
-  machine: {
-    fontSize: 13,
-    fontFamily: font.bold,
-    color: theme.textFaint,
   },
   info: {
     width: 26,

@@ -92,8 +92,9 @@ export type TrainingExerciseRow = {
   load_increment: number;
   default_rest_seconds: number;
   unilateral: SqlBool;
-  technique_text: string | null;
   technique_clip_ref: string | null;
+  /** Con que se puede hacer, separado por comas. Vacio: no hay nada que elegir. */
+  implements: string;
 };
 
 export type TrainingExerciseMuscleRow = {

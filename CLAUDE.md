@@ -67,6 +67,36 @@ If the plan turns out wrong mid-PR, update the file and say so in the status blo
 - No comments explaining what the code does. Comments only for why a non-obvious decision was made.
 - Errors fail loudly. No silent catch blocks, no empty fallbacks that hide a broken state.
 
+## Performance — rules learned the hard way
+
+These were all found in this app, measured, and fixed. Do not reintroduce them.
+
+- **Never reload everything after a write that changed one thing.** A write that only
+  affects today does not need the backfill that rescores other days. Reloading the world
+  on every tap cost ~690 SQLite statements per logged set; it is ~30 now.
+- **Filter in SQL, not after the fact.** The rescoring pass pulled every day with a trace
+  and skipped the already-scored ones in JavaScript, after rebuilding each one: 622
+  statements per reload that a `NOT EXISTS` turned into 1.
+- **Paint what he just tapped before the write lands.** A chip that waits for the
+  database to answer reads as a stuck button. Patch the loaded state, write behind it,
+  and reload only if something else derives from it — if nothing does, do not reload at
+  all.
+- **Keep the provider's actions stable** (`useMemo` over an object whose functions read
+  mutable state from refs). If the action identities change every render, no screen below
+  can skip its own redraw, and memoizing anything is pointless.
+- **Memoize the expensive subtrees and feed them stable props** (`useMemo` for derived
+  maps and arrays, `useCallback` for handlers). The twelve-week grid and the training log
+  are the two that matter.
+- **A clock lives in its own component.** A ticking value in a big screen repaints the
+  whole screen once a second.
+- **Import icons one at a time** from `src/ui/icons.ts`. The package index carries 1848
+  of them.
+- **No chart or gesture library.** They all pull in Reanimated, which crashed the app on
+  2026-09-21. Charts are hand-drawn with `react-native-svg`; drags use `PanResponder`.
+- **Measure, do not guess.** Count SQLite statements with a counting adapter in a test,
+  and time renders with React's `Profiler` in the browser. Both are quick and both have
+  already contradicted a confident guess.
+
 ## Migrations
 
 **Never edit a migration that has already run anywhere, including the owner's phone.**

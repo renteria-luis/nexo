@@ -22,12 +22,19 @@ type PadApi = {
   open: (target: PadTarget) => void;
   close: () => void;
   isOpen: boolean;
+  /**
+   * En que campo esta escribiendo, para que el campo lo sepa sin depender de su propio
+   * foco: al abrirse el teclado la primera vez, el campo pierde el foco y con el la
+   * marca de "estoy escribiendo aqui".
+   */
+  target: PadTarget | null;
 };
 
 const Context = createContext<PadApi>({
   open: () => undefined,
   close: () => undefined,
   isOpen: false,
+  target: null,
 });
 
 export function useNumberPad(): PadApi {
@@ -53,7 +60,10 @@ export function NumberPadHost({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const api = useMemo(() => ({ open, close, isOpen: target !== null }), [open, close, target]);
+  const api = useMemo(
+    () => ({ open, close, isOpen: target !== null, target }),
+    [open, close, target],
+  );
 
   return (
     <Context.Provider value={api}>

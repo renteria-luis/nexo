@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { Eye, EyeOff } from '../icons.ts';
+import { ChevronRight, Eye, EyeOff } from '../icons.ts';
 
 import type { PaletteId } from '../../core/palettes.ts';
 import {
@@ -97,6 +97,8 @@ export type SettingsScreenProps = {
   onClearSetting: (key: SettingKey) => void;
   onSaveWeight: (weightKg: number) => void;
   onSelectPalette: (palette: PaletteId) => void;
+  /** Lleva a la pantalla donde edita el catalogo de ejercicios. */
+  onOpenExercises: () => void;
 };
 
 /** Los cuatro que puede apagar por su lado. El resumen del domingo va con el cierre. */
@@ -119,6 +121,7 @@ export function SettingsScreen({
   onClearSetting,
   onSaveWeight,
   onSelectPalette,
+  onOpenExercises,
 }: SettingsScreenProps) {
   const pad = useNumberPad();
   const [confirmingReset, setConfirmingReset] = useState(false);
@@ -356,6 +359,18 @@ export function SettingsScreen({
           );
         })}
       </Card>
+
+      <Text style={styles.heading}>Catálogo</Text>
+      <Text style={styles.hint}>
+        Con qué se hace cada ejercicio, lo que dice su (i), en qué gimnasio lo tienes y cuántas
+        series le toca en cada rutina y con cada tiempo.
+      </Text>
+      <Button
+        label="Ejercicios"
+        accessibilityLabel="Editar los ejercicios"
+        icon={ChevronRight}
+        onPress={onOpenExercises}
+      />
 
       <Text style={styles.heading}>Paleta</Text>
       <Text style={styles.hint}>

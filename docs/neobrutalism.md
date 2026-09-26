@@ -315,6 +315,11 @@ list, one for the open exercise with its form). The numbers in the planner's lis
 one place numbered markers are used, because there the order is the content: it is the
 order he will train in, and the selector inside the session follows it (spec 8.5).
 
+Also done: **Ejercicios** (`ExercisesScreen`), the catalogue editor reached from Ajustes:
+a searchable list, then one card per thing that can be changed about the exercise, with
+switches for the implements and the gyms, chips for the tier, and a numeric field per time
+budget. It is the template for any future "edit the data" screen.
+
 Left, screen by screen: Comida (`NutritionScreen`, `FoodLog`, `FoodPicker`, `FoodForm`, `PortionMacros`,
 `BatchPanel`, `FoodsScreen`), Ofertas (`DealsScreen`), the pushed screens (`DayScreen`,
 `ChartsScreen`, `RecordsScreen`, `WeekSummaryScreen`, `ReadingsScreen`,

@@ -14,6 +14,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { AppDataProvider, useAppData } from './src/shell/AppData.tsx';
 import { enabledTabs, type ModuleRegistry } from './src/modules/registry.ts';
 import { DealsScreen } from './src/ui/screens/DealsScreen.tsx';
+import { ExercisesScreen } from './src/ui/screens/ExercisesScreen.tsx';
 import { ExperimentsScreen } from './src/ui/screens/ExperimentsScreen.tsx';
 import { NutritionScreen } from './src/ui/screens/NutritionScreen.tsx';
 import { PendingScreen } from './src/ui/screens/PendingScreen.tsx';
@@ -172,10 +173,12 @@ function TabsScreen() {
 function SettingsRoute() {
   const { state, saveSetting, removeSetting, logDay, resetDatabase, exportData, importData } =
     useAppData();
+  const navigation = useNavigation<{ navigate: (name: string) => void }>();
   if (state.phase !== 'ready') return null;
 
   return (
     <SettingsScreen
+      onOpenExercises={() => navigation.navigate('Ejercicios')}
       settings={state.loaded.settings}
       palette={state.loaded.palette}
       todayWeightKg={state.loaded.today.log?.weight_kg ?? null}
@@ -260,6 +263,13 @@ function Navigation() {
         <RootStack.Screen
           name="Gráficas"
           component={ChartsScreen}
+          options={({ navigation }) => ({
+            headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
+          })}
+        />
+        <RootStack.Screen
+          name="Ejercicios"
+          component={ExercisesScreen}
           options={({ navigation }) => ({
             headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
           })}

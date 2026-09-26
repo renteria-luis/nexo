@@ -36,7 +36,9 @@ const ROW = 86;
 
 /** Lo que se corre una fila que no es la que se arrastra, para abrirle el hueco. */
 function shiftFor(index: number, from: number | null, to: number | null): number {
-  if (from === null || to === null || index === from) return 0;
+  // from menor que cero es "lo que se arrastraba ya no esta en la lista": sin esta
+  // linea, las filas se quedaban corridas y montadas unas encima de otras.
+  if (from === null || from < 0 || to === null || index === from) return 0;
   if (from < to && index > from && index <= to) return -ROW;
   if (from > to && index < from && index >= to) return ROW;
   return 0;
@@ -134,15 +136,17 @@ function Order({
     holding.current = null;
     started.current = null;
     landing.current = null;
-    if (id === null) return;
 
+    // Se limpia siempre, haya habido arrastre o no. Si solo se limpiaba cuando lo habia,
+    // un segundo aviso de soltar (llegan dos: el del dedo y el del gesto) podia dejar
+    // puesto lo despegado y las filas se quedaban corridas, montadas unas sobre otras.
     // Soltar es un solo cambio de estado y ninguna animacion: la fila deja de seguir al
     // dedo porque deja de estar despegada, no porque se mueva un valor animado por otro
     // camino que puede llegar un cuadro despues.
     setHeld(null);
     setTarget(null);
     onDragging(false);
-    if (from !== null && to !== null && to !== from) onReorder(from, to);
+    if (id !== null && from !== null && to !== null && to !== from) onReorder(from, to);
   }, [onDragging, onReorder]);
 
   const drag = useMemo(() => {

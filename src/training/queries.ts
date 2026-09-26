@@ -111,7 +111,21 @@ export async function loadExerciseMuscles(db: SQLiteDatabase): Promise<ExerciseM
   return byExercise;
 }
 
-export type CatalogExercise = TrainingExerciseRow & {
+/** Con lo que tiene sentido cambiar un ejercicio: lo demas no se intercambia. */
+export const SWAPPABLE = ['dumbbell', 'cable', 'machine'] as const;
+
+export type Swappable = (typeof SWAPPABLE)[number];
+
+/** La lista guardada como texto, limpia de lo que no sea un implemento valido. */
+export function parseImplements(stored: string): Swappable[] {
+  const valid = new Set<string>(SWAPPABLE);
+  return stored
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value): value is Swappable => valid.has(value));
+}
+
+export type CatalogExercise = Omit<TrainingExerciseRow, 'implements'> & {
   /** Primary muscle first, then secondaries alphabetically. */
   muscles: MuscleShare[];
   /** The machine it is performed on at this gym, when it is performed on one. */
@@ -122,6 +136,10 @@ export type CatalogExercise = TrainingExerciseRow & {
    * the generic one on the exercise.
    */
   stepKg: number;
+  /** Con que se puede hacer. Vacio: no hay botones que mostrar. */
+  implements: Swappable[];
+  /** La nota de la (i) por implemento. La clave vacia es la general. */
+  notes: ReadonlyMap<string, string>;
 };
 
 /** Spec 5.2: the gyms he trains at, with whatever coordinates they have. */
@@ -151,9 +169,12 @@ export async function listExercises(
   db: SQLiteDatabase,
   gymId?: string,
 ): Promise<CatalogExercise[]> {
-  const [exercises, muscles, links] = await Promise.all([
+  const [exercises, muscles, notes, links] = await Promise.all([
     db.getAllAsync<TrainingExerciseRow>('SELECT * FROM training_exercise ORDER BY name_es;'),
     loadExerciseMuscles(db),
+    db.getAllAsync<{ exercise_id: string; implement: string; note: string }>(
+      'SELECT exercise_id, implement, note FROM training_exercise_note;',
+    ),
     gymId
       ? db.getAllAsync<TrainingEquipmentRow & { exercise_id: string }>(
           `SELECT xe.exercise_id, e.*
@@ -167,6 +188,13 @@ export async function listExercises(
 
   const byExercise = new Map(links.map(({ exercise_id, ...row }) => [exercise_id, row]));
 
+  const byNote = new Map<string, Map<string, string>>();
+  for (const row of notes) {
+    const found = byNote.get(row.exercise_id) ?? new Map<string, string>();
+    found.set(row.implement, row.note);
+    byNote.set(row.exercise_id, found);
+  }
+
   return exercises.map((exercise) => {
     const found = muscles.get(exercise.id);
     // An exercise with no muscles would drop out of every volume count without
@@ -179,6 +207,8 @@ export async function listExercises(
       muscles: [...found],
       equipment,
       stepKg: equipment?.load_increment ?? exercise.load_increment,
+      implements: parseImplements(exercise.implements),
+      notes: byNote.get(exercise.id) ?? new Map(),
     };
   });
 }

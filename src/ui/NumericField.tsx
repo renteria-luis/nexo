@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { TextInput, View, type StyleProp, type TextStyle } from 'react-native';
 
-import { useNumberPad } from './NumberPadHost.tsx';
+import { useNumberPad, type PadTarget } from './NumberPadHost.tsx';
 import { useReveal } from './screens/Screen.tsx';
 import { theme } from './theme.ts';
 
@@ -57,7 +57,11 @@ export function NumericField({
   const reveal = useReveal();
   const input = useRef<TextInput>(null);
   const [draft, setDraft] = useState(value);
-  const [focused, setFocused] = useState(false);
+  // Cual es "su" entrada en el teclado. La raya de estar escribiendo sale de comparar
+  // esta con la que el teclado tiene abierta, y no del foco del campo: al abrirse el
+  // teclado por primera vez el campo pierde el foco, y con el se perdia la raya.
+  const [mine, setMine] = useState<PadTarget | null>(null);
+  const writing = mine !== null && pad.target === mine;
   const notify = useRef(onChange);
   const commit = useRef(onCommit);
 
@@ -114,25 +118,25 @@ export function NumericField({
       placeholder={placeholder}
       placeholderTextColor={theme.textGhost}
       onFocus={() => {
-        setFocused(true);
         onFocus?.();
         // El teclado tapa la mitad de abajo de la pantalla: lo que se escribe se sube.
         reveal(reveals?.current ?? input.current);
-        pad.open({
+        const target: PadTarget = {
           onKey: apply,
           allowDecimal,
           onClose: () => {
-            setFocused(false);
+            setMine(null);
             input.current?.blur();
           },
-        });
+        };
+        setMine(target);
+        pad.open(target);
       }}
       onBlur={() => {
-        setFocused(false);
         onBlur?.();
         onCommit?.();
       }}
-      style={[style, focused && focusedStyle]}
+      style={[style, writing && focusedStyle]}
     />
   );
 }

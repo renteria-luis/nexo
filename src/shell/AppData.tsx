@@ -105,6 +105,19 @@ import {
   type SpoilageWarning,
 } from '../nutrition/index.ts';
 import {
+  listCatalog,
+  loadExerciseCard,
+  setExerciseGym,
+  setExerciseNote,
+  setRoutineReps,
+  setRoutineSets,
+  setRoutineTier,
+  updateExercise,
+  type CatalogEntry,
+  type ExerciseCard,
+  type ExerciseEdit,
+} from '../training/catalog.ts';
+import {
   addSet,
   deleteSet,
   finishSession,
@@ -430,6 +443,28 @@ export type AppData = {
   loadCharts: (days: number) => Promise<ChartsData>;
   /** Todos los dias con rastro dentro de la ventana, del mas nuevo al mas viejo. */
   loadRecords: (window: RecordWindow) => Promise<DayRow[]>;
+
+  /** El catalogo de ejercicios, para la pantalla donde lo edita. */
+  loadCatalog: () => Promise<CatalogEntry[]>;
+  loadExercise: (exerciseId: string) => Promise<ExerciseCard>;
+  editExercise: (exerciseId: string, edit: ExerciseEdit) => Promise<void>;
+  /** La nota de la (i). Implemento vacio es la general. */
+  editExerciseNote: (exerciseId: string, implement: string, note: string) => Promise<void>;
+  editExerciseGym: (exerciseId: string, gymId: string, available: boolean) => Promise<void>;
+  /** Series con ese tiempo. Null lo deja fuera del plan recortado. */
+  editRoutineSets: (
+    routineId: string,
+    exerciseId: string,
+    budget: TimeBudget,
+    sets: number | null,
+  ) => Promise<void>;
+  editRoutineReps: (
+    routineId: string,
+    exerciseId: string,
+    repMin: number | null,
+    repMax: number | null,
+  ) => Promise<void>;
+  editRoutineTier: (routineId: string, exerciseId: string, tier: number) => Promise<void>;
   /** Escribe el registro de cualquier dia, no solo el de hoy. */
   editDay: (date: IsoDate, entry: Omit<DailyLogEntry, 'date'>) => Promise<void>;
   addFoodOn: (date: IsoDate, entry: Omit<NewFoodEntry, 'date'>) => Promise<void>;
@@ -634,6 +669,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const loadPlan = useCallback(
     (routineId: string, budget: TimeBudget, gymId?: string | null) =>
       openDatabase().then((db) => loadRoutinePlan(db, routineId, budget, gymId ?? null)),
+    [],
+  );
+
+  const loadCatalog = useCallback(() => openDatabase().then(listCatalog), []);
+
+  const loadExercise = useCallback(
+    (exerciseId: string) => openDatabase().then((db) => loadExerciseCard(db, exerciseId)),
     [],
   );
 
@@ -866,6 +908,22 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         run((db) => consumeBatchPortion(db, batchId, todayIso(), mealSlot), false),
       loadWeek,
       loadStudies,
+      loadCatalog,
+      loadExercise,
+      // Editar el catalogo no cambia la nota de ningun dia, pero si lo que la pantalla
+      // de entreno tiene delante, asi que se recarga sin el trabajo de fondo.
+      editExercise: (exerciseId, edit) =>
+        write((db) => updateExercise(db, exerciseId, edit), false),
+      editExerciseNote: (exerciseId, implement, note) =>
+        write((db) => setExerciseNote(db, exerciseId, implement, note), false),
+      editExerciseGym: (exerciseId, gymId, available) =>
+        write((db) => setExerciseGym(db, exerciseId, gymId, available), false),
+      editRoutineSets: (routineId, exerciseId, budget, sets) =>
+        write((db) => setRoutineSets(db, routineId, exerciseId, budget, sets), false),
+      editRoutineReps: (routineId, exerciseId, repMin, repMax) =>
+        write((db) => setRoutineReps(db, routineId, exerciseId, repMin, repMax), false),
+      editRoutineTier: (routineId, exerciseId, tier) =>
+        write((db) => setRoutineTier(db, routineId, exerciseId, tier), false),
       refreshDeals: async () => {
         const db = await openDatabase();
         const outcome = await syncDeals(db);
@@ -879,6 +937,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       loadCharts,
       loadDay,
       loadExperiments,
+      loadCatalog,
+      loadExercise,
       loadPlan,
       loadRecords,
       loadStudies,
