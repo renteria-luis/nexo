@@ -17,7 +17,9 @@ import {
   finishSession,
   getSessionOn,
   lastSessionSets,
+  listSetsForSession,
   marksWindow,
+  reopenSession,
   startSession,
 } from './sessions.ts';
 
@@ -439,4 +441,20 @@ test('sin ningun peso registrado una dominada no inventa uno', async () => {
   const [set] = await listWorkingSets(db, { from: '2026-09-13', to: '2026-09-13' });
   assert.equal(set.bodyWeightKg, null);
   assert.equal(volumeLoad([set]), 0);
+});
+
+test('terminar un entreno se puede deshacer', async () => {
+  const db = fresh();
+  const session = await startSession(db, { date: '2026-09-26', timeBudget: 'completo' });
+  await addSet(db, { sessionId: session, exerciseId: 'peck-deck', weightKg: 50, reps: 10 });
+
+  await finishSession(db, session);
+  const closed = await getSessionOn(db, '2026-09-26');
+  assert.ok(closed?.end_time);
+
+  await reopenSession(db, session);
+  const open = await getSessionOn(db, '2026-09-26');
+  assert.equal(open?.end_time, null);
+  // Y lo que ya habia anotado sigue donde estaba.
+  assert.equal((await listSetsForSession(db, session)).length, 1);
 });

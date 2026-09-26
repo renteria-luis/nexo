@@ -1,5 +1,7 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { shortDate } from '../../core/dates.ts';
 import type { Band, MuscleBar } from '../../shell/charts.ts';
 import { MUSCLE_ES } from '../muscles.ts';
 import { mono, theme } from '../theme.ts';
@@ -10,6 +12,9 @@ import { mono, theme } from '../theme.ts';
  * vertical no cabrian.
  */
 export function MuscleBars({ bars, band }: { bars: MuscleBar[]; band: Band }) {
+  // Que ejercicio y que dia lo entreno: abierto solo el que toca, como el resto.
+  const [open, setOpen] = useState<string | null>(null);
+
   if (bars.length === 0) {
     return <Text style={styles.empty}>No hay series en los últimos siete días.</Text>;
   }
@@ -20,13 +25,19 @@ export function MuscleBars({ bars, band }: { bars: MuscleBar[]; band: Band }) {
     <View style={styles.wrapper}>
       {bars.map((bar) => {
         const state = bar.sets < band.from ? 'below' : bar.sets > band.to ? 'above' : 'within';
+        const name = MUSCLE_ES[bar.muscle] ?? bar.muscle;
         return (
-          <View key={bar.muscle} style={styles.row}>
+          <Pressable
+            key={bar.muscle}
+            accessibilityLabel={`Ver qué entrenó ${name}`}
+            onPress={() => setOpen(open === bar.muscle ? null : bar.muscle)}
+            style={styles.row}
+          >
             {/* El nombre encima y no a un lado: "deltoide posterior" no cabe en una
                 columna estrecha, y meterlo dentro de la barra lo tapa justo cuando la
                 barra es corta, que es cuando mas importa leerlo. */}
             <View style={styles.head}>
-              <Text style={styles.label}>{MUSCLE_ES[bar.muscle] ?? bar.muscle}</Text>
+              <Text style={styles.label}>{name}</Text>
               <Text style={styles.value}>{bar.sets}</Text>
             </View>
             <View style={styles.track}>
@@ -49,7 +60,20 @@ export function MuscleBars({ bars, band }: { bars: MuscleBar[]; band: Band }) {
                 ]}
               />
             </View>
-          </View>
+
+            {open === bar.muscle &&
+              bar.sources.map((source) => (
+                <View key={source.exercise} style={styles.source}>
+                  <Text style={styles.sourceName} numberOfLines={1}>
+                    {source.exercise}
+                  </Text>
+                  <Text style={styles.sourceMeta}>
+                    {source.sets} {source.sets === 1 ? 'serie' : 'series'} ·{' '}
+                    {source.days.map((day) => shortDate(day).slice(0, 6)).join(', ')}
+                  </Text>
+                </View>
+              ))}
+          </Pressable>
         );
       })}
       <Text style={styles.footer}>
@@ -104,6 +128,23 @@ const styles = StyleSheet.create({
   value: {
     fontSize: 11,
     color: theme.text,
+    fontFamily: mono,
+  },
+  source: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingTop: 3,
+  },
+  sourceName: {
+    flexShrink: 1,
+    fontSize: 10,
+    color: theme.textFaint,
+    fontFamily: mono,
+  },
+  sourceMeta: {
+    fontSize: 10,
+    color: theme.textGhost,
     fontFamily: mono,
   },
   footer: {

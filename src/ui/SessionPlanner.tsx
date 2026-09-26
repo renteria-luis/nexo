@@ -38,7 +38,7 @@ export type SessionPlannerProps = {
   gyms: GymLocation[];
   /** One reading, taken only when he asks for it (spec 5.2). */
   onLocate: () => Promise<LocationOutcome>;
-  onLoadPlan: (routineId: string, budget: TimeBudget) => Promise<RoutinePlan>;
+  onLoadPlan: (routineId: string, budget: TimeBudget, gymId: string | null) => Promise<RoutinePlan>;
   onStart: (
     routineId: string,
     budget: TimeBudget,
@@ -80,7 +80,9 @@ export function SessionPlanner({
   useEffect(() => {
     if (!selected) return;
     let cancelled = false;
-    onLoadPlan(selected, budget)
+    // El gimnasio entra en el plan: el mismo hueco se hace con la maquina, la polea o
+    // la mancuerna segun lo que haya enfrente.
+    onLoadPlan(selected, budget, gymId)
       .then((loaded) => {
         if (cancelled) return;
         setPlan(loaded);
@@ -94,7 +96,7 @@ export function SessionPlanner({
     return () => {
       cancelled = true;
     };
-  }, [selected, budget, onLoadPlan]);
+  }, [selected, budget, gymId, onLoadPlan]);
 
   // Spec 8.3 rule 6: the estimate follows the overrides, not the untouched plan.
   const seconds = exercises.reduce(

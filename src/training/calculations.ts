@@ -5,6 +5,7 @@
 // TypeScript rather than SQL for the same reason: one user's training history is
 // small, and one copy of a formula cannot disagree with another.
 
+import type { SessionEffort } from '../core/discipline.ts';
 import type { IsoDate } from '../core/dates.ts';
 
 /** A working set, already joined to the day its session happened on. */
@@ -152,6 +153,53 @@ export function setCountsByMuscle(
     }
   }
   return counts;
+}
+
+export type PlannedWork = {
+  exerciseId: string;
+  setsPlanned: number;
+};
+
+/**
+ * Lo que movio una sesion, medido contra su plan.
+ *
+ * Las series se ponderan por lo que toca cada ejercicio, asi que un compuesto pesa
+ * mas que un aislamiento sin tener que decirlo a mano: una serie de press inclinado
+ * suma pecho entero mas medio hombro mas medio triceps, y una de elevaciones suma
+ * un hombro.
+ */
+export function sessionEffort(
+  sets: readonly LoggedSet[],
+  plan: readonly PlannedWork[],
+  muscles: ExerciseMuscles,
+): SessionEffort {
+  const weightOf = (exerciseId: string) =>
+    sharesFor(muscles, exerciseId).reduce((total, share) => total + share.contribution, 0);
+
+  const done = new Set<string>();
+  let work = 0;
+  for (const set of sets) {
+    work += weightOf(set.exerciseId);
+    for (const share of sharesFor(muscles, set.exerciseId)) done.add(share.muscle);
+  }
+
+  const planned = new Set<string>();
+  let workPlanned = 0;
+  let setsPlanned = 0;
+  for (const entry of plan) {
+    workPlanned += weightOf(entry.exerciseId) * entry.setsPlanned;
+    setsPlanned += entry.setsPlanned;
+    for (const share of sharesFor(muscles, entry.exerciseId)) planned.add(share.muscle);
+  }
+
+  return {
+    sets: sets.length,
+    setsPlanned,
+    work,
+    workPlanned,
+    musclesDone: done.size,
+    musclesPlanned: planned.size,
+  };
 }
 
 export type E1rmMark = {

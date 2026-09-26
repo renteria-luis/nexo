@@ -54,6 +54,17 @@ export async function finishSession(db: SQLiteDatabase, sessionId: string): Prom
 }
 
 /**
+ * Deshace el "terminar entreno".
+ *
+ * Es el unico boton de la sesion que no se puede quitar tocando otra cosa, y tocarlo
+ * sin querer a mitad del entreno deja la sesion cerrada con series todavia por hacer.
+ * Borrar la hora de fin la devuelve exactamente a como estaba.
+ */
+export async function reopenSession(db: SQLiteDatabase, sessionId: string): Promise<void> {
+  await db.runAsync('UPDATE training_session SET end_time = NULL WHERE id = ?;', [sessionId]);
+}
+
+/**
  * Spec 8.5: the routine is a choice made before the first set, and a wrong tap there
  * used to stick for the rest of the session. The plan is replaced along with it by
  * the caller, so the session cannot end up training one routine under another's plan.

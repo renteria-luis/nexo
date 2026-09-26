@@ -172,9 +172,55 @@ export async function listRoutines(db: SQLiteDatabase): Promise<TrainingRoutineR
   return db.getAllAsync<TrainingRoutineRow>('SELECT * FROM training_routine ORDER BY rowid;');
 }
 
+/**
+ * La mejor variante de cada ejercicio que exista en ese gimnasio.
+ *
+ * El mismo hueco de la rutina se hace con maquina, polea o mancuerna segun lo que
+ * haya enfrente, y el orden no es un gusto: para las laterales la maquina fija el
+ * hombro, la polea mantiene tension abajo y la mancuerna no hace ninguna de las dos.
+ * Sin gimnasio elegido no hay nada que resolver y manda lo que diga la rutina.
+ */
+async function bestVariants(
+  db: SQLiteDatabase,
+  gymId: string | null,
+): Promise<Map<string, { exerciseId: string; name: string; unilateral: number; rest: number }>> {
+  if (gymId === null) return new Map();
+
+  const rows = await db.getAllAsync<{
+    base_exercise_id: string;
+    exercise_id: string;
+    name_es: string;
+    unilateral: number;
+    default_rest_seconds: number;
+  }>(
+    `SELECT v.base_exercise_id, v.exercise_id, e.name_es, e.unilateral, e.default_rest_seconds
+       FROM training_exercise_variant v
+       JOIN training_exercise e ON e.id = v.exercise_id
+       JOIN training_exercise_gym g ON g.exercise_id = v.exercise_id AND g.gym_id = ?
+   ORDER BY v.base_exercise_id, v.rank;`,
+    [gymId],
+  );
+
+  const best = new Map<
+    string,
+    { exerciseId: string; name: string; unilateral: number; rest: number }
+  >();
+  for (const row of rows) {
+    if (best.has(row.base_exercise_id)) continue;
+    best.set(row.base_exercise_id, {
+      exerciseId: row.exercise_id,
+      name: row.name_es,
+      unilateral: row.unilateral,
+      rest: row.default_rest_seconds,
+    });
+  }
+  return best;
+}
+
 export async function loadRoutine(
   db: SQLiteDatabase,
   routineId: string,
+  gymId: string | null = null,
 ): Promise<RoutineExercise[]> {
   const rows = await db.getAllAsync<RoutineExerciseRow>(
     `SELECT re.exercise_id, e.name_es, re.position, re.tier,
@@ -193,42 +239,56 @@ export async function loadRoutine(
     [routineId],
   );
 
-  return rows.map((row) => ({
-    exerciseId: row.exercise_id,
-    name: row.name_es,
-    unilateral: row.unilateral === 1,
-    fullTime:
-      row.full_time_exercise_id === null
+  const variants = await bestVariants(db, gymId);
+
+  return rows.map((row) => {
+    const here = variants.get(row.exercise_id);
+    const fullTime = here
+      ? {
+          exerciseId: here.exerciseId,
+          name: here.name,
+          unilateral: here.unilateral === 1,
+          defaultRestSeconds: here.rest,
+        }
+      : row.full_time_exercise_id === null
         ? null
         : {
             exerciseId: row.full_time_exercise_id,
             name: row.full_time_name ?? row.full_time_exercise_id,
             unilateral: row.full_time_unilateral === 1,
             defaultRestSeconds: row.full_time_rest_seconds ?? row.default_rest_seconds,
-          },
-    position: row.position,
-    tier: row.tier,
-    setsFull: row.sets_full,
-    setsMinus25: row.sets_minus_25,
-    setsMinus50: row.sets_minus_50,
-    setsExpress: row.sets_express,
-    repMode: row.target_rep_mode,
-    repMin: row.target_rep_min,
-    repMax: row.target_rep_max,
-    defaultRestSeconds: row.default_rest_seconds,
-  }));
+          };
+
+    return {
+      exerciseId: row.exercise_id,
+      name: row.name_es,
+      unilateral: row.unilateral === 1,
+      fullTime,
+      position: row.position,
+      tier: row.tier,
+      setsFull: row.sets_full,
+      setsMinus25: row.sets_minus_25,
+      setsMinus50: row.sets_minus_50,
+      setsExpress: row.sets_express,
+      repMode: row.target_rep_mode,
+      repMin: row.target_rep_min,
+      repMax: row.target_rep_max,
+      defaultRestSeconds: row.default_rest_seconds,
+    };
+  });
 }
 
 export async function loadRoutinePlan(
   db: SQLiteDatabase,
   routineId: string,
   budget: TimeBudget,
+  gymId: string | null = null,
 ): Promise<RoutinePlan> {
   const [routine, exercises] = await Promise.all([
     db.getFirstAsync<TrainingRoutineRow>('SELECT * FROM training_routine WHERE id = ?;', [
       routineId,
     ]),
-    loadRoutine(db, routineId),
+    loadRoutine(db, routineId, gymId),
   ]);
   if (!routine) throw new Error(`there is no routine called ${routineId}`);
 

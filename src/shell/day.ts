@@ -7,7 +7,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { readDailyLog, toDisciplineDay } from '../core/daily-log.ts';
 import { addDays, type IsoDate } from '../core/dates.ts';
-import { scoreDay, type DisciplineResult } from '../core/discipline.ts';
+import { scoreDay, type DisciplineResult, type SessionEffort } from '../core/discipline.ts';
 import { comparisonFloor, isReEntryActive } from '../core/re-entry.ts';
 import { readSettings, reEntryFrom } from '../core/settings.ts';
 import { targetsInForceOn } from '../core/snapshots.ts';
@@ -27,7 +27,10 @@ import {
   listExercises,
   listSessionDates,
   listWorkingSets,
+  loadExerciseMuscles,
+  loadSessionPlan,
   marksWindow,
+  sessionEffort,
   sessionsInBestWeekAround,
   sessionsInTrailingWeek,
   trainedOn,
@@ -49,6 +52,8 @@ export type AssembledDay = {
   /** Null when there are no targets yet, because nothing can be scored against nothing. */
   result: DisciplineResult | null;
   trained: boolean | null;
+  /** Lo que movio la sesion de ese dia, o null si no hubo. */
+  effort: SessionEffort | null;
   /** Spec 4.3: la mejor semana que contiene el dia, que es la que decide si un descanso marcado gana sus puntos. */
   bestWeekSessions: number;
   reEntryActive: boolean;
@@ -74,6 +79,18 @@ export async function assembleDay(
   ]);
 
   const sessionSets = session ? await listWorkingSets(db, { from: date, to: date }) : [];
+  // Spec 4.1: los 22 puntos del entreno salen de lo que movio contra lo que tocaba,
+  // asi que hace falta el plan de esa sesion y a que musculos toca cada ejercicio.
+  const [plan, muscles] = session
+    ? await Promise.all([loadSessionPlan(db, session.id), loadExerciseMuscles(db)])
+    : [[], new Map()];
+  const effort = session
+    ? sessionEffort(
+        sessionSets,
+        plan.map((entry) => ({ exerciseId: entry.exerciseId, setsPlanned: entry.sets })),
+        muscles,
+      )
+    : null;
 
   // A day still open has not failed to train yet; a day already past did.
   const trained = trainedOn(sessionDates, date) ? true : date < today ? false : null;
@@ -90,6 +107,7 @@ export async function assembleDay(
     ? scoreDay(
         toDisciplineDay(log, {
           trained,
+          effort,
           proteinG: nutrition?.proteinG ?? null,
           kcal: nutrition?.kcal ?? null,
           isTrainingDay: trained === true,
@@ -113,6 +131,7 @@ export async function assembleDay(
     portions,
     result,
     trained,
+    effort,
     bestWeekSessions,
     reEntryActive,
     session,

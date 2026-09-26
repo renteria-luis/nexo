@@ -183,9 +183,54 @@ export function missedTrainingPenalty(consecutiveMissed: number): number {
   return PENALTY_BY_CONSECUTIVE_MISSES[capped];
 }
 
+/**
+ * Lo que de verdad movio la sesion, medido contra lo que tocaba.
+ *
+ * Las series ponderadas cuentan cuanto toca cada ejercicio: una serie de press
+ * inclinado suma pecho entero y medio hombro y medio triceps, y una de elevaciones
+ * suma un hombro y nada mas. Asi un ejercicio compuesto vale mas que uno de
+ * aislamiento sin tener que decirlo a mano.
+ */
+export type SessionEffort = {
+  /** Series hechas y planeadas, a secas, que es lo que se le muestra. */
+  sets: number;
+  setsPlanned: number;
+  /** Las mismas, ponderadas por los musculos que toca cada ejercicio. */
+  work: number;
+  workPlanned: number;
+  /** Musculos que quedaron tocados, y los que el plan pedia. */
+  musclesDone: number;
+  musclesPlanned: number;
+};
+
+/**
+ * Spec 8.2 y 8.3: una sesion completa suya anda por las quince series de cuatro o
+ * cinco ejercicios, que ponderadas son del orden de veinticuatro. Solo se usa cuando
+ * entreno sin plan, que es cuando no hay con que compararlo.
+ */
+export const REFERENCE_WORK = 24;
+
+/**
+ * Spec 4.1. Los 22 puntos del entreno dejan de ser un interruptor.
+ *
+ * Una serie suelta no es una sesion: antes abrir la app y anotar un press ya daba los
+ * 22 puntos enteros. Ahora la nota es lo que hizo contra lo que tocaba, con una parte
+ * reservada a cuantos de los musculos del dia llego a tocar, porque quince series de
+ * una sola cosa no son el dia que el plan pedia.
+ */
+export function trainingFraction(effort: SessionEffort): number {
+  const target = effort.workPlanned > 0 ? effort.workPlanned : REFERENCE_WORK;
+  const work = Math.min(1, effort.work / target);
+  const spread =
+    effort.musclesPlanned > 0 ? Math.min(1, effort.musclesDone / effort.musclesPlanned) : work;
+  return Math.min(1, 0.75 * work + 0.25 * spread);
+}
+
 export type DisciplineDay = {
   /** Null until the day is over or a session is logged. */
   trained: boolean | null;
+  /** Lo que hizo en esa sesion. Null cuando no hay sesion que medir. */
+  effort?: SessionEffort | null;
   sleepMinutes: number | null;
   proteinG: number | null;
   kcal: number | null;
@@ -239,7 +284,11 @@ export function scoreCriteria(
     {
       id: 'trained',
       weight: CRITERION_WEIGHTS.trained,
-      fraction: restCountsAsTrained(training) ? 1 : binary(day.trained),
+      fraction: restCountsAsTrained(training)
+        ? 1
+        : day.trained !== true || !day.effort
+          ? binary(day.trained)
+          : trainingFraction(day.effort),
     },
     {
       id: 'sleep',

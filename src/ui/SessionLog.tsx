@@ -18,6 +18,19 @@ import { Button } from './Button.tsx';
 import { NumericField } from './NumericField.tsx';
 import { mono, theme } from './theme.ts';
 
+/**
+ * Con que se puede hacer el mismo ejercicio.
+ *
+ * Solo la mancuerna se escribe por mano: en polea y en maquina el numero del pin ya
+ * es todo lo que se movio. Sin la opcion de maquina habia que marcar mancuerna y el
+ * volumen salia al doble.
+ */
+const IMPLEMENTS: { id: Implement; short: string; long: string }[] = [
+  { id: 'dumbbell', short: 'mancuerna', long: 'Con mancuernas' },
+  { id: 'cable', short: 'polea', long: 'En polea' },
+  { id: 'machine', short: 'máquina', long: 'En máquina' },
+];
+
 /** Donde cae casi siempre una serie efectiva, asi que el primer toque arranca ahi. */
 const RPE_START = 8;
 const RPE_MAX = 10;
@@ -106,6 +119,8 @@ export type SessionLogProps = {
   /** Set once he closes the session, which turns the button into a note. */
   finishedAt: number | null;
   onFinish: () => void;
+  /** Deshace el terminar: es el unico boton de aqui sin vuelta atras. */
+  onReopen: () => void;
 };
 
 export function SessionLog({
@@ -129,6 +144,7 @@ export function SessionLog({
   onDraftChange,
   finishedAt,
   onFinish,
+  onReopen,
 }: SessionLogProps) {
   const exercise = exercises.find((item) => item.id === selectedExerciseId) ?? null;
 
@@ -154,6 +170,9 @@ export function SessionLog({
   // Spec 9: the rest counts itself up from the last set. It is a reading, not a
   // timer he starts, and nothing happens when it passes the target.
   // Spec 10: the cues open on demand, because mid-set he is looking at the numbers.
+  // Reabrir el entreno se pregunta: el boton esta al lado de la hora de fin y un
+  // dedazo ahi vuelve a abrir una sesion que ya estaba cerrada.
+  const [reopening, setReopening] = useState(false);
   const [showTechnique, setShowTechnique] = useState(false);
   // Con que lo esta haciendo hoy. Null es "con lo que dice el catalogo".
   const [implement, setImplement] = useState<Implement | null>(
@@ -201,9 +220,14 @@ export function SessionLog({
   const stepKg = unit === 'lb' ? toKg(5, 'lb') : 2.5;
   // El martillo y las laterales se hacen con mancuernas o en polea, y el numero que
   // escribe significa una cosa distinta en cada caso, asi que se elige aqui.
+  // Las laterales y el martillo se hacen con mancuerna, en polea o en la maquina, y
+  // el numero que escribe significa una cosa distinta en cada caso: con mancuerna es
+  // el de una mano, con polea y con maquina ya es todo lo que movio.
   const swappable =
     exercise !== null &&
-    (exercise.equipment_type === 'dumbbell' || exercise.equipment_type === 'cable');
+    (exercise.equipment_type === 'dumbbell' ||
+      exercise.equipment_type === 'cable' ||
+      exercise.equipment_type === 'machine');
   const doneWith = implement ?? exercise?.equipment_type ?? null;
   // Con mancuernas escribe lo que dice una, porque es lo que se lee agachado al
   // lado del rack. El volumen ya cuenta las dos por su cuenta.
@@ -350,17 +374,20 @@ export function SessionLog({
                 </Pressable>
               )}
               {swappable &&
-                (['dumbbell', 'cable'] as const).map((option) => (
+                IMPLEMENTS.map((option) => (
                   <Pressable
-                    key={option}
-                    accessibilityLabel={option === 'dumbbell' ? 'Con mancuernas' : 'En polea'}
-                    onPress={() => setImplement(option)}
-                    style={[styles.implement, doneWith === option && styles.implementOn]}
+                    key={option.id}
+                    accessibilityLabel={option.long}
+                    onPress={() => setImplement(option.id)}
+                    style={[styles.implement, doneWith === option.id && styles.implementOn]}
                   >
                     <Text
-                      style={[styles.implementText, doneWith === option && styles.implementTextOn]}
+                      style={[
+                        styles.implementText,
+                        doneWith === option.id && styles.implementTextOn,
+                      ]}
                     >
-                      {option === 'dumbbell' ? 'mancuerna' : 'polea'}
+                      {option.short}
                     </Text>
                   </Pressable>
                 ))}
@@ -611,11 +638,50 @@ export function SessionLog({
             style={styles.finish}
           />
         ) : (
-          <Text style={styles.finished}>Entreno terminado a las {hhmm(finishedAt)}</Text>
+          <View style={styles.finishedRow}>
+            <Text style={styles.finished}>Entreno terminado a las {hhmm(finishedAt)}</Text>
+            <Pressable accessibilityLabel="Seguir entrenando" onPress={() => setReopening(true)}>
+              <Text style={styles.reopen}>seguir entrenando</Text>
+            </Pressable>
+
+            {/* Pegado al boton y no un modal: el teclado de la app vive en la raiz y
+                un modal de iOS lo dejaria debajo. */}
+            {reopening && (
+              <View style={styles.confirm}>
+                <Text style={styles.confirmText}>
+                  ¿Seguir entrenando? El entreno vuelve a quedar abierto.
+                </Text>
+                <View style={styles.confirmButtons}>
+                  <Pressable
+                    accessibilityLabel="No seguir entrenando"
+                    onPress={() => setReopening(false)}
+                  >
+                    <Text style={styles.confirmNo}>No</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityLabel="Sí, seguir entrenando"
+                    onPress={() => {
+                      setReopening(false);
+                      onReopen();
+                    }}
+                    style={styles.confirmYes}
+                  >
+                    <Text style={styles.confirmYesText}>Sí, seguir</Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
+          </View>
         )}
 
+        {/* Con el entreno cerrado el reloj se para en lo que duro: si no, seguia
+            corriendo toda la noche. */}
         {startedAt !== null && (
-          <Text style={styles.sessionClock}>Entrenando {clock((now - startedAt) / 1000)}</Text>
+          <Text style={styles.sessionClock}>
+            {finishedAt === null
+              ? `Entrenando ${clock((now - startedAt) / 1000)}`
+              : `Duró ${clock((finishedAt - startedAt) / 1000)}`}
+          </Text>
         )}
       </>
     </View>
@@ -908,6 +974,59 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: theme.danger,
     fontFamily: mono,
+  },
+  finishedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  confirm: {
+    position: 'absolute',
+    right: 0,
+    bottom: '100%',
+    marginBottom: 6,
+    width: 236,
+    borderWidth: 1,
+    borderColor: theme.accent,
+    borderRadius: 8,
+    backgroundColor: theme.bg,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    gap: 8,
+  },
+  confirmText: {
+    fontSize: 11,
+    fontFamily: mono,
+    color: theme.text,
+  },
+  confirmButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 14,
+  },
+  confirmNo: {
+    fontSize: 12,
+    fontFamily: mono,
+    color: theme.textFaint,
+  },
+  confirmYes: {
+    borderWidth: 1,
+    borderColor: theme.lineStrong,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  confirmYesText: {
+    fontSize: 12,
+    fontFamily: mono,
+    color: theme.text,
+  },
+  reopen: {
+    fontSize: 11,
+    fontFamily: mono,
+    color: theme.accent,
   },
   sessionClock: {
     fontSize: 12,

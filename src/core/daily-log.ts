@@ -6,7 +6,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import type { CoreDailyLogRow, SleepSource, SqlBool } from '../db/types.ts';
 
 import type { DateRange, IsoDate } from './dates.ts';
-import type { DisciplineDay } from './discipline.ts';
+import type { DisciplineDay, SessionEffort } from './discipline.ts';
 
 export type DailyLogEntry = {
   date: IsoDate;
@@ -177,6 +177,8 @@ function fromSqlBool(value: SqlBool | null): boolean | null {
 export type DayFacts = {
   /** Null while the day is still open and no session has been logged. */
   trained: boolean | null;
+  /** Lo que movio la sesion, para los 22 puntos de spec 4.1. */
+  effort?: SessionEffort | null;
   proteinG: number | null;
   kcal: number | null;
   isTrainingDay: boolean;
@@ -190,6 +192,7 @@ export type DayFacts = {
 export function toDisciplineDay(log: CoreDailyLogRow | null, facts: DayFacts): DisciplineDay {
   return {
     trained: facts.trained,
+    effort: facts.effort ?? null,
     sleepMinutes: log?.sleep_minutes ?? null,
     proteinG: facts.proteinG,
     kcal: facts.kcal,

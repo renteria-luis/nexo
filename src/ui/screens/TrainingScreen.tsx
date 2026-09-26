@@ -23,6 +23,7 @@ export function TrainingScreen() {
     saveSetting,
     saveDraft,
     endSession,
+    reopenSession,
     switchRoutine,
     whereAmI,
   } = useAppData();
@@ -175,6 +176,7 @@ export function TrainingScreen() {
             }
             finishedAt={session.end_time}
             onFinish={endSession}
+            onReopen={reopenSession}
           />
         </>
       )}

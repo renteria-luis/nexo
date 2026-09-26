@@ -38,6 +38,8 @@ import { sql as foodKeywords } from './037_food_keywords.ts';
 import { sql as softerCurves } from './038_softer_curves.ts';
 import { sql as foodArchived } from './039_food_archived.ts';
 import { sql as foodQuickAmounts } from './040_food_quick_amounts.ts';
+import { sql as trainingScore } from './041_training_score.ts';
+import { sql as lateralRaiseMachine } from './042_lateral_raise_machine.ts';
 
 export type Migration = {
   id: string;
@@ -87,4 +89,6 @@ export const migrations: Migration[] = [
   { id: '038_softer_curves', sql: softerCurves },
   { id: '039_food_archived', sql: foodArchived },
   { id: '040_food_quick_amounts', sql: foodQuickAmounts },
+  { id: '041_training_score', sql: trainingScore },
+  { id: '042_lateral_raise_machine', sql: lateralRaiseMachine },
 ];

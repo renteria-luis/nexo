@@ -148,3 +148,29 @@ sus días siguen diciendo lo mismo, y se recupera desde "ver archivados". El avi
 pantalla dice cuál de las dos cosas pasó.
 Rejected: Borrar en cascada las porciones. Es la forma más rápida de perder semanas de
 registro por un toque.
+
+## 2026-09-26 — Los 22 puntos del entreno dejan de ser un interruptor
+Context: Una serie de press inclinado ya marcaba 22/22, igual que la sesión entera.
+Decision: La nota del entreno es 0.75 × (series ponderadas hechas / planeadas) +
+0.25 × (músculos tocados / músculos del plan). Las series se ponderan con las
+contribuciones que cada ejercicio ya tenía en el catálogo (1.0 al primario, 0.5 a los
+secundarios), así que un compuesto vale más que un aislamiento sin tener que decirlo a
+mano. Sin plan, el denominador es una sesión de referencia de 24 series ponderadas.
+Rejected: Meter el volumen levantado como multiplicador. Su propia readaptación de
+§6.5 entrena al 70% de la carga a propósito, y eso saldría como un día malo.
+
+## 2026-09-26 — Borrar un alimento que ya comió lo archiva; terminar un entreno se deshace
+Context: Tocó "terminar entreno" sin querer a mitad de la sesión y no había vuelta
+atrás; el reloj además seguía corriendo con la sesión cerrada.
+Decision: Un botón "seguir entrenando" que borra la hora de fin y deja la sesión como
+estaba, y el reloj se para en lo que duró. Es el único botón de la sesión sin vuelta
+atrás; el resto ya se deshacen quitando la serie.
+
+## 2026-09-26 — El plan elige la variante del ejercicio según el gimnasio
+Context: En Fit4Less el plan salía con las laterales en polea aunque ahí está la
+máquina Nautilus, que las recomendaciones ponen como primera opción.
+Decision: Una tabla de variantes con rango (máquina 1, polea 2, mancuerna la base) y
+el plan se queda con la mejor que exista en el gimnasio de esa sesión. Sin gimnasio
+elegido manda lo que diga la rutina.
+Rejected: Una columna por gimnasio en la rutina. No escala y repite la misma pregunta
+para cada máquina nueva.

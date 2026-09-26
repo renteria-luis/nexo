@@ -342,9 +342,9 @@ test('the exercise catalog seeds the routine the owner trains today', () => {
   const row = db.prepare('SELECT COUNT(*) AS count FROM training_exercise;').get() as {
     count: number;
   };
-  // Los dieciseis de siempre, la version en polea de las laterales y el curl
-  // inverso, que es el primer antebrazo directo del catalogo.
-  assert.equal(row.count, 18);
+  // Los dieciseis de siempre, las dos versiones de las laterales que no son
+  // mancuerna (polea y maquina) y el curl inverso, primer antebrazo directo.
+  assert.equal(row.count, 19);
 });
 
 test('every seeded exercise has exactly one primary muscle row', () => {

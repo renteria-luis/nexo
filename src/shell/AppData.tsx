@@ -99,6 +99,7 @@ import {
   addSet,
   deleteSet,
   finishSession,
+  reopenSession as reopenSessionInDb,
   listGyms,
   listRoutines,
   listSessionDates,
@@ -344,7 +345,7 @@ export type AppData = {
   /** Spec 5.2: asked for once, by him, never watched. */
   whereAmI: () => Promise<LocationOutcome>;
   /** The trimmed plan for a routine at a budget, for the screen that asks approval. */
-  loadPlan: (routineId: string, budget: TimeBudget) => Promise<RoutinePlan>;
+  loadPlan: (routineId: string, budget: TimeBudget, gymId?: string | null) => Promise<RoutinePlan>;
   logSet: (
     weightKg: number,
     reps: number,
@@ -353,6 +354,8 @@ export type AppData = {
   describeSession: (details: SessionDetails) => void;
   /** Writes the end time. Spec 6: the session is over when he says it is. */
   endSession: () => void;
+  /** Deshace el terminar entreno, que es el unico boton sin vuelta atras. */
+  reopenSession: () => void;
   /** Corrects a routine picked by mistake, replanning at the budget already chosen. */
   switchRoutine: (routineId: string) => void;
   loadExperiments: () => Promise<ExperimentWithReadings[]>;
@@ -534,8 +537,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         await saveSessionPlan(db, sessionId, plan);
       }),
     whereAmI: () => locateGym(loaded?.gyms ?? []),
-    loadPlan: (routineId, budget) =>
-      openDatabase().then((db) => loadRoutinePlan(db, routineId, budget)),
+    loadPlan: (routineId, budget, gymId) =>
+      openDatabase().then((db) => loadRoutinePlan(db, routineId, budget, gymId ?? null)),
     logSet: (weightKg, reps, extra) => {
       const sessionId = loaded?.today.session?.id;
       if (!sessionId || !exerciseId) return;
@@ -551,11 +554,16 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       if (!sessionId) return;
       run((db) => finishSession(db, sessionId));
     },
+    reopenSession: () => {
+      const sessionId = loaded?.today.session?.id;
+      if (!sessionId) return;
+      run((db) => reopenSessionInDb(db, sessionId));
+    },
     switchRoutine: (routineId) => {
       const session = loaded?.today.session;
       if (!session) return;
       run(async (db) => {
-        const plan = await loadRoutinePlan(db, routineId, session.time_budget);
+        const plan = await loadRoutinePlan(db, routineId, session.time_budget, session.gym_id);
         await setSessionRoutine(db, session.id, routineId);
         await saveSessionPlan(db, session.id, plan.exercises);
       });

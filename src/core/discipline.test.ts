@@ -9,9 +9,12 @@ import {
   isScheduledToday,
   longestStreak,
   missedTrainingPenalty,
+  REFERENCE_WORK,
   scoreDay,
+  trainingFraction,
   trainingDebt,
   type DisciplineDay,
+  type SessionEffort,
   type TrainingContext,
 } from './discipline.ts';
 import { MINIMUM_CRITERIA_WITH_DATA } from './scoring.ts';
@@ -375,4 +378,35 @@ test('streaks count days at seventy or better and stop at a gap', () => {
 
   assert.equal(longestStreak([80, 90, 60, 75, 75, 75, 40]), 3);
   assert.equal(longestStreak([null, null]), 0);
+});
+
+test('el entreno vale por lo que movio contra lo que tocaba', () => {
+  const at = (effort: Partial<SessionEffort>) =>
+    trainingFraction({
+      sets: 0,
+      setsPlanned: 0,
+      work: 0,
+      workPlanned: 0,
+      musclesDone: 0,
+      musclesPlanned: 0,
+      ...effort,
+    });
+
+  // El plan entero, con todos sus musculos: los 22 puntos.
+  close(at({ work: 30, workPlanned: 30, musclesDone: 6, musclesPlanned: 6 }), 1);
+  // Y pasarse del plan no da mas.
+  close(at({ work: 45, workPlanned: 30, musclesDone: 6, musclesPlanned: 6 }), 1);
+
+  // Una serie suelta de un plan de quince: casi nada.
+  const single = at({ work: 2, workPlanned: 30, musclesDone: 3, musclesPlanned: 6 });
+  assert.ok(single > 0 && single < 0.2);
+
+  // Media sesion repartida vale mas que media sesion de una sola cosa.
+  const spread = at({ work: 15, workPlanned: 30, musclesDone: 6, musclesPlanned: 6 });
+  const narrow = at({ work: 15, workPlanned: 30, musclesDone: 2, musclesPlanned: 6 });
+  assert.ok(spread > narrow);
+
+  // Sin plan se compara contra una sesion suya de referencia.
+  close(at({ work: REFERENCE_WORK }), 1);
+  close(at({ work: REFERENCE_WORK / 2 }), 0.5);
 });

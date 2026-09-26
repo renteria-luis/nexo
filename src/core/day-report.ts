@@ -12,6 +12,7 @@ import {
   SLEEP_FULL_MINUTES,
   type CriterionId,
   type DisciplineResult,
+  type SessionEffort,
 } from './discipline.ts';
 import { kcalBand, proteinBand, type TargetValues } from './targets.ts';
 
@@ -81,11 +82,13 @@ export type ReportInput = {
   targets: TargetValues | null;
   nutrition: { kcal: number; proteinG: number } | null;
   trained: boolean | null;
+  /** Lo que movio la sesion, para poder decir "3 de 15 series" en vez de "entreno". */
+  effort?: SessionEffort | null;
   isTrainingDay: boolean;
 };
 
 function lines(input: ReportInput): CriterionLine[] {
-  const { log, targets, nutrition, trained } = input;
+  const { log, targets, nutrition, trained, effort } = input;
   const fractions = new Map(
     (input.result?.criteria ?? []).map((criterion) => [criterion.id, criterion.fraction]),
   );
@@ -116,10 +119,17 @@ function lines(input: ReportInput): CriterionLine[] {
           ? 'descanso planeado'
           : trained === null
             ? 'el día no terminó'
-            : trained
-              ? 'entrenó'
-              : 'no entrenó',
-      target: null,
+            : !trained
+              ? 'no entrenó'
+              : effort
+                ? `${effort.sets} series`
+                : 'entrenó',
+      // Spec 4.1: los puntos salen de lo hecho contra lo planeado, asi que la linea
+      // tiene que decir contra que se midio.
+      target:
+        trained === true && effort && effort.setsPlanned > 0
+          ? `${effort.setsPlanned} del plan`
+          : null,
     },
     {
       id: 'sleep',

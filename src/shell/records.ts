@@ -120,6 +120,7 @@ export async function loadDayDetail(
       targets: day.targets,
       nutrition: day.nutrition,
       trained: day.trained,
+      effort: day.effort,
       isTrainingDay: day.trained === true,
     }),
     exercises,

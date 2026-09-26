@@ -185,3 +185,21 @@ test('the plan he approved is what the session remembers', async () => {
   assert.equal(stored[0].sets, 5);
   assert.equal((await loadRoutine(db, 'legs'))[0].setsFull, 3);
 });
+
+test('en el gimnasio que tiene la maquina, el plan sale con la maquina', async () => {
+  const db = fresh();
+
+  // Fit4Less tiene la Nautilus de laterales; Fanshawe no.
+  const f4l = await loadRoutinePlan(db, 'push', 'completo', 'fit4less-proudfoot');
+  const fanshawe = await loadRoutinePlan(db, 'push', 'completo', 'fanshawe');
+  const anywhere = await loadRoutinePlan(db, 'push', 'completo');
+
+  const lateral = (plan: Awaited<ReturnType<typeof loadRoutinePlan>>) =>
+    plan.exercises.find((exercise) => exercise.exerciseId.startsWith('lateral-raise'))?.exerciseId;
+
+  assert.equal(lateral(f4l), 'lateral-raise-machine');
+  // En Fanshawe la maquina no existe, asi que se queda la polea de siempre.
+  assert.equal(lateral(fanshawe), 'lateral-raise-cable');
+  // Sin gimnasio elegido no hay nada que resolver.
+  assert.equal(lateral(anywhere), 'lateral-raise-cable');
+});

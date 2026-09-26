@@ -24,7 +24,19 @@ import { SET_BAND } from './week.ts';
 export type Point = { date: IsoDate; value: number };
 export type Band = { from: number; to: number };
 
-export type MuscleBar = { muscle: string; sets: number };
+export type MuscleSource = {
+  exercise: string;
+  sets: number;
+  /** Los dias en que lo entreno, para poder decir cuando y no solo cuanto. */
+  days: IsoDate[];
+};
+
+export type MuscleBar = {
+  muscle: string;
+  sets: number;
+  /** Que ejercicios sumaron esas series directas, de mas a menos. */
+  sources: MuscleSource[];
+};
 
 export type ExerciseTrend = {
   exerciseId: string;
@@ -105,13 +117,38 @@ export async function loadCharts(
     kcal.push({ date, value: totals.kcal });
   }
 
+  const nameOf = new Map(names.map((row) => [row.id, row.name_es]));
+
+  // Las series directas de cada musculo, repartidas por ejercicio y por dia: la barra
+  // dice cuanto y esto dice de donde salio, que es lo que se pregunta despues.
+  const sourcesByMuscle = new Map<string, Map<string, { sets: number; days: Set<IsoDate> }>>();
+  for (const set of weekSets) {
+    for (const share of muscleMap.get(set.exerciseId) ?? []) {
+      if (share.contribution !== 1) continue;
+      const byExercise = sourcesByMuscle.get(share.muscle) ?? new Map();
+      const current = byExercise.get(set.exerciseId) ?? { sets: 0, days: new Set<IsoDate>() };
+      current.sets += 1;
+      current.days.add(set.date);
+      byExercise.set(set.exerciseId, current);
+      sourcesByMuscle.set(share.muscle, byExercise);
+    }
+  }
+
   const counts = setCountsByMuscle(weekSets, muscleMap);
   const muscles: MuscleBar[] = [...counts.entries()]
-    .map(([muscle, count]) => ({ muscle, sets: count.direct }))
+    .map(([muscle, count]) => ({
+      muscle,
+      sets: count.direct,
+      sources: [...(sourcesByMuscle.get(muscle)?.entries() ?? [])]
+        .map(([exerciseId, source]) => ({
+          exercise: nameOf.get(exerciseId) ?? exerciseId,
+          sets: source.sets,
+          days: [...source.days].sort(),
+        }))
+        .sort((a, b) => b.sets - a.sets),
+    }))
     .filter((bar) => bar.sets > 0)
     .sort((a, b) => b.sets - a.sets);
-
-  const nameOf = new Map(names.map((row) => [row.id, row.name_es]));
   const byExercise = new Map<string, Map<IsoDate, typeof sets>>();
   for (const set of sets) {
     const days = byExercise.get(set.exerciseId) ?? new Map();

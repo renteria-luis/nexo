@@ -9,6 +9,7 @@ import { writeSetting } from '../core/settings.ts';
 import { writeTargetSnapshot } from '../core/snapshots.ts';
 import { computeTargets, type TargetProfile } from '../core/targets.ts';
 import { migrations } from '../db/migrations/index.ts';
+import { addSet } from '../training/index.ts';
 
 import { assembleDay } from './day.ts';
 
@@ -118,16 +119,34 @@ test('a day still open has not failed to train; a day already past has', async (
   assert.equal(closed.trained, false);
 });
 
-test('a logged session marks the day as trained', async () => {
+test('una sesion vale por lo que movio, no por estar abierta', async () => {
   const { db, raw } = await fixture();
   raw.exec(
     `INSERT INTO training_session (id, date, time_budget) VALUES ('s1', '${TODAY}', 'completo');`,
   );
   await upsertDailyLog(db, { date: TODAY, waterMl: 3500, creatineTaken: true });
 
-  const day = await assembleDay(db, TODAY, TODAY);
-  assert.equal(day.trained, true);
-  assert.equal(day.result?.criteria.find((c) => c.id === 'trained')?.fraction, 1);
+  const trained = (day: Awaited<ReturnType<typeof assembleDay>>) =>
+    day.result?.criteria.find((c) => c.id === 'trained')?.fraction ?? 0;
+
+  // Abierta y vacia: el dia cuenta como entrenado, pero no ha movido nada.
+  const empty = await assembleDay(db, TODAY, TODAY);
+  assert.equal(empty.trained, true);
+  assert.equal(trained(empty), 0);
+
+  // Una serie suelta tampoco es una sesion.
+  await addSet(db, { sessionId: 's1', exerciseId: 'incline-db-press', weightKg: 30, reps: 8 });
+  const single = await assembleDay(db, TODAY, TODAY);
+  assert.ok(trained(single) > 0 && trained(single) < 0.2);
+  assert.equal(single.effort?.sets, 1);
+
+  // Doce series repartidas ya son el dia entero.
+  for (let i = 0; i < 5; i += 1) {
+    await addSet(db, { sessionId: 's1', exerciseId: 'incline-db-press', weightKg: 30, reps: 8 });
+    await addSet(db, { sessionId: 's1', exerciseId: 'peck-deck', weightKg: 50, reps: 12 });
+  }
+  const full = await assembleDay(db, TODAY, TODAY);
+  assert.ok(trained(full) > trained(single));
 });
 
 test('re-entry reaches the day through the settings, not through a flag passed by hand', async () => {
