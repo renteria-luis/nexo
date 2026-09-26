@@ -14,7 +14,7 @@ import {
   type RecordSort,
   type RecordWindow,
 } from '../../shell/records.ts';
-import { ChevronRight } from 'lucide-react-native';
+import { ChevronRight } from '../icons.ts';
 
 import { mono, sheet, theme } from '../theme.ts';
 

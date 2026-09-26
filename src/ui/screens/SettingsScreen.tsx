@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { Eye, EyeOff } from 'lucide-react-native';
+import { Eye, EyeOff } from '../icons.ts';
 
 import type { PaletteId } from '../../core/palettes.ts';
 import {

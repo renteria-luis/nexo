@@ -5,10 +5,11 @@ import type { GymLocation } from '../core/geo.ts';
 import type { Company, TrainingRoutineRow } from '../db/types.ts';
 import type { LocationOutcome } from '../shell/location.ts';
 import type { PlannedExercise, RoutinePlan, TimeBudget } from '../training/index.ts';
-import { Moon, Play } from 'lucide-react-native';
+import { Moon, Play } from './icons.ts';
 
 import { Button } from './Button.tsx';
-import { mono, sheet } from './theme.ts';
+import { Chip } from './Chip.tsx';
+import { font, mono, sheet, shape } from './theme.ts';
 
 const BUDGETS: { id: TimeBudget; label: string }[] = [
   { id: 'completo', label: 'Completo' },
@@ -120,19 +121,16 @@ export function SessionPlanner({
       <Text style={styles.label}>Dónde</Text>
       <View style={styles.chips}>
         {gyms.map((gym) => (
-          <Pressable
+          <Chip
             key={gym.id}
+            label={gym.name}
             accessibilityLabel={`Gimnasio ${gym.name}`}
+            selected={gym.id === gymId}
             onPress={() => {
               setGymId(gym.id);
               setWhereNote(null);
             }}
-            style={[styles.chip, gym.id === gymId && styles.chipSelected]}
-          >
-            <Text style={[styles.chipText, gym.id === gymId && styles.chipTextSelected]}>
-              {gym.name}
-            </Text>
-          </Pressable>
+          />
         ))}
         <Pressable
           accessibilityLabel="Usar mi ubicación"
@@ -157,9 +155,13 @@ export function SessionPlanner({
               })
               .finally(() => setLocating(false));
           }}
-          style={[styles.chip, locating && styles.chipSelected]}
+          style={({ pressed }) => [
+            styles.locate,
+            locating && styles.locateOn,
+            pressed && styles.pressedSoft,
+          ]}
         >
-          <Text style={[styles.chipText, locating && styles.chipTextSelected]}>
+          <Text style={[styles.locateText, locating && styles.locateTextOn]}>
             Usar mi ubicación
           </Text>
         </Pressable>
@@ -169,16 +171,13 @@ export function SessionPlanner({
       <Text style={styles.label}>Rutina</Text>
       <View style={styles.chips}>
         {routines.map((routine) => (
-          <Pressable
+          <Chip
             key={routine.id}
+            label={routine.name}
             accessibilityLabel={`Rutina ${routine.name}`}
+            selected={routine.id === selected}
             onPress={() => setRoutineId(routine.id)}
-            style={[styles.chip, routine.id === selected && styles.chipSelected]}
-          >
-            <Text style={[styles.chipText, routine.id === selected && styles.chipTextSelected]}>
-              {routine.name}
-            </Text>
-          </Pressable>
+          />
         ))}
       </View>
 
@@ -190,32 +189,25 @@ export function SessionPlanner({
             ['with_someone', 'Acompañado'],
           ] as const
         ).map(([id, label]) => (
-          <Pressable
+          <Chip
             key={id}
-            accessibilityLabel={label}
+            label={label}
+            selected={company === id}
             onPress={() => setCompany((current) => (current === id ? null : id))}
-            style={[styles.chip, company === id && styles.chipSelected]}
-          >
-            <Text style={[styles.chipText, company === id && styles.chipTextSelected]}>
-              {label}
-            </Text>
-          </Pressable>
+          />
         ))}
       </View>
 
       <Text style={styles.label}>Tiempo que tengo</Text>
       <View style={styles.chips}>
         {BUDGETS.map((option) => (
-          <Pressable
+          <Chip
             key={option.id}
+            label={option.label}
             accessibilityLabel={`Tiempo ${option.label}`}
+            selected={option.id === budget}
             onPress={() => setBudget(option.id)}
-            style={[styles.chip, option.id === budget && styles.chipSelected]}
-          >
-            <Text style={[styles.chipText, option.id === budget && styles.chipTextSelected]}>
-              {option.label}
-            </Text>
-          </Pressable>
+          />
         ))}
       </View>
 
@@ -239,14 +231,14 @@ export function SessionPlanner({
           <Pressable
             accessibilityLabel={`Una serie menos de ${exercise.name}`}
             onPress={() => override(exercise.exerciseId, -1)}
-            style={styles.nudge}
+            style={({ pressed }) => [styles.nudge, pressed && styles.nudgePressed]}
           >
             <Text style={styles.nudgeText}>−</Text>
           </Pressable>
           <Pressable
             accessibilityLabel={`Una serie más de ${exercise.name}`}
             onPress={() => override(exercise.exerciseId, 1)}
-            style={styles.nudge}
+            style={({ pressed }) => [styles.nudge, pressed && styles.nudgePressed]}
           >
             <Text style={styles.nudgeText}>+</Text>
           </Pressable>
@@ -317,26 +309,32 @@ const styles = sheet((theme) => ({
     flexWrap: 'wrap',
     gap: 5,
   },
-  chip: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+  // Este no elige nada, pide la ubicacion: se ve distinto de los chips a proposito.
+  locate: {
     minHeight: 38,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    paddingHorizontal: 12,
     justifyContent: 'center',
+    backgroundColor: theme.surface,
   },
-  chipSelected: {
-    borderColor: theme.accent,
-    backgroundColor: theme.accent,
+  locateOn: {
+    backgroundColor: theme.surfaceHigh,
   },
-  chipText: {
-    fontSize: 12,
-    fontFamily: mono,
+  locateText: {
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.textDim,
+  },
+  locateTextOn: {
     color: theme.text,
   },
-  chipTextSelected: {
-    color: theme.accentInk,
+  pressedSoft: {
+    opacity: 0.55,
+  },
+  nudgePressed: {
+    backgroundColor: theme.accent,
   },
   problem: {
     fontSize: 11,

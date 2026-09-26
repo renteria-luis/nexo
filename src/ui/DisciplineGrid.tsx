@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { todayIso } from '../core/dates.ts';
@@ -31,7 +32,12 @@ export function ScoreCell({ color, fill, size = CELL, today = false }: CellProps
   );
 }
 
-export function DisciplineGrid({
+/**
+ * Memoizada porque es lo mas caro que se dibuja en la app: ochenta y cuatro cuadritos
+ * tocables, cientos de elementos. Mientras las semanas y el gesto sean los mismos
+ * objetos, no se vuelve a armar aunque la pantalla se repinte por otra cosa.
+ */
+export const DisciplineGrid = memo(function DisciplineGrid({
   weeks,
   onOpenDay,
 }: {
@@ -67,7 +73,7 @@ export function DisciplineGrid({
       </View>
     </View>
   );
-}
+});
 
 const styles = sheet((theme) => ({
   panel: {

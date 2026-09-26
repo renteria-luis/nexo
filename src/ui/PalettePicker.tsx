@@ -1,5 +1,5 @@
 import { Text, View } from 'react-native';
-import { Check } from 'lucide-react-native';
+import { Check } from './icons.ts';
 
 import {
   PALETTE_NAMES,

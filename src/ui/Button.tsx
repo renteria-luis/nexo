@@ -1,5 +1,5 @@
 import { Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import type { LucideIcon } from 'lucide-react-native';
+import type { LucideIcon } from './icons.ts';
 
 import { font, hardShadow, pressed as pressedInto, sheet, shape, theme } from './theme.ts';
 

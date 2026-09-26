@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { Animated, PanResponder, Text, View } from 'react-native';
-import { Delete, X } from 'lucide-react-native';
+import { Delete, X } from './icons.ts';
 
 import { font, hardShadow, pressed, sheet, shape, theme } from './theme.ts';
 

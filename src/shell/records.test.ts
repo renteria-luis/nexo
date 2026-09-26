@@ -38,6 +38,27 @@ function adapt(raw: DatabaseSync): SQLiteDatabase {
   } as unknown as SQLiteDatabase;
 }
 
+/** Igual que el de arriba pero contando consultas, para medir lo que cuesta algo. */
+function counting(raw: DatabaseSync): { db: SQLiteDatabase; count: () => number } {
+  let statements = 0;
+  const db = {
+    getAllAsync: async <T>(source: string, params: SqlValue[] = []): Promise<T[]> => {
+      statements += 1;
+      return raw.prepare(source).all(...params) as T[];
+    },
+    getFirstAsync: async <T>(source: string, params: SqlValue[] = []): Promise<T | null> => {
+      statements += 1;
+      return (raw.prepare(source).get(...params) as T) ?? null;
+    },
+    runAsync: async (source: string, params: SqlValue[] = []) => {
+      statements += 1;
+      raw.prepare(source).run(...params);
+      return { changes: 0, lastInsertRowId: 0 };
+    },
+  } as unknown as SQLiteDatabase;
+  return { db, count: () => statements };
+}
+
 function fresh(): SQLiteDatabase {
   const raw = new DatabaseSync(':memory:');
   raw.exec('PRAGMA foreign_keys = ON;');
@@ -333,4 +354,60 @@ test('un dia de puro entreno y comida tambien recibe su nota', async () => {
   // 52 puntos que si gano, pero el dia ya tiene nota, que es lo que estaba roto.
   const rows = await listDayRows(db, windowRange('month', TODAY));
   assert.notEqual(rows.find((row) => row.date === '2026-09-21')?.score, null);
+});
+
+test('volver a puntuar lo que ya tiene nota no cuesta una consulta por dia', async () => {
+  const raw = new DatabaseSync(':memory:');
+  raw.exec('PRAGMA foreign_keys = ON;');
+  for (const migration of migrations) raw.exec(migration.sql);
+  const { db, count } = counting(raw);
+
+  // Tres semanas con rastro en los tres sitios, que es lo que tiene su base de verdad.
+  const dates: string[] = [];
+  for (let back = 20; back >= 0; back -= 1) {
+    const date = new Date(Date.UTC(2026, 8, 23) - back * 86_400_000).toISOString().slice(0, 10);
+    dates.push(date);
+    await upsertDailyLog(db, {
+      date,
+      weightKg: 73,
+      waterMl: 2500,
+      sleepMinutes: 430,
+      sleepSource: 'manual',
+      steps: 8000,
+    });
+    await addFoodEntry(db, {
+      date,
+      foodId: 'eggs-costco-xl',
+      quantity: 4,
+      unit: 'huevo',
+      mealSlot: 'desayuno',
+    });
+    const session = await startSession(db, { date, timeBudget: 'completo' });
+    await addSet(db, { sessionId: session, exerciseId: 'peck-deck', weightKg: 50, reps: 10 });
+  }
+
+  await setInitialTargets(
+    db,
+    73,
+    {
+      heightCm: 170,
+      birthDate: '1996-08-30',
+      activityFactor: 1.55,
+      phase: 'recomp',
+      sleepMinutes: 420,
+      steps: 7000,
+    },
+    TODAY,
+  );
+  await backdateFirstSnapshot(db);
+
+  // La primera pasada hace el trabajo de verdad: ninguno tenia nota.
+  assert.equal(await rescoreMissing(db, { from: dates[0], to: TODAY }, TODAY), dates.length);
+
+  // La segunda no tiene nada que hacer, y eso tiene que notarse en la cuenta. Cuando
+  // el filtro vivia en JavaScript y no en el SQL, esta pasada rehacia los veintiun
+  // dias enteros en cada recarga, o sea en cada dato que anotaba.
+  const before = count();
+  assert.equal(await rescoreMissing(db, { from: dates[0], to: TODAY }, TODAY), 0);
+  assert.equal(count() - before, 1);
 });

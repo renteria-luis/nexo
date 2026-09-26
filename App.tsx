@@ -396,17 +396,16 @@ const styles = sheet((theme) => ({
     backgroundColor: theme.accent,
     height: 4,
   },
+  // Texto pelado y nada detras: iOS pone su propio fondo redondo a los botones de la
+  // barra, y con el recuadro amarillo encima se veian dos fondos, uno dentro del otro.
+  // El peso del diseno va en el contenido, no en la barra del sistema.
   headerButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: theme.accent,
-    borderWidth: shape.border,
-    borderColor: theme.line,
-    borderRadius: shape.radiusSmall,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
   },
   headerButtonText: {
-    fontSize: 13,
+    fontSize: 16,
     fontFamily: font.black,
-    color: theme.accentInk,
+    color: theme.text,
   },
 }));

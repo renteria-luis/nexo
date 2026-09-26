@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
-import { Command as CommandIcon } from 'lucide-react-native';
+import { Command as CommandIcon } from './icons.ts';
 
 import { COMMAND_HELP, parseCommand, type Command } from '../core/commands.ts';
 import { toKg } from '../core/units.ts';

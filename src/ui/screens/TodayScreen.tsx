@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { useAppData, WEEKS_SHOWN } from '../../shell/AppData.tsx';
@@ -98,6 +98,23 @@ function TargetChangeCard({ change, onDismiss }: { change: TargetChange; onDismi
   );
 }
 
+/**
+ * La fecha y la hora de arriba, refrescandose solas.
+ *
+ * Aparte del resto de la pantalla porque el minuto que pasa no tiene que volver a
+ * armar la cuadricula de doce semanas ni repintar las cartillas.
+ */
+function Clock() {
+  const [text, setText] = useState(() => dateAndTime());
+
+  useEffect(() => {
+    const tick = setInterval(() => setText(dateAndTime()), 20_000);
+    return () => clearInterval(tick);
+  }, []);
+
+  return <Text style={styles.clock}>{text}</Text>;
+}
+
 export function TodayScreen({
   onOpen,
   onOpenDay,
@@ -108,18 +125,24 @@ export function TodayScreen({
   const { state, logDay, loadDay, dismissTargetChange, raiseStepsTarget, declineStepsTarget } =
     useAppData();
   const [openDay, setOpenDay] = useState<string | null>(null);
-  // El reloj de arriba se refresca solo, sin esperar a que algo mas cambie.
-  const [clock, setClock] = useState(() => dateAndTime());
-  useEffect(() => {
-    const tick = setInterval(() => setClock(dateAndTime()), 20_000);
-    return () => clearInterval(tick);
-  }, []);
+  // Doce semanas son ochenta y cuatro cuadritos, y armarlos son unos cuantos cientos
+  // de elementos. Se rehacen solo cuando cambia alguna nota, no cada vez que la app
+  // recarga: cada dato anotado trae una lista de dias nueva con el mismo contenido, y
+  // por eso se compara por lo que dice y no por ser el mismo objeto.
+  const days = state.phase === 'ready' ? state.loaded.days : null;
+  const palette = state.phase === 'ready' ? state.loaded.palette : null;
+  const signature =
+    days === null ? '' : days.map((day) => `${day.date}:${day.score ?? ''}`).join('|');
+  const weeks = useMemo(() => {
+    if (days === null || palette === null) return [];
+    const to = todayIso();
+    return buildGrid(days, { from: weekStart(addDays(to, -(WEEKS_SHOWN - 1) * 7)), to }, palette);
+    // La firma es la dependencia de verdad; la lista entra por ella.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature, palette]);
   if (state.phase !== 'ready') return <Screen title="Hoy">{null}</Screen>;
 
   const { loaded } = state;
-  const today = todayIso();
-  const from = weekStart(addDays(today, -(WEEKS_SHOWN - 1) * 7));
-  const weeks = buildGrid(loaded.days, { from, to: today }, loaded.palette);
   const scores = loaded.days.map((day) => day.score);
   const average = averageScore(loaded.days);
   const score = loaded.today.result?.score ?? null;
@@ -131,7 +154,7 @@ export function TodayScreen({
 
   return (
     <Screen title="Hoy">
-      <Text style={styles.clock}>{clock}</Text>
+      <Clock />
 
       <CommandBar />
 

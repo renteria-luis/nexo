@@ -1,8 +1,10 @@
 import { useNavigation } from '@react-navigation/native';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { useAppData } from '../../shell/AppData.tsx';
+import type { Implement } from '../../training/sessions.ts';
+import { Chip } from '../Chip.tsx';
 import { SessionLog } from '../SessionLog.tsx';
 import { SessionPlanner } from '../SessionPlanner.tsx';
 
@@ -32,6 +34,56 @@ export function TrainingScreen() {
   }>();
   const [changingRoutine, setChangingRoutine] = useState(false);
 
+  // Todo esto se calcula arriba y una sola vez por cambio de datos, para que el
+  // registro del entreno reciba siempre los mismos objetos y pueda saltarse su propio
+  // redibujo cuando lo que cambio fue otra cosa de la pantalla.
+  const ready = state.phase === 'ready' ? state.loaded : null;
+  const sessionSets = ready?.today.sessionSets ?? null;
+  const plan = ready?.plan ?? null;
+  const openSessionId = ready?.today.session?.id ?? null;
+
+  // Cuantas series lleva cada ejercicio hoy y cuantas aprobo, para que el chip diga
+  // de un vistazo que falta sin tener que entrar a cada uno.
+  const setsDoneByExercise = useMemo(() => {
+    const done = new Map<string, number>();
+    for (const set of sessionSets ?? []) {
+      done.set(set.exerciseId, (done.get(set.exerciseId) ?? 0) + 1);
+    }
+    return done;
+  }, [sessionSets]);
+
+  const plannedByExercise = useMemo(
+    () => new Map((plan ?? []).map((entry) => [entry.exerciseId, entry.sets])),
+    [plan],
+  );
+
+  const planExerciseIds = useMemo(() => (plan ?? []).map((entry) => entry.exerciseId), [plan]);
+
+  const changeUnit = useCallback(
+    (next: 'kg' | 'lb') => saveSetting('weight_unit', next),
+    [saveSetting],
+  );
+
+  const changeDraft = useCallback(
+    (next: {
+      weight: string | null;
+      reps: string | null;
+      rpe: string | null;
+      implement: Implement | null;
+    }) => {
+      if (openSessionId === null) return;
+      saveDraft({
+        sessionId: openSessionId,
+        exerciseId,
+        weight: next.weight,
+        reps: next.reps,
+        rpe: next.rpe,
+        implement: next.implement,
+      });
+    },
+    [saveDraft, openSessionId, exerciseId],
+  );
+
   // Empezar un entreno y que no haya nada donde escribir es un toque de mas en cada
   // sesion, asi que queda abierto el ejercicio en el que estaba, o el primero del
   // plan si es la primera vez que entra hoy.
@@ -50,14 +102,6 @@ export function TrainingScreen() {
   const { loaded } = state;
   const session = loaded.today.session;
   const planned = loaded.plan.find((entry) => entry.exerciseId === exerciseId);
-
-  // Cuantas series lleva cada ejercicio hoy y cuantas aprobo, para que el chip diga
-  // de un vistazo que falta sin tener que entrar a cada uno.
-  const setsDoneByExercise = new Map<string, number>();
-  for (const set of loaded.today.sessionSets) {
-    setsDoneByExercise.set(set.exerciseId, (setsDoneByExercise.get(set.exerciseId) ?? 0) + 1);
-  }
-  const plannedByExercise = new Map(loaded.plan.map((entry) => [entry.exerciseId, entry.sets]));
   const routine = loaded.routines.find((item) => item.id === session?.routine_id) ?? null;
 
   return (
@@ -83,7 +127,7 @@ export function TrainingScreen() {
               <Pressable
                 accessibilityLabel="Cambiar la rutina de hoy"
                 onPress={() => setChangingRoutine((open) => !open)}
-                style={styles.change}
+                style={({ pressed }) => [styles.change, pressed && styles.pressedSoft]}
               >
                 <Text style={styles.changeText}>{changingRoutine ? 'dejar así' : 'cambiar'}</Text>
               </Pressable>
@@ -101,21 +145,13 @@ export function TrainingScreen() {
                     ['full', 'lleno'],
                   ] as const
                 ).map(([id, label]) => (
-                  <Pressable
+                  <Chip
                     key={id}
+                    label={label}
                     accessibilityLabel={`Gimnasio ${label}`}
+                    selected={session.crowding === id}
                     onPress={() => describeSession({ crowding: id })}
-                    style={[styles.crowdChip, session.crowding === id && styles.crowdChipOn]}
-                  >
-                    <Text
-                      style={[
-                        styles.crowdChipText,
-                        session.crowding === id && styles.crowdChipTextOn,
-                      ]}
-                    >
-                      {label}
-                    </Text>
-                  </Pressable>
+                  />
                 ))}
               </View>
             </View>
@@ -124,24 +160,16 @@ export function TrainingScreen() {
           {changingRoutine && (
             <View style={styles.chips}>
               {loaded.routines.map((item) => (
-                <Pressable
+                <Chip
                   key={item.id}
+                  label={item.name}
                   accessibilityLabel={`Cambiar a ${item.name}`}
+                  selected={item.id === session.routine_id}
                   onPress={() => {
                     switchRoutine(item.id);
                     setChangingRoutine(false);
                   }}
-                  style={[styles.chip, item.id === session.routine_id && styles.chipSelected]}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      item.id === session.routine_id && styles.chipTextSelected,
-                    ]}
-                  >
-                    {item.name}
-                  </Text>
-                </Pressable>
+                />
               ))}
             </View>
           )}
@@ -155,25 +183,16 @@ export function TrainingScreen() {
             marks={loaded.exercise.marks}
             sessionVolume={loaded.today.sessionVolume}
             unit={loaded.unit}
-            onChangeUnit={(next) => saveSetting('weight_unit', next)}
+            onChangeUnit={changeUnit}
             plannedSets={planned?.sets ?? null}
-            planExerciseIds={loaded.plan.map((entry) => entry.exerciseId)}
+            planExerciseIds={planExerciseIds}
             setsDoneByExercise={setsDoneByExercise}
             plannedByExercise={plannedByExercise}
             onAddSet={logSet}
             onRemoveSet={removeSet}
             startedAt={session.start_time}
             draft={loaded.sessionDraft}
-            onDraftChange={(next) =>
-              saveDraft({
-                sessionId: session.id,
-                exerciseId,
-                weight: next.weight,
-                reps: next.reps,
-                rpe: next.rpe,
-                implement: next.implement,
-              })
-            }
+            onDraftChange={changeDraft}
             finishedAt={session.end_time}
             onFinish={endSession}
             onReopen={reopenSession}
@@ -187,7 +206,7 @@ export function TrainingScreen() {
         onPress={() =>
           navigation.navigate('Recomendaciones', { routineId: session?.routine_id ?? undefined })
         }
-        style={styles.notesLink}
+        style={({ pressed }) => [styles.notesLink, pressed && styles.pressedSoft]}
       >
         <Text style={styles.notesLinkText}>Recomendaciones de rutina ›</Text>
       </Pressable>
@@ -196,6 +215,10 @@ export function TrainingScreen() {
 }
 
 const styles = sheet((theme) => ({
+  // La respuesta del dedo, en el instante del toque.
+  pressedSoft: {
+    opacity: 0.55,
+  },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -224,25 +247,6 @@ const styles = sheet((theme) => ({
     flexDirection: 'row',
     gap: 4,
   },
-  crowdChip: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-  },
-  crowdChipOn: {
-    borderColor: theme.accent,
-    backgroundColor: theme.accent,
-  },
-  crowdChipText: {
-    fontSize: 11,
-    color: theme.textDim,
-    fontFamily: mono,
-  },
-  crowdChipTextOn: {
-    color: theme.accentInk,
-  },
   routineText: {
     fontSize: 13,
     fontFamily: mono,
@@ -260,27 +264,6 @@ const styles = sheet((theme) => ({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 5,
-  },
-  chip: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    minHeight: 38,
-    justifyContent: 'center',
-  },
-  chipSelected: {
-    borderColor: theme.accent,
-    backgroundColor: theme.accent,
-  },
-  chipText: {
-    fontSize: 12,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  chipTextSelected: {
-    color: theme.accentInk,
   },
   notesLink: {
     alignSelf: 'flex-start',

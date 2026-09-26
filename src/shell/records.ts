@@ -420,14 +420,21 @@ export async function rescoreMissing(
   // Un dia dejo rastro en cualquiera de los tres sitios: el registro diario, un
   // entreno o algo que comio. Mirando solo el primero, un dia de puro entreno y
   // comida se quedaba gris para siempre.
+  // Y el dia que ya tiene nota se descarta aqui, en el SQL. Antes salia en la lista
+  // y se descartaba despues de rehacerlo entero: con tres meses de datos eran seis
+  // centenares de consultas en cada recarga, o sea en cada serie que anotaba.
   const pending = await db.getAllAsync<{ date: IsoDate }>(
-    `SELECT DISTINCT date FROM (
+    `SELECT DISTINCT trace.date FROM (
        SELECT date FROM core_daily_log WHERE has_data = 1 AND score IS NULL
        UNION SELECT date FROM training_session
        UNION SELECT date FROM nutrition_food_entry
-     )
-     WHERE date BETWEEN ? AND ?
-     ORDER BY date;`,
+     ) AS trace
+     WHERE trace.date BETWEEN ? AND ?
+       AND NOT EXISTS (
+         SELECT 1 FROM core_daily_log scored
+          WHERE scored.date = trace.date AND scored.score IS NOT NULL
+       )
+     ORDER BY trace.date;`,
     [range.from, range.to],
   );
 

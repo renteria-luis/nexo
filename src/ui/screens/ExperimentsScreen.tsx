@@ -170,15 +170,17 @@ export function ExperimentsScreen() {
         <Experiment
           key={item.experiment.id}
           item={item}
+          // La lista se carga aqui y no en el proveedor, asi que se recarga en
+          // cuanto la escritura termina, sin adivinar cuanto tarda.
           onReading={(value) => {
-            logExperimentReading(item.experiment.id, todayIso(), value);
-            // The list is loaded here rather than by the provider, so it refreshes
-            // itself once the write has had its turn.
-            setTimeout(reload, 300);
+            logExperimentReading(item.experiment.id, todayIso(), value)
+              .then(reload)
+              .catch((error: unknown) => console.error(error));
           }}
           onFinish={() => {
-            finishExperiment(item.experiment.id, todayIso());
-            setTimeout(reload, 300);
+            finishExperiment(item.experiment.id, todayIso())
+              .then(reload)
+              .catch((error: unknown) => console.error(error));
           }}
         />
       ))}

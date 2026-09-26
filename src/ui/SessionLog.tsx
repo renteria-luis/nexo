@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { Check, Circle, Minus, Plus } from 'lucide-react-native';
+import { Check, Circle, Minus, Plus } from './icons.ts';
 
 import { shortDate } from '../core/dates.ts';
 import { formatWeight, fromKg, snapToIncrement, toKg, type WeightUnit } from '../core/units.ts';
@@ -79,6 +79,34 @@ function clock(seconds: number): string {
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
 }
 
+/**
+ * El tiempo que lleva corriendo desde un instante, contandose solo.
+ *
+ * Vive en su propio componente a proposito: el segundo que pasa solo tiene que
+ * repintar estos cuatro caracteres, no la pantalla entera del entreno. Cuando el
+ * reloj estaba en el componente grande, cada segundo volvia a dibujar la lista de
+ * series, el selector de ejercicio y el formulario, y eso se nota justo cuando esta
+ * escribiendo un peso.
+ *
+ * Quien lo usa le pasa el instante tambien como clave, asi que empezar a contar de
+ * nuevo es montarlo de nuevo y no hay que sincronizar nada por dentro.
+ */
+function Elapsed({ since, prefix = '' }: { since: number; prefix?: string }) {
+  const [seconds, setSeconds] = useState(() => (Date.now() - since) / 1000);
+
+  useEffect(() => {
+    const tick = setInterval(() => setSeconds((Date.now() - since) / 1000), 1000);
+    return () => clearInterval(tick);
+  }, [since]);
+
+  return (
+    <>
+      {prefix}
+      {clock(seconds)}
+    </>
+  );
+}
+
 export type SessionLogProps = {
   exercises: CatalogExercise[];
   selectedExerciseId: string | null;
@@ -123,7 +151,73 @@ export type SessionLogProps = {
   onReopen: () => void;
 };
 
-export function SessionLog({
+/**
+ * Memoizada: es el componente mas grande de la app y se dibuja entero cada vez que la
+ * pantalla se repinta. Mientras lo que muestra sea lo mismo, tocar el gentio del
+ * gimnasio o cualquier cosa de otra pestana ya no lo vuelve a armar.
+ */
+/**
+ * Un renglon de la lista de ejercicios.
+ *
+ * Memoizado porque son diez con su icono y su cuenta, y elegir otro ejercicio solo
+ * cambia dos: el que se apaga y el que se prende. Los otros ocho no tienen por que
+ * volver a armarse.
+ */
+const ExerciseRow = memo(function ExerciseRow({
+  item,
+  done,
+  planned,
+  selected,
+  onPick,
+}: {
+  item: CatalogExercise;
+  done: number;
+  planned: number | undefined;
+  selected: boolean;
+  onPick: (exerciseId: string) => void;
+}) {
+  const progress = progressOf(done, planned);
+
+  return (
+    <Pressable
+      accessibilityLabel={`${item.name_es}${
+        progress === 'done' ? ', hecho' : progress === 'partial' ? ', a medias' : ''
+      }`}
+      onPress={() => onPick(item.id)}
+      style={({ pressed }) => [
+        styles.exerciseRow,
+        selected && styles.exerciseRowSelected,
+        pressed && styles.pressedSoft,
+      ]}
+    >
+      <View style={styles.exerciseMark}>
+        {progress === 'done' ? (
+          <Check size={16} color={theme.ok} strokeWidth={2} />
+        ) : progress === 'partial' ? (
+          <Circle size={14} color={theme.warn} strokeWidth={2} />
+        ) : (
+          <Circle size={14} color={theme.textGhost} strokeWidth={1.5} />
+        )}
+      </View>
+      <Text
+        style={[
+          styles.exerciseRowText,
+          selected && styles.exerciseRowTextSelected,
+          progress === 'done' && styles.exerciseRowTextDone,
+        ]}
+        numberOfLines={1}
+      >
+        {item.name_es}
+      </Text>
+      <Text style={styles.exerciseCount}>
+        {done}
+        {planned === undefined ? '' : `/${planned}`}
+      </Text>
+    </Pressable>
+  );
+});
+
+export const SessionLog = memo(function SessionLog({
   exercises,
   selectedExerciseId,
   onSelectExercise,
@@ -178,12 +272,6 @@ export function SessionLog({
   const [implement, setImplement] = useState<Implement | null>(
     (draft?.implement as Implement | null) ?? null,
   );
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const tick = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(tick);
-  }, []);
-
   // Cada cambio se guarda, para que cerrar la app a mitad de una serie no borre lo
   // que estaba escrito. Es una escritura suelta en la base, sin recargar nada.
   const report = useRef(onDraftChange);
@@ -214,6 +302,20 @@ export function SessionLog({
     setRpeDraft(null);
   };
 
+  // Estable, para que los renglones de la lista no se rearmen solo porque la funcion
+  // de tocarlos es otra en cada render.
+  const pick = useCallback(
+    (exerciseId: string) => {
+      setWeightDraft(null);
+      setRepsDraft(null);
+      setRpeDraft(null);
+      setShowTechnique(false);
+      setImplement(null);
+      onSelectExercise(exerciseId);
+    },
+    [onSelectExercise],
+  );
+
   // Spec 5.1 pedia el salto real de la maquina, pero la P156 sube de 15 en 15 y casi
   // todas las torres traen un bloquecito de 5 lb que se añade aparte, asi que el
   // salto util es ese. En kilos el equivalente redondo son 2.5.
@@ -236,7 +338,6 @@ export function SessionLog({
       ? false
       : isPerSide(doneWith, implement === null ? (exercise?.equipment?.kind ?? null) : null);
   const lastSet = todaySets.at(-1) ?? null;
-  const betweenSeconds = lastSet?.timestamp ? (now - lastSet.timestamp) / 1000 : null;
   const dropOffs = exercise ? repDropOffs(todaySets, exercise.default_rest_seconds) : [];
   const parsedWeight = Number(weight);
   const parsedReps = Number(reps);
@@ -293,51 +394,16 @@ export function SessionLog({
         {/* Lista y no fila de chips: los nombres son largos, cada chip ocupaba un
             renglon entero igual, y asi se ve de un vistazo lo que falta de cada uno. */}
         <View style={styles.exerciseList}>
-          {visibleExercises.map((item) => {
-            const done = setsDoneByExercise.get(item.id) ?? 0;
-            const planned = plannedByExercise.get(item.id);
-            const progress = progressOf(done, planned);
-            const selected = item.id === selectedExerciseId;
-            return (
-              <Pressable
-                key={item.id}
-                accessibilityLabel={`${item.name_es}${
-                  progress === 'done' ? ', hecho' : progress === 'partial' ? ', a medias' : ''
-                }`}
-                onPress={() => {
-                  clearDrafts();
-                  setShowTechnique(false);
-                  setImplement(null);
-                  onSelectExercise(item.id);
-                }}
-                style={[styles.exerciseRow, selected && styles.exerciseRowSelected]}
-              >
-                <View style={styles.exerciseMark}>
-                  {progress === 'done' ? (
-                    <Check size={16} color={theme.ok} strokeWidth={2} />
-                  ) : progress === 'partial' ? (
-                    <Circle size={14} color={theme.warn} strokeWidth={2} />
-                  ) : (
-                    <Circle size={14} color={theme.textGhost} strokeWidth={1.5} />
-                  )}
-                </View>
-                <Text
-                  style={[
-                    styles.exerciseRowText,
-                    selected && styles.exerciseRowTextSelected,
-                    progress === 'done' && styles.exerciseRowTextDone,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {item.name_es}
-                </Text>
-                <Text style={styles.exerciseCount}>
-                  {done}
-                  {planned === undefined ? '' : `/${planned}`}
-                </Text>
-              </Pressable>
-            );
-          })}
+          {visibleExercises.map((item) => (
+            <ExerciseRow
+              key={item.id}
+              item={item}
+              done={setsDoneByExercise.get(item.id) ?? 0}
+              planned={plannedByExercise.get(item.id)}
+              selected={item.id === selectedExerciseId}
+              onPick={pick}
+            />
+          ))}
 
           {inPlan.length > 0 && inPlan.length < exercises.length && (
             <Pressable
@@ -345,7 +411,7 @@ export function SessionLog({
                 showAll ? 'Ver solo la rutina de hoy' : 'Ver todos los ejercicios'
               }
               onPress={() => setShowAll((open) => !open)}
-              style={styles.more}
+              style={({ pressed }) => [styles.more, pressed && styles.pressedSoft]}
             >
               <Text style={styles.moreText}>
                 {showAll ? 'solo la rutina de hoy' : 'ver todos los ejercicios'}
@@ -368,7 +434,7 @@ export function SessionLog({
                 <Pressable
                   accessibilityLabel={`Ver la tecnica de ${exercise.name_es}`}
                   onPress={() => setShowTechnique((open) => !open)}
-                  style={styles.info}
+                  style={({ pressed }) => [styles.info, pressed && styles.pressedSoft]}
                 >
                   <Text style={styles.infoText}>i</Text>
                 </Pressable>
@@ -379,7 +445,11 @@ export function SessionLog({
                     key={option.id}
                     accessibilityLabel={option.long}
                     onPress={() => setImplement(option.id)}
-                    style={[styles.implement, doneWith === option.id && styles.implementOn]}
+                    style={({ pressed }) => [
+                      styles.implement,
+                      doneWith === option.id && styles.implementOn,
+                      pressed && styles.pressedSoft,
+                    ]}
                   >
                     <Text
                       style={[
@@ -409,7 +479,13 @@ export function SessionLog({
                 dejaba el reloj clavado en cero durante medio minuto. */}
             <Text style={styles.rest}>
               Descanso sugerido {clock(exercise.default_rest_seconds)}
-              {betweenSeconds === null ? '' : ` · descansando ${clock(betweenSeconds)}`}
+              {lastSet?.timestamp ? (
+                <Elapsed
+                  key={lastSet.timestamp}
+                  since={lastSet.timestamp}
+                  prefix=" · descansando "
+                />
+              ) : null}
             </Text>
 
             <Text style={styles.lastLabel}>
@@ -467,7 +543,7 @@ export function SessionLog({
                 <Pressable
                   accessibilityLabel={`Quitar serie ${set.setIndex}`}
                   onPress={() => onRemoveSet(set.setIndex)}
-                  style={styles.remove}
+                  style={({ pressed }) => [styles.remove, pressed && styles.pressedSoft]}
                 >
                   <Text style={styles.removeText}>quitar</Text>
                 </Pressable>
@@ -499,7 +575,7 @@ export function SessionLog({
                     <Pressable
                       accessibilityLabel={`Cambiar a ${unit === 'lb' ? 'kilos' : 'libras'}`}
                       onPress={flipUnit}
-                      style={styles.unit}
+                      style={({ pressed }) => [styles.unit, pressed && styles.pressedSoft]}
                     >
                       <Text style={styles.unitText}>{unit}</Text>
                     </Pressable>
@@ -508,7 +584,7 @@ export function SessionLog({
                     <Pressable
                       accessibilityLabel="Bajar peso"
                       onPress={() => nudge(-1)}
-                      style={styles.step}
+                      style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
                     >
                       <Minus size={18} color={theme.text} strokeWidth={1.75} />
                     </Pressable>
@@ -524,7 +600,7 @@ export function SessionLog({
                     <Pressable
                       accessibilityLabel="Subir peso"
                       onPress={() => nudge(1)}
-                      style={styles.step}
+                      style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
                     >
                       <Plus size={18} color={theme.text} strokeWidth={1.75} />
                     </Pressable>
@@ -539,7 +615,7 @@ export function SessionLog({
                     <Pressable
                       accessibilityLabel="Bajar RPE"
                       onPress={() => stepRpe(-1)}
-                      style={styles.step}
+                      style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
                     >
                       <Minus size={18} color={theme.text} strokeWidth={1.75} />
                     </Pressable>
@@ -555,7 +631,7 @@ export function SessionLog({
                     <Pressable
                       accessibilityLabel="Subir RPE"
                       onPress={() => stepRpe(1)}
-                      style={styles.step}
+                      style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
                     >
                       <Plus size={18} color={theme.text} strokeWidth={1.75} />
                     </Pressable>
@@ -572,7 +648,7 @@ export function SessionLog({
                     <Pressable
                       accessibilityLabel="Una repeticion menos"
                       onPress={() => stepReps(-1)}
-                      style={styles.step}
+                      style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
                     >
                       <Minus size={18} color={theme.text} strokeWidth={1.75} />
                     </Pressable>
@@ -588,7 +664,7 @@ export function SessionLog({
                     <Pressable
                       accessibilityLabel="Una repeticion mas"
                       onPress={() => stepReps(1)}
-                      style={styles.step}
+                      style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
                     >
                       <Plus size={18} color={theme.text} strokeWidth={1.75} />
                     </Pressable>
@@ -678,17 +754,27 @@ export function SessionLog({
             corriendo toda la noche. */}
         {startedAt !== null && (
           <Text style={styles.sessionClock}>
-            {finishedAt === null
-              ? `Entrenando ${clock((now - startedAt) / 1000)}`
-              : `Duró ${clock((finishedAt - startedAt) / 1000)}`}
+            {finishedAt === null ? (
+              <Elapsed key={startedAt} since={startedAt} prefix="Entrenando " />
+            ) : (
+              `Duró ${clock((finishedAt - startedAt) / 1000)}`
+            )}
           </Text>
         )}
       </>
     </View>
   );
-}
+});
 
 const styles = sheet((theme) => ({
+  // Lo que se ve en el instante del toque, antes de que el dato viaje a ningun lado.
+  // Sin esto, entre el dedo y el numero no pasaba nada y el boton parecia trabado.
+  pressedSoft: {
+    opacity: 0.55,
+  },
+  stepPressed: {
+    backgroundColor: theme.accent,
+  },
   grid: {
     gap: 10,
     borderTopWidth: 1,

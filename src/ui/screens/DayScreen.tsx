@@ -205,10 +205,7 @@ export function DayScreen() {
           onAdd={(entry) => after(addFoodOn(date, entry))}
           onOpenCatalogue={() => navigation.navigate('Alimentos')}
           history={loaded.foodHistory}
-          onRemove={(entryId) => {
-            removeFood(entryId);
-            setTimeout(reload, 300);
-          }}
+          onRemove={(entryId) => after(removeFood(entryId))}
         />
       </Section>
 
