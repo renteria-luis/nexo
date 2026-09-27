@@ -17,7 +17,7 @@ export type IconButtonProps = {
   accessibilityLabel: string;
   /** Prendido se pinta de amarillo, que es lo que dice "esto esta abierto". */
   selected?: boolean;
-  tone?: 'paper' | 'danger';
+  tone?: 'paper' | 'accent' | 'danger';
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
 };
@@ -69,6 +69,9 @@ const styles = sheet((theme) => ({
   },
   paper: {
     backgroundColor: theme.surface,
+  },
+  accent: {
+    backgroundColor: theme.accent,
   },
   danger: {
     backgroundColor: theme.danger,

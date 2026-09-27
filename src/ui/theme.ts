@@ -85,7 +85,7 @@ export const shape = {
   radius: 10,
   radiusSmall: 7,
   /** Solo para la barra flotante de abajo: una isla suelta pide la esquina mas blanda. */
-  radiusLarge: 16,
+  radiusLarge: 25,
   shadowOffset: 4,
 } as const;
 

@@ -1,26 +1,29 @@
 import { useState } from 'react';
-import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { ChevronRight, Eye, EyeOff } from '../icons.ts';
+import { Pressable, Text, TextInput, View } from 'react-native';
 
+import { todayIso } from '../../core/dates.ts';
+import { type NudgeKind } from '../../core/nudges.ts';
 import type { PaletteId } from '../../core/palettes.ts';
 import {
   nudgesEnabled,
   nudgesOffFrom,
+  settingDefault,
   settingProblem,
   type SettingKey,
   type Settings,
 } from '../../core/settings.ts';
-import { DEFAULT_NUDGE_RULES, type NudgeKind } from '../../core/nudges.ts';
 
-import { isBodyWeightKg } from '../../core/daily-log.ts';
 import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
 import { Chip } from '../Chip.tsx';
-import { Toggle } from '../Toggle.tsx';
-import { NUMBER_PAD_HEIGHT, useNumberPad } from '../NumberPadHost.tsx';
+import { ChevronRight, Eye, EyeOff } from '../icons.ts';
+import { IconButton } from '../IconButton.tsx';
 import { NumericField } from '../NumericField.tsx';
 import { PalettePicker } from '../PalettePicker.tsx';
-import { font, sheet, shape, theme } from '../theme.ts';
+import { Toggle } from '../Toggle.tsx';
+import { font, sheet, shape } from '../theme.ts';
+
+import { Screen } from './Screen.tsx';
 
 const PHASES: { value: string; label: string }[] = [
   { value: 'recomp', label: 'Recomposición' },
@@ -29,59 +32,35 @@ const PHASES: { value: string; label: string }[] = [
   { value: 'bulk', label: 'Volumen' },
 ];
 
-// Cada campo dice para que sirve y que pasa si se deja vacio, porque son datos que
-// se llenan una vez y despues no se vuelven a mirar en meses.
-const FIELDS: {
+type FieldSpec = {
   key: SettingKey;
   label: string;
-  hint: string;
   keyboard: 'numeric' | 'default';
+  placeholder?: string;
+  /** Sin esto no hay metas, y sin metas ningun dia tiene nota. Va con asterisco. */
   required?: boolean;
-}[] = [
-  {
-    key: 'height_cm',
-    label: 'Estatura (cm)',
-    hint: 'Con tu peso y tu edad sale cuantas calorias quemas en reposo. Sin esto no hay metas y los dias salen sin nota.',
-    keyboard: 'numeric',
-    required: true,
-  },
+  /** Se tapa con puntos hasta que el toque el ojo: es suyo y de nadie mas. */
+  secret?: boolean;
+};
+
+/** Lo que hace falta para calcular las metas. */
+const PROFILE_FIELDS: FieldSpec[] = [
+  { key: 'height_cm', label: 'Estatura (cm)', keyboard: 'numeric', required: true, secret: true },
   {
     key: 'birth_date',
     label: 'Fecha de nacimiento',
-    hint: 'AAAA-MM-DD, por ejemplo 1999-04-27. La edad entra en la misma cuenta que la estatura.',
     keyboard: 'default',
+    placeholder: '1999-04-27',
     required: true,
+    secret: true,
   },
-  {
-    key: 'activity_factor',
-    label: 'Factor de actividad',
-    hint: 'Cuanto te mueves fuera del gym. 1.55 con cinco entrenos por semana y trabajo sentado; 1.7 si ademas caminas todo el dia.',
-    keyboard: 'numeric',
-  },
-  {
-    key: 'sleep_target_minutes',
-    label: 'Meta de sueño (min)',
-    hint: 'En minutos: 420 son siete horas, 450 siete y media. Es contra lo que se puntua tu sueño.',
-    keyboard: 'numeric',
-  },
-  {
-    key: 'steps_target',
-    label: 'Meta de pasos',
-    hint: 'Los pasos del dia que cuentan como cumplido. La app te propone subirla sola cuando la cumples tres semanas seguidas.',
-    keyboard: 'numeric',
-  },
-  {
-    key: 're_entry_started_on',
-    label: 'Readaptación desde',
-    hint: 'Solo si volviste de un parón largo: mientras dura, no te penaliza los entrenos que faltes. Vacío si no aplica.',
-    keyboard: 'default',
-  },
-  {
-    key: 're_entry_weeks',
-    label: 'Semanas de readaptación',
-    hint: 'Cuanto dura esa readaptación. Tres es lo normal.',
-    keyboard: 'numeric',
-  },
+  { key: 'activity_factor', label: 'Factor de actividad', keyboard: 'numeric' },
+];
+
+/** Spec 6.5: volver de un paron largo no penaliza los entrenos que falten. */
+const RE_ENTRY_FIELDS: FieldSpec[] = [
+  { key: 're_entry_started_on', label: 'Desde', keyboard: 'default', placeholder: '2026-09-27' },
+  { key: 're_entry_weeks', label: 'Semanas', keyboard: 'numeric' },
 ];
 
 export type SettingsScreenProps = {
@@ -92,16 +71,15 @@ export type SettingsScreenProps = {
   onImport: () => Promise<{ tables: number; rows: number; skipped: string[] } | null>;
   settings: Settings;
   palette: PaletteId;
-  todayWeightKg: number | null;
   onSaveSetting: (key: SettingKey, value: string) => void;
   onClearSetting: (key: SettingKey) => void;
-  onSaveWeight: (weightKg: number) => void;
   onSelectPalette: (palette: PaletteId) => void;
-  /** Lleva a la pantalla donde edita el catalogo de ejercicios. */
+  /** Llevan a las dos pantallas donde edita los catalogos. */
   onOpenExercises: () => void;
+  onOpenFoods: () => void;
 };
 
-/** Los cuatro que puede apagar por su lado. El resumen del domingo va con el cierre. */
+/** Los cinco que puede apagar por su lado. El resumen del domingo va con el cierre. */
 const NUDGE_SWITCHES: { kind: NudgeKind; label: string }[] = [
   { kind: 'comida', label: 'Comida' },
   { kind: 'entreno', label: 'Entreno' },
@@ -110,39 +88,64 @@ const NUDGE_SWITCHES: { kind: NudgeKind; label: string }[] = [
   { kind: 'cierre', label: 'Cierre del día' },
 ];
 
+/** El nombre de un dato encima de su casilla, en mayusculas como en el catalogo. */
+function Field({
+  label,
+  required = false,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>
+        {label}
+        {required ? ' *' : ''}
+      </Text>
+      {children}
+    </View>
+  );
+}
+
+/** El titulo de una cartilla con su interruptor o su boton al lado. */
+function Head({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <View style={styles.head}>
+      <Text style={styles.headTitle}>{title}</Text>
+      {children}
+    </View>
+  );
+}
+
 export function SettingsScreen({
   onResetDatabase,
   onExport,
   onImport,
   settings,
   palette,
-  todayWeightKg,
   onSaveSetting,
   onClearSetting,
-  onSaveWeight,
   onSelectPalette,
   onOpenExercises,
+  onOpenFoods,
 }: SettingsScreenProps) {
-  const pad = useNumberPad();
   const [confirmingReset, setConfirmingReset] = useState(false);
   // Lo que no paso la validacion, para que no parezca guardado.
   const [refused, setRefused] = useState<Partial<Record<SettingKey, string>>>({});
-  // Estatura, fecha de nacimiento y peso son datos que no quiere a la vista de nadie
-  // que le mire el telefono por encima del hombro.
   const nudgesOn = nudgesEnabled(settings);
   const nudgesOff = nudgesOffFrom(settings);
+  // Su estatura y su fecha de nacimiento no tienen por que verse desde el asiento de
+  // al lado. Tapar con puntos lo que esta escribiendo en ese momento seria escribir a
+  // ciegas, asi que el campo abierto se ve y se vuelve a tapar al salir de el.
   const [hidden, setHidden] = useState(true);
-  // Tapar con puntos lo que esta escribiendo en ese momento es como escribir a
-  // ciegas: el campo abierto se ve, y se vuelve a tapar al salir de el.
   const [editing, setEditing] = useState<string | null>(null);
   const [confirmingImport, setConfirmingImport] = useState(false);
   // Cual de las dos esta trabajando, para que gire solo el boton que se toco.
   const [busy, setBusy] = useState<'exportar' | 'importar' | null>(null);
   const [backupNote, setBackupNote] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Partial<Record<SettingKey, string>>>({});
-  const [weightDraft, setWeightDraft] = useState(
-    todayWeightKg === null ? '' : String(todayWeightKg),
-  );
 
   const commit = (key: SettingKey) => {
     const draft = drafts[key];
@@ -166,164 +169,175 @@ export function SettingsScreen({
     onSaveSetting(key, draft.trim());
   };
 
-  const phase = settings.get('phase') ?? 'recomp';
+  // La casilla de un ajuste, y debajo solo el motivo si algo no se pudo guardar.
+  const renderField = (field: FieldSpec) => {
+    const draft = drafts[field.key] ?? settings.get(field.key) ?? '';
+    const problem = draft.trim() === '' ? null : settingProblem(field.key, draft);
+    const masked =
+      field.secret === true &&
+      hidden &&
+      editing !== field.key &&
+      draft.trim() !== '' &&
+      !refused[field.key] &&
+      problem === null;
 
-  return (
-    // Scrolls on its own rather than through the shared Screen frame: this one is
-    // pushed as a modal and has no tab bar under it.
-    <ScrollView
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-      style={styles.scroll}
-      contentContainerStyle={[styles.screen, pad.isOpen && { paddingBottom: NUMBER_PAD_HEIGHT }]}
-    >
-      <View style={styles.headingRow}>
-        <Text style={styles.heading}>Perfil</Text>
-        <Pressable
-          accessibilityLabel={hidden ? 'Mostrar mis datos' : 'Ocultar mis datos'}
-          onPress={() => setHidden((value) => !value)}
-          style={styles.reveal}
-        >
-          {hidden ? (
-            <Eye size={16} color={theme.textFaint} strokeWidth={1.75} />
-          ) : (
-            <EyeOff size={16} color={theme.textFaint} strokeWidth={1.75} />
-          )}
-          <Text style={styles.revealText}>{hidden ? 'mostrar' : 'ocultar'}</Text>
-        </Pressable>
-      </View>
-      <Text style={styles.warning}>
-        Estos datos solo viven en tu teléfono. No están escritos en el código ni se suben a ningún
-        lado.
-      </Text>
-      <Text style={styles.hint}>
-        Solo los dos primeros son obligatorios: sin estatura y fecha de nacimiento no se pueden
-        calcular tus metas, y sin metas ningún día tiene nota. El resto ya viene con un valor
-        razonable y lo puedes dejar como está.
-      </Text>
-
-      {FIELDS.map((field) => {
-        const draft = drafts[field.key] ?? settings.get(field.key) ?? '';
-        const problem = draft.trim() === '' ? null : settingProblem(field.key, draft);
-        return (
-          <View key={field.key} style={styles.field}>
-            <Text style={styles.label}>{field.label}</Text>
-            {/* Un valor que no se guardo nunca se tapa: hay que poder ver que tiene
-                de malo para arreglarlo. */}
-            {hidden &&
-            editing !== field.key &&
-            draft.trim() !== '' &&
-            !refused[field.key] &&
-            problem === null ? (
-              <Pressable
-                accessibilityLabel={`Mostrar ${field.label}`}
-                onPress={() => setHidden(false)}
-                style={styles.input}
-              >
-                <Text style={styles.masked}>{'•'.repeat(Math.min(10, draft.trim().length))}</Text>
-              </Pressable>
-            ) : field.keyboard === 'numeric' ? (
-              <NumericField
-                value={draft}
-                onChange={(text) => setDrafts((current) => ({ ...current, [field.key]: text }))}
-                allowDecimal
-                accessibilityLabel={field.label}
-                onCommit={() => commit(field.key)}
-                onFocus={() => setEditing(field.key)}
-                onBlur={() => setEditing(null)}
-                style={[styles.input, problem ? styles.inputBad : null]}
-              />
-            ) : (
-              <TextInput
-                value={draft}
-                onChangeText={(text) => setDrafts((current) => ({ ...current, [field.key]: text }))}
-                onFocus={() => setEditing(field.key)}
-                onBlur={() => {
-                  setEditing(null);
-                  commit(field.key);
-                }}
-                onSubmitEditing={() => commit(field.key)}
-                accessibilityLabel={field.label}
-                style={[styles.input, problem ? styles.inputBad : null]}
-              />
-            )}
-            <Text style={(problem ?? refused[field.key]) ? styles.problem : styles.hint}>
-              {refused[field.key] ? `Sin guardar: ${refused[field.key]}` : (problem ?? field.hint)}
-              {field.required && draft.trim() === '' ? ' Falta este.' : ''}
-            </Text>
-          </View>
-        );
-      })}
-
-      <View style={styles.field}>
-        <Text style={styles.label}>Fase</Text>
-        <View style={styles.options}>
-          {PHASES.map((option) => (
-            <Chip
-              key={option.value}
-              label={option.label}
-              selected={option.value === phase}
-              onPress={() => onSaveSetting('phase', option.value)}
-            />
-          ))}
-        </View>
-      </View>
-
-      <Text style={styles.heading}>Unidad de peso</Text>
-      <View style={styles.options}>
-        {(['lb', 'kg'] as const).map((option) => (
-          <Chip
-            key={option}
-            label={option === 'lb' ? 'Libras' : 'Kilos'}
-            selected={(settings.get('weight_unit') ?? 'lb') === option}
-            onPress={() => onSaveSetting('weight_unit', option)}
-          />
-        ))}
-      </View>
-      <Text style={styles.hint}>
-        Cómo ves y escribes el peso que levantas. Se guarda siempre igual por dentro, así que
-        cambiarlo no altera nada de lo ya registrado. Tu peso corporal va aparte, en kilos.
-      </Text>
-
-      <Text style={styles.heading}>Peso de hoy</Text>
-      <View style={styles.field}>
-        {hidden && editing !== 'weight' && weightDraft.trim() !== '' ? (
+    return (
+      <Field key={field.key} label={field.label} required={field.required}>
+        {masked ? (
           <Pressable
-            accessibilityLabel="Mostrar el peso de hoy"
+            accessibilityLabel={`Mostrar ${field.label}`}
             onPress={() => setHidden(false)}
-            style={styles.input}
+            style={({ pressed }) => [styles.input, pressed && styles.inputPressed]}
           >
-            <Text style={styles.masked}>{'•'.repeat(Math.min(10, weightDraft.trim().length))}</Text>
+            <Text style={styles.masked}>{'•'.repeat(Math.min(10, draft.trim().length))}</Text>
           </Pressable>
-        ) : (
+        ) : field.keyboard === 'numeric' ? (
           <NumericField
-            value={weightDraft}
-            onChange={setWeightDraft}
+            value={draft}
+            onChange={(text) => setDrafts((current) => ({ ...current, [field.key]: text }))}
             allowDecimal
-            accessibilityLabel="Peso de hoy"
-            onFocus={() => setEditing('weight')}
+            accessibilityLabel={field.label}
+            placeholder={field.placeholder ?? settingDefault(field.key) ?? undefined}
+            onCommit={() => commit(field.key)}
+            onFocus={() => setEditing(field.key)}
             onBlur={() => setEditing(null)}
-            onCommit={() => {
-              const parsed = Number(weightDraft);
-              if (isBodyWeightKg(parsed)) onSaveWeight(parsed);
+            style={[styles.input, problem ? styles.inputBad : null]}
+            focusedStyle={styles.inputWriting}
+          />
+        ) : (
+          <TextInput
+            value={draft}
+            onChangeText={(text) => setDrafts((current) => ({ ...current, [field.key]: text }))}
+            onFocus={() => setEditing(field.key)}
+            onBlur={() => {
+              setEditing(null);
+              commit(field.key);
             }}
-            style={styles.input}
+            onSubmitEditing={() => commit(field.key)}
+            accessibilityLabel={field.label}
+            placeholder={field.placeholder ?? settingDefault(field.key) ?? undefined}
+            style={[styles.input, problem ? styles.inputBad : null]}
           />
         )}
-        <Text style={styles.hint}>
-          El promedio de siete días es el que manda; un día suelto es agua y comida en el estómago.
-        </Text>
-      </View>
+        {(problem ?? refused[field.key]) && (
+          <Text style={styles.problem}>
+            {refused[field.key] ? `Sin guardar: ${refused[field.key]}` : problem}
+          </Text>
+        )}
+      </Field>
+    );
+  };
 
-      <Text style={styles.heading}>Avisos</Text>
-      <Text style={styles.hint}>
-        Solo te avisa de lo que falta y nunca de lo que ya anotaste. Máximo{' '}
-        {DEFAULT_NUDGE_RULES.maxPerDay} al día, nada entre las 21:30 y las 7:30, y el tipo de aviso
-        que ignores tres veces seguidas se calla una semana solo.
-      </Text>
-      {/* Un interruptor por aviso, uno debajo del otro: son cinco cosas que se
-          prenden y se apagan por su lado, y en chips no se veia cual estaba en cual. */}
+  const phase = settings.get('phase') ?? 'recomp';
+  const readapting = (settings.get('re_entry_started_on') ?? '') !== '';
+
+  // La meta de sueno se guarda en minutos, pero nadie piensa en minutos: se escribe
+  // en horas y minutos y se suma al guardar.
+  const storedSleep = Number(
+    settings.get('sleep_target_minutes') ?? settingDefault('sleep_target_minutes'),
+  );
+  const [sleepHours, setSleepHours] = useState(String(Math.floor(storedSleep / 60)));
+  const [sleepMinutes, setSleepMinutes] = useState(String(storedSleep % 60));
+  const commitSleep = () => {
+    const total = (Number(sleepHours) || 0) * 60 + (Number(sleepMinutes) || 0);
+    const problem = settingProblem('sleep_target_minutes', String(total));
+    setRefused((current) => ({ ...current, sleep_target_minutes: problem ?? undefined }));
+    if (problem === null) onSaveSetting('sleep_target_minutes', String(total));
+  };
+
+  return (
+    <Screen title="Ajustes">
       <Card>
+        <Head title="Perfil">
+          <IconButton
+            icon={hidden ? Eye : EyeOff}
+            accessibilityLabel={hidden ? 'Mostrar mis datos' : 'Ocultar mis datos'}
+            selected={!hidden}
+            onPress={() => setHidden((value) => !value)}
+          />
+        </Head>
+
+        {PROFILE_FIELDS.map(renderField)}
+
+        <Field label="Fase">
+          <View style={styles.options}>
+            {PHASES.map((option) => (
+              <Chip
+                key={option.value}
+                label={option.label}
+                selected={option.value === phase}
+                onPress={() => onSaveSetting('phase', option.value)}
+              />
+            ))}
+          </View>
+        </Field>
+
+        <Field label="Unidad de peso">
+          <View style={styles.options}>
+            {(['lb', 'kg'] as const).map((option) => (
+              <Chip
+                key={option}
+                label={option === 'lb' ? 'Libras' : 'Kilos'}
+                selected={(settings.get('weight_unit') ?? 'lb') === option}
+                onPress={() => onSaveSetting('weight_unit', option)}
+              />
+            ))}
+          </View>
+        </Field>
+      </Card>
+
+      <Card title="Metas">
+        <Field label="Sueño">
+          <View style={styles.row}>
+            <NumericField
+              value={sleepHours}
+              onChange={setSleepHours}
+              accessibilityLabel="Horas de sueño"
+              onCommit={commitSleep}
+              onFocus={() => setEditing('sleep')}
+              onBlur={() => setEditing(null)}
+              style={[styles.input, styles.short]}
+              focusedStyle={styles.inputWriting}
+            />
+            <Text style={styles.unit}>h</Text>
+            <NumericField
+              value={sleepMinutes}
+              onChange={setSleepMinutes}
+              accessibilityLabel="Minutos de sueño"
+              onCommit={commitSleep}
+              onFocus={() => setEditing('sleep')}
+              onBlur={() => setEditing(null)}
+              style={[styles.input, styles.short]}
+              focusedStyle={styles.inputWriting}
+            />
+            <Text style={styles.unit}>min</Text>
+          </View>
+          {refused.sleep_target_minutes && (
+            <Text style={styles.problem}>Sin guardar: {refused.sleep_target_minutes}</Text>
+          )}
+        </Field>
+
+        {renderField({ key: 'steps_target', label: 'Pasos', keyboard: 'numeric' })}
+      </Card>
+
+      {/* Cartilla con interruptor, como las paletas: el interruptor es el dato. Con el
+          apagado no hay readaptacion que configurar, asi que los campos no estan. */}
+      <Card>
+        <Head title="Readaptación">
+          <Toggle
+            value={readapting}
+            accessibilityLabel={readapting ? 'Terminar la readaptación' : 'Estoy readaptando'}
+            onChange={(next) => {
+              if (next) onSaveSetting('re_entry_started_on', todayIso());
+              else onClearSetting('re_entry_started_on');
+              setDrafts((current) => ({ ...current, re_entry_started_on: undefined }));
+            }}
+          />
+        </Head>
+        {readapting && RE_ENTRY_FIELDS.map(renderField)}
+      </Card>
+
+      <Card title="Avisos">
         <View style={styles.switchRow}>
           <Text style={styles.switchLabel}>Todos los avisos</Text>
           <Toggle
@@ -360,189 +374,174 @@ export function SettingsScreen({
         })}
       </Card>
 
-      <Text style={styles.heading}>Catálogo</Text>
-      <Text style={styles.hint}>
-        Con qué se hace cada ejercicio, lo que dice su (i), en qué gimnasio lo tienes y cuántas
-        series le toca en cada rutina y con cada tiempo.
-      </Text>
-      <Button
-        label="Ejercicios"
-        accessibilityLabel="Editar los ejercicios"
-        icon={ChevronRight}
-        onPress={onOpenExercises}
-      />
+      <Card title="Catálogo">
+        <Button
+          label="Ejercicios"
+          accessibilityLabel="Editar los ejercicios"
+          icon={ChevronRight}
+          block
+          onPress={onOpenExercises}
+        />
+        <Button
+          label="Comidas"
+          accessibilityLabel="Editar los alimentos"
+          icon={ChevronRight}
+          block
+          onPress={onOpenFoods}
+        />
+      </Card>
 
+      {/* Sin cartilla alrededor: cada paleta ya es una, y una cartilla dentro de otra
+          se lee como un error de dibujo. */}
       <Text style={styles.heading}>Paleta</Text>
-      <Text style={styles.hint}>
-        Solo para los cuadritos de la cuadrícula. El resto de la app no cambia de color con esto.
-      </Text>
       <PalettePicker selected={palette} onSelect={onSelectPalette} />
 
-      <Text style={styles.heading}>Respaldo</Text>
-      <Text style={styles.hint}>
-        Un solo archivo JSON con todo lo registrado. Sirve para volver si se borra la app o cambias
-        de teléfono, y es el mismo archivo que usarás para entrenar un modelo más adelante.
-      </Text>
-      <View style={styles.options}>
-        <Button
-          label="Exportar"
-          accessibilityLabel="Exportar todo a un archivo"
-          loading={busy === 'exportar'}
-          disabled={busy !== null}
-          onPress={() => {
-            setBusy('exportar');
-            setBackupNote('Escribiendo…');
-            onExport()
-              .then((outcome) => {
-                setBackupNote(
-                  outcome.shared
-                    ? `Listo, ${Math.round(outcome.bytes / 1024)} KB.`
-                    : `Guardado en el teléfono, ${Math.round(outcome.bytes / 1024)} KB: ${outcome.uri}`,
-                );
-              })
-              .catch((error: unknown) => {
-                setBackupNote(error instanceof Error ? error.message : String(error));
-              })
-              .finally(() => setBusy(null));
-          }}
-        />
+      <Card title="Respaldo">
+        <View style={styles.options}>
+          <Button
+            label="Exportar"
+            accessibilityLabel="Exportar todo a un archivo"
+            loading={busy === 'exportar'}
+            disabled={busy !== null}
+            style={styles.grow}
+            onPress={() => {
+              setBusy('exportar');
+              setBackupNote('Escribiendo…');
+              onExport()
+                .then((outcome) => {
+                  setBackupNote(
+                    outcome.shared
+                      ? `Listo, ${Math.round(outcome.bytes / 1024)} KB.`
+                      : `Guardado en el teléfono, ${Math.round(outcome.bytes / 1024)} KB: ${outcome.uri}`,
+                  );
+                })
+                .catch((error: unknown) => {
+                  setBackupNote(error instanceof Error ? error.message : String(error));
+                })
+                .finally(() => setBusy(null));
+            }}
+          />
 
-        {confirmingImport ? (
-          <>
+          {confirmingImport ? (
+            <>
+              <Button
+                label="Sí, reemplazar lo que hay"
+                accessibilityLabel="Confirmar importación"
+                variant="danger"
+                loading={busy === 'importar'}
+                disabled={busy !== null}
+                block
+                onPress={() => {
+                  setConfirmingImport(false);
+                  setBusy('importar');
+                  setBackupNote('Leyendo el archivo…');
+                  onImport()
+                    .then((result) => {
+                      if (result === null) {
+                        setBackupNote('No elegiste ningún archivo.');
+                        return;
+                      }
+                      setBackupNote(
+                        `Restaurado: ${result.rows} filas en ${result.tables} tablas.` +
+                          (result.skipped.length > 0
+                            ? ` Quedaron fuera ${result.skipped.join(', ')}, que esta versión ya no tiene.`
+                            : ''),
+                      );
+                    })
+                    .catch((error: unknown) => {
+                      setBackupNote(error instanceof Error ? error.message : String(error));
+                    })
+                    .finally(() => setBusy(null));
+                }}
+              />
+              <Button
+                label="Cancelar"
+                accessibilityLabel="Cancelar importación"
+                block
+                onPress={() => setConfirmingImport(false)}
+              />
+            </>
+          ) : (
             <Button
-              label="Sí, reemplazar lo que hay"
-              accessibilityLabel="Confirmar importación"
-              variant="danger"
+              label="Importar"
+              accessibilityLabel="Importar desde un archivo"
               loading={busy === 'importar'}
               disabled={busy !== null}
+              style={styles.grow}
+              onPress={() => setConfirmingImport(true)}
+            />
+          )}
+        </View>
+        {backupNote && <Text style={styles.note}>{backupNote}</Text>}
+      </Card>
+
+      <Card title="Base de datos">
+        {confirmingReset ? (
+          <>
+            <Button
+              label="Sí, borrar todo lo registrado"
+              accessibilityLabel="Confirmar borrado"
+              variant="danger"
+              block
               onPress={() => {
-                setConfirmingImport(false);
-                setBusy('importar');
-                setBackupNote('Leyendo el archivo…');
-                onImport()
-                  .then((result) => {
-                    if (result === null) {
-                      setBackupNote('No elegiste ningún archivo.');
-                      return;
-                    }
-                    setBackupNote(
-                      `Restaurado: ${result.rows} filas en ${result.tables} tablas.` +
-                        (result.skipped.length > 0
-                          ? ` Quedaron fuera ${result.skipped.join(', ')}, que esta versión ya no tiene.`
-                          : ''),
-                    );
-                  })
-                  .catch((error: unknown) => {
-                    setBackupNote(error instanceof Error ? error.message : String(error));
-                  })
-                  .finally(() => setBusy(null));
+                setConfirmingReset(false);
+                onResetDatabase();
               }}
             />
             <Button
               label="Cancelar"
-              accessibilityLabel="Cancelar importación"
-              onPress={() => setConfirmingImport(false)}
+              accessibilityLabel="Cancelar borrado"
+              block
+              onPress={() => setConfirmingReset(false)}
             />
           </>
         ) : (
           <Button
-            label="Importar"
-            accessibilityLabel="Importar desde un archivo"
-            loading={busy === 'importar'}
-            disabled={busy !== null}
-            onPress={() => setConfirmingImport(true)}
+            label="Borrar y empezar de cero"
+            accessibilityLabel="Borrar la base de datos"
+            block
+            onPress={() => setConfirmingReset(true)}
           />
         )}
-      </View>
-      {backupNote && <Text style={styles.hint}>{backupNote}</Text>}
-
-      <Text style={styles.heading}>Base de datos</Text>
-      <Text style={styles.hint}>
-        Mientras el esquema siga cambiando, una versión nueva de la app puede no entenderse con una
-        base creada antes. Borrarla la reconstruye desde cero.
-      </Text>
-      {confirmingReset ? (
-        <View style={styles.options}>
-          <Button
-            label="Sí, borrar todo lo registrado"
-            accessibilityLabel="Confirmar borrado"
-            variant="danger"
-            onPress={() => {
-              setConfirmingReset(false);
-              onResetDatabase();
-            }}
-          />
-          <Button
-            label="Cancelar"
-            accessibilityLabel="Cancelar borrado"
-            onPress={() => setConfirmingReset(false)}
-          />
-        </View>
-      ) : (
-        <Button
-          label="Borrar la base de datos"
-          accessibilityLabel="Borrar la base de datos"
-          onPress={() => setConfirmingReset(true)}
-        />
-      )}
-    </ScrollView>
+      </Card>
+    </Screen>
   );
 }
 
 const styles = sheet((theme) => ({
-  scroll: {
-    flex: 1,
-    backgroundColor: theme.bg,
-  },
-  screen: {
-    flexGrow: 1,
-    backgroundColor: theme.bg,
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 48,
-    gap: 10,
-  },
-  headingRow: {
+  head: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
+    minHeight: 34,
   },
-  reveal: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
+  headTitle: {
+    fontSize: 16,
+    fontFamily: font.black,
+    color: theme.text,
   },
-  revealText: {
+  heading: {
+    fontSize: 16,
+    fontFamily: font.black,
+    color: theme.text,
+    marginTop: 4,
+  },
+  field: {
+    gap: 5,
+  },
+  label: {
     fontSize: 12,
+    fontFamily: font.black,
+    letterSpacing: 0.6,
     color: theme.textFaint,
-    fontFamily: font.bold,
+    textTransform: 'uppercase',
   },
   masked: {
     fontSize: 15,
     color: theme.textFaint,
     fontFamily: font.black,
     letterSpacing: 2,
-  },
-  heading: {
-    fontSize: 19,
-    marginTop: 14,
-    fontFamily: font.black,
-    color: theme.text,
-  },
-  warning: {
-    fontSize: 12,
-    color: theme.textFaint,
-    fontFamily: font.bold,
-  },
-  field: {
-    gap: 4,
-  },
-  label: {
-    fontSize: 13,
-    color: theme.text,
-    fontFamily: font.bold,
   },
   input: {
     borderWidth: shape.border,
@@ -555,10 +554,31 @@ const styles = sheet((theme) => ({
     fontFamily: font.bold,
     color: theme.text,
   },
+  short: {
+    width: 72,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  unit: {
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.textFaint,
+  },
+  inputWriting: {
+    backgroundColor: theme.surfaceHigh,
+  },
+  inputPressed: {
+    opacity: 0.6,
+  },
   inputBad: {
     borderColor: theme.danger,
   },
-  hint: {
+  note: {
     fontSize: 12,
     color: theme.textFaint,
     fontFamily: font.regular,
@@ -573,12 +593,15 @@ const styles = sheet((theme) => ({
     flexWrap: 'wrap',
     gap: 8,
   },
+  grow: {
+    flexGrow: 1,
+  },
   switchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    minHeight: 40,
+    minHeight: 44,
   },
   switchRuled: {
     borderTopWidth: shape.border,

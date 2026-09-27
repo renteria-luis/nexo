@@ -76,14 +76,14 @@ export function ChartsScreen() {
 
   useEffect(reload, [reload]);
 
-  if (state.phase !== 'ready') return <Screen>{null}</Screen>;
+  if (state.phase !== 'ready') return <Screen title="Gráficas">{null}</Screen>;
   const unit = state.loaded.unit;
 
   const trend =
     data?.trends.find((item) => item.exerciseId === exercise) ?? data?.trends[0] ?? null;
 
   return (
-    <Screen>
+    <Screen title="Gráficas">
       {/* Igual que el teclado: una barra o un boton se quedan con el toque antes de
           llegar aqui, asi que solo lo cierra el toque en una zona muerta. */}
       <View

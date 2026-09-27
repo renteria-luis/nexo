@@ -216,7 +216,6 @@ export function ExerciseScreen() {
     editRoutineTier,
   } = useAppData();
   const route = useRoute<RouteProp<Record<string, { exerciseId: string }>, string>>();
-  const navigation = useNavigation<{ setOptions: (options: { title: string }) => void }>();
   const exerciseId = route.params.exerciseId;
 
   const [card, setCard] = useState<ExerciseCard | null>(null);
@@ -232,11 +231,6 @@ export function ExerciseScreen() {
   }, [loadExercise, exerciseId, complain]);
 
   useEffect(reload, [reload]);
-
-  const name = card?.exercise.name_es;
-  useEffect(() => {
-    if (name !== undefined) navigation.setOptions({ title: name });
-  }, [navigation, name]);
 
   /** Cada cambio se guarda solo y la ficha se vuelve a leer de la base. */
   const after = useCallback(
@@ -256,7 +250,7 @@ export function ExerciseScreen() {
   const exercise = card.exercise;
 
   return (
-    <Screen>
+    <Screen title={exercise.name_es}>
       {problem && <Text style={styles.problem}>{problem}</Text>}
 
       <Card>

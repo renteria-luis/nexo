@@ -12,7 +12,7 @@ Pulled from the reference's own stylesheet (`/_next/static/css/…`, the `:root`
 | Token | Reference | This app (`src/ui/theme.ts`) |
 |---|---|---|
 | border width | `2px`, and nothing else exists in their CSS | `shape.border = 2` |
-| radius | `--border-radius: 5px` | `shape.radius = 10`, `radiusSmall = 7`, `radiusLarge = 16` |
+| radius | `--border-radius: 5px` | `shape.radius = 10`, `radiusSmall = 7`, `radiusLarge = 25` |
 | shadow | `4px 4px 0px 0px var(--border)` | `hardShadow()` → offset 4, radius 0, opacity 1 |
 | pressed | translate by the shadow offset + `shadow-none`, 150 ms | `pressed()` → same translate, no animation |
 | page | `--background: #dcebfe` (a pastel tint) | `bg: #fff4e0` cream |
@@ -100,7 +100,7 @@ Rules that keep it readable:
 | `Toggle` | `src/ui/Toggle.tsx` | one thing that is on or off, in a row with its label |
 | `Star` | `src/ui/Star.tsx` | the one decorative sticker per screen, with a number inside |
 | `Screen` | `src/ui/screens/Screen.tsx` | the frame: scroll, title, database states, overlay slot |
-| `TopBar` | `src/ui/TopBar.tsx` | the app's own header on the main screen: the wordmark and the way into Ajustes |
+| `TopBar` | `src/ui/TopBar.tsx` | the app's own header on every screen: the wordmark, and Ajustes or the done check |
 | `TabBar` | `src/ui/TabBar.tsx` | the app's own floating bottom bar, with the yellow block that slides to the open tab |
 | `CommandBar` | `src/ui/CommandBar.tsx` | the typed shortcut, already restyled |
 | `NumberPad` | `src/ui/NumberPad.tsx` | the app's own keypad; never the system one for numbers |
@@ -300,15 +300,21 @@ slider today; steppers won.
 - **Both bars are ours.** The top one is the page's cream and draws no rule of its own:
   the line under it is the `Screen`'s own top border, and a second border there would
   read as 4 px. It is the wordmark in a **flat** yellow sticker (it is not touchable) and
-  Ajustes as a **raised** button (it is), and it lives above the pager so it stays put
-  while the pages slide under it. It carries `insets.top` itself, because the native
-  header is off on that screen.
+  one **raised** button on the right (which is): the gear into Ajustes on the main
+  screen, and a yellow check that closes the screen on every pushed one. It is wired as
+  the stack's `header` option, so it is the same bar everywhere, it carries `insets.top`
+  itself, and `back` from the navigator — not a guess — decides which button it shows.
+- **The bar carries no title.** The screen's own display title says where you are, and
+  the native header used to say it a second time in 18 pt right above it. Every pushed
+  screen therefore passes `title` to `Screen`; the ones that used to lean on the route
+  name (Registros, Gráficas, Lecturas, Recomendaciones, Experimentos, Resumen semanal,
+  Día and the exercise card) now say their own name.
 - **The tab bar floats**, which is how the owner's design C draws it: a `surface` island
   with the ink border all the way round, `shape.radiusLarge`, `hardShadow()`, laid
   **over** the pages rather than under them. Its wrapper is `pointerEvents="box-none"`,
   so the cream around the island belongs to the screen underneath and not to the bar.
-  Design C's own bar is a stadium; ours stops at 16 because a fully round end would be a
-  shape that exists nowhere else in the app.
+  Design C's own bar is a stadium; ours stops at 25, which is round enough to read as a
+  loose object and still short of the 32 that would make the ends semicircles.
 - **Where a floating island can sit is decided by the corner of the phone**, not by
   taste. It keeps 20 pt from the sides and drops 14 pt into the bottom safe area (never
   closer than 8 pt to the edge), which on a phone with a gesture bar leaves it 20 pt up.
@@ -375,10 +381,32 @@ rest of the macros as bordered cells inside one card, the portions as ruled rows
 and the line that explains it is a warn-tinted strip inside the card rather than a
 shouting orange card of its own.
 
-Left, screen by screen: Ofertas (`DealsScreen`), the pushed screens (`DayScreen`,
+Also done: **Ajustes** (`SettingsScreen`), twice. First onto cards, then — his words —
+because it was still "demasiado overwhelming, mucho texto y campos". What that second
+pass removed is the lesson: **a settings screen explains itself with its labels or not at
+all.** Every paragraph that described a field is gone, and what the paragraphs carried is
+now in the field itself: a `*` on the two that the targets cannot be computed without,
+the factory value as the grey placeholder (`settingDefault`), a format as the
+placeholder of a date. An error still gets a red line under the field, because that is
+not an explanation, it is an answer.
+
+What is left is seven cards: Perfil (height, birth date, activity, phase, weight unit),
+Metas (sleep as hours and minutes, steps), Readaptación, Avisos, Catálogo (into the two
+editors), Respaldo, Base de datos. Readaptación is a **card with a switch in its head
+row** — the palette's choice card, but alone: the switch is the setting (on writes
+today's date into `re_entry_started_on`, off clears it) and the two fields only exist
+while it is on. The eye in Perfil now hides two fields instead of five, which is what
+makes it mean something: his height and his birth date. The body-weight field is gone
+from here entirely, since he writes it every day on Hoy.
+
+Moving it onto `Screen` — it used to carry its own `ScrollView`, from back when `Screen`
+assumed a tab bar under it — gave it the 2 px rule under the header and the keypad reveal
+for free.
+
+Left, screen by screen: Ofertas (`DealsScreen`) and the pushed screens (`DayScreen`,
 `ChartsScreen`, `RecordsScreen`, `WeekSummaryScreen`, `ReadingsScreen`,
-`RoutineNotesScreen`, `ExperimentsScreen`, `PendingScreen`), and the rest of
-`SettingsScreen`. Each one is the same job: replace hand-rolled boxes with `Card`,
+`RoutineNotesScreen`, `ExperimentsScreen`, `PendingScreen`). Each one is the same job:
+replace hand-rolled boxes with `Card`,
 option rows with `Chip`, actions with `Button`, set a family on every `Text`, and give
 every `Pressable` a pressed style.
 

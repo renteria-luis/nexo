@@ -63,7 +63,7 @@ export function WeekSummaryScreen() {
   const canGoForward = weekStart(addDays(anchor, 7)) <= todayIso();
 
   return (
-    <Screen>
+    <Screen title="Resumen semanal">
       <View style={styles.nav}>
         <Pressable
           accessibilityLabel="Semana anterior"

@@ -95,7 +95,7 @@ export function ReadingsScreen() {
   }, [loadStudies]);
 
   return (
-    <Screen>
+    <Screen title="Lecturas">
       <Text style={styles.intro}>
         Cada criterio de la nota pesa lo que pesa por estos estudios. Aquí está de dónde sale, para
         que se pueda revisar y no solo creer.

@@ -49,13 +49,13 @@ export function RecordsScreen() {
 
   useEffect(reload, [reload]);
 
-  if (state.phase !== 'ready') return <Screen>{null}</Screen>;
+  if (state.phase !== 'ready') return <Screen title="Registros">{null}</Screen>;
   const unit = state.loaded.unit;
 
   const sorted = rows === null ? [] : sortDayRows(rows, sort);
 
   return (
-    <Screen>
+    <Screen title="Registros">
       <Text style={styles.label}>periodo</Text>
       <View style={styles.chips}>
         {RECORD_WINDOWS.map((option) => (

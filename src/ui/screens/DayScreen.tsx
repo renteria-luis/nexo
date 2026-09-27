@@ -66,12 +66,12 @@ export function DayScreen() {
 
   useEffect(reload, [reload]);
 
-  if (state.phase !== 'ready') return <Screen>{null}</Screen>;
+  if (state.phase !== 'ready') return <Screen title={shortDate(date)}>{null}</Screen>;
   const { loaded } = state;
 
   if (detail === null) {
     return (
-      <Screen>
+      <Screen title={shortDate(date)}>
         <Text style={styles.loading}>{problem ?? 'Abriendo el día…'}</Text>
       </Screen>
     );
@@ -88,7 +88,7 @@ export function DayScreen() {
   };
 
   return (
-    <Screen>
+    <Screen title={shortDate(date)}>
       <View style={styles.head}>
         <Text style={styles.date}>{shortDate(date)}</Text>
         <Text style={styles.score}>

@@ -1,23 +1,28 @@
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Settings } from './icons.ts';
+import { Check, Settings } from './icons.ts';
+import { IconButton } from './IconButton.tsx';
 import { font, hardShadow, pressed as pressedInto, sheet, shape, theme } from './theme.ts';
 
 /**
- * La barra de arriba de la pantalla principal: el nombre y la salida a Ajustes.
+ * La barra de arriba, la misma en toda la app: el nombre y lo unico que se puede
+ * tocar desde ahi.
  *
  * Reemplaza al encabezado nativo, que solo dejaba cambiarle el color: no acepta el
  * borde de tinta ni un boton con relieve, y ponia su propio fondo redondo debajo del
- * nuestro. Esta vive dentro del arbol de la app, encima del carrusel de pestanas, asi
- * que se queda quieta mientras las paginas se deslizan por debajo.
+ * nuestro. La pone el navegador como encabezado de cada pantalla apilada, y en la
+ * principal se queda encima del carrusel, asi que no se mueve mientras las paginas se
+ * deslizan por debajo.
  *
- * El nombre va en una pegatina amarilla plana, porque no se toca; el boton de Ajustes
- * es el que lleva sombra, porque es lo unico que se puede pulsar aqui. La raya de
- * abajo no la dibuja la barra: la pone el borde de arriba de cada pantalla, que es lo
+ * El nombre va en una pegatina amarilla plana, porque no se toca. El boton de la
+ * derecha es lo unico con sombra: entrar a Ajustes desde la pantalla principal, o
+ * cerrar la pantalla apilada y volver. No lleva titulo a proposito, porque el titulo
+ * grande ya esta dentro de la pantalla y decirlo dos veces es ruido. La raya de abajo
+ * tampoco la dibuja la barra: la pone el borde de arriba de cada pantalla, que es lo
  * que mantiene una sola raya de dos puntos y no dos pegadas.
  */
-export function TopBar({ onSettings }: { onSettings: () => void }) {
+export function TopBar({ action, onPress }: { action: 'settings' | 'done'; onPress: () => void }) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -26,15 +31,19 @@ export function TopBar({ onSettings }: { onSettings: () => void }) {
         <Text style={styles.brandText}>nexo</Text>
       </View>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Ajustes"
-        onPress={onSettings}
-        style={({ pressed }) => [styles.action, pressed && styles.pressed]}
-      >
-        <Settings size={17} color={theme.text} strokeWidth={2.5} />
-        <Text style={styles.actionText}>Ajustes</Text>
-      </Pressable>
+      {action === 'done' ? (
+        <IconButton icon={Check} tone="accent" accessibilityLabel="Listo" onPress={onPress} />
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Ajustes"
+          onPress={onPress}
+          style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+        >
+          <Settings size={17} color={theme.text} strokeWidth={2.5} />
+          <Text style={styles.actionText}>Ajustes</Text>
+        </Pressable>
+      )}
     </View>
   );
 }

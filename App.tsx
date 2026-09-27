@@ -8,7 +8,7 @@ import {
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, Text, View } from 'react-native';
+import { View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppDataProvider, useAppData } from './src/shell/AppData.tsx';
@@ -41,7 +41,7 @@ import { NumberPadHost, useNumberPad } from './src/ui/NumberPadHost.tsx';
 import { SwipeLockProvider, useSwipeLock } from './src/ui/SwipeLock.tsx';
 import { FloatingBarSpace, TabBar, tabBarSpace } from './src/ui/TabBar.tsx';
 import { TopBar } from './src/ui/TopBar.tsx';
-import { font, sheet, theme } from './src/ui/theme.ts';
+import { sheet, theme } from './src/ui/theme.ts';
 import { WeekSummaryScreen } from './src/ui/screens/WeekSummaryScreen.tsx';
 
 const Tabs = createMaterialTopTabNavigator();
@@ -101,14 +101,6 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   finance: Wallet,
 };
 
-function HeaderButton({ label, onPress }: { label: string; onPress: () => void }) {
-  return (
-    <Pressable accessibilityLabel={label} onPress={onPress} style={styles.headerButton}>
-      <Text style={styles.headerButtonText}>{label}</Text>
-    </Pressable>
-  );
-}
-
 /**
  * The cards on Hoy open tabs, and a tab only exists inside the tab navigator: an
  * action the stack above does not know cannot reach down into it. From here it goes
@@ -131,16 +123,12 @@ function TabsScreen() {
   // Apagado mientras una pantalla arrastra algo: el gesto del carrusel es nativo y le
   // quita el toque a cualquier arrastre que no baje perfectamente recto.
   const { locked } = useSwipeLock();
-  const navigation = useNavigation<{ navigate: (name: string) => void }>();
   // La barra de abajo flota encima de las paginas, asi que el hueco que tapa lo tiene
   // que dejar libre cada pantalla al final de su contenido.
   const insets = useSafeAreaInsets();
 
   return (
-    // La barra de arriba vive fuera del carrusel para quedarse quieta mientras las
-    // paginas se deslizan por debajo.
     <View style={styles.tabs}>
-      <TopBar onSettings={() => navigation.navigate('Ajustes')} />
       <FloatingBarSpace.Provider value={tabBarSpace(insets.bottom)}>
         <Tabs.Navigator
           // La barra va abajo aunque las paginas sean un pager: es donde llega el pulgar.
@@ -169,20 +157,18 @@ function TabsScreen() {
 }
 
 function SettingsRoute() {
-  const { state, saveSetting, removeSetting, logDay, resetDatabase, exportData, importData } =
-    useAppData();
+  const { state, saveSetting, removeSetting, resetDatabase, exportData, importData } = useAppData();
   const navigation = useNavigation<{ navigate: (name: string) => void }>();
   if (state.phase !== 'ready') return null;
 
   return (
     <SettingsScreen
       onOpenExercises={() => navigation.navigate('Ejercicios')}
+      onOpenFoods={() => navigation.navigate('Alimentos')}
       settings={state.loaded.settings}
       palette={state.loaded.palette}
-      todayWeightKg={state.loaded.today.log?.weight_kg ?? null}
       onSaveSetting={saveSetting}
       onClearSetting={removeSetting}
-      onSaveWeight={(weightKg) => logDay({ weightKg })}
       onSelectPalette={(next) => saveSetting('palette', next)}
       onResetDatabase={resetDatabase}
       onExport={exportData}
@@ -222,91 +208,34 @@ function Navigation() {
     <NavigationContainer ref={navigation} theme={navigationTheme} onStateChange={pad.close}>
       <RootStack.Navigator
         screenOptions={{
-          // El encabezado nativo solo deja cambiarle el color: la raya negra de
-          // debajo la pone el borde de arriba de cada pantalla.
-          headerStyle: { backgroundColor: theme.bg },
-          headerShadowVisible: false,
-          headerTintColor: theme.text,
-          headerTitleStyle: { fontFamily: font.display, fontSize: 18, color: theme.text },
+          // Nuestra barra en lugar del encabezado nativo, que solo dejaba cambiarle el
+          // color. En la pantalla principal lleva a Ajustes; en una apilada la cierra,
+          // que es lo unico que se puede hacer desde ahi.
+          header: ({ navigation, back }) =>
+            back ? (
+              <TopBar action="done" onPress={navigation.goBack} />
+            ) : (
+              <TopBar action="settings" onPress={() => navigation.navigate('Ajustes')} />
+            ),
           contentStyle: { backgroundColor: theme.bg },
         }}
       >
-        <RootStack.Screen name="nexo" component={TabsScreen} options={{ headerShown: false }} />
-        <RootStack.Screen
-          name="Ajustes"
-          component={SettingsRoute}
-          options={({ navigation }) => ({
-            // Nada de modales: un modal de iOS se presenta en su propia ventana y el
-            // teclado de la app, que vive en la raiz, quedaba debajo y sin poder
-            // tocarse. Apilada, la pantalla comparte arbol con el teclado.
-            headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
-          })}
-        />
-        <RootStack.Screen
-          name="Día"
-          component={DayScreen}
-          options={({ navigation }) => ({
-            headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
-          })}
-        />
-        <RootStack.Screen
-          name="Gráficas"
-          component={ChartsScreen}
-          options={({ navigation }) => ({
-            headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
-          })}
-        />
-        <RootStack.Screen
-          name="Ejercicios"
-          component={ExercisesScreen}
-          options={({ navigation }) => ({
-            headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
-          })}
-        />
+        {/* Nada de modales: un modal de iOS se presenta en su propia ventana y el
+            teclado de la app, que vive en la raiz, quedaba debajo y sin poder tocarse.
+            Apiladas, las pantallas comparten arbol con el teclado. */}
+        <RootStack.Screen name="nexo" component={TabsScreen} />
+        <RootStack.Screen name="Ajustes" component={SettingsRoute} />
+        <RootStack.Screen name="Día" component={DayScreen} />
+        <RootStack.Screen name="Gráficas" component={ChartsScreen} />
+        <RootStack.Screen name="Ejercicios" component={ExercisesScreen} />
         {/* La ficha es su propia pantalla: asi el gesto de volver regresa a la lista. */}
         <RootStack.Screen name="Ejercicio" component={ExerciseScreen} />
-        <RootStack.Screen
-          name="Alimentos"
-          component={FoodsScreen}
-          options={({ navigation }) => ({
-            headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
-          })}
-        />
-        <RootStack.Screen
-          name="Registros"
-          component={RecordsScreen}
-          options={({ navigation }) => ({
-            headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
-          })}
-        />
-        <RootStack.Screen
-          name="Recomendaciones"
-          component={RoutineNotesScreen}
-          options={({ navigation }) => ({
-            headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
-          })}
-        />
-        <RootStack.Screen
-          name="Experimentos"
-          component={ExperimentsScreen}
-          options={({ navigation }) => ({
-            headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
-          })}
-        />
-        <RootStack.Screen
-          name="Lecturas"
-          component={ReadingsScreen}
-          options={({ navigation }) => ({
-            headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
-          })}
-        />
-        <RootStack.Screen
-          name="Resumen semanal"
-          component={WeekSummaryScreen}
-          options={({ navigation }) => ({
-            headerLeft: () => <HeaderButton label="Listo" onPress={navigation.goBack} />,
-          })}
-        />
+        <RootStack.Screen name="Alimentos" component={FoodsScreen} />
+        <RootStack.Screen name="Registros" component={RecordsScreen} />
+        <RootStack.Screen name="Recomendaciones" component={RoutineNotesScreen} />
+        <RootStack.Screen name="Experimentos" component={ExperimentsScreen} />
+        <RootStack.Screen name="Lecturas" component={ReadingsScreen} />
+        <RootStack.Screen name="Resumen semanal" component={WeekSummaryScreen} />
       </RootStack.Navigator>
     </NavigationContainer>
   );
@@ -342,17 +271,5 @@ const styles = sheet((theme) => ({
   tabs: {
     flex: 1,
     backgroundColor: theme.bg,
-  },
-  // Texto pelado y nada detras: iOS pone su propio fondo redondo a los botones de la
-  // barra del sistema, y con el recuadro encima se veian dos fondos, uno dentro del
-  // otro. El relieve de este estilo vive en la barra propia de la pantalla principal.
-  headerButton: {
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-  },
-  headerButtonText: {
-    fontSize: 16,
-    fontFamily: font.black,
-    color: theme.text,
   },
 }));

@@ -50,6 +50,16 @@ const DEFAULTS: Partial<Record<SettingKey, string>> = {
   nudges_off: '',
 };
 
+/**
+ * Con lo que sale de fabrica ese ajuste, o null si no tiene.
+ *
+ * La pantalla de Ajustes lo pinta en gris dentro de la casilla vacia: asi el valor que
+ * de verdad esta usando la app se ve sin tener que escribirlo ni explicarlo aparte.
+ */
+export function settingDefault(key: SettingKey): string | null {
+  return DEFAULTS[key] ?? null;
+}
+
 export async function readSettings(db: SQLiteDatabase): Promise<Settings> {
   const rows = await db.getAllAsync<{ key: string; value: string }>(
     'SELECT key, value FROM core_setting;',

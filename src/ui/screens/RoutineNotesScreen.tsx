@@ -123,7 +123,7 @@ export function RoutineNotesScreen() {
   const unchanged = UNCHANGED.filter(keep);
 
   return (
-    <Screen>
+    <Screen title="Recomendaciones">
       <Text style={styles.intro}>
         Propuestas para potenciar la hipertrofia con las máquinas de Fanshawe. Cambiar el programa
         durante la readaptación impide saber si un estancamiento vino del mes parado o de los

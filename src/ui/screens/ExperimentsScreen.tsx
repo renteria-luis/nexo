@@ -153,7 +153,7 @@ export function ExperimentsScreen() {
   };
 
   return (
-    <Screen>
+    <Screen title="Experimentos">
       <Text style={styles.intro}>
         Un experimento es una pregunta con fecha: cambias una sola cosa, la anotas cada dia en la
         misma escala y al final ves si movio algo. Por ejemplo dormir media hora mas durante dos
