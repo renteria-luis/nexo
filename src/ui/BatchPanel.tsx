@@ -1,11 +1,17 @@
 import { useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../db/types.ts';
 import { MEAL_SLOTS, roundAmount } from '../nutrition/index.ts';
 import type { BatchStart, OpenBatch } from '../shell/AppData.tsx';
+
+import { Button } from './Button.tsx';
+import { Card } from './Card.tsx';
+import { Chip } from './Chip.tsx';
+import { Plus, TriangleAlert, Utensils } from './icons.ts';
 import { NumericField } from './NumericField.tsx';
-import { mono, sheet, theme } from './theme.ts';
+import { Toggle } from './Toggle.tsx';
+import { font, sheet, shape, theme } from './theme.ts';
 
 function parse(value: string): number {
   return value.trim() === '' ? Number.NaN : Number(value);
@@ -16,16 +22,19 @@ function Field({
   value,
   onChange,
   placeholder,
+  text = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  /** El nombre se escribe con letras, asi que ese si lleva el teclado del sistema. */
+  text?: boolean;
 }) {
   return (
     <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      {label === 'Nombre' ? (
+      <Text style={styles.label}>{label}</Text>
+      {text ? (
         <TextInput
           value={value}
           onChangeText={onChange}
@@ -42,6 +51,7 @@ function Field({
           accessibilityLabel={label}
           placeholder={placeholder}
           style={styles.input}
+          focusedStyle={styles.inputWriting}
         />
       )}
     </View>
@@ -60,27 +70,34 @@ function BatchCard({ item, onEat }: { item: OpenBatch; onEat: () => void }) {
           : 'calorías sin dato';
 
   return (
-    <View style={styles.card}>
-      <Text style={styles.cardTitle}>
-        {food.name} · {batch.portions_remaining} de {batch.portions_count} porciones
-      </Text>
-      <Text style={styles.cardDetail}>
+    <View style={styles.batch}>
+      <View style={styles.batchHead}>
+        <Text style={styles.batchName}>{food.name}</Text>
+        <Text style={styles.batchLeft}>
+          {batch.portions_remaining} de {batch.portions_count}
+        </Text>
+      </View>
+      <Text style={styles.batchDetail}>
         {roundAmount(macros.proteinG)} g de proteína por porción · {kcal}
       </Text>
       {spoilage && (
         // Spec 7.3 wording.
-        <Text style={styles.spoilage}>
-          Quedan {spoilage.portionsRemaining} porciones de {food.name} de hace {spoilage.ageDays}{' '}
-          días
-        </Text>
+        <View style={styles.warnRow}>
+          <TriangleAlert size={15} color={theme.text} strokeWidth={2.5} />
+          <Text style={styles.warnText}>
+            Quedan {spoilage.portionsRemaining} porciones de {food.name} de hace{' '}
+            {spoilage.ageDays} días
+          </Text>
+        </View>
       )}
-      <Pressable
+      <Button
+        label="Comer una porción"
         accessibilityLabel={`Comer una porción de ${food.name}`}
+        variant="primary"
+        icon={Utensils}
+        block
         onPress={onEat}
-        style={styles.eat}
-      >
-        <Text style={styles.eatText}>Comer una porción</Text>
-      </Pressable>
+      />
     </View>
   );
 }
@@ -167,25 +184,26 @@ export function BatchPanel({ batches, foods, onStart, onEat }: BatchPanelProps) 
   };
 
   return (
-    <View style={styles.wrapper}>
-      <Text style={styles.heading}>Tandas</Text>
+    <Card title="Tandas">
       <Text style={styles.hint}>
         Una tanda es lo que cocinas de una vez y vas comiendo por porciones: metes el total una sola
         vez y despues cada plato se descuenta solo.
       </Text>
 
       {batches.length > 0 && (
-        <View style={styles.chips}>
-          {MEAL_SLOTS.map((name) => (
-            <Pressable
-              key={name}
-              onPress={() => setSlot(name)}
-              style={[styles.chip, name === slot && styles.chipSelected]}
-            >
-              <Text style={styles.chipText}>{name}</Text>
-            </Pressable>
-          ))}
-        </View>
+        <>
+          <Text style={styles.label}>La porción se anota en</Text>
+          <View style={styles.chips}>
+            {MEAL_SLOTS.map((name) => (
+              <Chip
+                key={name}
+                label={name}
+                selected={name === slot}
+                onPress={() => setSlot(name)}
+              />
+            ))}
+          </View>
+        </>
       )}
 
       {batches.map((item) => (
@@ -193,39 +211,35 @@ export function BatchPanel({ batches, foods, onStart, onEat }: BatchPanelProps) 
       ))}
 
       {!creating ? (
-        <Pressable
+        <Button
+          label="Nueva tanda"
           accessibilityLabel="Nueva tanda"
+          icon={Plus}
+          block
           onPress={() => setCreating(true)}
-          style={styles.newBatch}
-        >
-          <Text style={styles.newBatchText}>+ Nueva tanda</Text>
-        </Pressable>
+        />
       ) : (
         <View style={styles.form}>
           <View style={styles.chips}>
             {(['label', 'catalog'] as const).map((option) => (
-              <Pressable
+              <Chip
                 key={option}
+                label={option === 'label' ? 'Desde la etiqueta' : 'Del catálogo'}
+                selected={source === option}
                 onPress={() => setSource(option)}
-                style={[styles.chip, source === option && styles.chipSelected]}
-              >
-                <Text style={styles.chipText}>
-                  {option === 'label' ? 'Desde la etiqueta' : 'Del catálogo'}
-                </Text>
-              </Pressable>
+              />
             ))}
           </View>
 
           {source === 'catalog' ? (
             <View style={styles.chips}>
               {batchable.map((food) => (
-                <Pressable
+                <Chip
                   key={food.id}
+                  label={food.name}
+                  selected={food.id === foodId}
                   onPress={() => setFoodId(food.id)}
-                  style={[styles.chip, food.id === foodId && styles.chipSelected]}
-                >
-                  <Text style={styles.chipText}>{food.name}</Text>
-                </Pressable>
+                />
               ))}
             </View>
           ) : (
@@ -235,6 +249,7 @@ export function BatchPanel({ batches, foods, onStart, onEat }: BatchPanelProps) 
                 value={name}
                 onChange={setName}
                 placeholder="Pechuga de pollo"
+                text
               />
               <Text style={styles.hint}>Tal como dice el paquete, crudo.</Text>
               <View style={styles.row}>
@@ -245,7 +260,7 @@ export function BatchPanel({ batches, foods, onStart, onEat }: BatchPanelProps) 
                 <Field label="Proteína (g)" value={protein} onChange={setProtein} />
                 <Field label="Grasa (g)" value={fat} onChange={setFat} />
                 <Field
-                  label="Carbohidratos (g)"
+                  label="Carbos (g)"
                   value={carbs}
                   onChange={setCarbs}
                   placeholder={drained ? '0 si no trae' : 'opcional'}
@@ -264,126 +279,115 @@ export function BatchPanel({ batches, foods, onStart, onEat }: BatchPanelProps) 
             <Field label="Porciones" value={portions} onChange={setPortions} placeholder="8" />
           </View>
 
-          <Pressable
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: drained }}
-            onPress={() => setDrained((value) => !value)}
-            style={[styles.chip, drained && styles.chipSelected, styles.drained]}
-          >
-            <Text style={styles.chipText}>Grasa escurrida</Text>
-          </Pressable>
+          <View style={styles.switchRow}>
+            <View style={styles.switchText}>
+              <Text style={styles.switchLabel}>Grasa escurrida</Text>
+              <Text style={styles.hint}>
+                La proteína sigue siendo fiable; las calorías salen como un rango.
+              </Text>
+            </View>
+            <Toggle
+              value={drained}
+              onChange={setDrained}
+              accessibilityLabel="La grasa se escurre"
+            />
+          </View>
 
           {problem && <Text style={styles.problem}>{problem}</Text>}
 
-          <View style={styles.row}>
-            <Pressable
+          <View style={styles.buttons}>
+            <Button
+              label="Guardar tanda"
               accessibilityLabel="Guardar tanda"
+              variant="primary"
               disabled={!canSave}
+              style={styles.grow}
               onPress={save}
-              style={[styles.save, !canSave && styles.saveDisabled]}
-            >
-              <Text style={styles.saveText}>Guardar tanda</Text>
-            </Pressable>
-            <Pressable accessibilityLabel="Cancelar tanda" onPress={reset} style={styles.cancel}>
-              <Text style={styles.cancelText}>Cancelar</Text>
-            </Pressable>
+            />
+            <Button
+              label="Cancelar"
+              accessibilityLabel="Cancelar tanda"
+              variant="ghost"
+              onPress={reset}
+            />
           </View>
         </View>
       )}
-    </View>
+    </Card>
   );
 }
 
 const styles = sheet((theme) => ({
-  wrapper: {
-    alignSelf: 'stretch',
-    gap: 8,
-    borderTopWidth: 1,
-    borderTopColor: theme.line,
-    paddingTop: 12,
-  },
-  heading: {
-    fontSize: 14,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  card: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 8,
-    padding: 10,
-    gap: 4,
-  },
-  cardTitle: {
-    fontSize: 13,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  cardDetail: {
-    fontSize: 11,
+  hint: {
+    fontSize: 12,
+    fontFamily: font.regular,
     color: theme.textFaint,
-    fontFamily: mono,
   },
-  spoilage: {
+  label: {
     fontSize: 11,
-    color: theme.warn,
-    fontFamily: mono,
-  },
-  eat: {
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: theme.lineStrong,
-    borderRadius: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginTop: 4,
-  },
-  eatText: {
-    fontSize: 12,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  newBatch: {
-    alignSelf: 'flex-start',
-    paddingVertical: 6,
-  },
-  newBatchText: {
-    fontSize: 12,
-    color: theme.textDim,
-    fontFamily: mono,
-  },
-  form: {
-    gap: 8,
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 8,
-    padding: 10,
+    fontFamily: font.black,
+    letterSpacing: 0.6,
+    color: theme.textFaint,
+    textTransform: 'uppercase',
   },
   chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 5,
+    gap: 8,
   },
-  chip: {
-    borderWidth: 1,
+  batch: {
+    borderWidth: shape.border,
     borderColor: theme.line,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    minHeight: 38,
-    justifyContent: 'center',
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.bg,
+    padding: 10,
+    gap: 6,
   },
-  chipSelected: {
-    borderColor: theme.lineStrong,
-    backgroundColor: theme.surfaceHigh,
+  batchHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 10,
   },
-  chipText: {
-    fontSize: 12,
-    fontFamily: mono,
+  batchName: {
+    flexShrink: 1,
+    fontSize: 15,
+    fontFamily: font.black,
     color: theme.text,
   },
-  drained: {
-    alignSelf: 'flex-start',
+  batchLeft: {
+    fontSize: 15,
+    fontFamily: font.black,
+    color: theme.text,
+    fontVariant: ['tabular-nums'],
+  },
+  batchDetail: {
+    fontSize: 12,
+    fontFamily: font.regular,
+    color: theme.textFaint,
+    fontVariant: ['tabular-nums'],
+  },
+  warnRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.warnBg,
+    padding: 8,
+  },
+  warnText: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: font.regular,
+    color: theme.text,
+  },
+  form: {
+    gap: 10,
+    borderTopWidth: shape.border,
+    borderTopColor: theme.line,
+    paddingTop: 10,
   },
   row: {
     flexDirection: 'row',
@@ -391,55 +395,52 @@ const styles = sheet((theme) => ({
     gap: 8,
   },
   field: {
-    gap: 2,
-    minWidth: 90,
     flexGrow: 1,
-  },
-  fieldLabel: {
-    fontSize: 10,
-    color: theme.textFaint,
-    fontFamily: mono,
+    flexBasis: '28%',
+    gap: 4,
   },
   input: {
-    borderWidth: 1,
-    borderColor: theme.lineSoft,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    fontSize: 13,
-    fontFamily: mono,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.surface,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    fontSize: 15,
+    fontFamily: font.bold,
     color: theme.text,
+    fontVariant: ['tabular-nums'],
   },
-  hint: {
-    fontSize: 10,
-    color: theme.textGhost,
+  inputWriting: {
+    backgroundColor: theme.surfaceHigh,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    minHeight: 44,
+  },
+  switchText: {
+    flex: 1,
+    gap: 2,
+  },
+  switchLabel: {
+    fontSize: 15,
+    fontFamily: font.bold,
+    color: theme.text,
   },
   problem: {
-    fontSize: 11,
+    fontSize: 13,
+    fontFamily: font.bold,
     color: theme.danger,
   },
-  save: {
-    borderWidth: 1,
-    borderColor: theme.lineStrong,
-    borderRadius: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+  buttons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  saveDisabled: {
-    borderColor: theme.lineSoft,
-  },
-  saveText: {
-    fontSize: 12,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  cancel: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  cancelText: {
-    fontSize: 12,
-    color: theme.textFaint,
-    fontFamily: mono,
+  grow: {
+    flex: 1,
   },
 }));

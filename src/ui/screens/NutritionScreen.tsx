@@ -1,13 +1,14 @@
-import { useAppData } from '../../shell/AppData.tsx';
-import { proteinBand } from '../../core/targets.ts';
 import { useNavigation } from '@react-navigation/native';
-import { Pressable, Text } from 'react-native';
+
+import { proteinBand } from '../../core/targets.ts';
+import { useAppData } from '../../shell/AppData.tsx';
 
 import { BatchPanel } from '../BatchPanel.tsx';
+import { Button } from '../Button.tsx';
 import { FoodLog } from '../FoodLog.tsx';
+import { ChevronRight } from '../icons.ts';
 
 import { Screen } from './Screen.tsx';
-import { mono, sheet } from '../theme.ts';
 
 export function NutritionScreen() {
   const { state, addFood, repeatMeal, removeFood, startBatch, eatBatchPortion } = useAppData();
@@ -39,27 +40,13 @@ export function NutritionScreen() {
         onEat={eatBatchPortion}
       />
 
-      {/* Spec 7.5 point 3: the dairy question is his to answer on his own skin. */}
-      <Pressable
+      {/* Spec 7.5 punto 3: la pregunta de los lacteos se contesta en su propia piel. */}
+      <Button
+        label="Experimentos"
         accessibilityLabel="Ver experimentos"
+        icon={ChevronRight}
         onPress={() => navigation.navigate('Experimentos')}
-        style={styles.link}
-      >
-        <Text style={styles.linkText}>Experimentos ›</Text>
-      </Pressable>
+      />
     </Screen>
   );
 }
-
-const styles = sheet((theme) => ({
-  link: {
-    alignSelf: 'flex-start',
-    marginTop: 16,
-    paddingVertical: 6,
-  },
-  linkText: {
-    fontSize: 12,
-    color: theme.textFaint,
-    fontFamily: mono,
-  },
-}));

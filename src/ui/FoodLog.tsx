@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Text, View } from 'react-native';
 
+import { shortDate } from '../core/dates.ts';
 import type { NutritionFoodRow } from '../db/types.ts';
 import {
   MEAL_SLOTS,
@@ -15,36 +16,35 @@ import {
   type NewFoodEntry,
   type NutritionTotals,
 } from '../nutrition/index.ts';
-import { shortDate } from '../core/dates.ts';
 
+import { Button } from './Button.tsx';
+import { Card } from './Card.tsx';
+import { Chip } from './Chip.tsx';
 import { FoodPicker } from './FoodPicker.tsx';
-import { PortionMacros } from './PortionMacros.tsx';
+import { IconButton } from './IconButton.tsx';
+import { Info, Plus, RotateCcw, Trash, TriangleAlert } from './icons.ts';
 import { NumericField } from './NumericField.tsx';
-import { mono, sheet } from './theme.ts';
+import { PortionMacros } from './PortionMacros.tsx';
+import { Star } from './Star.tsx';
+import { font, sheet, shape, theme } from './theme.ts';
 
-function Total({
+/** Un macro del dia en su cuadrito: el nombre arriba, el numero grande debajo. */
+function Stat({
   label,
   value,
-  unit,
-  band,
-  missing,
+  note,
+  alert = false,
 }: {
   label: string;
-  value: number;
-  unit: string;
-  band?: string;
-  missing?: boolean;
+  value: string;
+  note?: string;
+  alert?: boolean;
 }) {
   return (
-    <View style={styles.total}>
-      <Text style={styles.totalLabel}>{label}</Text>
-      <Text style={styles.totalValue}>
-        {roundAmount(value)}
-        {unit}
-        {/* Spec 16.3 rule 5: a gap is shown, never filled in. */}
-        {missing ? ' +' : ''}
-      </Text>
-      {band ? <Text style={styles.totalBand}>{band}</Text> : null}
+    <View style={[styles.stat, alert && styles.statAlert]}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={styles.statValue}>{value}</Text>
+      {note ? <Text style={styles.statNote}>{note}</Text> : null}
     </View>
   );
 }
@@ -94,6 +94,9 @@ export function FoodLog({
   const repeatable = history.lastMealBySlot.get(slot) ?? null;
   // Una burbuja abierta a la vez: la de otra porcion se cierra sola.
   const [openPortion, setOpenPortion] = useState<string | null>(null);
+  // La cantidad no sirve sin la unidad y el boton de al lado, asi que lo que se sube
+  // por encima del teclado es la fila entera.
+  const addRow = useRef<View>(null);
 
   const selected = foods.find((food) => food.id === foodId) ?? null;
   const parsed = Number(quantity);
@@ -101,6 +104,7 @@ export function FoodLog({
 
   const missingFor = (nutrient: string) =>
     totals?.missing.some((gap) => gap.nutrient === nutrient) ?? false;
+  const mark = (nutrient: string) => (missingFor(nutrient) ? ' +' : '');
 
   // El aviso solo puede hablar de los huecos que se ven con un + arriba. La fibra y
   // el indice glucemico no se muestran, asi que nombrar un alimento por no traerlos
@@ -110,6 +114,9 @@ export function FoodLog({
       ? totals?.glycemicLoad !== null && totals?.glycemicLoad !== undefined
       : SHOWN_NUTRIENTS.includes(gap.nutrient),
   );
+
+  const kcal = totals === null ? null : Math.round(totals.kcal);
+  const left = kcal !== null && kcalTarget !== null ? kcalTarget - kcal : null;
 
   return (
     // Tocar donde no hay nada suelta el alimento elegido, igual que el teclado: un
@@ -126,119 +133,151 @@ export function FoodLog({
             }
       }
     >
-      {/* The targets card above also says "Calorías" and "Proteína"; this heading is
-          what keeps the eaten figures from being read as the target ones. */}
-      <Text style={styles.heading}>{heading}</Text>
+      {/* Las calorias son el numero grande y la proteina va en la estrella: la meta de
+          proteina es la que decide si el dia de comida cuenta, y es la que tiene que
+          verse sin leer nada. El titulo de la cartilla de metas tambien dice
+          "Calorias" y "Proteina"; el rotulo de aqui es lo que separa lo comido de lo
+          que toca comer. */}
+      <Card tone="info">
+        <View style={styles.heroRow}>
+          <View style={styles.heroSide}>
+            <Text style={styles.heroEyebrow}>{heading.toUpperCase()}</Text>
+            <Text style={styles.heroValue}>
+              {kcal === null ? '—' : kcal}
+              {kcal === null ? '' : mark('kcal')}
+            </Text>
+            <Text style={styles.heroNote}>
+              {kcal === null
+                ? 'Todavía no anotaste nada'
+                : kcalTarget === null
+                  ? 'kcal · sin metas todavía'
+                  : `kcal de ${kcalTarget} · ${
+                      left !== null && left >= 0 ? `faltan ${left}` : `${Math.abs(left ?? 0)} de más`
+                    }`}
+            </Text>
+          </View>
+          <View style={styles.heroStar}>
+            <Star size={78} color={theme.surface} style={styles.star}>
+              <Text style={styles.starValue}>
+                {totals === null ? '—' : Math.round(totals.proteinG)}
+              </Text>
+            </Star>
+            <Text style={styles.starLabel}>g de proteína{mark('protein_g')}</Text>
+            {proteinBand && (
+              <Text style={styles.starLabel}>
+                meta {proteinBand.from} a {proteinBand.to}
+              </Text>
+            )}
+          </View>
+        </View>
+      </Card>
 
       {totals && (
-        <View style={styles.totals}>
-          <Total
-            label="Calorías"
-            value={totals.kcal}
-            unit=""
-            band={kcalTarget === null ? undefined : `de ${kcalTarget}`}
-            missing={missingFor('kcal')}
-          />
-          <Total
-            label="Proteína"
-            value={totals.proteinG}
-            unit=" g"
-            band={proteinBand === null ? undefined : `${proteinBand.from} a ${proteinBand.to}`}
-            missing={missingFor('protein_g')}
-          />
-          <Total label="Carbos" value={totals.carbsG} unit=" g" missing={missingFor('carbs_g')} />
-          {/* Spec 7.5: dairy is shown and never subtracted, and the glycemic load
-              only appears once something eaten carries an index. */}
-          {totals.dairy.portions > 0 && (
-            <Total
-              label="Lácteos"
-              value={
-                totals.dairy.millilitresG > 0 ? totals.dairy.millilitresG : totals.dairy.portions
-              }
-              unit={totals.dairy.millilitresG > 0 ? ' ml' : ' porciones'}
+        <Card title="Lo que llevas">
+          <View style={styles.stats}>
+            <Stat
+              label="Carbos"
+              value={`${roundAmount(totals.carbsG)}${mark('carbs_g')} g`}
+              note={totals.fibreG > 0 ? `fibra ${roundAmount(totals.fibreG)} g` : undefined}
             />
-          )}
-          {totals.glycemicLoad !== null && (
-            <Total
-              label="Carga glucémica"
-              value={totals.glycemicLoad}
-              unit=""
-              missing={missingFor('glycemic_index')}
+            <Stat label="Grasa" value={`${roundAmount(totals.fatG)}${mark('fat_g')} g`} />
+            <Stat
+              label="Sodio"
+              value={`${roundAmount(totals.sodiumMg)}${mark('sodium_mg')} mg`}
+              note={totals.sodiumOverLimit ? 'sobre 2300' : undefined}
+              alert={totals.sodiumOverLimit}
             />
-          )}
-          <Total label="Grasa" value={totals.fatG} unit=" g" missing={missingFor('fat_g')} />
-          <Total
-            label="Sodio"
-            value={totals.sodiumMg}
-            unit=" mg"
-            band={totals.sodiumOverLimit ? 'sobre 2300' : undefined}
-            missing={missingFor('sodium_mg')}
-          />
-        </View>
-      )}
-
-      {totals && shownGaps.length > 0 && (
-        <Text style={styles.gap}>
-          El signo + marca totales incompletos:{' '}
-          {[...new Set(shownGaps.map((entry) => entry.foodName))].join(', ')} no trae todos los
-          datos. Se arreglan en editar alimentos.
-        </Text>
-      )}
-
-      {portions.map((portion) => (
-        <View key={portion.entryId}>
-          <View style={styles.entry}>
-            <Pressable
-              accessibilityLabel={`Qué aporta ${portion.food.name}`}
-              onPress={() =>
-                setOpenPortion(openPortion === portion.entryId ? null : portion.entryId)
-              }
-              style={[styles.info, openPortion === portion.entryId && styles.infoOn]}
-            >
-              <Text style={styles.infoText}>i</Text>
-            </Pressable>
-            <View style={styles.entryText}>
-              <Text style={styles.entryName}>{portionLabel(portion.food, portion.quantity)}</Text>
-              <Text style={styles.entryMeta}>{portion.mealSlot}</Text>
-            </View>
-            <Pressable
-              accessibilityLabel={`Quitar ${portion.food.name}`}
-              onPress={() => onRemove(portion.entryId)}
-              style={styles.remove}
-            >
-              <Text style={styles.removeText}>quitar</Text>
-            </Pressable>
+            {/* Spec 7.5: los lacteos se muestran y nunca se restan, y la carga
+                glucemica solo aparece cuando algo comido trae indice. */}
+            {totals.dairy.portions > 0 && (
+              <Stat
+                label="Lácteos"
+                value={
+                  totals.dairy.millilitresG > 0
+                    ? `${roundAmount(totals.dairy.millilitresG)} ml`
+                    : `${totals.dairy.portions}`
+                }
+                note={
+                  totals.dairy.millilitresG > 0
+                    ? `${roundAmount(totals.dairy.proteinG)} g de proteína`
+                    : 'porciones'
+                }
+              />
+            )}
+            {totals.glycemicLoad !== null && (
+              <Stat
+                label="Carga glucémica"
+                value={`${roundAmount(totals.glycemicLoad)}${mark('glycemic_index')}`}
+              />
+            )}
           </View>
-          {openPortion === portion.entryId && (
-            <PortionMacros food={portion.food} quantity={portion.quantity} />
-          )}
-        </View>
-      ))}
 
-      <View style={styles.picker}>
+          {shownGaps.length > 0 && (
+            <View style={styles.gap}>
+              <TriangleAlert size={16} color={theme.text} strokeWidth={2.5} />
+              <Text style={styles.gapText}>
+                El signo + marca totales incompletos:{' '}
+                {[...new Set(shownGaps.map((entry) => entry.foodName))].join(', ')} no trae todos
+                los datos. Se arreglan en editar alimentos.
+              </Text>
+            </View>
+          )}
+        </Card>
+      )}
+
+      <Card title="Lo anotado">
+        {portions.length === 0 ? (
+          <Text style={styles.empty}>Nada por ahora. Abajo eliges y anotas.</Text>
+        ) : (
+          portions.map((portion, index) => (
+            <View key={portion.entryId} style={[styles.entry, index > 0 && styles.ruled]}>
+              <View style={styles.entryRow}>
+                <IconButton
+                  icon={Info}
+                  accessibilityLabel={`Qué aporta ${portion.food.name}`}
+                  selected={openPortion === portion.entryId}
+                  onPress={() =>
+                    setOpenPortion(openPortion === portion.entryId ? null : portion.entryId)
+                  }
+                />
+                <View style={styles.entryText}>
+                  <Text style={styles.entryName}>
+                    {portionLabel(portion.food, portion.quantity)}
+                  </Text>
+                  <Text style={styles.entryMeta}>{portion.mealSlot}</Text>
+                </View>
+                <IconButton
+                  icon={Trash}
+                  tone="danger"
+                  accessibilityLabel={`Quitar ${portion.food.name}`}
+                  onPress={() => onRemove(portion.entryId)}
+                />
+              </View>
+              {openPortion === portion.entryId && (
+                <PortionMacros food={portion.food} quantity={portion.quantity} />
+              )}
+            </View>
+          ))
+        )}
+      </Card>
+
+      <Card title="Anotar">
         <View style={styles.chips}>
           {MEAL_SLOTS.map((name) => (
-            <Pressable
-              key={name}
-              onPress={() => setSlot(name)}
-              style={[styles.chip, name === slot && styles.chipSelected]}
-            >
-              <Text style={styles.chipText}>{name}</Text>
-            </Pressable>
+            <Chip key={name} label={name} selected={name === slot} onPress={() => setSlot(name)} />
           ))}
         </View>
 
         {repeatable && onRepeatMeal && (
-          <Pressable
+          <Button
+            label={`Repetir ${slot} del ${shortDate(repeatable.date)} · ${
+              repeatable.entries.length
+            } ${repeatable.entries.length === 1 ? 'cosa' : 'cosas'}`}
             accessibilityLabel={`Repetir ${slot} del ${shortDate(repeatable.date)}`}
+            icon={RotateCcw}
+            block
             onPress={() => onRepeatMeal(repeatable, slot)}
-            style={styles.repeat}
-          >
-            <Text style={styles.repeatText}>
-              repetir {slot} del {shortDate(repeatable.date)} · {repeatable.entries.length}{' '}
-              {repeatable.entries.length === 1 ? 'cosa' : 'cosas'}
-            </Text>
-          </Pressable>
+          />
         )}
 
         <FoodPicker
@@ -257,15 +296,12 @@ export function FoodLog({
         {selected && (
           <View style={styles.chips}>
             {quickAmountsFor(selected).map((amount) => (
-              <Pressable
+              <Chip
                 key={amount}
+                label={`${amount} ${unitLabel(selected, amount)}`}
+                selected={quantity === String(amount)}
                 onPress={() => setQuantity(String(amount))}
-                style={[styles.chip, quantity === String(amount) && styles.chipSelected]}
-              >
-                <Text style={styles.chipText}>
-                  {amount} {unitLabel(selected, amount)}
-                </Text>
-              </Pressable>
+              />
             ))}
           </View>
         )}
@@ -273,18 +309,24 @@ export function FoodLog({
         {/* Sin alimento elegido no hay nada que anotar, y un boton de agregar suelto
             es un toque sin querer. */}
         {selected && (
-          <View style={styles.addRow}>
+          <View ref={addRow} collapsable={false} style={styles.addRow}>
             <NumericField
               value={quantity}
               onChange={setQuantity}
               allowDecimal
               accessibilityLabel="Cantidad"
+              reveals={addRow}
               style={styles.input}
+              focusedStyle={styles.inputWriting}
             />
             <Text style={styles.unit}>{unitLabel(selected, parsed)}</Text>
-            <Pressable
+            <Button
+              label="Agregar"
               accessibilityLabel="Agregar comida"
+              variant="primary"
+              icon={Plus}
               disabled={!canAdd}
+              style={styles.add}
               onPress={() => {
                 if (!canAdd) return;
                 onAdd({
@@ -294,13 +336,10 @@ export function FoodLog({
                   mealSlot: slot,
                 });
               }}
-              style={[styles.add, !canAdd && styles.addDisabled]}
-            >
-              <Text style={styles.addText}>Agregar</Text>
-            </Pressable>
+            />
           </View>
         )}
-      </View>
+      </Card>
     </View>
   );
 }
@@ -308,168 +347,177 @@ export function FoodLog({
 const styles = sheet((theme) => ({
   wrapper: {
     alignSelf: 'stretch',
-    gap: 10,
-  },
-  heading: {
-    fontSize: 14,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  totals: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 12,
   },
-  total: {
-    minWidth: 72,
-  },
-  totalLabel: {
-    fontSize: 11,
-    color: theme.textGhost,
-    fontFamily: mono,
-  },
-  totalValue: {
-    fontSize: 15,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  totalBand: {
-    fontSize: 10,
-    color: theme.textGhost,
-    fontFamily: mono,
-  },
-  gap: {
-    fontSize: 11,
-    color: theme.warn,
-    fontFamily: mono,
-  },
-  entry: {
+  heroRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 8,
-    borderTopWidth: 1,
-    borderTopColor: theme.line,
-    paddingTop: 6,
+    gap: 10,
   },
-  info: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: theme.line,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  infoOn: {
-    borderColor: theme.accent,
-    backgroundColor: theme.surfaceHigh,
-  },
-  infoText: {
-    fontSize: 12,
-    color: theme.textFaint,
-    fontFamily: mono,
-  },
-  entryText: {
+  heroSide: {
     flexShrink: 1,
   },
-  entryName: {
+  heroEyebrow: {
+    fontSize: 11,
+    fontFamily: font.black,
+    letterSpacing: 1.2,
+    color: theme.accentInkSoft,
+  },
+  heroValue: {
+    fontSize: 48,
+    lineHeight: 54,
+    fontFamily: font.display,
+    color: theme.accentInk,
+    fontVariant: ['tabular-nums'],
+  },
+  heroNote: {
+    fontSize: 12,
+    fontFamily: font.bold,
+    color: theme.accentInk,
+  },
+  heroStar: {
+    alignItems: 'center',
+    gap: 2,
+  },
+  star: {
+    // Pegada un poco torcida: es un sticker, no un icono alineado a la rejilla.
+    transform: [{ rotate: '-8deg' }],
+  },
+  starValue: {
+    fontSize: 26,
+    fontFamily: font.black,
+    color: theme.text,
+    fontVariant: ['tabular-nums'],
+  },
+  starLabel: {
+    fontSize: 11,
+    fontFamily: font.bold,
+    color: theme.accentInkSoft,
+  },
+  stats: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  stat: {
+    flexGrow: 1,
+    flexBasis: '28%',
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.bg,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    gap: 1,
+  },
+  statAlert: {
+    backgroundColor: theme.warnBg,
+  },
+  statLabel: {
+    fontSize: 10,
+    fontFamily: font.black,
+    letterSpacing: 0.6,
+    color: theme.textFaint,
+    textTransform: 'uppercase',
+  },
+  statValue: {
+    fontSize: 16,
+    fontFamily: font.black,
+    color: theme.text,
+    fontVariant: ['tabular-nums'],
+  },
+  statNote: {
+    fontSize: 10,
+    fontFamily: font.regular,
+    color: theme.textFaint,
+    fontVariant: ['tabular-nums'],
+  },
+  gap: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.warnBg,
+    padding: 8,
+  },
+  gapText: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: font.regular,
+    color: theme.text,
+  },
+  empty: {
     fontSize: 13,
-    fontFamily: mono,
+    fontFamily: font.regular,
+    color: theme.textFaint,
+  },
+  entry: {
+    gap: 6,
+    paddingTop: 2,
+  },
+  ruled: {
+    borderTopWidth: shape.border,
+    borderTopColor: theme.line,
+    paddingTop: 10,
+  },
+  entryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  entryText: {
+    flex: 1,
+    gap: 1,
+  },
+  entryName: {
+    fontSize: 15,
+    fontFamily: font.black,
     color: theme.text,
   },
   entryMeta: {
-    fontSize: 10,
-    color: theme.textGhost,
-    fontFamily: mono,
-  },
-  remove: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  removeText: {
-    fontSize: 11,
-    color: theme.danger,
-    fontFamily: mono,
-  },
-  picker: {
-    gap: 6,
-    borderTopWidth: 1,
-    borderTopColor: theme.line,
-    paddingTop: 8,
+    fontSize: 12,
+    fontFamily: font.regular,
+    color: theme.textFaint,
   },
   chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 5,
-  },
-  chip: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    minHeight: 38,
-    justifyContent: 'center',
-  },
-  chipSelected: {
-    borderColor: theme.lineStrong,
-    backgroundColor: theme.surfaceHigh,
-  },
-  chipText: {
-    fontSize: 12,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  repeat: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    alignSelf: 'flex-start',
-    marginTop: 2,
-  },
-  repeatText: {
-    fontSize: 11,
-    fontFamily: mono,
-    color: theme.accent,
+    gap: 8,
   },
   addRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+    borderTopWidth: shape.border,
+    borderTopColor: theme.line,
+    paddingTop: 10,
   },
   input: {
-    borderWidth: 1,
-    borderColor: theme.lineSoft,
-    borderRadius: 6,
+    width: 84,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.surface,
     paddingHorizontal: 10,
-    paddingVertical: 7,
-    fontSize: 14,
-    width: 70,
-    fontFamily: mono,
+    paddingVertical: 10,
+    fontSize: 17,
+    fontFamily: font.black,
     color: theme.text,
+    fontVariant: ['tabular-nums'],
+  },
+  inputWriting: {
+    backgroundColor: theme.surfaceHigh,
   },
   unit: {
-    fontSize: 11,
-    color: theme.textGhost,
-    flexShrink: 1,
-    fontFamily: mono,
+    flex: 1,
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.textFaint,
   },
   add: {
-    borderWidth: 1,
-    borderColor: theme.lineStrong,
-    borderRadius: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  addDisabled: {
-    borderColor: theme.lineSoft,
-  },
-  addText: {
-    fontSize: 12,
-    fontFamily: mono,
-    color: theme.text,
+    minWidth: 130,
   },
 }));

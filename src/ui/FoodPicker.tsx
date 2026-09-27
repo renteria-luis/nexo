@@ -1,10 +1,14 @@
 import { useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../db/types.ts';
 import { matchesSearch, roundAmount, type FoodHistory } from '../nutrition/index.ts';
 
-import { mono, sheet, theme } from './theme.ts';
+import { Button } from './Button.tsx';
+import { IconButton } from './IconButton.tsx';
+import { ChevronDown, ChevronUp, Pencil } from './icons.ts';
+import { SearchField } from './SearchField.tsx';
+import { font, hardShadow, pressed as pressedInto, sheet, shape } from './theme.ts';
 
 /**
  * De donde elige el alimento que va a anotar.
@@ -46,9 +50,15 @@ function Row({
 }) {
   return (
     <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
       accessibilityLabel={food.name}
       onPress={onSelect}
-      style={[styles.row, selected && styles.rowSelected]}
+      style={({ pressed }) => [
+        styles.row,
+        selected ? styles.rowOn : styles.rowOff,
+        pressed && (selected ? styles.pressed : styles.pressedFlat),
+      ]}
     >
       <Text style={styles.rowName} numberOfLines={1}>
         {food.name}
@@ -113,33 +123,23 @@ export function FoodPicker({
   return (
     <View style={styles.picker}>
       <View style={styles.searchRow}>
-        <TextInput
+        <SearchField
           value={search}
-          onChangeText={setSearch}
+          onChange={setSearch}
           accessibilityLabel="Buscar un alimento"
-          placeholder="buscar"
-          placeholderTextColor={theme.textGhost}
-          autoCorrect={false}
-          style={styles.search}
+          style={styles.grow}
         />
-        {searching && (
-          <Pressable accessibilityLabel="Borrar la búsqueda" onPress={() => setSearch('')}>
-            <Text style={styles.clear}>borrar</Text>
-          </Pressable>
-        )}
-        <Pressable
+        <IconButton
+          icon={Pencil}
           accessibilityLabel="Editar los alimentos"
           onPress={onOpenCatalogue}
-          style={styles.new}
-        >
-          <Text style={styles.newText}>editar ›</Text>
-        </Pressable>
+        />
       </View>
 
       {searching ? (
         found.length === 0 ? (
           <Text style={styles.empty}>
-            Nada con ese nombre. En &quot;editar&quot; lo agregas o le pones palabras clave.
+            Nada con ese nombre. Con el lápiz lo agregas o le pones palabras clave.
           </Text>
         ) : (
           found.map(row)
@@ -162,18 +162,18 @@ export function FoodPicker({
 
           {rest.length > 0 && (
             <>
-              <Pressable
+              <Button
+                label={showAll ? 'Esconder el resto' : `Ver los otros ${rest.length}`}
                 accessibilityLabel={showAll ? 'Esconder el resto' : 'Ver todos los alimentos'}
+                variant="ghost"
+                icon={showAll ? ChevronUp : ChevronDown}
+                style={styles.more}
                 onPress={() => setShowAll((open) => !open)}
-              >
-                <Text style={styles.section}>
-                  {showAll ? '— todos' : `+ los otros ${rest.length}`}
-                </Text>
-              </Pressable>
+              />
               {showAll &&
                 [...stores.entries()].map(([store, items]) => (
-                  <View key={store}>
-                    <Text style={styles.store}>{store}</Text>
+                  <View key={store} style={styles.store}>
+                    <Text style={styles.section}>{store}</Text>
                     {items.map(row)}
                   </View>
                 ))}
@@ -187,85 +187,63 @@ export function FoodPicker({
 
 const styles = sheet((theme) => ({
   picker: {
-    gap: 2,
+    gap: 6,
   },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 4,
   },
-  search: {
+  grow: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: theme.lineSoft,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 14,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  clear: {
-    fontSize: 11,
-    fontFamily: mono,
-    color: theme.textFaint,
-  },
-  new: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-  },
-  newText: {
-    fontSize: 12,
-    fontFamily: mono,
-    color: theme.text,
   },
   section: {
-    fontSize: 10,
-    fontFamily: mono,
-    color: theme.accent,
-    marginTop: 8,
-    marginBottom: 2,
+    fontSize: 11,
+    fontFamily: font.black,
+    letterSpacing: 0.8,
+    color: theme.textFaint,
+    textTransform: 'uppercase',
+    marginTop: 4,
   },
   store: {
-    fontSize: 10,
-    fontFamily: mono,
-    color: theme.textGhost,
-    marginTop: 6,
+    gap: 6,
+  },
+  more: {
+    alignSelf: 'flex-start',
   },
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    paddingVertical: 9,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: 'transparent',
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 1,
   },
-  rowSelected: {
-    borderColor: theme.lineStrong,
-    backgroundColor: theme.surfaceHigh,
+  rowOn: {
+    backgroundColor: theme.accent,
+    ...hardShadow(theme, 3),
+  },
+  rowOff: {
+    backgroundColor: theme.surface,
+  },
+  pressed: pressedInto(3),
+  pressedFlat: {
+    opacity: 0.6,
   },
   rowName: {
-    flexShrink: 1,
-    fontSize: 13,
-    fontFamily: mono,
+    fontSize: 14,
+    fontFamily: font.black,
     color: theme.text,
   },
   rowMacros: {
-    fontSize: 10,
-    fontFamily: mono,
-    color: theme.textGhost,
+    fontSize: 11,
+    fontFamily: font.regular,
+    color: theme.textFaint,
+    fontVariant: ['tabular-nums'],
   },
   empty: {
-    fontSize: 11,
-    fontFamily: mono,
-    color: theme.textGhost,
-    paddingVertical: 8,
+    fontSize: 13,
+    fontFamily: font.regular,
+    color: theme.textFaint,
   },
 }));

@@ -1,11 +1,16 @@
 import { useCallback, useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../../db/types.ts';
 import { matchesSearch, referenceAmount, roundAmount } from '../../nutrition/index.ts';
 import { useAppData } from '../../shell/AppData.tsx';
+
+import { Button } from '../Button.tsx';
+import { Card } from '../Card.tsx';
 import { FoodForm } from '../FoodForm.tsx';
-import { mono, sheet, theme } from '../theme.ts';
+import { ChevronDown, ChevronRight, ChevronUp, Plus, RotateCcw } from '../icons.ts';
+import { SearchField } from '../SearchField.tsx';
+import { font, sheet, shape, theme } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
 
@@ -87,192 +92,152 @@ export function FoodsScreen() {
         ) : null
       }
     >
-      <Text style={styles.hint}>
+      <Text style={styles.intro}>
         Lo que diga aquí es lo que cuenta en todos tus días, también en los ya anotados. Las
         palabras clave sirven para encontrarlo al anotar.
       </Text>
 
-      <View style={styles.head}>
-        <Pressable
-          accessibilityLabel="Agregar un alimento nuevo"
-          onPress={() => setCreating(true)}
-          style={styles.new}
-        >
-          <Text style={styles.newText}>+ nuevo</Text>
-        </Pressable>
-        <Text style={styles.count}>{state.loaded.foods.length} alimentos</Text>
-      </View>
+      <Button
+        label="Alimento nuevo"
+        accessibilityLabel="Agregar un alimento nuevo"
+        variant="primary"
+        icon={Plus}
+        block
+        onPress={() => setCreating(true)}
+      />
 
-      <SearchField value={search} onChange={setSearch} />
+      <SearchField
+        value={search}
+        onChange={setSearch}
+        accessibilityLabel="Buscar un alimento"
+        note={`${state.loaded.foods.length} alimentos`}
+      />
 
       {notice !== null && (
-        <Pressable accessibilityLabel="Entendido" onPress={() => setNotice(null)}>
+        <Card tone="warn">
           <Text style={styles.notice}>{notice}</Text>
-        </Pressable>
+          <Button label="Entendido" accessibilityLabel="Entendido" onPress={() => setNotice(null)} />
+        </Card>
       )}
 
-      {foods.map((food) => (
-        <Pressable
-          key={food.id}
-          accessibilityLabel={`Corregir ${food.name}`}
-          onPress={() => setEditing(food)}
-          style={styles.row}
-        >
-          <Text style={styles.name}>{food.name}</Text>
-          <Text style={styles.macros}>{macros(food).head}</Text>
-          <Text style={styles.macros}>{macros(food).tail}</Text>
-          {food.keywords !== null && <Text style={styles.keywords}>{food.keywords}</Text>}
-        </Pressable>
-      ))}
-      <Pressable
+      {foods.length === 0 ? (
+        <Card>
+          <Text style={styles.intro}>Nada con ese nombre.</Text>
+        </Card>
+      ) : (
+        <Card>
+          {foods.map((food, index) => (
+            <Pressable
+              key={food.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Corregir ${food.name}`}
+              onPress={() => setEditing(food)}
+              style={({ pressed }) => [
+                styles.row,
+                index > 0 && styles.ruled,
+                pressed && styles.rowPressed,
+              ]}
+            >
+              <View style={styles.rowText}>
+                <Text style={styles.name}>{food.name}</Text>
+                <Text style={styles.macros}>{macros(food).head}</Text>
+                <Text style={styles.macros}>{macros(food).tail}</Text>
+                {food.keywords !== null && <Text style={styles.keywords}>{food.keywords}</Text>}
+              </View>
+              <ChevronRight size={18} color={theme.textFaint} strokeWidth={2.5} />
+            </Pressable>
+          ))}
+        </Card>
+      )}
+
+      <Button
+        label={archived === null ? 'Ver archivados' : 'Esconder archivados'}
         accessibilityLabel={archived === null ? 'Ver los archivados' : 'Esconder los archivados'}
-        onPress={() => (archived === null ? readArchived() : setArchived(null))}
+        variant="ghost"
+        icon={archived === null ? ChevronDown : ChevronUp}
         style={styles.archivedLink}
-      >
-        <Text style={styles.archivedText}>
-          {archived === null ? 'ver archivados' : '— archivados'}
-        </Text>
-      </Pressable>
+        onPress={() => (archived === null ? readArchived() : setArchived(null))}
+      />
 
       {archived !== null &&
         (archived.length === 0 ? (
-          <Text style={styles.hint}>No hay ninguno archivado.</Text>
+          <Card>
+            <Text style={styles.intro}>No hay ninguno archivado.</Text>
+          </Card>
         ) : (
-          archived.map((food) => (
-            <View key={food.id} style={styles.archivedRow}>
-              <Text style={styles.name}>{food.name}</Text>
-              <Pressable
-                accessibilityLabel={`Recuperar ${food.name}`}
-                onPress={() => {
-                  restoreFood(food.id);
-                  setArchived(archived.filter((other) => other.id !== food.id));
-                }}
-              >
-                <Text style={styles.restore}>recuperar</Text>
-              </Pressable>
-            </View>
-          ))
+          <Card title="Archivados">
+            {archived.map((food, index) => (
+              <View key={food.id} style={[styles.archivedRow, index > 0 && styles.ruled]}>
+                <Text style={styles.name}>{food.name}</Text>
+                <Button
+                  label="Recuperar"
+                  accessibilityLabel={`Recuperar ${food.name}`}
+                  icon={RotateCcw}
+                  onPress={() => {
+                    restoreFood(food.id);
+                    setArchived(archived.filter((other) => other.id !== food.id));
+                  }}
+                />
+              </View>
+            ))}
+          </Card>
         ))}
     </Screen>
   );
 }
 
-function SearchField({ value, onChange }: { value: string; onChange: (next: string) => void }) {
-  return (
-    <View style={styles.searchRow}>
-      <TextInput
-        value={value}
-        onChangeText={onChange}
-        accessibilityLabel="Buscar un alimento"
-        placeholder="buscar"
-        placeholderTextColor={theme.textGhost}
-        autoCorrect={false}
-        style={styles.search}
-      />
-      {value.trim() !== '' && (
-        <Pressable accessibilityLabel="Borrar la búsqueda" onPress={() => onChange('')}>
-          <Text style={styles.clear}>borrar</Text>
-        </Pressable>
-      )}
-    </View>
-  );
-}
-
 const styles = sheet((theme) => ({
-  hint: {
-    fontSize: 11,
-    color: theme.textGhost,
-    fontFamily: mono,
-  },
-  head: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  new: {
-    borderWidth: 1,
-    borderColor: theme.lineStrong,
-    borderRadius: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  newText: {
+  intro: {
     fontSize: 13,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  count: {
-    fontSize: 11,
-    fontFamily: mono,
-    color: theme.textGhost,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  search: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: theme.lineSoft,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 14,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  clear: {
-    fontSize: 11,
-    fontFamily: mono,
+    fontFamily: font.regular,
     color: theme.textFaint,
   },
+  notice: {
+    fontSize: 14,
+    fontFamily: font.bold,
+    color: theme.accentInk,
+  },
   row: {
-    borderTopWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 9,
+  },
+  ruled: {
+    borderTopWidth: shape.border,
     borderTopColor: theme.line,
-    paddingVertical: 8,
+  },
+  rowPressed: {
+    opacity: 0.55,
+  },
+  rowText: {
+    flex: 1,
     gap: 2,
   },
-  notice: {
+  name: {
+    fontSize: 15,
+    fontFamily: font.black,
+    color: theme.text,
+  },
+  macros: {
     fontSize: 11,
-    color: theme.accent,
-    fontFamily: mono,
+    fontFamily: font.regular,
+    color: theme.textFaint,
+    fontVariant: ['tabular-nums'],
+  },
+  keywords: {
+    fontSize: 11,
+    fontFamily: font.bold,
+    color: theme.textFaint,
   },
   archivedLink: {
-    borderTopWidth: 1,
-    borderTopColor: theme.line,
-    paddingTop: 10,
-    marginTop: 4,
-  },
-  archivedText: {
-    fontSize: 11,
-    color: theme.accent,
-    fontFamily: mono,
+    alignSelf: 'flex-start',
   },
   archivedRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 6,
-  },
-  restore: {
-    fontSize: 11,
-    color: theme.accent,
-    fontFamily: mono,
-  },
-  name: {
-    fontSize: 13,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  macros: {
-    fontSize: 10,
-    fontFamily: mono,
-    color: theme.textFaint,
-  },
-  keywords: {
-    fontSize: 10,
-    fontFamily: mono,
-    color: theme.accent,
+    gap: 10,
+    paddingVertical: 8,
   },
 }));

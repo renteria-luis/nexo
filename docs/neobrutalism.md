@@ -95,6 +95,8 @@ Rules that keep it readable:
 | `Button` | `src/ui/Button.tsx` | any action. `primary` / `secondary` / `ghost` / `danger`, `size="large"`, `block`, `icon` |
 | `Card` | `src/ui/Card.tsx` | any block of information. `tone`, `raised`, `onPress`, `title` |
 | `Chip` | `src/ui/Chip.tsx` | one option out of a short list. Selected = yellow and raised |
+| `IconButton` | `src/ui/IconButton.tsx` | an action that is only an icon: the (i) on a portion, the bin on a row |
+| `SearchField` | `src/ui/SearchField.tsx` | a search box: the magnifier, the text, and a clear button once something is typed |
 | `Toggle` | `src/ui/Toggle.tsx` | one thing that is on or off, in a row with its label |
 | `Star` | `src/ui/Star.tsx` | the one decorative sticker per screen, with a number inside |
 | `Screen` | `src/ui/screens/Screen.tsx` | the frame: scroll, title, database states, overlay slot |
@@ -222,14 +224,21 @@ What makes it work, and what to copy if another list ever needs it:
   thing you can see.) The pan responder still lives on the list and claims moves while a
   row is held (`onMoveShouldSetPanResponderCapture` reads a ref, not state, because the
   gesture runs outside the render).
-- **Nothing around it gets switched off.** It answers
-  `onPanResponderTerminationRequest: () => false`, so the scroll and the tab carousel ask
-  for the touch and are told no. Turning them off by state was worse in two ways: the
-  state lands a frame late, so the drag only started if he held still first, and changing
-  `scrollEnabled` (or the pager's `swipeEnabled`) with a finger down makes iOS cancel the
-  touch — after which neither the release nor the cancel arrives and the row stays
-  hanging mid-screen. `onPanResponderEnd` is wired to the same drop handler as a last
-  guard, because it fires for both endings.
+- **The scroll and the pager are locked, but only from the moment the finger lands.**
+  The row's own responder claims the touch at `onStartShouldSetPanResponderCapture` and
+  answers `onPanResponderTerminationRequest: () => false`; on top of that, lifting a row
+  sets the screen's `scrollEnabled` to false and the pager's `swipeEnabled` to false.
+  Ordering is the whole trick: flipping those flags *during* a gesture makes iOS cancel
+  the touch and the row stays hanging mid-screen, which is what happened when the lock
+  was driven by a state change that landed a frame late. `onPanResponderEnd` is wired to
+  the same drop handler as a last guard, because it fires for both endings.
+- **The animated value is reset at the lift and at the drop.** Only at the lift was not
+  enough: the last move can reach the view a frame after the render that released the
+  row, and then the row sits on top of its neighbour. That is why the overlap appeared
+  more often the faster he let go.
+- **Leaving the card cancels the drag**: past the first or the last row the drag drops
+  itself, the row returns to its place and the order does not change. A row dragged onto
+  the card above means nothing, and leaving it hanging there means less.
 - **Dropping is one state change and nothing else.** The lifted row is identified by the
   exercise's id, not by its position, and the animated value is reset when the drag
   *starts*, not when it ends. Keyed by position, a frame where the new order had landed
@@ -321,8 +330,17 @@ a searchable list, then one card per thing that can be changed about the exercis
 switches for the implements and the gyms, chips for the tier, and a numeric field per time
 budget. It is the template for any future "edit the data" screen.
 
-Left, screen by screen: Comida (`NutritionScreen`, `FoodLog`, `FoodPicker`, `FoodForm`, `PortionMacros`,
-`BatchPanel`, `FoodsScreen`), Ofertas (`DealsScreen`), the pushed screens (`DayScreen`,
+Also done: **Comida**, all of it (`NutritionScreen`, `FoodLog`, `FoodPicker`,
+`PortionMacros`, `BatchPanel`, `FoodsScreen`, `FoodForm`). The shape is the Hoy one: a
+coloured hero card with the day's calories as the big number and the protein inside the
+star, because the protein floor is what decides whether a day of eating counts; then the
+rest of the macros as bordered cells inside one card, the portions as ruled rows with an
+`IconButton` each side, the picking in its own card, and the batches in another. The
+`+` that marks an incomplete total (spec 16.3 rule 5) rides on the figure it belongs to,
+and the line that explains it is a warn-tinted strip inside the card rather than a
+shouting orange card of its own.
+
+Left, screen by screen: Ofertas (`DealsScreen`), the pushed screens (`DayScreen`,
 `ChartsScreen`, `RecordsScreen`, `WeekSummaryScreen`, `ReadingsScreen`,
 `RoutineNotesScreen`, `ExperimentsScreen`, `PendingScreen`), and the rest of
 `SettingsScreen`. Each one is the same job: replace hand-rolled boxes with `Card`,

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ScrollView, Text, TextInput, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../db/types.ts';
 import {
@@ -11,8 +11,11 @@ import {
   type NewFood,
 } from '../nutrition/index.ts';
 
+import { Button } from './Button.tsx';
+import { Chip } from './Chip.tsx';
+import { Trash } from './icons.ts';
 import { NumericField } from './NumericField.tsx';
-import { mono, sheet, theme } from './theme.ts';
+import { font, hardShadow, sheet, shape, theme } from './theme.ts';
 
 /**
  * La ficha de un alimento: la misma para crear uno nuevo y para corregir uno que ya
@@ -163,14 +166,13 @@ export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFor
               <>
                 <View style={styles.chips}>
                   {MEASURES.map((option) => (
-                    <Pressable
+                    <Chip
                       key={option.id}
+                      label={option.label}
                       accessibilityLabel={`Los datos son de ${option.label}`}
+                      selected={option.id === measureId}
                       onPress={() => setMeasureId(option.id)}
-                      style={[styles.chip, option.id === measureId && styles.chipOn]}
-                    >
-                      <Text style={styles.chipText}>{option.label}</Text>
-                    </Pressable>
+                    />
                   ))}
                 </View>
                 <Text style={styles.hint}>Lo que dice la etiqueta para {measure.label}.</Text>
@@ -248,22 +250,25 @@ export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFor
 
       <View style={styles.buttons}>
         {food !== null && step === 'datos' && (
-          <Pressable
+          <Button
+            label="Borrar"
             accessibilityLabel={`Borrar ${food.name}`}
-            onPress={() => setStep('borrar')}
+            variant="ghost"
+            icon={Trash}
             style={styles.deleteSlot}
-          >
-            <Text style={styles.delete}>Borrar</Text>
-          </Pressable>
+            onPress={() => setStep('borrar')}
+          />
         )}
-        <Pressable
+        <Button
+          label={step === 'datos' ? 'Cancelar' : 'Atrás'}
           accessibilityLabel={step === 'datos' ? 'Cancelar' : 'Atrás'}
+          variant="ghost"
           onPress={() => (step === 'datos' ? onCancel() : setStep('datos'))}
-        >
-          <Text style={styles.back}>{step === 'datos' ? 'Cancelar' : 'Atrás'}</Text>
-        </Pressable>
-        <Pressable
+        />
+        <Button
+          label={step === 'datos' ? 'Guardar' : 'Confirmar'}
           accessibilityLabel={step === 'datos' ? 'Guardar' : 'Confirmar'}
+          variant={step === 'borrar' ? 'danger' : 'primary'}
           disabled={!ready && step !== 'borrar'}
           onPress={() => {
             if (step === 'borrar') {
@@ -276,10 +281,7 @@ export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFor
             }
             setStep('resumen');
           }}
-          style={[styles.save, !ready && step !== 'borrar' && styles.saveOff]}
-        >
-          <Text style={styles.saveText}>{step === 'datos' ? 'Guardar' : 'Confirmar'}</Text>
-        </Pressable>
+        />
       </View>
     </View>
   );
@@ -303,6 +305,7 @@ function Field({
         allowDecimal
         accessibilityLabel={label}
         style={styles.input}
+        focusedStyle={styles.inputWriting}
       />
     </View>
   );
@@ -316,66 +319,55 @@ const styles = sheet((theme) => ({
     // Tope para que nunca llegue a parecer una pantalla entera. Lo que no entre se
     // desplaza dentro de la hoja.
     maxHeight: 520,
-    backgroundColor: theme.bg,
-    borderWidth: 1,
-    borderColor: theme.lineStrong,
-    borderRadius: 10,
+    backgroundColor: theme.surface,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radius,
+    ...hardShadow(theme),
   },
   scroll: {
     flexShrink: 1,
   },
   body: {
-    gap: 7,
-    padding: 12,
+    gap: 9,
+    padding: 14,
   },
   title: {
-    fontSize: 14,
-    fontFamily: mono,
+    fontSize: 18,
+    fontFamily: font.black,
     color: theme.text,
   },
   text: {
-    borderWidth: 1,
-    borderColor: theme.lineSoft,
-    borderRadius: 6,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.bg,
     paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 14,
-    fontFamily: mono,
+    paddingVertical: 9,
+    fontSize: 15,
+    fontFamily: font.bold,
     color: theme.text,
   },
   chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 5,
-  },
-  chip: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    minHeight: 34,
-    justifyContent: 'center',
-  },
-  chipOn: {
-    borderColor: theme.lineStrong,
-    backgroundColor: theme.surfaceHigh,
-  },
-  chipText: {
-    fontSize: 12,
-    fontFamily: mono,
-    color: theme.text,
+    gap: 8,
   },
   hint: {
-    fontSize: 10,
-    color: theme.textGhost,
-    fontFamily: mono,
+    fontSize: 12,
+    fontFamily: font.regular,
+    color: theme.textFaint,
   },
   warn: {
-    fontSize: 11,
-    color: theme.warn,
-    fontFamily: mono,
-    marginTop: 6,
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.text,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.warnBg,
+    padding: 8,
+    marginTop: 4,
   },
   grid: {
     flexDirection: 'row',
@@ -383,87 +375,72 @@ const styles = sheet((theme) => ({
     gap: 8,
   },
   field: {
-    gap: 2,
+    flexGrow: 1,
+    flexBasis: '28%',
+    gap: 4,
   },
   fieldLabel: {
     fontSize: 10,
-    color: theme.textGhost,
-    fontFamily: mono,
+    fontFamily: font.black,
+    letterSpacing: 0.6,
+    color: theme.textFaint,
+    textTransform: 'uppercase',
   },
   input: {
-    borderWidth: 1,
-    borderColor: theme.lineSoft,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    fontSize: 14,
-    width: 80,
-    fontFamily: mono,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.bg,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    fontSize: 15,
+    fontFamily: font.black,
     color: theme.text,
+    fontVariant: ['tabular-nums'],
+  },
+  inputWriting: {
+    backgroundColor: theme.surfaceHigh,
   },
   summaryName: {
-    fontSize: 15,
-    fontFamily: mono,
+    fontSize: 17,
+    fontFamily: font.black,
     color: theme.text,
   },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    borderTopWidth: 1,
+    gap: 12,
+    borderTopWidth: shape.border,
     borderTopColor: theme.line,
-    paddingTop: 5,
+    paddingTop: 6,
   },
   summaryLabel: {
-    fontSize: 12,
-    fontFamily: mono,
+    fontSize: 13,
+    fontFamily: font.bold,
     color: theme.textFaint,
   },
   summaryValue: {
-    fontSize: 12,
-    fontFamily: mono,
+    fontSize: 13,
+    fontFamily: font.black,
     color: theme.text,
+    fontVariant: ['tabular-nums'],
   },
   summaryMissing: {
-    fontSize: 12,
-    fontFamily: mono,
-    color: theme.textGhost,
+    fontSize: 13,
+    fontFamily: font.regular,
+    color: theme.textFaint,
   },
   buttons: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderTopWidth: 1,
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderTopWidth: shape.border,
     borderTopColor: theme.line,
-  },
-  back: {
-    fontSize: 12,
-    fontFamily: mono,
-    color: theme.textFaint,
   },
   deleteSlot: {
     marginRight: 'auto',
-  },
-  delete: {
-    fontSize: 12,
-    fontFamily: mono,
-    color: theme.danger,
-  },
-  save: {
-    borderWidth: 1,
-    borderColor: theme.lineStrong,
-    borderRadius: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  saveOff: {
-    borderColor: theme.lineSoft,
-  },
-  saveText: {
-    fontSize: 12,
-    fontFamily: mono,
-    color: theme.text,
   },
 }));

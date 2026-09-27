@@ -3,7 +3,7 @@ import { Text, View } from 'react-native';
 import type { NutritionFoodRow } from '../db/types.ts';
 import { referenceAmount, roundAmount, unitLabel } from '../nutrition/index.ts';
 
-import { mono, sheet } from './theme.ts';
+import { font, sheet, shape } from './theme.ts';
 
 /**
  * Lo que aporta una porcion, sin repetir el nombre del alimento.
@@ -63,21 +63,21 @@ export function PortionMacros({ food, quantity }: PortionMacrosProps) {
 
 const styles = sheet((theme) => ({
   bubble: {
-    borderWidth: 1,
-    borderColor: theme.accent,
-    borderRadius: 8,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
     backgroundColor: theme.bg,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    marginBottom: 6,
-    gap: 2,
-    alignSelf: 'flex-start',
-    minWidth: 200,
+    gap: 3,
+    alignSelf: 'stretch',
   },
   head: {
-    fontSize: 10,
-    color: theme.textGhost,
-    fontFamily: mono,
+    fontSize: 11,
+    fontFamily: font.black,
+    letterSpacing: 0.6,
+    color: theme.textFaint,
+    textTransform: 'uppercase',
     marginBottom: 2,
   },
   row: {
@@ -86,18 +86,19 @@ const styles = sheet((theme) => ({
     gap: 16,
   },
   label: {
-    fontSize: 11,
-    color: theme.textFaint,
-    fontFamily: mono,
+    fontSize: 13,
+    color: theme.text,
+    fontFamily: font.bold,
   },
   value: {
-    fontSize: 11,
+    fontSize: 13,
     color: theme.text,
-    fontFamily: mono,
+    fontFamily: font.black,
+    fontVariant: ['tabular-nums'],
   },
   missing: {
-    fontSize: 11,
-    color: theme.textGhost,
-    fontFamily: mono,
+    fontSize: 13,
+    color: theme.textFaint,
+    fontFamily: font.regular,
   },
 }));
