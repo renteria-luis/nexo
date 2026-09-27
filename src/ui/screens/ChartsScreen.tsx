@@ -1,21 +1,24 @@
 import { useNavigation } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, Text, useWindowDimensions, View } from 'react-native';
+import { Text, useWindowDimensions, View } from 'react-native';
 
-import { scoreText } from '../../core/day-report.ts';
-
+import { hoursAndMinutes, scoreText, thousands } from '../../core/day-report.ts';
 import { fromKg } from '../../core/units.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 import type { ChartsData } from '../../shell/charts.ts';
+
+import { Card } from '../Card.tsx';
 import { DayBars } from '../charts/DayBars.tsx';
 import { LineChart } from '../charts/LineChart.tsx';
 import { MuscleBars } from '../charts/MuscleBars.tsx';
-import { mono, sheet, theme } from '../theme.ts';
+import { Chip } from '../Chip.tsx';
+import { font, sheet, theme } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
 
-/** Lo que Screen deja a cada lado del contenido. */
+/** Lo que Screen deja a cada lado del contenido, y lo que mide una cartilla por dentro. */
 const SCREEN_PADDING = 20;
+const CARD_PADDING = 14;
 
 const WINDOWS: { days: number; label: string }[] = [
   { days: 7, label: '7 días' },
@@ -24,30 +27,13 @@ const WINDOWS: { days: number; label: string }[] = [
   { days: 365, label: 'un año' },
 ];
 
-function Section({
-  title,
-  note,
-  children,
-}: {
-  title: string;
-  note: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <Text style={styles.sectionNote}>{note}</Text>
-      {children}
-    </View>
-  );
-}
-
 /**
  * Las graficas de todo lo que guarda.
  *
  * Cada una responde una pregunta concreta y ninguna repite lo que dice otra: peso,
- * nota, reparto de series, fuerza por ejercicio y comida contra su banda. El ancho
- * se mide una vez y lo usan todas, porque el SVG necesita numeros, no porcentajes.
+ * nota, sueno, pasos, reparto de series, fuerza por ejercicio y comida contra su banda.
+ * El ancho se mide una vez y lo usan todas, porque el SVG necesita numeros, no
+ * porcentajes.
  */
 export function ChartsScreen() {
   const { state, loadCharts } = useAppData();
@@ -61,9 +47,9 @@ export function ChartsScreen() {
   const [data, setData] = useState<ChartsData | null>(null);
   const [exercise, setExercise] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  // El SVG necesita un ancho en numeros. Se calcula de la ventana menos el margen de
-  // la pantalla en vez de medirlo: medir deja el primer dibujo en cero.
-  const width = useWindowDimensions().width - SCREEN_PADDING * 2;
+  // El SVG necesita un ancho en numeros. Se calcula de la ventana menos los margenes
+  // en vez de medirlo: medir deja el primer dibujo en cero.
+  const width = useWindowDimensions().width - SCREEN_PADDING * 2 - CARD_PADDING * 2;
 
   const reload = useCallback(() => {
     loadCharts(days)
@@ -82,6 +68,13 @@ export function ChartsScreen() {
   const trend =
     data?.trends.find((item) => item.exerciseId === exercise) ?? data?.trends[0] ?? null;
 
+  /** Lo que necesita cualquier grafica para compartir el unico globito de la pantalla. */
+  const bubble = (chart: string) => ({
+    selected: open?.chart === chart ? open.index : null,
+    onSelect: (index: number | null) => setOpen(index === null ? null : { chart, index }),
+    onOpenDay: (date: string) => navigation.navigate('Día', { date }),
+  });
+
   return (
     <Screen title="Gráficas">
       {/* Igual que el teclado: una barra o un boton se quedan con el toque antes de
@@ -93,16 +86,13 @@ export function ChartsScreen() {
       >
         <View style={styles.chips}>
           {WINDOWS.map((option) => (
-            <Pressable
+            <Chip
               key={option.days}
+              label={option.label}
               accessibilityLabel={`Ver ${option.label}`}
+              selected={option.days === days}
               onPress={() => setDays(option.days)}
-              style={[styles.chip, option.days === days && styles.chipOn]}
-            >
-              <Text style={[styles.chipText, option.days === days && styles.chipTextOn]}>
-                {option.label}
-              </Text>
-            </Pressable>
+            />
           ))}
         </View>
 
@@ -111,65 +101,93 @@ export function ChartsScreen() {
 
         {data && (
           <>
-            <Section
-              title="Nota del día"
-              note="Cada barra es un día puntuado. Tócala para ver cuál fue. Los días sin nota no aparecen."
-            >
+            <Card title="Nota del día">
+              <Text style={styles.note}>
+                Cada barra es un día puntuado. Tócala para ver cuál fue.
+              </Text>
               <DayBars
                 points={data.score}
                 width={width}
                 band={{ from: 70, to: 100 }}
                 max={100}
                 format={(value) => `${scoreText(value)} de 100`}
-                selected={open?.chart === 'score' ? open.index : null}
-                onSelect={(index) => setOpen(index === null ? null : { chart: 'score', index })}
-                onOpenDay={(date) => navigation.navigate('Día', { date })}
+                {...bubble('score')}
               />
-            </Section>
+            </Card>
 
-            <Section
-              title="Proteína por día"
-              note="Verde, dentro de tu banda. Gris, fuera. La banda sale de tu peso."
-            >
+            <Card title="Sueño">
+              <Text style={styles.note}>
+                La franja va de tu meta a las ocho horas, que es donde la nota llega a sus veinte
+                puntos.
+              </Text>
+              <DayBars
+                points={data.sleep}
+                width={width}
+                band={data.sleepBand}
+                format={(value) => hoursAndMinutes(value)}
+                {...bubble('sleep')}
+              />
+            </Card>
+
+            <Card title="Proteína por día">
+              <Text style={styles.note}>
+                Verde, dentro de tu banda. Gris, fuera. La banda sale de tu peso.
+              </Text>
               <DayBars
                 points={data.protein}
                 width={width}
                 band={data.proteinBand}
                 format={(value) => `${Math.round(value)} g`}
-                selected={open?.chart === 'protein' ? open.index : null}
-                onSelect={(index) => setOpen(index === null ? null : { chart: 'protein', index })}
-                onOpenDay={(date) => navigation.navigate('Día', { date })}
+                {...bubble('protein')}
               />
-            </Section>
+            </Card>
 
-            <Section
-              title="Series por músculo, últimos 7 días"
-              note="Directas, sin contar las medias series que caen de otros ejercicios."
-            >
+            <Card title="Calorías por día">
+              <Text style={styles.note}>
+                La banda es tu objetivo con el margen que la app considera dentro.
+              </Text>
+              <DayBars
+                points={data.kcal}
+                width={width}
+                band={data.kcalBand}
+                format={(value) => `${Math.round(value)} kcal`}
+                {...bubble('kcal')}
+              />
+            </Card>
+
+            <Card title="Pasos">
+              <Text style={styles.note}>De tu meta para arriba está bien; debajo, no.</Text>
+              <DayBars
+                points={data.steps}
+                width={width}
+                band={data.stepsBand}
+                format={(value) => thousands(value)}
+                {...bubble('steps')}
+              />
+            </Card>
+
+            <Card title="Series por músculo">
+              <Text style={styles.note}>
+                Últimos siete días, solo las directas. Toca un músculo para ver de qué ejercicios
+                salieron.
+              </Text>
               <MuscleBars bars={data.muscles} band={data.setBand} />
-            </Section>
+            </Card>
 
-            <Section
-              title="Fuerza por ejercicio"
-              note="El mejor 1RM estimado de cada día que lo entrenaste. Sale de tus series normales, no de una prueba."
-            >
+            <Card title="Fuerza por ejercicio">
+              <Text style={styles.note}>
+                El mejor 1RM estimado de cada día que lo entrenaste. Sale de tus series normales, no
+                de una prueba.
+              </Text>
               <View style={styles.chips}>
                 {data.trends.slice(0, 8).map((item) => (
-                  <Pressable
+                  <Chip
                     key={item.exerciseId}
+                    label={item.name}
                     accessibilityLabel={`Ver ${item.name}`}
+                    selected={item.exerciseId === trend?.exerciseId}
                     onPress={() => setExercise(item.exerciseId)}
-                    style={[styles.chip, item.exerciseId === trend?.exerciseId && styles.chipOn]}
-                  >
-                    <Text
-                      style={[
-                        styles.chipText,
-                        item.exerciseId === trend?.exerciseId && styles.chipTextOn,
-                      ]}
-                    >
-                      {item.name}
-                    </Text>
-                  </Pressable>
+                  />
                 ))}
               </View>
               {trend ? (
@@ -177,44 +195,32 @@ export function ChartsScreen() {
                   width={width}
                   format={(value) => `${Math.round(fromKg(value, unit))} ${unit}`}
                   series={[{ points: trend.points, color: theme.accent, dots: true }]}
+                  {...bubble(`trend-${trend.exerciseId}`)}
                 />
               ) : (
                 <Text style={styles.loading}>
                   Anota dos sesiones de un ejercicio y aparece aquí.
                 </Text>
               )}
-            </Section>
-
-            <Section
-              title="Calorías por día"
-              note="La banda es tu objetivo con el margen que la app considera dentro."
-            >
-              <DayBars
-                points={data.kcal}
-                width={width}
-                band={data.kcalBand}
-                format={(value) => `${Math.round(value)} kcal`}
-                selected={open?.chart === 'kcal' ? open.index : null}
-                onSelect={(index) => setOpen(index === null ? null : { chart: 'kcal', index })}
-                onOpenDay={(date) => navigation.navigate('Día', { date })}
-              />
-            </Section>
+            </Card>
 
             {/* El peso al final: cambia poco y se pesa poco, asi que no tiene por que
-              abrir la pantalla. */}
-            <Section
-              title="Peso corporal"
-              note="El punto es cada pesada y la línea celeste es la media de siete días, que es la que manda."
-            >
+                abrir la pantalla. */}
+            <Card title="Peso corporal">
+              <Text style={styles.note}>
+                El punto es cada pesada y la línea amarilla es la media de siete días, que es la que
+                manda.
+              </Text>
               <LineChart
                 width={width}
                 format={(value) => `${Math.round(fromKg(value, 'kg'))} kg`}
                 series={[
-                  { points: data.weight, color: theme.textGhost, dots: true },
+                  { points: data.weight, color: theme.surfaceHigh, dots: true },
                   { points: data.weightAverage, color: theme.accent },
                 ]}
+                {...bubble('weight')}
               />
-            </Section>
+            </Card>
           </>
         )}
       </View>
@@ -229,52 +235,21 @@ const styles = sheet((theme) => ({
   chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
-  },
-  chip: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    minHeight: 38,
-    justifyContent: 'center',
-  },
-  chipOn: {
-    borderColor: theme.accent,
-    backgroundColor: theme.accent,
-  },
-  chipText: {
-    fontSize: 12,
-    color: theme.text,
-    fontFamily: mono,
-  },
-  chipTextOn: {
-    color: theme.accentInk,
-  },
-  section: {
-    borderTopWidth: 1,
-    borderTopColor: theme.line,
-    paddingTop: 12,
-    marginTop: 8,
     gap: 8,
   },
-  sectionTitle: {
-    fontSize: 14,
-    color: theme.text,
-    fontFamily: mono,
-  },
-  sectionNote: {
-    fontSize: 11,
-    color: theme.textGhost,
-    lineHeight: 16,
+  note: {
+    fontSize: 12,
+    fontFamily: font.regular,
+    color: theme.textFaint,
   },
   loading: {
-    fontSize: 12,
-    color: theme.textGhost,
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.textFaint,
   },
   problem: {
-    fontSize: 12,
+    fontSize: 13,
+    fontFamily: font.bold,
     color: theme.danger,
   },
 }));

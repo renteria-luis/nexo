@@ -8,6 +8,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { listDailyLogs, toWeighIns } from '../core/daily-log.ts';
 import { trailingDays, type IsoDate } from '../core/dates.ts';
+import { SLEEP_FULL_MINUTES } from '../core/discipline.ts';
 import { targetsInForceOn } from '../core/snapshots.ts';
 import { kcalBand, proteinBand, rollingWeightAverage } from '../core/targets.ts';
 import { dailyTotals, listPortionsBetween } from '../nutrition/index.ts';
@@ -54,8 +55,17 @@ export type ChartsData = {
   score: Point[];
   protein: Point[];
   kcal: Point[];
+  /** Los minutos de cada noche y los pasos de cada dia, que tambien son nota. */
+  sleep: Point[];
+  steps: Point[];
   proteinBand: Band | null;
   kcalBand: Band | null;
+  /**
+   * Las dos son bandas con suelo y sin techo de verdad: dormir de mas o caminar de mas
+   * no esta fuera de sitio, asi que el techo es el mejor dia, solo para pintar la zona.
+   */
+  sleepBand: Band | null;
+  stepsBand: Band | null;
   /** Series directas por musculo en los ultimos siete dias. */
   muscles: MuscleBar[];
   setBand: Band;
@@ -107,6 +117,20 @@ export async function loadCharts(
   const score: Point[] = logs
     .filter((log) => log.score !== null)
     .map((log) => ({ date: log.date, value: log.score as number }));
+
+  const sleep: Point[] = logs
+    .filter((log) => log.sleep_minutes !== null)
+    .map((log) => ({ date: log.date, value: log.sleep_minutes as number }));
+
+  const steps: Point[] = logs
+    .filter((log) => log.steps !== null)
+    .map((log) => ({ date: log.date, value: log.steps as number }));
+
+  /** Del suelo para arriba esta bien, asi que el techo es solo lo que hay que pintar. */
+  const floorBand = (from: number, points: Point[]): Band => ({
+    from,
+    to: Math.max(from, ...points.map((point) => point.value)),
+  });
 
   const protein: Point[] = [];
   const kcal: Point[] = [];
@@ -178,6 +202,14 @@ export async function loadCharts(
     score,
     protein,
     kcal,
+    sleep,
+    steps,
+    // La nota del sueno llega a los veinte puntos en ocho horas (spec 4.1) y su meta
+    // personal es el suelo: entre las dos esta la franja que de verdad busca.
+    sleepBand: targets
+      ? floorBand(Math.min(targets.sleepMinutes, SLEEP_FULL_MINUTES), sleep)
+      : null,
+    stepsBand: targets ? floorBand(targets.steps, steps) : null,
     proteinBand: targets ? proteinBand(targets) : null,
     kcalBand: targets
       ? { from: Math.round(kcalBand(targets).from), to: Math.round(kcalBand(targets).to) }

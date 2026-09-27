@@ -108,6 +108,7 @@ Rules that keep it readable:
 | `NumericField` | `src/ui/NumericField.tsx` | any number that is typed |
 | `DisciplineGrid` | `src/ui/DisciplineGrid.tsx` | the twelve weeks. Memoized; feed it stable props |
 | `DayBars` / `LineChart` / `MuscleBars` | `src/ui/charts/` | the charts |
+| `Bubble` | `src/ui/charts/Bubble.tsx` | what a chart says when you tap it: date, value, and the way into that day |
 
 Writing a fourth variant of one of these is the failure mode this file exists to
 prevent. If a screen needs something the list does not cover, add it to the list.
@@ -203,8 +204,17 @@ The recipe, as applied in `src/ui/charts/`:
   touch. Selected bar turns yellow.
 - The target band is a pastel rectangle behind the bars (`okBg`), never a gradient.
 - Lines: 3 px, round caps, dots `r` 3.5 with a 1.5 px ink stroke.
-- The tooltip is a small card: surface, 2 px border, `hardShadow(3)`, the date in bold
-  12, the value in `font.black` 18, and the action as a yellow mini-button.
+- The tooltip is `Bubble`, shared by the bars and the lines because it answers the same
+  question in both: a small card in surface with the 2 px border and `hardShadow(3)`, the
+  date in bold 12, the value in `font.black` 18, and the way into that day as a yellow
+  mini-button. The reference calls this one out as a component of its own, and it is
+  right to: a chart you cannot ask about is a picture.
+- **Everything that can be tapped, is.** A bar opens its bubble and a line opens the
+  bubble of the nearest date, with the point under it grown to `r` 6 and filled yellow —
+  the reference's "active" variants. The touch targets are a full column wide, because a
+  four-pixel bar or a 3.5-pixel dot is not a thumb target. One bubble at a time in the
+  whole screen: the screen owns which chart and which index, so opening one closes the
+  last.
 - Axis labels: `font.bold` 11, `textFaint`, tabular numbers. Two dates and one number is
   all the axis a phone needs.
 - Available SVG primitives if something more is wanted: `Pattern` (a hatch or dot fill
@@ -449,8 +459,15 @@ Moving it onto `Screen` — it used to carry its own `ScrollView`, from back whe
 assumed a tab bar under it — gave it the 2 px rule under the header and the reveal
 for free.
 
+Also done: **Gráficas** (`ChartsScreen`). One card per question, the window and the
+exercise on `Chip`s, and two charts that were missing: **sueño**, whose band runs from his
+own target to the eight hours where the score tops out, and **pasos**, whose band is a
+floor rather than a range — above the target is fine, so the band is painted from the
+target to the best day and "inside" means "above". Both read `core_daily_log`, which the
+charts loader already had in hand, so they cost a query of nothing.
+
 Left, screen by screen: Ofertas (`DealsScreen`) and the pushed screens (`DayScreen`,
-`ChartsScreen`, `RecordsScreen`, `WeekSummaryScreen`, `ReadingsScreen`,
+`RecordsScreen`, `WeekSummaryScreen`, `ReadingsScreen`,
 `RoutineNotesScreen`, `ExperimentsScreen`, `PendingScreen`). Each one is the same job:
 replace hand-rolled boxes with `Card`,
 option rows with `Chip`, actions with `Button`, set a family on every `Text`, and give

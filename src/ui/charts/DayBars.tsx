@@ -3,11 +3,11 @@ import Svg, { Line, Rect } from 'react-native-svg';
 
 import { shortDate, type IsoDate } from '../../core/dates.ts';
 import type { Band, Point } from '../../shell/charts.ts';
-import { font, hardShadow, sheet, shape, theme } from '../theme.ts';
+import { font, sheet, shape, theme } from '../theme.ts';
+
+import { Bubble, BUBBLE_WIDTH } from './Bubble.tsx';
 
 const HEIGHT = 110;
-/** Lo que mide el globito, para poder centrarlo sobre la barra sin salirse. */
-const BUBBLE_WIDTH = 116;
 
 /**
  * Una barra por dia, con la banda objetivo pintada por detras.
@@ -44,6 +44,9 @@ export function DayBars({
   // El borde se dibuja a caballo del contorno, asi que la barra se estrecha lo que
   // mide ese trazo para que dos barras vecinas no se toquen.
   const barWidth = Math.max(2, step - 3);
+  // Con pocas barras el contorno es el de la casa, de dos puntos; con noventa dias la
+  // barra mide cuatro y un trazo de dos se la come entera.
+  const stroke = barWidth > 10 ? shape.border : 1.5;
   const y = (value: number) => HEIGHT - (value / top) * HEIGHT;
 
   const inside = (value: number) => !band || (value >= band.from && value <= band.to);
@@ -75,7 +78,7 @@ export function DayBars({
             height={Math.max(2, HEIGHT - y(point.value))}
             fill={open === index ? theme.accent : inside(point.value) ? theme.ok : theme.lineSoft}
             stroke={theme.line}
-            strokeWidth={1.5}
+            strokeWidth={stroke}
           />
         ))}
         {/* La linea de base va encima de las barras: es el suelo del dibujo. */}
@@ -105,19 +108,13 @@ export function DayBars({
       )}
 
       {open !== null && (
-        <View style={[styles.bubble, { left: bubbleLeft, width: BUBBLE_WIDTH }]}>
-          <Text style={styles.bubbleDate}>{shortDate(points[open].date)}</Text>
-          <Text style={styles.bubbleValue}>{format(points[open].value)}</Text>
-          {onOpenDay && (
-            <Pressable
-              accessibilityLabel={`Ver los detalles del ${points[open].date}`}
-              onPress={() => onOpenDay(points[open].date)}
-              style={styles.bubbleButton}
-            >
-              <Text style={styles.bubbleLink}>Detalles</Text>
-            </Pressable>
-          )}
-        </View>
+        <Bubble
+          date={shortDate(points[open].date)}
+          value={format(points[open].value)}
+          width={BUBBLE_WIDTH}
+          left={bubbleLeft}
+          onOpenDay={onOpenDay ? () => onOpenDay(points[open].date) : undefined}
+        />
       )}
 
       <View style={styles.axis}>
@@ -137,44 +134,6 @@ const styles = sheet((theme) => ({
     top: 0,
     left: 0,
     flexDirection: 'row',
-  },
-  bubble: {
-    position: 'absolute',
-    top: 6,
-    borderWidth: shape.border,
-    borderColor: theme.line,
-    borderRadius: shape.radiusSmall,
-    backgroundColor: theme.surface,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    gap: 3,
-    alignItems: 'flex-start',
-    ...hardShadow(theme, 3),
-  },
-  bubbleDate: {
-    fontSize: 11,
-    color: theme.textFaint,
-    fontFamily: font.bold,
-  },
-  bubbleValue: {
-    fontSize: 18,
-    color: theme.text,
-    fontFamily: font.black,
-    fontVariant: ['tabular-nums'],
-  },
-  bubbleButton: {
-    marginTop: 2,
-    backgroundColor: theme.accent,
-    borderWidth: shape.border,
-    borderColor: theme.line,
-    borderRadius: 5,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
-  bubbleLink: {
-    fontSize: 11,
-    color: theme.accentInk,
-    fontFamily: font.black,
   },
   axis: {
     flexDirection: 'row',
