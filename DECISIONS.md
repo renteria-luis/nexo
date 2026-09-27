@@ -222,3 +222,18 @@ apiladas lo siguen usando, porque ahí el gesto de volver y el título son suyos
 Rejected: Seguir peleando con las opciones del encabezado nativo (no llegan al borde ni
 al relieve) y apagarlo en toda la app (habría que rehacer el botón de volver y el título
 en las doce pantallas apiladas, y perder el gesto tal como lo pinta iOS).
+
+## 2026-09-27 — Comer bien deja de restar nota
+Context: Comió 204 g de proteína, o sea 2.8 g/kg, y la nota le puso 14.5 de 16. La curva
+bajaba pasada la meseta de Morton porque la proteína de más no aporta y le quita sitio a
+los otros macros. La cuadrícula acabó castigando un día de comer bien, que es lo
+contrario de lo que tiene que enseñarle.
+Decision: La proteína por encima de la banda no resta: la curva llega a 1 en 1.8 g/kg y
+se queda ahí. Y las calorías dejan de tener curva por arriba: mil calorías por encima
+del piso de la banda no cuestan nada, y a partir de ahí un punto de los diez por cada
+doscientas. Con su banda de 2 275 a 2 575, el primer punto se pierde en 3 275 y el
+décimo en 5 275. Por debajo todo sigue igual, porque quedarse corto sí compromete las
+metas 1 a 3 ese mismo día. Migración 044 borra las notas guardadas para que se rehagan.
+Rejected: Dejar las dos caras en la misma curva (era lo que había: simétrico y barato de
+explicar, pero trata igual engordar despacio que dejar de comer) y quitarle todo el
+castigo a las calorías (no quiere engordar, y entonces el criterio no diría nada).

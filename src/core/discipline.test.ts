@@ -18,7 +18,7 @@ import {
   type TrainingContext,
 } from './discipline.ts';
 import { MINIMUM_CRITERIA_WITH_DATA } from './scoring.ts';
-import { computeTargets, proteinBand, type TargetProfile } from './targets.ts';
+import { computeTargets, kcalBand, proteinBand, type TargetProfile } from './targets.ts';
 
 const profile: TargetProfile = {
   heightCm: 170,
@@ -199,8 +199,10 @@ test('la proteina sigue la meseta de Morton y no una banda de todo o nada', () =
   // Ocho gramos cortos ya no cuestan los dieciseis puntos.
   assert.ok(points(123) > 12);
 
-  // Pasarse no es un suspenso, solo deja de sumar.
-  close(points(perKilo(3)), 14);
+  // Pasarse no cuesta nada: 204 g en un dia son 2.8 g/kg y valen los dieciseis.
+  close(points(204), 16);
+  close(points(perKilo(3)), 16);
+  close(points(perKilo(5)), 16);
 });
 
 test('las calorias caen segun el tamano del deficit, no de golpe', () => {
@@ -221,11 +223,16 @@ test('las calorias caen segun el tamano del deficit, no de golpe', () => {
   close(points(share(0.5)), 3.5);
   close(points(0), 0);
 
-  // Pasarse cuesta casi lo mismo que quedarse corto a la misma distancia, con el
-  // deficit un pelo mejor tratado porque va hacia la meta de bajar grasa.
-  close(points(share(1.5)), points(share(0.5)));
-  assert.ok(points(share(1.15)) < points(share(0.85)));
-  close(points(share(2)), 0);
+  // Y pasarse tiene mil calorias de margen sobre el piso de la banda antes de costar
+  // nada, porque engordar es cosa de semanas y no de una cena.
+  const free = kcalBand(targets).from + 1000;
+  close(points(free), 10);
+  close(points(free - 1), 10);
+  // A partir de ahi, un punto por cada doscientas.
+  close(points(free + 200), 9);
+  close(points(free + 1000), 5);
+  close(points(free + 2000), 0);
+  close(points(free + 4000), 0);
 });
 
 test('el agua y los pasos tampoco tienen escalon', () => {

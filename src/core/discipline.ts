@@ -9,7 +9,7 @@ import {
   type DayScore,
   type ScoredCriterion,
 } from './scoring.ts';
-import type { TargetValues } from './targets.ts';
+import { kcalBand, type TargetValues } from './targets.ts';
 
 /** Spec 4.1. Weights are the evidence base, not preference, and they sum to 100. */
 export const CRITERION_WEIGHTS = {
@@ -63,8 +63,11 @@ export const SLEEP_FULL_MINUTES = 480;
  * 2.20), asi que la banda 1.8 a 2.2 de spec 3.6 esta dentro del intervalo y vale los
  * dieciseis puntos enteros. Por debajo no se cae a plomo: 1.2 g/kg sigue construyendo
  * bastante y 0.8 es la recomendacion general, que mantiene pero no construye. Por
- * encima de 2.2 no aporta mas y solo le quita sitio a los otros macros, asi que baja
- * despacio en vez de castigar.
+ * encima la curva ya no baja (decision del dueno, 2026-09-27): bajaba despacio porque
+ * pasada la meseta la proteina de mas no aporta y le quita sitio a los otros macros,
+ * pero en la practica le restaba nota por un dia de comer bien, que es lo contrario de
+ * lo que la cuadricula tiene que ensenarle. Lo que la proteina de mas desplaza ya se
+ * ve en el criterio de calorias.
  */
 const PROTEIN_CURVE: readonly CurvePoint[] = [
   { at: 0, fraction: 0 },
@@ -72,13 +75,10 @@ const PROTEIN_CURVE: readonly CurvePoint[] = [
   { at: 1.2, fraction: 0.5 },
   { at: 1.6, fraction: 0.875 },
   { at: 1.8, fraction: 1 },
-  { at: 2.2, fraction: 1 },
-  { at: 3, fraction: 0.875 },
-  { at: 4, fraction: 0.75 },
 ];
 
 /**
- * Spec 4.1. Las calorias como fraccion de la meta del dia.
+ * Spec 4.1. Las calorias que faltan, como fraccion de la meta del dia.
  *
  * Diez dias al 80% de lo que necesita bajan la sintesis de proteina en reposo un 16%
  * (Areta 2014), el meta-analisis de Murphy 2022 confirma que el deficit frena la
@@ -86,9 +86,8 @@ const PROTEIN_CURVE: readonly CurvePoint[] = [
  * peso despacio (0.7% por semana) se gana masa magra mientras que bajando rapido
  * (1.4%) no. Eso describe una pendiente, no un acantilado: comer 1 180 de 2 425 es
  * medio dia de comida y vale un tercio de los puntos, no cero. Cero es no comer.
- * Por arriba no se pierde musculo, se gana grasa, que es la meta 4 del dueno: a la
- * misma distancia de la meta las dos caras valen casi lo mismo, con la de abajo un
- * pelo mejor tratada porque va en la direccion de esa meta.
+ *
+ * Por arriba la curva no dice nada: pasarse lo lleva la regla de aqui abajo.
  */
 const KCAL_CURVE: readonly CurvePoint[] = [
   { at: 0, fraction: 0 },
@@ -99,11 +98,31 @@ const KCAL_CURVE: readonly CurvePoint[] = [
   { at: 0.88, fraction: 0.92 },
   { at: 0.94, fraction: 1 },
   { at: 1.06, fraction: 1 },
-  { at: 1.15, fraction: 0.8 },
-  { at: 1.3, fraction: 0.55 },
-  { at: 1.5, fraction: 0.35 },
-  { at: 2, fraction: 0 },
 ];
+
+/** Lo que puede pasarse del piso de la banda sin que le cueste un solo punto. */
+const OVEREAT_FREE_KCAL = 1000;
+/** Y a partir de ahi, un punto de los diez por cada tantas calorias. */
+const OVEREAT_KCAL_PER_POINT = 200;
+
+/**
+ * Lo que valen las calorias del dia, de 0 a 1.
+ *
+ * Las dos caras no son la misma cosa, y por eso no salen de la misma curva (decision
+ * del dueno, 2026-09-27). Quedarse corto compromete las metas 1 a 3 ese mismo dia, asi
+ * que sigue la curva de arriba. Pasarse solo engorda, y engordar es cosa de semanas y
+ * no de una cena: hay mil calorias de margen por encima del piso de la banda que no
+ * cuestan nada, y despues un punto de los diez por cada doscientas. Con la banda de
+ * 2 275 a 2 575 eso pone el primer punto perdido en 3 275, y hacen falta 5 275 para
+ * quedarse sin ninguno.
+ */
+function kcalFraction(kcal: number, targets: TargetValues): number {
+  const free = kcalBand(targets).from + OVEREAT_FREE_KCAL;
+  if (kcal <= free) return alongCurve(kcal / targets.kcal, KCAL_CURVE);
+
+  const lost = (kcal - free) / OVEREAT_KCAL_PER_POINT / CRITERION_WEIGHTS.calories;
+  return Math.max(0, 1 - lost);
+}
 /**
  * Spec 3.4 y 4.1. El agua como fraccion de la meta del dia, que ya es mayor los dias
  * que entrena (2.8 L de descanso contra 3.5 L de entreno).
@@ -307,7 +326,7 @@ export function scoreCriteria(
     {
       id: 'calories',
       weight: CRITERION_WEIGHTS.calories,
-      fraction: day.kcal === null ? null : alongCurve(day.kcal / targets.kcal, KCAL_CURVE),
+      fraction: day.kcal === null ? null : kcalFraction(day.kcal, targets),
     },
     {
       id: 'alcohol',
