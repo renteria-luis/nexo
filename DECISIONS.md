@@ -207,3 +207,18 @@ posiciones guardadas. Mientras hay una fila despegada la pantalla no se desplaza
 Rejected: Flechas de subir y bajar por fila (más simple y sin gestos, pero mover el
 séptimo al primer sitio son seis toques) y una librería de arrastre (todas piden
 Reanimated, que es lo que tumbó la app el 21 de septiembre).
+
+## 2026-09-26 — El marco de la app lo dibujamos nosotros, no el sistema
+Context: La barra de abajo era la que trae React Navigation y pintaba el icono y la
+palabra de la pestaña abierta en amarillo, que sobre papel casi no se ve: la única señal
+de dónde estaba parado era una rayita de cuatro puntos. Y el encabezado de arriba es
+nativo: solo deja cambiarle el color, no acepta el borde de tinta ni un botón con
+relieve, y ponía su propio fondo redondo debajo del nuestro.
+Decision: Barra de pestañas propia (`src/ui/TabBar.tsx`) con un bloque amarillo con borde
+y sombra que se desliza pegado al carrusel, y barra de arriba propia
+(`src/ui/TopBar.tsx`) con el nombre en una pegatina plana y Ajustes como botón con
+relieve. El encabezado nativo se apaga solo en la pantalla principal; las pantallas
+apiladas lo siguen usando, porque ahí el gesto de volver y el título son suyos.
+Rejected: Seguir peleando con las opciones del encabezado nativo (no llegan al borde ni
+al relieve) y apagarlo en toda la app (habría que rehacer el botón de volver y el título
+en las doce pantallas apiladas, y perder el gesto tal como lo pinta iOS).

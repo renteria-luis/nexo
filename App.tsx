@@ -8,7 +8,7 @@ import {
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, Text } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppDataProvider, useAppData } from './src/shell/AppData.tsx';
@@ -39,7 +39,9 @@ import {
 
 import { NumberPadHost, useNumberPad } from './src/ui/NumberPadHost.tsx';
 import { SwipeLockProvider, useSwipeLock } from './src/ui/SwipeLock.tsx';
-import { font, sheet, shape, theme } from './src/ui/theme.ts';
+import { FloatingBarSpace, TabBar, tabBarSpace } from './src/ui/TabBar.tsx';
+import { TopBar } from './src/ui/TopBar.tsx';
+import { font, sheet, theme } from './src/ui/theme.ts';
 import { WeekSummaryScreen } from './src/ui/screens/WeekSummaryScreen.tsx';
 
 const Tabs = createMaterialTopTabNavigator();
@@ -129,44 +131,40 @@ function TabsScreen() {
   // Apagado mientras una pantalla arrastra algo: el gesto del carrusel es nativo y le
   // quita el toque a cualquier arrastre que no baje perfectamente recto.
   const { locked } = useSwipeLock();
-  // La raya del gestor de iOS se dibuja encima de todo, asi que la barra se levanta
-  // por encima de ella en vez de compartirle el sitio.
+  const navigation = useNavigation<{ navigate: (name: string) => void }>();
+  // La barra de abajo flota encima de las paginas, asi que el hueco que tapa lo tiene
+  // que dejar libre cada pantalla al final de su contenido.
   const insets = useSafeAreaInsets();
 
   return (
-    <Tabs.Navigator
-      // La barra va abajo aunque las paginas sean un pager: es donde llega el pulgar.
-      tabBarPosition="bottom"
-      screenOptions={{
-        swipeEnabled: !locked,
-        // Sin scroll: cinco pestanas caben en un telefono y con scroll quedaban
-        // apretadas a la izquierda con un hueco muerto a la derecha.
-        tabBarScrollEnabled: false,
-        tabBarShowIcon: true,
-        tabBarLabelStyle: styles.tabLabel,
-        tabBarItemStyle: styles.tabItem,
-        tabBarIndicatorStyle: styles.tabIndicator,
-        tabBarStyle: [styles.tabBar, { paddingBottom: insets.bottom }],
-        tabBarActiveTintColor: theme.accent,
-        tabBarInactiveTintColor: theme.textGhost,
-        tabBarPressColor: theme.surfaceHigh,
-      }}
-    >
-      {tabs.map((tab) => (
-        <Tabs.Screen
-          key={tab.id}
-          name={tab.label}
-          options={{
-            tabBarIcon: ({ color }) => {
-              const Icon = TAB_ICONS[tab.id] ?? LayoutGrid;
-              return <Icon size={20} color={color} strokeWidth={1.75} />;
-            },
-          }}
+    // La barra de arriba vive fuera del carrusel para quedarse quieta mientras las
+    // paginas se deslizan por debajo.
+    <View style={styles.tabs}>
+      <TopBar onSettings={() => navigation.navigate('Ajustes')} />
+      <FloatingBarSpace.Provider value={tabBarSpace(insets.bottom)}>
+        <Tabs.Navigator
+          // La barra va abajo aunque las paginas sean un pager: es donde llega el pulgar.
+          tabBarPosition="bottom"
+          tabBar={(props) => <TabBar {...props} />}
+          screenOptions={{ swipeEnabled: !locked }}
         >
-          {() => (tab.id === 'today' ? <TodayTab /> : <tab.screen />)}
-        </Tabs.Screen>
-      ))}
-    </Tabs.Navigator>
+          {tabs.map((tab) => (
+            <Tabs.Screen
+              key={tab.id}
+              name={tab.label}
+              options={{
+                tabBarIcon: ({ color }) => {
+                  const Icon = TAB_ICONS[tab.id] ?? LayoutGrid;
+                  return <Icon size={21} color={color} strokeWidth={2.5} />;
+                },
+              }}
+            >
+              {() => (tab.id === 'today' ? <TodayTab /> : <tab.screen />)}
+            </Tabs.Screen>
+          ))}
+        </Tabs.Navigator>
+      </FloatingBarSpace.Provider>
+    </View>
   );
 }
 
@@ -226,23 +224,14 @@ function Navigation() {
         screenOptions={{
           // El encabezado nativo solo deja cambiarle el color: la raya negra de
           // debajo la pone el borde de arriba de cada pantalla.
-          headerStyle: { backgroundColor: theme.surface },
+          headerStyle: { backgroundColor: theme.bg },
           headerShadowVisible: false,
           headerTintColor: theme.text,
           headerTitleStyle: { fontFamily: font.display, fontSize: 18, color: theme.text },
           contentStyle: { backgroundColor: theme.bg },
         }}
       >
-        <RootStack.Screen
-          name="nexo"
-          component={TabsScreen}
-          options={({ navigation }) => ({
-            title: 'nexo',
-            headerRight: () => (
-              <HeaderButton label="Ajustes" onPress={() => navigation.navigate('Ajustes')} />
-            ),
-          })}
-        />
+        <RootStack.Screen name="nexo" component={TabsScreen} options={{ headerShown: false }} />
         <RootStack.Screen
           name="Ajustes"
           component={SettingsRoute}
@@ -350,30 +339,13 @@ export default function App() {
 }
 
 const styles = sheet((theme) => ({
-  tabBar: {
-    backgroundColor: theme.surface,
-    borderTopWidth: shape.border,
-    borderTopColor: theme.line,
-  },
-  tabItem: {
-    paddingHorizontal: 4,
-    paddingTop: 8,
-    paddingBottom: 8,
-  },
-  tabLabel: {
-    fontSize: 11,
-    textTransform: 'lowercase',
-    fontFamily: font.bold,
-    marginTop: 4,
-  },
-  // Con la barra abajo la raya sale arriba, encima del borde: es la pestana activa.
-  tabIndicator: {
-    backgroundColor: theme.accent,
-    height: 4,
+  tabs: {
+    flex: 1,
+    backgroundColor: theme.bg,
   },
   // Texto pelado y nada detras: iOS pone su propio fondo redondo a los botones de la
-  // barra, y con el recuadro amarillo encima se veian dos fondos, uno dentro del otro.
-  // El peso del diseno va en el contenido, no en la barra del sistema.
+  // barra del sistema, y con el recuadro encima se veian dos fondos, uno dentro del
+  // otro. El relieve de este estilo vive en la barra propia de la pantalla principal.
   headerButton: {
     paddingHorizontal: 6,
     paddingVertical: 4,

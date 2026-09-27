@@ -4,6 +4,7 @@ import { ActivityIndicator, Platform, ScrollView, Text, View } from 'react-nativ
 import { useAppData } from '../../shell/AppData.tsx';
 import { Button } from '../Button.tsx';
 import { NUMBER_PAD_HEIGHT, useNumberPad } from '../NumberPadHost.tsx';
+import { FloatingBarSpace } from '../TabBar.tsx';
 import { font, sheet, shape } from '../theme.ts';
 
 /**
@@ -35,6 +36,9 @@ type Reveal = (target: Measurable | null) => void;
 
 const RevealContext = createContext<Reveal>(() => undefined);
 
+/** El aire con el que termina cualquier pantalla, antes de sumarle lo que tape la barra. */
+const CONTENT_BOTTOM = 40;
+
 /** Lo llama un campo al recibir el foco, con lo que tiene que quedar a la vista. */
 export function useReveal(): Reveal {
   return useContext(RevealContext);
@@ -59,6 +63,9 @@ export function Screen({
 }) {
   const { state, resetDatabase } = useAppData();
   const pad = useNumberPad();
+  // En las pestanas la barra de abajo flota encima del contenido: lo ultimo de la
+  // pantalla necesita ese hueco para poder subir por encima de ella.
+  const barSpace = useContext(FloatingBarSpace);
   const [confirming, setConfirming] = useState(false);
   const list = useRef<ScrollView>(null);
   const frame = useRef<View>(null);
@@ -102,7 +109,11 @@ export function Screen({
       style={styles.scroll}
       // Con el teclado de la app abierto, el contenido se puede seguir subiendo para
       // sacar de debajo el campo que se esta escribiendo.
-      contentContainerStyle={[styles.content, pad.isOpen && { paddingBottom: NUMBER_PAD_HEIGHT }]}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: CONTENT_BOTTOM + barSpace },
+        pad.isOpen && { paddingBottom: NUMBER_PAD_HEIGHT },
+      ]}
     >
       {title ? <Text style={styles.title}>{title}</Text> : null}
 
@@ -192,7 +203,7 @@ const styles = sheet((theme) => ({
     backgroundColor: theme.bg,
     paddingHorizontal: 20,
     paddingTop: 14,
-    paddingBottom: 40,
+    paddingBottom: CONTENT_BOTTOM,
     gap: 12,
   },
   title: {

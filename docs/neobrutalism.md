@@ -12,7 +12,7 @@ Pulled from the reference's own stylesheet (`/_next/static/css/…`, the `:root`
 | Token | Reference | This app (`src/ui/theme.ts`) |
 |---|---|---|
 | border width | `2px`, and nothing else exists in their CSS | `shape.border = 2` |
-| radius | `--border-radius: 5px` | `shape.radius = 10`, `radiusSmall = 7` |
+| radius | `--border-radius: 5px` | `shape.radius = 10`, `radiusSmall = 7`, `radiusLarge = 16` |
 | shadow | `4px 4px 0px 0px var(--border)` | `hardShadow()` → offset 4, radius 0, opacity 1 |
 | pressed | translate by the shadow offset + `shadow-none`, 150 ms | `pressed()` → same translate, no animation |
 | page | `--background: #dcebfe` (a pastel tint) | `bg: #fff4e0` cream |
@@ -100,6 +100,8 @@ Rules that keep it readable:
 | `Toggle` | `src/ui/Toggle.tsx` | one thing that is on or off, in a row with its label |
 | `Star` | `src/ui/Star.tsx` | the one decorative sticker per screen, with a number inside |
 | `Screen` | `src/ui/screens/Screen.tsx` | the frame: scroll, title, database states, overlay slot |
+| `TopBar` | `src/ui/TopBar.tsx` | the app's own header on the main screen: the wordmark and the way into Ajustes |
+| `TabBar` | `src/ui/TabBar.tsx` | the app's own floating bottom bar, with the yellow block that slides to the open tab |
 | `CommandBar` | `src/ui/CommandBar.tsx` | the typed shortcut, already restyled |
 | `NumberPad` | `src/ui/NumberPad.tsx` | the app's own keypad; never the system one for numbers |
 | `NumericField` | `src/ui/NumericField.tsx` | a number that the keypad writes into |
@@ -295,9 +297,37 @@ slider today; steppers won.
   owner spotted.
 - Vertical order on a screen: the one number that matters, the fast input, the history,
   the ways out, the forms, the reference. The Hoy screen is the reference implementation.
-- The tab bar sits at the bottom with a 2 px top border and lifts itself above the home
-  indicator with `insets.bottom`. The keypad is 220 pt tall and content shrinks for it;
-  overlays inside `Screen` do the same.
+- **Both bars are ours.** The top one is the page's cream and draws no rule of its own:
+  the line under it is the `Screen`'s own top border, and a second border there would
+  read as 4 px. It is the wordmark in a **flat** yellow sticker (it is not touchable) and
+  Ajustes as a **raised** button (it is), and it lives above the pager so it stays put
+  while the pages slide under it. It carries `insets.top` itself, because the native
+  header is off on that screen.
+- **The tab bar floats**, which is how the owner's design C draws it: a `surface` island
+  with the ink border all the way round, `shape.radiusLarge`, `hardShadow()`, laid
+  **over** the pages rather than under them. Its wrapper is `pointerEvents="box-none"`,
+  so the cream around the island belongs to the screen underneath and not to the bar.
+  Design C's own bar is a stadium; ours stops at 16 because a fully round end would be a
+  shape that exists nowhere else in the app.
+- **Where a floating island can sit is decided by the corner of the phone**, not by
+  taste. It keeps 20 pt from the sides and drops 14 pt into the bottom safe area (never
+  closer than 8 pt to the edge), which on a phone with a gesture bar leaves it 20 pt up.
+  Its rounded corner then ends up about 43 pt from the centre of the screen's own corner
+  arc, which is inside it on every iPhone that has one. Lower or wider than that and the
+  corners start to be eaten by the curve of the glass.
+- Inside it, five items with the icon over an uppercase label, and the one you are on is
+  a yellow block with the 2 px border and `hardShadow(3)`. The block is absolutely
+  positioned and its `translateX` is the pager's own `position`, so it follows the finger
+  across a swipe instead of waiting for the page to land, and it rides the native driver
+  because a translation is all it does.
+- **A floating bar has to hand down its height**, or it covers the last card on every
+  screen. `TabBar` exports `FloatingBarSpace` and `tabBarSpace(bottomInset)`, the tabs
+  provide that number around the navigator, and `Screen` adds it to the bottom of its
+  scroll content. Outside the tabs the context is 0, so a pushed screen keeps its plain 40.
+  Putting that space in the scene instead would have shortened the frame `Screen`
+  measures, and the keypad's reveal maths is measured against that frame.
+- The keypad is 220 pt tall and content shrinks for it; overlays inside `Screen` do the
+  same, and the keypad covers the tab bar while it is open.
 
 ## 10. Do and do not
 
@@ -329,6 +359,11 @@ Also done: **Ejercicios** (`ExercisesScreen`), the catalogue editor reached from
 a searchable list, then one card per thing that can be changed about the exercise, with
 switches for the implements and the gyms, chips for the tier, and a numeric field per time
 budget. It is the template for any future "edit the data" screen.
+
+Also done: **the frame itself** — `TopBar` and `TabBar`. The bar React Navigation ships
+painted the open tab's icon and label in the accent colour, which here is yellow on
+paper: unreadable, and the only real signal left was a four-point line. Now the signal is
+an object, which is what this style does.
 
 Also done: **Comida**, all of it (`NutritionScreen`, `FoodLog`, `FoodPicker`,
 `PortionMacros`, `BatchPanel`, `FoodsScreen`, `FoodForm`). The shape is the Hoy one: a
