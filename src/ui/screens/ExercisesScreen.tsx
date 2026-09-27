@@ -1,6 +1,6 @@
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
-import { Text, TextInput, View, type StyleProp, type TextStyle } from 'react-native';
+import { Text, View, type StyleProp, type TextStyle } from 'react-native';
 
 import { matchesSearch } from '../../nutrition/index.ts';
 import { useAppData } from '../../shell/AppData.tsx';
@@ -14,8 +14,9 @@ import { Chip } from '../Chip.tsx';
 import { ChevronRight } from '../icons.ts';
 import { MUSCLE_ES } from '../muscles.ts';
 import { NumericField } from '../NumericField.tsx';
+import { TextField } from '../TextField.tsx';
 import { Toggle } from '../Toggle.tsx';
-import { font, sheet, shape, theme } from '../theme.ts';
+import { font, sheet, shape } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
 
@@ -160,14 +161,12 @@ export function ExercisesScreen() {
         con cada tiempo.
       </Text>
 
-      <TextInput
+      <TextField
         value={search}
-        onChangeText={setSearch}
+        onChange={setSearch}
         autoCapitalize="none"
-        autoCorrect={false}
         accessibilityLabel="Buscar un ejercicio"
         placeholder="Buscar"
-        placeholderTextColor={theme.textGhost}
         style={styles.search}
       />
 
@@ -260,16 +259,17 @@ export function ExerciseScreen() {
         </Text>
 
         <Field label="Nombre">
-          <TextInput
+          <TextField
             defaultValue={exercise.name_es}
-            onEndEditing={(event) => {
-              const next = event.nativeEvent.text.trim();
+            onCommit={(text) => {
+              const next = text.trim();
               if (next !== '' && next !== exercise.name_es) {
                 after(editExercise(exercise.id, { name: next }));
               }
             }}
             accessibilityLabel="Nombre del ejercicio"
             style={styles.input}
+            focusedStyle={styles.inputEditing}
           />
         </Field>
 
@@ -337,27 +337,25 @@ export function ExerciseScreen() {
         </Text>
 
         <Field label="General">
-          <TextInput
+          <TextField
             defaultValue={card.notes[''] ?? ''}
             multiline
-            onEndEditing={(event) =>
-              after(editExerciseNote(exercise.id, '', event.nativeEvent.text))
-            }
+            onCommit={(text) => after(editExerciseNote(exercise.id, '', text))}
             accessibilityLabel="Nota general"
             style={[styles.input, styles.note]}
+            focusedStyle={styles.inputEditing}
           />
         </Field>
 
         {card.implements.map((option) => (
           <Field key={option} label={IMPLEMENT_ES[option]}>
-            <TextInput
+            <TextField
               defaultValue={card.notes[option] ?? ''}
               multiline
-              onEndEditing={(event) =>
-                after(editExerciseNote(exercise.id, option, event.nativeEvent.text))
-              }
+              onCommit={(text) => after(editExerciseNote(exercise.id, option, text))}
               accessibilityLabel={`Nota con ${IMPLEMENT_ES[option].toLowerCase()}`}
               style={[styles.input, styles.note]}
+              focusedStyle={styles.inputEditing}
             />
           </Field>
         ))}

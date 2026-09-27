@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { todayIso } from '../../core/dates.ts';
 import { type NudgeKind } from '../../core/nudges.ts';
@@ -19,6 +19,7 @@ import { Chip } from '../Chip.tsx';
 import { ChevronRight, Eye, EyeOff } from '../icons.ts';
 import { IconButton } from '../IconButton.tsx';
 import { NumericField } from '../NumericField.tsx';
+import { TextField } from '../TextField.tsx';
 import { PalettePicker } from '../PalettePicker.tsx';
 import { Toggle } from '../Toggle.tsx';
 import { font, sheet, shape } from '../theme.ts';
@@ -205,18 +206,17 @@ export function SettingsScreen({
             focusedStyle={styles.inputWriting}
           />
         ) : (
-          <TextInput
+          <TextField
             value={draft}
-            onChangeText={(text) => setDrafts((current) => ({ ...current, [field.key]: text }))}
+            onChange={(text) => setDrafts((current) => ({ ...current, [field.key]: text }))}
             onFocus={() => setEditing(field.key)}
-            onBlur={() => {
-              setEditing(null);
-              commit(field.key);
-            }}
-            onSubmitEditing={() => commit(field.key)}
+            onBlur={() => setEditing(null)}
+            onCommit={() => commit(field.key)}
+            autoCapitalize="none"
             accessibilityLabel={field.label}
             placeholder={field.placeholder ?? settingDefault(field.key) ?? undefined}
             style={[styles.input, problem ? styles.inputBad : null]}
+            focusedStyle={styles.inputWriting}
           />
         )}
         {(problem ?? refused[field.key]) && (

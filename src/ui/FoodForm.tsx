@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { ScrollView, Text, TextInput, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../db/types.ts';
 import {
-  MAX_QUICK_AMOUNTS,
   parseQuickAmounts,
   referenceAmount,
   roundAmount,
@@ -15,7 +14,8 @@ import { Button } from './Button.tsx';
 import { Chip } from './Chip.tsx';
 import { Trash } from './icons.ts';
 import { NumericField } from './NumericField.tsx';
-import { font, hardShadow, sheet, shape, theme } from './theme.ts';
+import { TextField } from './TextField.tsx';
+import { font, hardShadow, sheet, shape } from './theme.ts';
 
 /**
  * La ficha de un alimento: la misma para crear uno nuevo y para corregir uno que ya
@@ -148,20 +148,17 @@ export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFor
           </>
         ) : step === 'datos' ? (
           <>
-            <TextInput
+            <TextField
               value={name}
-              onChangeText={setName}
+              onChange={setName}
               accessibilityLabel="Nombre del alimento"
               placeholder="Nombre"
-              placeholderTextColor={theme.textGhost}
               style={styles.text}
+              focusedStyle={styles.inputWriting}
             />
 
             {food ? (
-              <Text style={styles.hint}>
-                Datos por {measure.label}. La medida no se cambia: lo que ya comiste está anotado
-                en ella.
-              </Text>
+              <Text style={styles.hint}>Por {measure.label}. La medida ya no se cambia.</Text>
             ) : (
               <>
                 <View style={styles.chips}>
@@ -175,7 +172,7 @@ export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFor
                     />
                   ))}
                 </View>
-                <Text style={styles.hint}>Lo que dice la etiqueta para {measure.label}.</Text>
+                <Text style={styles.hint}>Lo que dice la etiqueta por {measure.label}.</Text>
               </>
             )}
 
@@ -188,33 +185,25 @@ export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFor
               <Field label="sodio mg" value={sodium} onChange={setSodium} />
             </View>
 
-            <TextInput
+            <TextField
               value={keywords}
-              onChangeText={setKeywords}
+              onChange={setKeywords}
               accessibilityLabel="Palabras clave"
               placeholder="egg, costco, desayuno"
-              placeholderTextColor={theme.textGhost}
               autoCapitalize="none"
               style={styles.text}
+              focusedStyle={styles.inputWriting}
             />
-            {/* Spec 16.3 regla 5: un hueco se muestra, no se rellena. */}
-            <Text style={styles.hint}>
-              Palabras clave separadas por coma. Lo que la etiqueta no diga, déjalo vacío.
-            </Text>
-
-            <TextInput
+            {/* Es una lista, no un numero: la coma vive en la pagina de numeros del
+                teclado de letras, no en el de numeros. */}
+            <TextField
               value={amounts}
-              onChangeText={setAmounts}
+              onChange={setAmounts}
               accessibilityLabel="Cantidades frecuentes"
               placeholder="1, 3, 6"
-              placeholderTextColor={theme.textGhost}
-              inputMode="numeric"
               style={styles.text}
+              focusedStyle={styles.inputWriting}
             />
-            <Text style={styles.hint}>
-              Los botones de cantidad al anotarlo, hasta {MAX_QUICK_AMOUNTS}. Vacío deja los de
-              siempre.
-            </Text>
           </>
         ) : (
           <>
@@ -240,9 +229,7 @@ export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFor
               </Text>
             </View>
             {food !== null && (
-              <Text style={styles.warn}>
-                Se recalculan todos los días en los que comiste esto.
-              </Text>
+              <Text style={styles.warn}>Se recalculan todos los días en los que comiste esto.</Text>
             )}
           </>
         )}

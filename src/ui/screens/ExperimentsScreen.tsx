@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { todayIso } from '../../core/dates.ts';
 import type { ExperimentWithReadings } from '../../core/experiments.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 
+import { TextField } from '../TextField.tsx';
 import { Screen } from './Screen.tsx';
-import { mono, sheet, theme } from '../theme.ts';
+import { mono, sheet } from '../theme.ts';
 
 /** Spec 7.5 point 3, the test the spec actually proposes. Placeholders, not defaults. */
 const DAIRY = {
@@ -32,12 +33,11 @@ function Field({
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput
+      <TextField
         value={value}
-        onChangeText={onChange}
+        onChange={onChange}
         accessibilityLabel={label}
         placeholder={placeholder}
-        placeholderTextColor={theme.textGhost}
         style={styles.input}
       />
     </View>

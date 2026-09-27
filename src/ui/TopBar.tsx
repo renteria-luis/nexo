@@ -18,9 +18,11 @@ import { font, hardShadow, pressed as pressedInto, sheet, shape, theme } from '.
  * El nombre va en una pegatina amarilla plana, porque no se toca. El boton de la
  * derecha es lo unico con sombra: entrar a Ajustes desde la pantalla principal, o
  * cerrar la pantalla apilada y volver. No lleva titulo a proposito, porque el titulo
- * grande ya esta dentro de la pantalla y decirlo dos veces es ruido. La raya de abajo
- * tampoco la dibuja la barra: la pone el borde de arriba de cada pantalla, que es lo
- * que mantiene una sola raya de dos puntos y no dos pegadas.
+ * grande ya esta dentro de la pantalla y decirlo dos veces es ruido.
+ *
+ * La raya de abajo la dibuja la barra y no el contenido: en el borde de una lista que
+ * se desplaza, la raya se va con ella en cuanto se desliza, y lo que separa la barra
+ * del papel desaparecia a mitad de la pantalla.
  */
 export function TopBar({ action, onPress }: { action: 'settings' | 'done'; onPress: () => void }) {
   const insets = useSafeAreaInsets();
@@ -57,6 +59,8 @@ const styles = sheet((theme) => ({
     paddingHorizontal: 20,
     paddingBottom: 8,
     backgroundColor: theme.bg,
+    borderBottomWidth: shape.border,
+    borderBottomColor: theme.line,
   },
   brand: {
     backgroundColor: theme.accent,

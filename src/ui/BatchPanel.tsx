@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Text, TextInput, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../db/types.ts';
 import { MEAL_SLOTS, roundAmount } from '../nutrition/index.ts';
@@ -10,6 +10,7 @@ import { Card } from './Card.tsx';
 import { Chip } from './Chip.tsx';
 import { Plus, TriangleAlert, Utensils } from './icons.ts';
 import { NumericField } from './NumericField.tsx';
+import { TextField } from './TextField.tsx';
 import { Toggle } from './Toggle.tsx';
 import { font, sheet, shape, theme } from './theme.ts';
 
@@ -35,13 +36,13 @@ function Field({
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       {text ? (
-        <TextInput
+        <TextField
           value={value}
-          onChangeText={onChange}
+          onChange={onChange}
           accessibilityLabel={label}
           placeholder={placeholder}
-          placeholderTextColor={theme.textGhost}
           style={styles.input}
+          focusedStyle={styles.inputWriting}
         />
       ) : (
         <NumericField
@@ -85,8 +86,8 @@ function BatchCard({ item, onEat }: { item: OpenBatch; onEat: () => void }) {
         <View style={styles.warnRow}>
           <TriangleAlert size={15} color={theme.text} strokeWidth={2.5} />
           <Text style={styles.warnText}>
-            Quedan {spoilage.portionsRemaining} porciones de {food.name} de hace{' '}
-            {spoilage.ageDays} días
+            Quedan {spoilage.portionsRemaining} porciones de {food.name} de hace {spoilage.ageDays}{' '}
+            días
           </Text>
         </View>
       )}

@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { TextInput, View, type StyleProp, type TextStyle } from 'react-native';
 
-import { useNumberPad, type PadTarget } from './NumberPadHost.tsx';
+import { KEYBOARD_BAR } from './KeyboardBar.tsx';
 import { useReveal } from './screens/Screen.tsx';
 import { theme } from './theme.ts';
 
 /**
- * Un campo de numeros que no llama al teclado de Apple.
+ * Un campo de numeros con el teclado de numeros de iOS.
  *
- * El texto que se esta escribiendo vive aqui y no en el teclado: cada tecla se
- * aplica sobre lo que habia un instante antes, asi que tecleando rapido no se pierde
- * ningun digito. Hacia afuera avisa el valor ya armado.
+ * Hubo un teclado propio y se quito el 2026-09-27: se veia mejor y se escribia peor. Lo
+ * que queda de aquello es lo que si valia, y esta fuera del campo: el contenido se sube
+ * para que el teclado no lo tape, y encima del teclado va nuestra barra con la tecla de
+ * listo, que el teclado de numeros de Apple no trae.
  */
 export type NumericFieldProps = {
   value: string;
@@ -53,19 +54,10 @@ export function NumericField({
   focusedStyle,
   reveals,
 }: NumericFieldProps) {
-  const pad = useNumberPad();
   const reveal = useReveal();
   const input = useRef<TextInput>(null);
   const [draft, setDraft] = useState(value);
-  // Cual es "su" entrada en el teclado. La raya de estar escribiendo sale de comparar
-  // esta con la que el teclado tiene abierta, y no del foco del campo: al abrirse el
-  // teclado por primera vez el campo pierde el foco, y con el se perdia la raya.
-  const [mine, setMine] = useState<PadTarget | null>(null);
-  const writing = mine !== null && pad.target === mine;
-  // La misma entrada en una referencia, para poder mirarla desde el onBlur, y un
-  // seguro para no pelearse con el sistema si el foco se va por otra razon.
-  const owned = useRef<PadTarget | null>(null);
-  const restored = useRef(0);
+  const [writing, setWriting] = useState(false);
   const notify = useRef(onChange);
   const commit = useRef(onCommit);
 
@@ -100,71 +92,27 @@ export function NumericField({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft]);
 
-  const apply = (key: string) => {
-    setDraft((prev) => {
-      if (key === 'clear') return '';
-      if (key === 'del') return prev.slice(0, -1);
-      if (key === '.') return !allowDecimal || prev.includes('.') ? prev : `${prev || '0'}.`;
-      // Un cero a la izquierda no significa nada y ensucia el campo.
-      if (prev === '0') return key;
-      return prev + key;
-    });
-  };
-
   return (
     <TextInput
       ref={input}
       value={draft}
-      onChangeText={setDraft}
-      showSoftInputOnFocus={false}
-      keyboardType="numeric"
+      // El teclado de Apple escribe coma o punto segun el idioma del telefono, y las
+      // cuentas de la app esperan punto.
+      onChangeText={(text) => setDraft(text.replace(',', '.'))}
+      keyboardType={allowDecimal ? 'decimal-pad' : 'number-pad'}
+      inputAccessoryViewID={KEYBOARD_BAR}
       accessibilityLabel={accessibilityLabel}
       placeholder={placeholder}
       placeholderTextColor={theme.textGhost}
       onFocus={() => {
+        setWriting(true);
         onFocus?.();
         // El teclado tapa la mitad de abajo de la pantalla: lo que se escribe se sube.
         reveal(reveals?.current ?? input.current);
-        // Recuperar el foco no abre nada nuevo: con otra entrada, el teclado cerraria
-        // la anterior, y la anterior es la de este mismo campo.
-        const already = owned.current;
-        if (already !== null) {
-          pad.open(already);
-          return;
-        }
-
-        const target: PadTarget = {
-          onKey: apply,
-          allowDecimal,
-          onClose: () => {
-            // Solo si sigue siendo la suya: si el teclado ya paso a otro campo, esto
-            // llega tarde y no tiene que borrar nada.
-            if (owned.current === target) {
-              owned.current = null;
-              setMine(null);
-            }
-            input.current?.blur();
-          },
-        };
-        owned.current = target;
-        restored.current = 0;
-        setMine(target);
-        pad.open(target);
       }}
       onBlur={() => {
+        setWriting(false);
         onBlur?.();
-
-        // Un desenfoque que no pidio nadie: el teclado de la app al abrirse se queda con
-        // el toque, y la pantalla al subir el contenido lo vuelve a quitar. Con el foco
-        // se va el cursor, y el campo queda pintado pero sin la raya que dice donde esta
-        // escribiendo. Mientras el teclado siga siendo suyo, se recupera; con un tope,
-        // para no pelearse con el sistema si el foco se va por otra razon.
-        if (owned.current !== null && restored.current < 3) {
-          restored.current += 1;
-          requestAnimationFrame(() => input.current?.focus());
-          return;
-        }
-
         onCommit?.();
       }}
       style={[style, writing && focusedStyle]}

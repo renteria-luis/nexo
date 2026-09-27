@@ -99,12 +99,13 @@ Rules that keep it readable:
 | `SearchField` | `src/ui/SearchField.tsx` | a search box: the magnifier, the text, and a clear button once something is typed |
 | `Toggle` | `src/ui/Toggle.tsx` | one thing that is on or off, in a row with its label |
 | `Star` | `src/ui/Star.tsx` | the one decorative sticker per screen, with a number inside |
-| `Screen` | `src/ui/screens/Screen.tsx` | the frame: scroll, title, database states, overlay slot |
+| `Screen` | `src/ui/screens/Screen.tsx` | the frame: scroll, title, database states, overlay slot (`onOverlayDismiss` makes the scrim close it) |
 | `TopBar` | `src/ui/TopBar.tsx` | the app's own header on every screen: the wordmark, and Ajustes or the done check |
 | `TabBar` | `src/ui/TabBar.tsx` | the app's own floating bottom bar, with the yellow block that slides to the open tab |
 | `CommandBar` | `src/ui/CommandBar.tsx` | the typed shortcut, already restyled |
-| `NumberPad` | `src/ui/NumberPad.tsx` | the app's own keypad; never the system one for numbers |
-| `NumericField` | `src/ui/NumericField.tsx` | a number that the keypad writes into |
+| `KeyboardBar` | `src/ui/KeyboardBar.tsx` | our bar on top of the system keyboard, with `listo` |
+| `TextField` | `src/ui/TextField.tsx` | any text that is typed. Never a bare `TextInput`, or it loses the bar and the lift |
+| `NumericField` | `src/ui/NumericField.tsx` | any number that is typed |
 | `DisciplineGrid` | `src/ui/DisciplineGrid.tsx` | the twelve weeks. Memoized; feed it stable props |
 | `DayBars` / `LineChart` / `MuscleBars` | `src/ui/charts/` | the charts |
 
@@ -256,24 +257,66 @@ What makes it work, and what to copy if another list ever needs it:
   button does not lift anything.
 - Lifted looks lifted: yellow fill, `hardShadow(5)` and `zIndex: 2`.
 
-### When the keypad covers what he is typing
+### When the keyboard covers what he is typing
 
-The app's own keypad is a fixed 220 pt overlay at the root, so there are no keyboard
-events to listen for and nothing scrolls out of the way by itself. `Screen` provides
-`useReveal()`, and `NumericField` calls it on focus:
+`Screen` provides `useReveal()`, and both fields call it on focus. The system tells us
+what we used to have to assume: `keyboardWillShow` arrives **before** the keyboard moves,
+carrying its real height and the exact duration of its animation, so the content rides
+the same curve instead of chasing it. On `keyboardWillHide` the scroll goes back exactly
+what it came up.
 
 - The field asks to be revealed; a field can name **a whole block instead of itself**
   (`reveals={ref}`), which is what the training form does — the weight box is useless
   without the reps box and the "+ serie" button next to it, so the whole exercise card
   comes up.
 - The maths is all in screen coordinates: measure the target and the screen frame with
-  `measureInWindow`, work out how much of the target falls below where the keypad starts,
+  `measureInWindow`, work out how much of the target falls below where the keyboard
+  starts,
   and scroll by exactly that, never more than would push the block's own top off the top.
   Measuring against the scroll content instead gave numbers in another origin and the
   scroll came up short.
 - It only ever scrolls **up**: something already visible does not move.
 - One frame of `requestAnimationFrame` first, because the content has just grown a
-  220 pt tail to make room for the keypad and without that room the scroll clamps.
+  tail the size of the keyboard and without that room the scroll clamps.
+- **Once per block, not once per focus.** Moving from one field to the next does not wake
+  the keyboard again, so without this each focus would stack another lift on the last
+  one, and hiding would give them all back at once.
+- **Nothing is lifted while a sheet is open.** The scroll behind the scrim is not what
+  needs to move; the sheet is.
+
+**A sheet over the screen moves with the keyboard too.** The scrim covers the whole frame
+and never shrinks, so the strip the keyboard leaves behind while it slides is dimmed like
+the rest instead of flashing the live screen. The sheet itself is lifted by an animated
+`translateY` worth exactly what the keyboard covers of it — the overlap between the two,
+never more than the room left above — measured from the frame and the sheet with
+`onLayout`. Nothing about its layout box changes, which is the point: the only thing that
+moves is a transform, and at rest it is zero.
+
+**That value is a 0-to-1 progress and not a distance.** At rest it is zero whether the
+keyboard has never opened or has just closed, so a style that leans on it
+(`rise.interpolate`) is correct in both, and React never has to add or remove the
+transform mid-animation. Driving it in points meant the resting value was the keyboard's
+height, and the frame where React dropped the style while the value was still at that
+height dropped the sheet below where it started.
+
+### The keyboard is Apple's, the trimmings are ours
+
+There were two keyboards of our own, a number pad from the start and a letters one for a
+day, and they are gone (2026-09-27, `DECISIONS.md`). They looked right and typed worse,
+and a custom letters keyboard silently drops autocorrect, dictation, accents, swipe
+typing and accessibility, none of which have an API to borrow. What was worth keeping was
+never the keys:
+
+- **`KeyboardBar`** is an `InputAccessoryView` (React Native core, iOS only) sitting on
+  top of the system keyboard in the app's own colours, with the `listo` key. It is not
+  decoration: Apple's number pad has no return key, so without it the only way out is
+  tapping outside. Anything gym-shaped that comes later (+2.5 kg, repeat set) goes here.
+  Every field points at it with `inputAccessoryViewID`.
+- **`NumericField` and `TextField`** are thin wrappers over `TextInput`: the right
+  `keyboardType`, the commit-while-typing behaviour, the writing tint, and the block to
+  reveal. A bare `TextInput` anywhere else would miss the bar and the lift.
+- The decimal key writes a comma or a dot depending on the phone's language, and the
+  app's arithmetic wants a dot, so the numeric field normalises it on the way in.
 
 ## 8. Sliders
 
@@ -297,9 +340,11 @@ slider today; steppers won.
   owner spotted.
 - Vertical order on a screen: the one number that matters, the fast input, the history,
   the ways out, the forms, the reference. The Hoy screen is the reference implementation.
-- **Both bars are ours.** The top one is the page's cream and draws no rule of its own:
-  the line under it is the `Screen`'s own top border, and a second border there would
-  read as 4 px. It is the wordmark in a **flat** yellow sticker (it is not touchable) and
+- **Both bars are ours.** The top one is the page's cream and carries the ink rule that
+  separates it from the paper as its own bottom border. That rule used to be the
+  `ScrollView`'s top border inside `Screen`, which looks identical standing still and
+  slides away with the list the moment you scroll: a border belongs to the thing that
+  does not move. It is the wordmark in a **flat** yellow sticker (it is not touchable) and
   one **raised** button on the right (which is): the gear into Ajustes on the main
   screen, and a yellow check that closes the screen on every pushed one. It is wired as
   the stack's `header` option, so it is the same bar everywhere, it carries `insets.top`
@@ -331,9 +376,10 @@ slider today; steppers won.
   provide that number around the navigator, and `Screen` adds it to the bottom of its
   scroll content. Outside the tabs the context is 0, so a pushed screen keeps its plain 40.
   Putting that space in the scene instead would have shortened the frame `Screen`
-  measures, and the keypad's reveal maths is measured against that frame.
-- The keypad is 220 pt tall and content shrinks for it; overlays inside `Screen` do the
-  same, and the keypad covers the tab bar while it is open.
+  measures, and the reveal maths is measured against that frame.
+- Content grows a tail the height of the keyboard while it is up, and overlays inside
+  `Screen` shrink the same way. The keyboard covers the floating tab bar, which is fine:
+  nothing under it is needed while typing.
 
 ## 10. Do and do not
 
@@ -349,7 +395,7 @@ palette while the light one is not finished.
 ## 11. Where the redesign stands
 
 Done: `theme.ts` (one light palette), `Button` (with `loading`), `Card`, `Chip`,
-`Toggle`, `Star`, `Screen`, `CommandBar`, `NumberPad`, `NumericField` styling,
+`Toggle`, `Star`, `Screen`, `CommandBar`, `NumericField` styling,
 `DisciplineGrid`, the three charts, `TargetsCard`, `PalettePicker`, `TodayLog`,
 `DayDialog`, the Ajustes controls, and the **Hoy** screen.
 
@@ -400,7 +446,7 @@ makes it mean something: his height and his birth date. The body-weight field is
 from here entirely, since he writes it every day on Hoy.
 
 Moving it onto `Screen` — it used to carry its own `ScrollView`, from back when `Screen`
-assumed a tab bar under it — gave it the 2 px rule under the header and the keypad reveal
+assumed a tab bar under it — gave it the 2 px rule under the header and the reveal
 for free.
 
 Left, screen by screen: Ofertas (`DealsScreen`) and the pushed screens (`DayScreen`,

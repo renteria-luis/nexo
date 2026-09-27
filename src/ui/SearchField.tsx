@@ -1,7 +1,8 @@
-import { Text, TextInput, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { IconButton } from './IconButton.tsx';
 import { Search, X } from './icons.ts';
+import { TextField } from './TextField.tsx';
 import { font, sheet, shape, theme } from './theme.ts';
 
 /**
@@ -35,13 +36,12 @@ export function SearchField({
     <View style={[styles.row, style]}>
       <View style={styles.field}>
         <Search size={16} color={theme.textFaint} strokeWidth={2.5} />
-        <TextInput
+        <TextField
           value={value}
-          onChangeText={onChange}
+          onChange={onChange}
           accessibilityLabel={accessibilityLabel}
           placeholder={placeholder}
-          placeholderTextColor={theme.textGhost}
-          autoCorrect={false}
+          autoCapitalize="none"
           style={styles.input}
         />
         {!written && note ? <Text style={styles.note}>{note}</Text> : null}

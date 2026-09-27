@@ -58,6 +58,14 @@ export function FoodsScreen() {
   return (
     <Screen
       title="Alimentos"
+      onOverlayDismiss={
+        open
+          ? () => {
+              setCreating(false);
+              setEditing(null);
+            }
+          : undefined
+      }
       overlay={
         open ? (
           <FoodForm
@@ -116,7 +124,11 @@ export function FoodsScreen() {
       {notice !== null && (
         <Card tone="warn">
           <Text style={styles.notice}>{notice}</Text>
-          <Button label="Entendido" accessibilityLabel="Entendido" onPress={() => setNotice(null)} />
+          <Button
+            label="Entendido"
+            accessibilityLabel="Entendido"
+            onPress={() => setNotice(null)}
+          />
         </Card>
       )}
 

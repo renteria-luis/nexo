@@ -8,7 +8,7 @@ import {
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { View } from 'react-native';
+import { Keyboard, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppDataProvider, useAppData } from './src/shell/AppData.tsx';
@@ -37,7 +37,7 @@ import {
   useFonts,
 } from '@expo-google-fonts/nunito';
 
-import { NumberPadHost, useNumberPad } from './src/ui/NumberPadHost.tsx';
+import { KeyboardBar } from './src/ui/KeyboardBar.tsx';
 import { SwipeLockProvider, useSwipeLock } from './src/ui/SwipeLock.tsx';
 import { FloatingBarSpace, TabBar, tabBarSpace } from './src/ui/TabBar.tsx';
 import { TopBar } from './src/ui/TopBar.tsx';
@@ -193,7 +193,6 @@ const NUDGE_ROUTES: Record<string, string> = {
 };
 
 function Navigation() {
-  const pad = useNumberPad();
   const { nudgeTarget, clearNudgeTarget } = useAppData();
   const navigation = useNavigationContainerRef();
 
@@ -205,7 +204,12 @@ function Navigation() {
   }, [nudgeTarget, clearNudgeTarget, navigation]);
 
   return (
-    <NavigationContainer ref={navigation} theme={navigationTheme} onStateChange={pad.close}>
+    <NavigationContainer
+      ref={navigation}
+      theme={navigationTheme}
+      // Cambiar de pantalla con el teclado abierto lo dejaba flotando sobre otra cosa.
+      onStateChange={() => Keyboard.dismiss()}
+    >
       <RootStack.Navigator
         screenOptions={{
           // Nuestra barra en lugar del encabezado nativo, que solo dejaba cambiarle el
@@ -254,15 +258,15 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <NumberPadHost>
-        <AppDataProvider>
-          <SwipeLockProvider>
-            <Navigation />
-          </SwipeLockProvider>
-          {/* Una sola paleta, clara: la barra de estado va siempre en oscuro. */}
-          <StatusBar style="dark" />
-        </AppDataProvider>
-      </NumberPadHost>
+      <AppDataProvider>
+        <SwipeLockProvider>
+          <Navigation />
+        </SwipeLockProvider>
+        {/* La barra que corona el teclado del sistema, una sola para toda la app. */}
+        <KeyboardBar />
+        {/* Una sola paleta, clara: la barra de estado va siempre en oscuro. */}
+        <StatusBar style="dark" />
+      </AppDataProvider>
     </SafeAreaProvider>
   );
 }

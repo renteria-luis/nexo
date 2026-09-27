@@ -237,3 +237,24 @@ metas 1 a 3 ese mismo día. Migración 044 borra las notas guardadas para que se
 Rejected: Dejar las dos caras en la misma curva (era lo que había: simétrico y barato de
 explicar, pero trata igual engordar despacio que dejar de comer) y quitarle todo el
 castigo a las calorías (no quiere engordar, y entonces el criterio no diría nada).
+
+## 2026-09-27 — El teclado vuelve a ser el de Apple
+Context: La app tenía teclado propio de números desde el principio y de letras desde hoy.
+Probándolos: "funciona bien, lo único que no me convence es que no es tan smooth ni tan
+rápido como el de Apple... prefiero eficiencia a estética porque los teclados casi no los
+abriré". Y un teclado de letras propio se lleva por delante el autocorrector, el dictado,
+las tildes, escribir deslizando y la accesibilidad, que no tienen API: hay que rehacerlas
+a mano.
+Decision: Los campos usan el teclado de iOS, con `keyboardType` según lo que se escriba.
+Lo nuestro se queda en lo de alrededor, que es lo que sí valía: el contenido sube para
+que el teclado no tape el campo (ahora con el alto y la duración que el propio sistema
+avisa, así que va más pegado que antes), deslizar hacia abajo lo cierra, tocar fuera lo
+cierra, y encima del teclado va nuestra barra (`InputAccessoryView`, que viene en React
+Native) con la tecla de listo, que el teclado de números de Apple no trae. Se borran
+`NumberPad`, `TextPad` y `NumberPadHost`: 1287 líneas que siguen en el historial.
+Rejected: `react-native-keyboard-controller`, que es lo que recomienda la documentación
+de Expo, porque su 1.22.5 exige `react-native-reanimated` >= 3 y Reanimated es lo que
+tumbó la app el 21 de septiembre; todo lo que de ahí necesitábamos está en el núcleo de
+React Native. Y quedarnos con el teclado numérico propio, que era defendible, pero deja
+vivos dos mecanismos a la vez (nuestro alto medido y los avisos del sistema), que es
+justo donde han estado los fallos de estos días.

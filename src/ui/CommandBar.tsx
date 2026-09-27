@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Text, TextInput, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { Command as CommandIcon } from './icons.ts';
 
 import { COMMAND_HELP, parseCommand, type Command } from '../core/commands.ts';
@@ -7,6 +7,7 @@ import { toKg } from '../core/units.ts';
 import { useAppData } from '../shell/AppData.tsx';
 
 import { Button } from './Button.tsx';
+import { TextField } from './TextField.tsx';
 import { font, hardShadow, sheet, shape, theme } from './theme.ts';
 
 /**
@@ -77,16 +78,13 @@ export function CommandBar() {
         <View style={styles.badge}>
           <CommandIcon size={14} color={theme.accentInk} strokeWidth={2.5} />
         </View>
-        <TextInput
+        <TextField
           value={draft}
-          onChangeText={setDraft}
-          onSubmitEditing={submit}
+          onChange={setDraft}
+          onSubmit={submit}
           autoCapitalize="none"
-          autoCorrect={false}
-          returnKeyType="send"
           accessibilityLabel="Comando"
           placeholder='agua 710, serie 65x8, "ayuda"'
-          placeholderTextColor={theme.textGhost}
           style={styles.input}
         />
       </View>
