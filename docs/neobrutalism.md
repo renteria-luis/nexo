@@ -481,11 +481,13 @@ Also done: **Registros**, **Resumen semanal**, **Lecturas** and **el día**
   and the breakdown under it is titled "De dónde sale", which is the question that
   brought him there.
 
-Left, screen by screen: Ofertas (`DealsScreen`), `RoutineNotesScreen`,
-`ExperimentsScreen` and `PendingScreen`. Each one is the same job:
-replace hand-rolled boxes with `Card`,
-option rows with `Chip`, actions with `Button`, set a family on every `Text`, and give
-every `Pressable` a pressed style.
+Also done, and with that every screen is on the style: **Ofertas**,
+**Recomendaciones**, **Experimentos** and the not-built-yet tab. Ofertas changed shape as
+well as clothes: the deals group by product, by store, or flatten into one list ordered
+by value, and each one carries the two numbers that justify the module at all — the price
+per kilo and the grams of protein per dollar — as filled tags rather than a sentence.
+`PendingScreen` uses a `Card` with `raised={false}`, which is how this style says "there
+is nothing to touch here".
 
 The app icon is last, and it is his call.
 

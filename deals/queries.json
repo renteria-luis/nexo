@@ -1,12 +1,23 @@
 {
-  "comment": "Spec 16.4: the search list starts from the foods he tracks and grows as he wants. foodId links a result to the nutrition catalogue so protein per dollar can be computed; null means the food is not in the catalogue yet and the deal still shows, just without that number. staple marks what a bad price actually costs him, and those cards go first.",
+  "comment": "Spec 16.4: la lista de busquedas sale de lo que el come y crece cuando el quiera. foodId ata un resultado al catalogo de comida para poder calcular proteina por dolar; null es que esa comida todavia no esta en el catalogo, y la oferta igual sale, solo que sin ese numero. staple marca lo que de verdad le cuesta caro, y esas tarjetas van primero.",
   "queries": [
     { "term": "chicken breast", "foodId": "chicken-breast-kirkland", "staple": true },
+    { "term": "chicken thighs", "foodId": null, "staple": true },
     { "term": "ground beef", "foodId": null, "staple": true },
     { "term": "eggs", "foodId": "eggs-costco-xl", "staple": true },
+    { "term": "greek yogurt", "foodId": null, "staple": true },
+    { "term": "cottage cheese", "foodId": null, "staple": false },
+    { "term": "canned tuna", "foodId": null, "staple": false },
+    { "term": "salmon", "foodId": null, "staple": false },
+    { "term": "pork loin", "foodId": null, "staple": false },
+    { "term": "ground turkey", "foodId": null, "staple": false },
+    { "term": "protein powder", "foodId": null, "staple": false },
     { "term": "milk", "foodId": "milk-1", "staple": false },
+    { "term": "cheese", "foodId": null, "staple": false },
     { "term": "oats", "foodId": "oats-quaker", "staple": false },
     { "term": "rice", "foodId": null, "staple": false },
-    { "term": "pasta", "foodId": "catelli-pasta", "staple": false }
+    { "term": "pasta", "foodId": "catelli-pasta", "staple": false },
+    { "term": "lentils", "foodId": null, "staple": false },
+    { "term": "peanut butter", "foodId": null, "staple": false }
   ]
 }

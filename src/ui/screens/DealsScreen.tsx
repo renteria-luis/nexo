@@ -1,16 +1,57 @@
 import { useState } from 'react';
-import { Linking, Pressable, Text, View } from 'react-native';
+import { Linking, Text, View } from 'react-native';
 
 import { todayIso } from '../../core/dates.ts';
-import { comparedToUsual, proteinPerDollar, type DealWithContext } from '../../deals/index.ts';
+import {
+  comparedToUsual,
+  dealCentsPerKg,
+  proteinPerDollar,
+  unitPrice,
+  type DealWithContext,
+} from '../../deals/index.ts';
 import type { DealsDiscountRow } from '../../db/types.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 
+import { Button } from '../Button.tsx';
+import { Card } from '../Card.tsx';
+import { Chip } from '../Chip.tsx';
+import { ExternalLink, RotateCcw } from '../icons.ts';
+import { font, sheet, shape } from '../theme.ts';
+
 import { Screen } from './Screen.tsx';
-import { mono, sheet } from '../theme.ts';
 
 /** Spec 16.3 rule 5: a gap is drawn as a gap, never filled in from somewhere else. */
 const MISSING = '—';
+
+/** Como se reparte la lista. Por producto es lo que se pregunta al hacer la compra. */
+const GROUPS = [
+  { id: 'product', label: 'Por producto' },
+  { id: 'store', label: 'Por tienda' },
+  { id: 'value', label: 'Mejor valor' },
+] as const;
+type Group = (typeof GROUPS)[number]['id'];
+
+/** Los nombres de las busquedas, en lo que el diria. */
+const TERM_ES: Record<string, string> = {
+  'chicken breast': 'Pechuga de pollo',
+  'chicken thighs': 'Muslo de pollo',
+  'ground beef': 'Carne molida',
+  eggs: 'Huevos',
+  'greek yogurt': 'Yogur griego',
+  'cottage cheese': 'Queso cottage',
+  'canned tuna': 'Atún',
+  salmon: 'Salmón',
+  'pork loin': 'Lomo de cerdo',
+  'ground turkey': 'Pavo molido',
+  'protein powder': 'Proteína en polvo',
+  milk: 'Leche',
+  cheese: 'Queso',
+  oats: 'Avena',
+  rice: 'Arroz',
+  pasta: 'Pasta',
+  lentils: 'Lentejas',
+  'peanut butter': 'Mantequilla de maní',
+};
 
 function money(cents: number | null): string {
   return cents === null ? MISSING : `$${(cents / 100).toFixed(2)}`;
@@ -24,79 +65,85 @@ function ago(fetchedAt: number | null): string {
   return `hace ${Math.floor(hours / 24)} días`;
 }
 
-function DealCard({
+/**
+ * Una oferta. Lo que la hace valer la pena sobre abrir Flipp es la segunda linea: el
+ * precio por kilo y, cuando la comida esta en su catalogo, la proteina por dolar.
+ */
+function DealRow({
   item,
   discounts,
+  showStore,
   onOpen,
 }: {
   item: DealWithContext;
   discounts: DealsDiscountRow[];
-  onOpen: (item: DealWithContext) => void | Promise<void>;
+  showStore: boolean;
+  onOpen: (item: DealWithContext) => void;
 }) {
   const { deal, source, retailer, food, stale } = item;
   const chain = retailer?.chain ?? null;
   const value = food ? proteinPerDollar(deal, food, discounts, chain, todayIso()) : null;
   const versusUsual = food ? comparedToUsual(deal, food, discounts, chain, todayIso()) : null;
+  const price = unitPrice(deal);
   const cheaper = versusUsual !== null && versusUsual.savingPercent > 0;
 
   return (
-    <View style={[styles.card, stale && styles.cardStale, cheaper && styles.cardCheaper]}>
-      <View style={styles.cardTop}>
-        <Text style={styles.shop}>
-          {retailer?.name ?? MISSING}
-          {deal.staple === 1 ? ' · de tu lista' : ''}
+    <View style={[styles.deal, stale && styles.stale]}>
+      <View style={styles.dealHead}>
+        {/* El nombre que publica Flipp se queda corto: el tamano vive en la letra
+            chica, y sin el "18'S" unos huevos son un precio sin nada detras. */}
+        <Text style={styles.title} numberOfLines={2}>
+          {deal.title}
+          {price === null ? '' : ` · ${price.size}`}
         </Text>
-        {/* Spec 16.3 rule 2: the badge is on every card and never buried. */}
-        <Text style={styles.badge}>{source.name}</Text>
+        <Text style={styles.price}>{money(deal.price_cents)}</Text>
       </View>
 
-      <Text style={styles.title}>{deal.title}</Text>
-
-      <Text style={styles.price}>
-        {money(deal.price_cents)}
-        {deal.unit === null ? '' : ` por ${deal.unit}`}
-        {deal.original_price_cents === null ? '' : `  antes ${money(deal.original_price_cents)}`}
+      <Text style={styles.meta}>
+        {[
+          showStore ? (retailer?.name ?? MISSING) : null,
+          deal.description === null ? null : deal.description.replace(/\s*\n\s*/g, ' · '),
+          deal.original_price_cents === null ? null : `antes ${money(deal.original_price_cents)}`,
+          deal.valid_to === null ? null : `hasta ${deal.valid_to}`,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
       </Text>
 
-      {/* Spec 16.6: the number Flipp cannot give him, because Flipp does not know
-          his macros. Shown only when every input is real. */}
-      <Text style={styles.value}>
-        {value === null
-          ? `Proteína por dólar: ${MISSING}`
-          : `${Math.round(value.proteinPerDollar)} g de proteína por dólar${
-              value.discount === null ? '' : `, con ${value.discount.percent}% de descuento`
-            }`}
-      </Text>
-
-      {/* Lo que Flipp tampoco sabe: lo que el ya paga por ese kilo. */}
-      {versusUsual !== null && (
-        <Text style={cheaper ? styles.cheaper : styles.dearer}>
-          {cheaper
-            ? `Mas barato que lo tuyo: ${money(versusUsual.dealCentsPerKg)}/kg contra ${money(
-                versusUsual.usualCentsPerKg,
-              )}/kg, ${Math.round(versusUsual.savingPercent)}% menos`
-            : `No mejora lo que pagas: ${money(versusUsual.dealCentsPerKg)}/kg contra ${money(
-                versusUsual.usualCentsPerKg,
-              )}/kg`}
+      {/* Spec 16.6: los dos numeros que Flipp no puede dar, porque no conoce ni sus
+          macros ni lo que el ya paga. Solo salen cuando todo lo que entra es real. */}
+      <View style={styles.numbers}>
+        <Text style={price === null ? styles.numberOff : styles.number}>
+          {price === null ? `${MISSING} por medida` : `${money(price.cents)} ${price.per}`}
         </Text>
-      )}
+        <Text style={value === null ? styles.numberOff : styles.numberGood}>
+          {value === null
+            ? `${MISSING} g proteína/$`
+            : `${Math.round(value.proteinPerDollar)} g proteína/$`}
+        </Text>
+        {cheaper && versusUsual !== null && (
+          <Text style={styles.numberGood}>
+            {Math.round(versusUsual.savingPercent)}% bajo lo tuyo
+          </Text>
+        )}
+      </View>
 
       <View style={styles.marks}>
-        {stale && <Text style={styles.stale}>posiblemente vencido</Text>}
-        {deal.confidence === 'parsed' && (
-          <Text style={styles.parsed}>precio leído del folleto</Text>
-        )}
-        {deal.valid_to !== null && <Text style={styles.until}>hasta {deal.valid_to}</Text>}
+        {deal.staple === 1 && <Text style={styles.mark}>de tu lista</Text>}
+        {stale && <Text style={styles.markWarn}>posiblemente vencido</Text>}
+        {/* Spec 16.3 rule 2: la insignia de la fuente va en cada oferta. */}
+        <Text style={styles.mark}>{source.name}</Text>
       </View>
 
-      {/* Spec 16.3 rule 3: the button names the app that holds the deal. */}
-      <Pressable
-        accessibilityLabel={`Abrir ${source.name}`}
+      {/* Spec 16.3 rule 3: el boton dice que app abre, y el enlace de /action abre la
+          app de Flipp en ese articulo cuando esta instalada. */}
+      <Button
+        label={`Abrir en ${source.name}`}
+        accessibilityLabel={`Abrir ${deal.title} en ${source.name}`}
+        icon={ExternalLink}
+        block
         onPress={() => onOpen(item)}
-        style={styles.cta}
-      >
-        <Text style={styles.ctaText}>Abrir en {source.name} ›</Text>
-      </Pressable>
+      />
     </View>
   );
 }
@@ -110,252 +157,279 @@ export function DealsScreen() {
   const { state, refreshDeals } = useAppData();
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [group, setGroup] = useState<Group>('product');
 
   if (state.phase !== 'ready') return <Screen title="Ofertas">{null}</Screen>;
 
   const { deals, discounts, dealSources } = state.loaded;
   const today = todayIso();
 
-  // Best protein per dollar first, then everything else. That ordering is the whole
-  // point of the module: Flipp already lists prices.
-  const withValue = deals
-    .map((item) => {
-      const chain = item.retailer?.chain ?? null;
-      const versusUsual = item.food
-        ? comparedToUsual(item.deal, item.food, discounts, chain, today)
-        : null;
-      return {
-        item,
-        value: item.food ? proteinPerDollar(item.deal, item.food, discounts, chain, today) : null,
-        cheaper: versusUsual !== null && versusUsual.savingPercent > 0,
-      };
-    })
-    .sort((a, b) => {
-      // Huevos, pollo y carne primero, y dentro de eso lo que baja de tu precio.
-      if (a.item.deal.staple !== b.item.deal.staple) return b.item.deal.staple - a.item.deal.staple;
+  // El valor de cada oferta, una sola vez: lo usan el orden y las tarjetas.
+  const scored = deals.map((item) => {
+    const chain = item.retailer?.chain ?? null;
+    const versusUsual = item.food
+      ? comparedToUsual(item.deal, item.food, discounts, chain, today)
+      : null;
+    return {
+      item,
+      value: item.food ? proteinPerDollar(item.deal, item.food, discounts, chain, today) : null,
+      perKg: dealCentsPerKg(item.deal),
+      cheaper: versusUsual !== null && versusUsual.savingPercent > 0,
+    };
+  });
+
+  /** Lo mejor primero: de tu lista, lo que baja de tu precio, y mas proteina por dolar. */
+  const best = <T extends (typeof scored)[number]>(rows: T[]): T[] =>
+    [...rows].sort((a, b) => {
+      if (a.item.deal.staple !== b.item.deal.staple) {
+        return b.item.deal.staple - a.item.deal.staple;
+      }
       if (a.cheaper !== b.cheaper) return Number(b.cheaper) - Number(a.cheaper);
       if (a.value && b.value) return b.value.proteinPerDollar - a.value.proteinPerDollar;
       if (a.value) return -1;
       if (b.value) return 1;
+      // Sin proteina que comparar, el kilo mas barato, y lo vencido al final.
+      if (a.perKg !== null && b.perKg !== null) return a.perKg - b.perKg;
       return Number(a.item.stale) - Number(b.item.stale);
     });
 
-  // Spec 16.3 rule 3: el boton dice Flipp, asi que primero intenta la app y solo
-  // cae al navegador si no esta instalada, diciendo cual de las dos paso.
-  const open = async (item: DealWithContext) => {
-    const scheme = item.source.deep_link_scheme;
-    const url = item.deal.source_url ?? item.source.web_fallback_url;
-
-    if (scheme !== null) {
-      const installed = await Linking.canOpenURL(scheme).catch(() => false);
-      if (installed) {
-        await Linking.openURL(scheme);
-        setNote(`Abrí ${item.source.name}. Busca ahí "${item.deal.title}"`);
-        return;
-      }
+  // Agrupar es lo que convierte 418 ofertas en una compra: o todas las de una tienda,
+  // o todos los precios de lo mismo para poder elegir.
+  const buckets = new Map<string, typeof scored>();
+  if (group !== 'value') {
+    for (const row of scored) {
+      const key =
+        group === 'store'
+          ? (row.item.retailer?.name ?? 'Sin tienda')
+          : (() => {
+              const term = row.item.deal.category;
+              return term === null ? 'Otros' : (TERM_ES[term] ?? term);
+            })();
+      buckets.set(key, [...(buckets.get(key) ?? []), row]);
     }
+  }
 
+  const groups =
+    group === 'value'
+      ? [{ name: null, rows: best(scored) }]
+      : [...buckets.entries()]
+          .map(([name, rows]) => ({ name, rows: best(rows) }))
+          .sort((a, b) => {
+            // Donde hay algo de tu lista, primero; despues, donde hay mas.
+            const staple = (rows: typeof scored) =>
+              rows.some((row) => row.item.deal.staple === 1) ? 1 : 0;
+            const difference = staple(b.rows) - staple(a.rows);
+            return difference !== 0 ? difference : b.rows.length - a.rows.length;
+          });
+
+  const open = async (item: DealWithContext) => {
+    // El enlace de /action es universal: iOS se lo da a la app de Flipp si esta
+    // instalada, y a Safari si no. Preguntar antes con canOpenURL no servia de nada,
+    // porque iOS solo contesta por los esquemas declarados en el Info.plist propio.
+    const url = item.deal.source_url ?? item.source.web_fallback_url;
     if (url === null) {
       // Spec 16.3 rule 4: never fail silently.
       setNote(`${item.source.name} no dejó un enlace para esta oferta.`);
       return;
     }
-
     await Linking.openURL(url).catch(() => {
       setNote(`No se pudo abrir ${item.source.name}. El enlace era ${url}`);
     });
-    if (scheme !== null) setNote(`${item.source.name} no está instalado, abrí su web.`);
   };
 
   return (
     <Screen title="Ofertas">
-      <View style={styles.header}>
-        <Pressable
-          accessibilityLabel="Actualizar ofertas"
-          disabled={busy}
-          onPress={() => {
-            setBusy(true);
-            setNote('Buscando…');
-            refreshDeals()
-              .then((outcome) => {
-                setNote(
-                  outcome.kind === 'ok'
-                    ? `${outcome.count} ofertas, ${ago(outcome.fetchedAt)}`
-                    : `No se pudo actualizar: ${outcome.reason}`,
-                );
-              })
-              .finally(() => setBusy(false));
-          }}
-          style={styles.refresh}
-        >
-          <Text style={styles.refreshText}>Actualizar</Text>
-        </Pressable>
-        {note && <Text style={styles.note}>{note}</Text>}
+      <View style={styles.chips}>
+        {GROUPS.map((option) => (
+          <Chip
+            key={option.id}
+            label={option.label}
+            accessibilityLabel={`Agrupar ${option.label.toLowerCase()}`}
+            selected={option.id === group}
+            onPress={() => setGroup(option.id)}
+          />
+        ))}
       </View>
 
+      <Button
+        label="Actualizar"
+        accessibilityLabel="Actualizar ofertas"
+        icon={RotateCcw}
+        loading={busy}
+        disabled={busy}
+        block
+        onPress={() => {
+          setBusy(true);
+          setNote('Buscando…');
+          refreshDeals()
+            .then((outcome) => {
+              setNote(
+                outcome.kind === 'ok'
+                  ? `${outcome.count} ofertas, ${ago(outcome.fetchedAt)}`
+                  : `No se pudo actualizar: ${outcome.reason}`,
+              );
+            })
+            .finally(() => setBusy(false));
+        }}
+      />
+
       {/* Spec 16.7: a source that has not answered says so, with its last success. */}
-      {dealSources.map((source) => (
-        <Text key={source.id} style={source.health === 'ok' ? styles.health : styles.healthBad}>
-          {source.name}: {source.health === 'ok' ? 'al día' : 'sin datos'}, última vez{' '}
-          {ago(source.last_success_at)}
-          {source.last_error === null ? '' : ` · ${source.last_error}`}
-        </Text>
-      ))}
+      <Card>
+        {note && <Text style={styles.note}>{note}</Text>}
+        {dealSources.map((source) => (
+          <Text key={source.id} style={styles.health}>
+            {source.name}: {source.health === 'ok' ? 'al día' : 'sin datos'}, última vez{' '}
+            {ago(source.last_success_at)}
+          </Text>
+        ))}
+      </Card>
 
       {deals.length === 0 && (
-        <Text style={styles.empty}>
-          Todavía no hay ofertas guardadas. Toca Actualizar para traerlas.
-        </Text>
+        <Card>
+          <Text style={styles.empty}>
+            Todavía no hay ofertas guardadas. Toca Actualizar para traerlas.
+          </Text>
+        </Card>
       )}
 
-      {/* Flipp no publica una página por artículo, así que el botón abre Flipp y ahí
-          lo buscas. Decirlo es mejor que mandarte a un enlace que no existe. */}
-      {deals.length > 0 && (
-        <Text style={styles.caveat}>
-          Flipp no tiene enlace por artículo: el botón abre Flipp y ahí lo buscas.
-        </Text>
-      )}
-
-      {withValue.map(({ item }) => (
-        <DealCard key={item.deal.id} item={item} discounts={discounts} onOpen={open} />
+      {groups.map(({ name, rows }) => (
+        <Card key={name ?? 'todas'} title={name ?? undefined}>
+          {name !== null && (
+            <Text style={styles.count}>
+              {rows.length} {rows.length === 1 ? 'oferta' : 'ofertas'}
+            </Text>
+          )}
+          {rows.map(({ item }) => (
+            <DealRow
+              key={item.deal.id}
+              item={item}
+              discounts={discounts}
+              showStore={group !== 'store'}
+              onOpen={open}
+            />
+          ))}
+        </Card>
       ))}
     </Screen>
   );
 }
 
 const styles = sheet((theme) => ({
-  header: {
+  chips: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
     flexWrap: 'wrap',
-  },
-  refresh: {
-    borderWidth: 1,
-    borderColor: theme.lineStrong,
-    borderRadius: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  refreshText: {
-    fontSize: 12,
-    fontFamily: mono,
-    color: theme.text,
+    gap: 8,
   },
   note: {
-    fontSize: 11,
-    color: theme.textFaint,
-    flexShrink: 1,
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.text,
   },
   health: {
-    fontSize: 11,
-    color: theme.textGhost,
-    fontFamily: mono,
-  },
-  healthBad: {
-    fontSize: 11,
-    color: theme.danger,
-    fontFamily: mono,
+    fontSize: 12,
+    fontFamily: font.regular,
+    color: theme.textFaint,
   },
   empty: {
+    fontSize: 13,
+    fontFamily: font.regular,
+    color: theme.textFaint,
+  },
+  count: {
     fontSize: 12,
-    color: theme.textGhost,
-    marginTop: 12,
+    fontFamily: font.black,
+    letterSpacing: 0.6,
+    color: theme.textFaint,
+    textTransform: 'uppercase',
+    marginTop: -4,
   },
-  caveat: {
-    fontSize: 11,
-    color: theme.textGhost,
-    marginTop: 4,
+  deal: {
+    gap: 6,
+    borderTopWidth: shape.border,
+    borderTopColor: theme.line,
+    paddingTop: 10,
   },
-  card: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 8,
-    padding: 10,
-    gap: 4,
-    marginTop: 10,
-  },
-  cardStale: {
+  stale: {
     opacity: 0.55,
   },
-  cardCheaper: {
-    borderColor: theme.ok,
-    borderWidth: 2,
-  },
-  cheaper: {
-    fontSize: 12,
-    color: theme.ok,
-    fontFamily: mono,
-  },
-  dearer: {
-    fontSize: 11,
-    color: theme.textGhost,
-    fontFamily: mono,
-  },
-  cardTop: {
+  dealHead: {
     flexDirection: 'row',
+    alignItems: 'baseline',
     justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  shop: {
-    fontSize: 12,
-    color: theme.textDim,
-    fontFamily: mono,
-  },
-  badge: {
-    fontSize: 10,
-    color: theme.info,
-    borderWidth: 1,
-    borderColor: theme.infoLine,
-    backgroundColor: theme.infoBg,
-    borderRadius: 10,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    overflow: 'hidden',
-    fontFamily: mono,
+    gap: 10,
   },
   title: {
-    fontSize: 13,
-    fontFamily: mono,
+    flex: 1,
+    fontSize: 15,
+    fontFamily: font.black,
     color: theme.text,
   },
   price: {
-    fontSize: 14,
-    fontFamily: mono,
+    fontSize: 20,
+    fontFamily: font.black,
     color: theme.text,
+    fontVariant: ['tabular-nums'],
   },
-  value: {
+  meta: {
     fontSize: 12,
-    color: theme.ok,
-    fontFamily: mono,
+    fontFamily: font.regular,
+    color: theme.textFaint,
+    fontVariant: ['tabular-nums'],
+  },
+  numbers: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  number: {
+    fontSize: 12,
+    fontFamily: font.black,
+    color: theme.accentInk,
+    backgroundColor: theme.surfaceHigh,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    overflow: 'hidden',
+    fontVariant: ['tabular-nums'],
+  },
+  numberGood: {
+    fontSize: 12,
+    fontFamily: font.black,
+    color: theme.accentInk,
+    backgroundColor: theme.ok,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    overflow: 'hidden',
+    fontVariant: ['tabular-nums'],
+  },
+  numberOff: {
+    fontSize: 12,
+    fontFamily: font.bold,
+    color: theme.textGhost,
+    paddingVertical: 2,
   },
   marks: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  stale: {
-    fontSize: 10,
-    color: theme.warn,
-    fontFamily: mono,
+  mark: {
+    fontSize: 11,
+    fontFamily: font.bold,
+    color: theme.textFaint,
   },
-  parsed: {
-    fontSize: 10,
-    color: theme.warn,
-    fontFamily: mono,
-  },
-  until: {
-    fontSize: 10,
-    color: theme.textGhost,
-    fontFamily: mono,
-  },
-  cta: {
-    alignSelf: 'flex-start',
-    paddingVertical: 4,
-  },
-  ctaText: {
-    fontSize: 12,
-    color: theme.textDim,
-    fontFamily: mono,
+  markWarn: {
+    fontSize: 11,
+    fontFamily: font.black,
+    color: theme.text,
+    backgroundColor: theme.warnBg,
+    paddingHorizontal: 5,
+    borderRadius: 4,
+    overflow: 'hidden',
   },
 }));

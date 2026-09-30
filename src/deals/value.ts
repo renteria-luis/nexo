@@ -58,14 +58,95 @@ export function finalPriceCents(
   return deal.price_cents * (1 - discount.percent / 100);
 }
 
-/** How many grams of the food one unit of the deal's price buys, or null. */
-function gramsPerUnit(unit: string | null): number | null {
-  if (unit === null) return null;
-  const normalised = unit.trim().toLowerCase();
+/**
+ * Cuantos gramos de comida compra el precio de la oferta, o null.
+ *
+ * Primero lo que el recolector leyo del folleto, que es lo que hace que esto funcione
+ * fuera de las pocas ofertas que vienen por libra: el peso suele estar en el titulo y
+ * no en la unidad. Si no hay peso, la unidad, y si la unidad es 'ea' no se puede decir
+ * nada, porque un paquete no dice cuanta comida es.
+ */
+function gramsOfDeal(deal: DealsDealRow): number | null {
+  if (deal.grams !== null && deal.grams > 0) return deal.grams;
+  if (deal.unit === null) return null;
+  const normalised = deal.unit.trim().toLowerCase();
   if (normalised === 'lb' || normalised === 'lbs') return GRAMS_PER_LB;
   if (normalised === 'kg') return GRAMS_PER_KG;
   if (normalised === '100g') return 100;
-  // 'ea', 'each', a package: the weight is not in the price, so nothing can be said.
+  return null;
+}
+
+/**
+ * Cuantas unidades base de esa comida compra el precio: gramos para lo que se pesa,
+ * mililitros para lo que se sirve y unidades para lo que se cuenta.
+ *
+ * Es lo que deja funcionar los huevos y la leche, que son la mitad de lo que compra:
+ * dieciocho huevos no pesan nada que el folleto diga, pero son dieciocho huevos, y su
+ * ficha ya sabe lo que trae cada uno.
+ */
+function baseUnitsOfDeal(deal: DealsDealRow, food: NutritionFoodRow): number | null {
+  if (food.unit_kind === 'count') return deal.pack_count;
+  if (food.unit_kind === 'volume') return deal.pack_ml;
+  const grams = gramsOfDeal(deal);
+  if (grams === null || food.base_unit_g === null || food.base_unit_g <= 0) return null;
+  return grams / food.base_unit_g;
+}
+
+/**
+ * Lo que cuesta un kilo de esa oferta, en centavos. Null cuando no se sabe lo que
+ * pesa, que es la mitad de las ofertas: un "2 x $7" sin gramos no dice nada del kilo.
+ */
+export function dealCentsPerKg(deal: DealsDealRow): number | null {
+  const grams = gramsOfDeal(deal);
+  if (grams === null || grams <= 0 || deal.price_cents === null) return null;
+  return Math.round((deal.price_cents / grams) * GRAMS_PER_KG);
+}
+
+export type UnitPrice = {
+  cents: number;
+  /** Como se dice en pantalla: "el kilo", "el litro", "por unidad". */
+  per: string;
+  /** El tamano del paquete, tal como para ponerlo al lado del nombre. */
+  size: string;
+};
+
+/**
+ * Lo que cuesta la medida con la que se compara: el kilo, el litro o la unidad.
+ *
+ * Es lo que el folleto nunca pone junto: dice "$4.44" y, en letra chica, "18'S". El
+ * precio por huevo no esta en ningun sitio y es el que decide.
+ */
+export function unitPrice(deal: DealsDealRow): UnitPrice | null {
+  if (deal.price_cents === null || deal.price_cents <= 0) return null;
+
+  const grams = gramsOfDeal(deal);
+  if (grams !== null && grams > 0) {
+    return {
+      cents: Math.round((deal.price_cents / grams) * GRAMS_PER_KG),
+      per: 'el kilo',
+      size:
+        grams >= 1000
+          ? `${(grams / 1000).toFixed(grams % 1000 === 0 ? 0 : 2)} kg`
+          : `${Math.round(grams)} g`,
+    };
+  }
+  if (deal.pack_ml !== null && deal.pack_ml > 0) {
+    return {
+      cents: Math.round((deal.price_cents / deal.pack_ml) * 1000),
+      per: 'el litro',
+      size:
+        deal.pack_ml >= 1000
+          ? `${(deal.pack_ml / 1000).toFixed(deal.pack_ml % 1000 === 0 ? 0 : 2)} L`
+          : `${deal.pack_ml} ml`,
+    };
+  }
+  if (deal.pack_count !== null && deal.pack_count > 0) {
+    return {
+      cents: Math.round(deal.price_cents / deal.pack_count),
+      per: 'cada uno',
+      size: `${deal.pack_count} u.`,
+    };
+  }
   return null;
 }
 
@@ -90,19 +171,18 @@ export function proteinPerDollar(
   chain: string | null,
   onDate: IsoDate,
 ): ProteinValue | null {
-  const grams = gramsPerUnit(deal.unit);
-  if (grams === null) return null;
-  if (food.base_unit_g === null || food.base_unit_g <= 0) return null;
+  const units = baseUnitsOfDeal(deal, food);
+  if (units === null || units <= 0) return null;
 
   const discount = applicableDiscount(discounts, chain, onDate);
   const cents = finalPriceCents(deal, discount);
   if (cents === null || cents <= 0) return null;
 
-  const proteinPerGram = food.protein_g / food.base_unit_g;
   const dollars = cents / 100;
   return {
     finalPriceCents: cents,
-    proteinPerDollar: (grams * proteinPerGram) / dollars,
+    // protein_g es por unidad base, asi que esto ya esta en gramos de proteina.
+    proteinPerDollar: (units * food.protein_g) / dollars,
     discount,
   };
 }
@@ -153,9 +233,11 @@ export function comparedToUsual(
   chain: string | null,
   onDate: IsoDate,
 ): PriceComparison | null {
-  const grams = gramsPerUnit(deal.unit);
+  const units = baseUnitsOfDeal(deal, food);
   const usual = usualCentsPerKg(food);
-  if (grams === null || usual === null || usual <= 0) return null;
+  if (units === null || units <= 0 || usual === null || usual <= 0) return null;
+  if (food.base_unit_g === null || food.base_unit_g <= 0) return null;
+  const grams = units * food.base_unit_g;
 
   const cents = finalPriceCents(deal, applicableDiscount(discounts, chain, onDate));
   if (cents === null || cents <= 0) return null;

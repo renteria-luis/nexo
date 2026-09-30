@@ -28,7 +28,9 @@ export type SettingKey =
   | 'steps_advice_declined'
   | 'session_draft'
   | 'nudges_enabled'
-  | 'nudges_off';
+  | 'nudges_off'
+  | 'deal_watchlist'
+  | 'deals_seen_at';
 
 export type Settings = ReadonlyMap<string, string>;
 
@@ -48,6 +50,8 @@ const DEFAULTS: Partial<Record<SettingKey, string>> = {
   // Spec 18: los avisos vienen encendidos, y cada tipo se apaga por su lado.
   nudges_enabled: 'true',
   nudges_off: '',
+  // Las palabras que vigila en las ofertas. En ingles porque los folletos lo estan.
+  deal_watchlist: 'chicken, eggs, milk, ground beef',
 };
 
 /**
@@ -210,6 +214,11 @@ export function settingProblem(key: SettingKey, value: string): string | null {
       return trimmed === 'true' || trimmed === 'false' ? null : 'solo true o false';
     // Lo escribe la app al apagar un tipo de aviso, no el.
     case 'nudges_off':
+    // Palabras sueltas separadas por coma: cualquier cosa vale, y de mas es mejor
+    // que de menos (asi lo pidio: prefiere ver ruido a perderse una oferta).
+    case 'deal_watchlist':
+    // Lo escribe la app al cerrar el aviso de ofertas.
+    case 'deals_seen_at':
       return null;
     case 'height_cm':
       return inRange(trimmed, 100, 250, 'una estatura en centímetros');

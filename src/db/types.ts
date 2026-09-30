@@ -323,6 +323,11 @@ export type DealsDealRow = {
   savings_pct: number | null;
   /** What the price is per, as the source worded it. Null when it did not say. */
   unit: string | null;
+  /** Lo que pesa la oferta entera, leido del titulo o de la letra chica. */
+  grams: number | null;
+  /** Y lo mismo cuando el paquete se mide en volumen o en unidades. */
+  pack_ml: number | null;
+  pack_count: number | null;
   quantity_available: number | null;
   best_before: IsoDate | null;
   valid_from: IsoDate | null;

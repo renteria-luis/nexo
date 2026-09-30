@@ -374,6 +374,24 @@ export function SettingsScreen({
         })}
       </Card>
 
+      <Card title="Ofertas">
+        <Field label="Palabras que vigilo">
+          <TextField
+            value={settings.get('deal_watchlist') ?? settingDefault('deal_watchlist') ?? ''}
+            onChange={(text) => onSaveSetting('deal_watchlist', text)}
+            accessibilityLabel="Palabras que vigilo en las ofertas"
+            placeholder="chicken, eggs, milk"
+            autoCapitalize="none"
+            style={styles.input}
+            focusedStyle={styles.inputWriting}
+          />
+        </Field>
+        <Text style={styles.note}>
+          Separadas por coma. Si la palabra aparece en el nombre o en la letra chica, la oferta te
+          sale al abrir la app.
+        </Text>
+      </Card>
+
       <Card title="Catálogo">
         <Button
           label="Ejercicios"

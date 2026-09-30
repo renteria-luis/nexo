@@ -1,11 +1,15 @@
 import { useRoute } from '@react-navigation/native';
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { useAppData } from '../../shell/AppData.tsx';
 
+import { Card } from '../Card.tsx';
+import { Chip } from '../Chip.tsx';
+
+import { font, sheet, shape } from '../theme.ts';
+
 import { Screen } from './Screen.tsx';
-import { mono, sheet } from '../theme.ts';
 
 type RoutineId = 'push' | 'pull' | 'legs';
 
@@ -98,9 +102,9 @@ const UNCHANGED: Recommendation[] = [
   },
 ];
 
-function Item({ item }: { item: Recommendation }) {
+function Item({ item, first }: { item: Recommendation; first: boolean }) {
   return (
-    <View style={styles.item}>
+    <View style={[styles.item, !first && styles.ruled]}>
       <Text style={styles.itemTitle}>{item.title}</Text>
       <Text style={styles.itemWhy}>{item.why}</Text>
       {item.effect ? <Text style={styles.itemEffect}>{item.effect}</Text> : null}
@@ -130,33 +134,42 @@ export function RoutineNotesScreen() {
         cambios, así que esperan a que termine.
       </Text>
 
-      <Text style={readapting ? styles.blocked : styles.ready}>
-        {readapting
-          ? `Readaptación activa hasta el ${readapting.endsOn}. Todavía no se aplican.`
-          : 'La readaptación no está activa: ya se pueden aplicar.'}
-      </Text>
+      <Card tone={readapting ? 'warn' : 'ok'}>
+        <Text style={styles.state}>
+          {readapting
+            ? `Readaptación activa hasta el ${readapting.endsOn}. Todavía no se aplican.`
+            : 'La readaptación no está activa: ya se pueden aplicar.'}
+        </Text>
+      </Card>
 
       {routineId !== null && (
-        <Pressable
-          accessibilityLabel={onlyToday ? 'Ver todas las rutinas' : 'Ver solo la rutina de hoy'}
-          onPress={() => setOnlyToday((only) => !only)}
-          style={styles.filter}
-        >
-          <Text style={styles.filterText}>
-            {onlyToday ? 'Viendo solo la rutina de hoy · ver todo' : 'Viendo todo · solo hoy'}
-          </Text>
-        </Pressable>
+        <View style={styles.chips}>
+          <Chip
+            label="Solo la de hoy"
+            accessibilityLabel="Ver solo la rutina de hoy"
+            selected={onlyToday}
+            onPress={() => setOnlyToday(true)}
+          />
+          <Chip
+            label="Todas"
+            accessibilityLabel="Ver todas las rutinas"
+            selected={!onlyToday}
+            onPress={() => setOnlyToday(false)}
+          />
+        </View>
       )}
 
-      <Text style={styles.section}>Cambios</Text>
-      {changes.map((item) => (
-        <Item key={item.title} item={item} />
-      ))}
+      <Card title="Cambios">
+        {changes.map((item, index) => (
+          <Item key={item.title} item={item} first={index === 0} />
+        ))}
+      </Card>
 
-      <Text style={styles.section}>Lo que no cambiaría</Text>
-      {unchanged.map((item) => (
-        <Item key={item.title} item={item} />
-      ))}
+      <Card title="Lo que no cambiaría">
+        {unchanged.map((item, index) => (
+          <Item key={item.title} item={item} first={index === 0} />
+        ))}
+      </Card>
     </Screen>
   );
 }
@@ -164,59 +177,41 @@ export function RoutineNotesScreen() {
 const styles = sheet((theme) => ({
   intro: {
     fontSize: 13,
-    color: theme.textDim,
-    lineHeight: 19,
-  },
-  blocked: {
-    fontSize: 12,
-    color: theme.warn,
-    backgroundColor: theme.warnBg,
-    padding: 8,
-    borderRadius: 6,
-    overflow: 'hidden',
-  },
-  ready: {
-    fontSize: 12,
-    color: theme.ok,
-    backgroundColor: theme.okBg,
-    padding: 8,
-    borderRadius: 6,
-    overflow: 'hidden',
-  },
-  section: {
-    fontSize: 14,
-    marginTop: 8,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  filter: {
-    alignSelf: 'flex-start',
-    paddingVertical: 4,
-  },
-  filterText: {
-    fontSize: 11,
+    fontFamily: font.regular,
     color: theme.textFaint,
-    textDecorationLine: 'underline',
-    fontFamily: mono,
+  },
+  state: {
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.accentInk,
+  },
+  chips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   item: {
-    borderTopWidth: 1,
-    borderTopColor: theme.line,
-    paddingTop: 8,
     gap: 3,
+    paddingTop: 2,
+  },
+  ruled: {
+    borderTopWidth: shape.border,
+    borderTopColor: theme.line,
+    paddingTop: 10,
   },
   itemTitle: {
-    fontSize: 13,
-    fontFamily: mono,
+    fontSize: 15,
+    fontFamily: font.black,
     color: theme.text,
   },
   itemWhy: {
-    fontSize: 12,
-    color: theme.textDim,
-    lineHeight: 17,
+    fontSize: 13,
+    fontFamily: font.regular,
+    color: theme.textFaint,
   },
   itemEffect: {
-    fontSize: 11,
-    color: theme.textGhost,
+    fontSize: 12,
+    fontFamily: font.bold,
+    color: theme.text,
   },
 }));

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 
+import { newestFetch, watchedDeals, watchWords } from '../../deals/index.ts';
 import { useAppData, WEEKS_SHOWN } from '../../shell/AppData.tsx';
 import { addDays, dateAndTime, todayIso, weekStart } from '../../core/dates.ts';
 import { scoreText } from '../../core/day-report.ts';
@@ -8,11 +9,13 @@ import { currentStreak, longestStreak } from '../../core/discipline.ts';
 import { averageScore, buildGrid } from '../../core/heatmap.ts';
 import type { TargetChange } from '../../core/snapshots.ts';
 import { proteinBand } from '../../core/targets.ts';
+import { settingDefault } from '../../core/settings.ts';
 import { fromKg } from '../../core/units.ts';
 
 import { Button } from '../Button.tsx';
 import { Card, type CardTone } from '../Card.tsx';
 import { CommandBar } from '../CommandBar.tsx';
+import { DealAlert } from '../DealAlert.tsx';
 import { DayDialog } from '../DayDialog.tsx';
 import { DisciplineGrid } from '../DisciplineGrid.tsx';
 import { ChevronRight, Dumbbell, Tag, Utensils, Wallet, type LucideIcon } from '../icons.ts';
@@ -131,9 +134,20 @@ export function TodayScreen({
   onOpen: (tab: string) => void;
   onOpenDay: (date: string) => void;
 }) {
-  const { state, logDay, loadDay, dismissTargetChange, raiseStepsTarget, declineStepsTarget } =
-    useAppData();
+  const {
+    state,
+    logDay,
+    loadDay,
+    dismissTargetChange,
+    raiseStepsTarget,
+    declineStepsTarget,
+    saveSetting,
+  } = useAppData();
   const [openDay, setOpenDay] = useState<string | null>(null);
+  // El aviso de ofertas: se abre solo la primera vez que hay recoleccion nueva, y
+  // despues queda a un toque en su cartilla.
+  const [deals, setDeals] = useState<'closed' | 'open'>('closed');
+  const [announced, setAnnounced] = useState(false);
   // Doce semanas son ochenta y cuatro cuadritos, y armarlos son unos cuantos cientos
   // de elementos. Se rehacen solo cuando cambia alguna nota, no cada vez que la app
   // recarga: cada dato anotado trae una lista de dias nueva con el mismo contenido, y
@@ -153,6 +167,22 @@ export function TodayScreen({
   if (state.phase !== 'ready') return <Screen title="Hoy">{null}</Screen>;
 
   const { loaded } = state;
+  // Con el valor de fabrica si nunca lo toco: la lista guardada solo trae lo escrito.
+  const watching = loaded.settings.get('deal_watchlist') ?? settingDefault('deal_watchlist');
+  const watched = watchedDeals(loaded.deals, watchWords(watching));
+  const collected = newestFetch(loaded.deals);
+  const seen = Number(loaded.settings.get('deals_seen_at') ?? '0');
+  // Una sola vez por recoleccion: si ya lo vio, la cartilla sigue ahi pero no se abre
+  // encima de lo que estaba haciendo.
+  if (!announced && watched.length > 0 && collected !== null && collected > seen) {
+    setAnnounced(true);
+    setDeals('open');
+  }
+
+  const closeDeals = () => {
+    setDeals('closed');
+    if (collected !== null) saveSetting('deals_seen_at', String(collected));
+  };
   const today = todayIso();
   const average = averageScore(loaded.days);
   const score = loaded.today.result?.score ?? null;
@@ -163,7 +193,22 @@ export function TodayScreen({
   const band = targets ? proteinBand(targets) : null;
 
   return (
-    <Screen title="Hoy">
+    <Screen
+      title="Hoy"
+      onOverlayDismiss={deals === 'open' ? closeDeals : undefined}
+      overlay={
+        deals === 'open' ? (
+          <DealAlert
+            found={watched}
+            onOpenAll={() => {
+              closeDeals();
+              onOpen('Ofertas');
+            }}
+            onClose={closeDeals}
+          />
+        ) : null
+      }
+    >
       <Clock />
 
       {/* Lo primero y lo mas grande, porque es de lo que va la app entera. La racha va
@@ -301,13 +346,15 @@ export function TodayScreen({
       </View>
 
       <View style={styles.modules}>
+        {/* Ofertas dejo de ser una pestana: lo que importa son las tuyas, y eso cabe
+            en una hoja que se abre cuando hay algo y se vuelve a abrir a un toque. */}
         <ModuleCard
           label="OFERTAS"
           tone="danger"
           icon={Tag}
-          value={loaded.deals.length === 0 ? 'Ninguna' : String(loaded.deals.length)}
-          detail={loaded.deals.length === 0 ? 'Toca para buscarlas' : 'guardadas'}
-          onOpen={() => onOpen('Ofertas')}
+          value={watched.length === 0 ? 'Ninguna' : String(watched.length)}
+          detail={watched.length === 0 ? 'de tus palabras' : 'de lo que vigilas'}
+          onOpen={watched.length === 0 ? () => onOpen('Ofertas') : () => setDeals('open')}
         />
         <ModuleCard
           label="FINANZAS"
@@ -315,6 +362,7 @@ export function TodayScreen({
           icon={Wallet}
           value="—"
           detail="Todavía no construido"
+          onOpen={() => onOpen('Finanzas')}
         />
       </View>
 

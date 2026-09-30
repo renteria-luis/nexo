@@ -23,6 +23,15 @@ export type SnapshotDeal = {
   originalPriceCents: number | null;
   /** As the source worded it: 'lb', 'kg', 'ea'. Null when it did not say. */
   unit: string | null;
+  /** Lo que pesa la oferta entera, si el folleto lo dijo en alguna parte. */
+  grams: number | null;
+  /** Y lo que trae cuando no se pesa: mililitros o unidades. */
+  packMl: number | null;
+  packCount: number | null;
+  /** La letra chica del articulo, que es donde suele estar el precio por kilo. */
+  description: string | null;
+  /** Con que busqueda aparecio, que es como se agrupan por producto en pantalla. */
+  category: string | null;
   validFrom: IsoDate | null;
   validTo: IsoDate | null;
   imageUrl: string | null;
@@ -56,6 +65,14 @@ function fail(what: string): never {
 function asString(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.trim() === '') fail(`${field} is missing`);
   return value;
+}
+
+function asOptionalNumber(value: unknown, what: string): number | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    fail(`${what} is not a number`);
+  }
+  return Math.round(value);
 }
 
 function asOptionalString(value: unknown, field: string): string | null {
@@ -108,6 +125,11 @@ export function parseSnapshot(text: string): DealSnapshot {
       priceCents: asOptionalCents(deal.priceCents, `deal ${index} price`),
       originalPriceCents: asOptionalCents(deal.originalPriceCents, `deal ${index} original price`),
       unit: asOptionalString(deal.unit, `deal ${index} unit`),
+      grams: asOptionalNumber(deal.grams, `deal ${index} grams`),
+      packMl: asOptionalNumber(deal.packMl, `deal ${index} packMl`),
+      packCount: asOptionalNumber(deal.packCount, `deal ${index} packCount`),
+      description: asOptionalString(deal.description, `deal ${index} description`),
+      category: asOptionalString(deal.category, `deal ${index} category`),
       validFrom: asOptionalString(deal.validFrom, `deal ${index} validFrom`) as IsoDate | null,
       validTo: asOptionalString(deal.validTo, `deal ${index} validTo`) as IsoDate | null,
       imageUrl: asOptionalString(deal.imageUrl, `deal ${index} image`),
@@ -154,18 +176,23 @@ export async function applySnapshot(db: SQLiteDatabase, snapshot: DealSnapshot):
 
       await db.runAsync(
         `INSERT INTO deals_deal
-           (id, source_id, retailer_id, title, price_cents, original_price_cents, unit,
-            valid_from, valid_to, image_url, source_url, fetched_at, confidence, raw_payload,
-            staple)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+           (id, source_id, retailer_id, title, description, price_cents, original_price_cents,
+            unit, grams, pack_ml, pack_count, category, valid_from, valid_to, image_url,
+            source_url, fetched_at, confidence, raw_payload, staple)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
         [
           `${snapshot.source}-${deal.id}`,
           snapshot.source,
           retailer,
           deal.title,
+          deal.description,
           deal.priceCents,
           deal.originalPriceCents,
           deal.unit,
+          deal.grams,
+          deal.packMl,
+          deal.packCount,
+          deal.category,
           deal.validFrom,
           deal.validTo,
           deal.imageUrl,

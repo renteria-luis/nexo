@@ -6,6 +6,8 @@ import type { DealsDealRow, DealsDiscountRow, NutritionFoodRow } from '../db/typ
 import {
   applicableDiscount,
   comparedToUsual,
+  dealCentsPerKg,
+  unitPrice,
   finalPriceCents,
   proteinPerDollar,
   rankByProteinPerDollar,
@@ -65,7 +67,12 @@ const CHICKEN: NutritionFoodRow = {
   is_dairy: 0,
 };
 
-function deal(priceCents: number | null, unit: string | null): DealsDealRow {
+function deal(
+  priceCents: number | null,
+  unit: string | null,
+  grams: number | null = null,
+  pack: { ml?: number; count?: number } = {},
+): DealsDealRow {
   return {
     id: 'd1',
     source_id: 'flipp',
@@ -76,6 +83,9 @@ function deal(priceCents: number | null, unit: string | null): DealsDealRow {
     original_price_cents: null,
     savings_pct: null,
     unit,
+    grams,
+    pack_ml: pack.ml ?? null,
+    pack_count: pack.count ?? null,
     quantity_available: null,
     best_before: null,
     valid_from: null,
@@ -181,4 +191,75 @@ test('a deal is measured against what he already pays for that kilo', () => {
 
 test('without a price on the catalogue row there is nothing to compare against', () => {
   assert.equal(comparedToUsual(deal(881, 'kg'), CHICKEN, [], null, '2026-09-21'), null);
+});
+
+test('el precio por kilo sale del peso, venga de la unidad o del folleto', () => {
+  // 4.99 la libra son 11.00 el kilo, que es justo lo que dice la letra chica.
+  assert.equal(dealCentsPerKg(deal(499, 'lb')), 1100);
+  // Y una bandeja de 1.26 kg a 25 dolares son 19.84 el kilo, sin unidad ninguna.
+  assert.equal(dealCentsPerKg(deal(2500, null, 1260)), 1984);
+  // Sin peso no hay kilo que dar.
+  assert.equal(dealCentsPerKg(deal(2500, 'ea')), null);
+});
+
+test('la proteina por dolar usa el peso del folleto cuando la unidad no dice nada', () => {
+  // Una bandeja de 1.26 kg a 25 dolares, sin unidad que lo dijera.
+  const value = proteinPerDollar(deal(2500, null, 1260), CHICKEN, [], null, '2026-09-27');
+  assert.ok(value !== null);
+  assert.equal(Math.round(value.proteinPerDollar), 12);
+});
+
+test('los huevos y la leche se cuentan como los cuenta su ficha', () => {
+  const eggs: NutritionFoodRow = {
+    ...CHICKEN,
+    id: 'eggs',
+    base_unit: 'huevo',
+    unit_kind: 'count',
+    base_unit_g: 52.5,
+    protein_g: 6.5,
+  };
+  // Dieciocho huevos a 4.44: 117 g de proteina por 4.44 dolares.
+  const value = proteinPerDollar(
+    deal(444, 'ea', null, { count: 18 }),
+    eggs,
+    [],
+    null,
+    '2026-09-27',
+  );
+  assert.ok(value !== null);
+  assert.equal(Math.round(value.proteinPerDollar), 26);
+
+  const milk: NutritionFoodRow = {
+    ...CHICKEN,
+    id: 'milk',
+    base_unit: 'ml',
+    unit_kind: 'volume',
+    base_unit_g: 1.03,
+    protein_g: 9 / 250,
+  };
+  // Cuatro litros a 5.98: 144 g de proteina.
+  const litres = proteinPerDollar(
+    deal(598, 'ea', null, { ml: 4000 }),
+    milk,
+    [],
+    null,
+    '2026-09-27',
+  );
+  assert.ok(litres !== null);
+  assert.equal(Math.round(litres.proteinPerDollar), 24);
+});
+
+test('el precio de la medida que se compara sale del tamano del paquete', () => {
+  assert.deepEqual(unitPrice(deal(499, 'lb')), { cents: 1100, per: 'el kilo', size: '454 g' });
+  assert.deepEqual(unitPrice(deal(598, 'ea', null, { ml: 4000 })), {
+    cents: 150,
+    per: 'el litro',
+    size: '4 L',
+  });
+  assert.deepEqual(unitPrice(deal(444, 'ea', null, { count: 18 })), {
+    cents: 25,
+    per: 'cada uno',
+    size: '18 u.',
+  });
+  assert.equal(unitPrice(deal(444, 'ea')), null);
 });

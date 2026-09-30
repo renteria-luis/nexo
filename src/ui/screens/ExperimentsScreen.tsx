@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { todayIso } from '../../core/dates.ts';
 import type { ExperimentWithReadings } from '../../core/experiments.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 
+import { Button } from '../Button.tsx';
+import { Card } from '../Card.tsx';
+import { Chip } from '../Chip.tsx';
+import { Plus } from '../icons.ts';
 import { TextField } from '../TextField.tsx';
+import { font, sheet, shape } from '../theme.ts';
+
 import { Screen } from './Screen.tsx';
-import { mono, sheet } from '../theme.ts';
 
 /** Spec 7.5 point 3, the test the spec actually proposes. Placeholders, not defaults. */
 const DAIRY = {
@@ -57,7 +62,7 @@ function Experiment({
   const running = experiment.end_date === null;
 
   return (
-    <View style={styles.card}>
+    <Card>
       <Text style={styles.name}>{experiment.name}</Text>
       <Text style={styles.detail}>{experiment.hypothesis}</Text>
       <Text style={styles.detail}>Cambié: {experiment.variable_changed}</Text>
@@ -77,26 +82,22 @@ function Experiment({
           <Text style={styles.fieldLabel}>Cómo está hoy</Text>
           <View style={styles.chips}>
             {SCALE.map((value) => (
-              <Pressable
+              <Chip
                 key={value}
+                label={String(value)}
                 accessibilityLabel={`Anotar ${value} en ${experiment.name}`}
                 onPress={() => onReading(value)}
-                style={styles.chip}
-              >
-                <Text style={styles.chipText}>{value}</Text>
-              </Pressable>
+              />
             ))}
           </View>
-          <Pressable
+          <Button
+            label="Terminar"
             accessibilityLabel={`Terminar ${experiment.name}`}
             onPress={onFinish}
-            style={styles.finish}
-          >
-            <Text style={styles.finishText}>Terminar</Text>
-          </Pressable>
+          />
         </>
       )}
-    </View>
+    </Card>
   );
 }
 
@@ -186,19 +187,22 @@ export function ExperimentsScreen() {
       ))}
 
       {experiments?.length === 0 && !creating && (
-        <Text style={styles.empty}>Todavía no hay ninguno.</Text>
+        <Card>
+          <Text style={styles.empty}>Todavía no hay ninguno.</Text>
+        </Card>
       )}
 
       {!creating ? (
-        <Pressable
+        <Button
+          label="Nuevo experimento"
           accessibilityLabel="Nuevo experimento"
+          icon={Plus}
+          variant="primary"
+          block
           onPress={() => setCreating(true)}
-          style={styles.newOne}
-        >
-          <Text style={styles.newOneText}>+ Nuevo experimento</Text>
-        </Pressable>
+        />
       ) : (
-        <View style={styles.form}>
+        <Card title="Nuevo experimento">
           <Field label="Nombre" value={name} onChange={setName} placeholder={DAIRY.name} />
           <Field
             label="Qué creo que pasa"
@@ -219,23 +223,22 @@ export function ExperimentsScreen() {
             placeholder={DAIRY.outcomeMetric}
           />
           <View style={styles.row}>
-            <Pressable
+            <Button
+              label="Empezar"
               accessibilityLabel="Guardar experimento"
+              variant="primary"
               disabled={!canSave}
+              style={styles.grow}
               onPress={save}
-              style={[styles.save, !canSave && styles.saveDisabled]}
-            >
-              <Text style={styles.saveText}>Empezar</Text>
-            </Pressable>
-            <Pressable
+            />
+            <Button
+              label="Cancelar"
               accessibilityLabel="Cancelar experimento"
+              variant="ghost"
               onPress={() => setCreating(false)}
-              style={styles.cancel}
-            >
-              <Text style={styles.cancelText}>Cancelar</Text>
-            </Pressable>
+            />
           </View>
-        </View>
+        </Card>
       )}
     </Screen>
   );
@@ -243,101 +246,60 @@ export function ExperimentsScreen() {
 
 const styles = sheet((theme) => ({
   intro: {
-    fontSize: 12,
+    fontSize: 13,
+    fontFamily: font.regular,
     color: theme.textFaint,
   },
   problem: {
-    fontSize: 12,
+    fontSize: 13,
+    fontFamily: font.bold,
     color: theme.danger,
   },
   empty: {
-    fontSize: 12,
-    color: theme.textGhost,
-  },
-  card: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 8,
-    padding: 10,
-    gap: 4,
-    marginTop: 10,
+    fontSize: 13,
+    fontFamily: font.regular,
+    color: theme.textFaint,
   },
   name: {
-    fontSize: 14,
-    fontFamily: mono,
+    fontSize: 16,
+    fontFamily: font.black,
     color: theme.text,
   },
   detail: {
-    fontSize: 11,
+    fontSize: 13,
+    fontFamily: font.regular,
     color: theme.textFaint,
   },
   halves: {
-    fontSize: 12,
-    color: theme.ok,
-    fontFamily: mono,
+    fontSize: 14,
+    fontFamily: font.black,
+    color: theme.text,
+    fontVariant: ['tabular-nums'],
   },
   chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 5,
-  },
-  chip: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    minHeight: 38,
-    justifyContent: 'center',
-  },
-  chipText: {
-    fontSize: 12,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  finish: {
-    alignSelf: 'flex-start',
-    paddingVertical: 4,
-  },
-  finishText: {
-    fontSize: 12,
-    color: theme.textFaint,
-    fontFamily: mono,
-  },
-  newOne: {
-    alignSelf: 'flex-start',
-    marginTop: 12,
-    paddingVertical: 6,
-  },
-  newOneText: {
-    fontSize: 12,
-    color: theme.textDim,
-    fontFamily: mono,
-  },
-  form: {
     gap: 8,
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 8,
-    padding: 10,
-    marginTop: 12,
   },
   field: {
-    gap: 2,
+    gap: 5,
   },
   fieldLabel: {
-    fontSize: 10,
+    fontSize: 12,
+    fontFamily: font.black,
+    letterSpacing: 0.6,
     color: theme.textFaint,
-    fontFamily: mono,
+    textTransform: 'uppercase',
   },
   input: {
-    borderWidth: 1,
-    borderColor: theme.lineSoft,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    fontSize: 13,
-    fontFamily: mono,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.surface,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    fontSize: 15,
+    fontFamily: font.bold,
     color: theme.text,
   },
   row: {
@@ -345,28 +307,7 @@ const styles = sheet((theme) => ({
     alignItems: 'center',
     gap: 8,
   },
-  save: {
-    borderWidth: 1,
-    borderColor: theme.lineStrong,
-    borderRadius: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  saveDisabled: {
-    borderColor: theme.lineSoft,
-  },
-  saveText: {
-    fontSize: 12,
-    fontFamily: mono,
-    color: theme.text,
-  },
-  cancel: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  cancelText: {
-    fontSize: 12,
-    color: theme.textFaint,
-    fontFamily: mono,
+  grow: {
+    flex: 1,
   },
 }));

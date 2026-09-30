@@ -27,7 +27,7 @@ import { RoutineNotesScreen } from './src/ui/screens/RoutineNotesScreen.tsx';
 import { SettingsScreen } from './src/ui/screens/SettingsScreen.tsx';
 import { TodayScreen } from './src/ui/screens/TodayScreen.tsx';
 import { TrainingScreen } from './src/ui/screens/TrainingScreen.tsx';
-import { Dumbbell, LayoutGrid, Tag, Utensils, Wallet, type LucideIcon } from './src/ui/icons.ts';
+import { Dumbbell, LayoutGrid, Utensils, type LucideIcon } from './src/ui/icons.ts';
 
 import { ArchivoBlack_400Regular } from '@expo-google-fonts/archivo-black';
 import {
@@ -72,23 +72,6 @@ const registry: ModuleRegistry = {
     { id: 'today', label: 'Hoy', enabled: true, screen: () => null },
     { id: 'training', label: 'Entreno', enabled: true, screen: TrainingScreen },
     { id: 'nutrition', label: 'Comida', enabled: true, screen: NutritionScreen },
-    {
-      id: 'deals',
-      label: 'Ofertas',
-      enabled: true,
-      screen: DealsScreen,
-    },
-    {
-      id: 'finance',
-      label: 'Finanzas',
-      enabled: true,
-      screen: () => (
-        <PendingScreen
-          title="Finanzas"
-          note="El módulo de finanzas todavía no existe. Entra al final, y compartirá el motor de puntuación y la cuadrícula con el resto."
-        />
-      ),
-    },
   ],
 };
 
@@ -97,8 +80,6 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   today: LayoutGrid,
   training: Dumbbell,
   nutrition: Utensils,
-  deals: Tag,
-  finance: Wallet,
 };
 
 /**
@@ -229,6 +210,17 @@ function Navigation() {
             Apiladas, las pantallas comparten arbol con el teclado. */}
         <RootStack.Screen name="nexo" component={TabsScreen} />
         <RootStack.Screen name="Ajustes" component={SettingsRoute} />
+        {/* Ofertas dejo de ser pestana el 2026-09-28: lo que importa se avisa en Hoy y
+            la lista entera vive aqui, a un toque de ese aviso. */}
+        <RootStack.Screen name="Ofertas" component={DealsScreen} />
+        <RootStack.Screen name="Finanzas">
+          {() => (
+            <PendingScreen
+              title="Finanzas"
+              note="El módulo de finanzas todavía no existe. Entra al final, y compartirá el motor de puntuación y la cuadrícula con el resto."
+            />
+          )}
+        </RootStack.Screen>
         <RootStack.Screen name="Día" component={DayScreen} />
         <RootStack.Screen name="Gráficas" component={ChartsScreen} />
         <RootStack.Screen name="Ejercicios" component={ExercisesScreen} />

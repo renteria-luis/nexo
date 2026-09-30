@@ -258,3 +258,36 @@ tumbó la app el 21 de septiembre; todo lo que de ahí necesitábamos está en e
 React Native. Y quedarnos con el teclado numérico propio, que era defendible, pero deja
 vivos dos mecanismos a la vez (nuestro alto medido y los avisos del sistema), que es
 justo donde han estado los fallos de estos días.
+
+## 2026-09-27 — Las ofertas dicen el kilo y el gramo de proteína, o no valen nada
+Context: "hasta ahora me resulta inútil y es más fácil abrir la app de Flipp
+directamente". Tenía razón y los números lo decían: de 224 ofertas de un día, 113 no
+traían unidad ninguna y solo dos traían una que el código entendía, así que la proteína
+por dólar salía vacía en casi todas. Y el botón de abrir mandaba al navegador, porque
+iOS solo contesta `canOpenURL` por los esquemas declarados en el Info.plist propio.
+Decision: El recolector pide la ficha de cada artículo, lee el peso del título y el
+precio por kilo de la letra chica, y lo guarda (migración 045). Con eso, 305 de 418
+ofertas tienen peso y la pantalla puede decir el precio por kilo y los gramos de
+proteína por dólar, que es lo único que Flipp no puede decir. El botón usa
+`https://flipp.com/action/item/<id>`, que es un enlace universal declarado por
+flipp.com: abre la app en ese artículo, y la web solo si no está instalada. La lista se
+agrupa por producto, por tienda, o se ordena por valor.
+Rejected: Seguir con el esquema `flipp://` (no funciona sin declararlo, y el enlace
+universal hace lo mismo mejor) y adivinar el peso cuando no está escrito (spec 16.3
+regla 5: un hueco se muestra, no se rellena).
+
+## 2026-09-28 — Ofertas sale del menú y se convierte en un aviso
+Context: "hasta ahora me resulta inútil y es más fácil abrir la app de Flipp
+directamente". Una pantalla con cuatrocientas tarjetas es una lista que hay que
+recorrer; lo que él quiere saber es "¿hay algo de lo mío en oferta?". Y la barra de
+abajo tenía dos pestañas gastadas en Ofertas y en un módulo que todavía no existe.
+Decision: Ofertas deja de ser pestaña. Se vigila una lista de palabras suyas
+(`deal_watchlist`, separadas por coma, en Ajustes) y, cuando hay recolección nueva con
+coincidencias, al abrir la app sale una hoja con qué está en oferta, en qué tienda, a
+cuánto la medida y hasta cuándo. Esa misma hoja se reabre desde la cartilla de Hoy, y
+"Ver todas" lleva a la lista completa, que sigue existiendo como pantalla apilada. La
+búsqueda es por trozo de palabra, sin tildes ni mayúsculas, sobre el nombre y la letra
+chica: de más antes que de menos, por decisión suya.
+Rejected: Dejar la pestaña (gasta un sitio de la barra en algo que mira una vez por
+semana) y buscar por palabra exacta (perdería "EGGS" al escribir "egg", que es
+justamente lo que no quiere).
