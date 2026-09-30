@@ -17,9 +17,18 @@ import { Card, type CardTone } from '../Card.tsx';
 import { DealAlert } from '../DealAlert.tsx';
 import { DayDialog } from '../DayDialog.tsx';
 import { DisciplineGrid } from '../DisciplineGrid.tsx';
-import { ChevronRight, Dumbbell, Tag, Utensils, Wallet, type LucideIcon } from '../icons.ts';
+import { useInfo } from '../InfoBubble.tsx';
+import {
+  ChevronRight,
+  Dumbbell,
+  Pencil,
+  Tag,
+  Utensils,
+  Wallet,
+  type LucideIcon,
+} from '../icons.ts';
+import { IconButton } from '../IconButton.tsx';
 import { Star } from '../Star.tsx';
-import { TargetsCard } from '../TargetsCard.tsx';
 import { TodayLog } from '../TodayLog.tsx';
 import { font, sheet, shape, theme } from '../theme.ts';
 
@@ -142,7 +151,8 @@ export function TodayScreen({
     declineStepsTarget,
     saveSetting,
   } = useAppData();
-  const [openDay, setOpenDay] = useState<string | null>(null);
+  const [writing, setWriting] = useState(false);
+  const info = useInfo();
   // El aviso de ofertas: se abre solo la primera vez que hay recoleccion nueva, y
   // despues queda a un toque en su cartilla.
   const [deals, setDeals] = useState<'closed' | 'open'>('closed');
@@ -166,6 +176,21 @@ export function TodayScreen({
   if (state.phase !== 'ready') return <Screen title="Hoy">{null}</Screen>;
 
   const { loaded } = state;
+
+  /** Un cuadrito abre su globito ahi mismo, pegado al dedo, y no un modal encima de todo. */
+  const peek = (date: string, at: { x: number; y: number; width: number; height: number }) =>
+    info.show(
+      <DayDialog
+        date={date}
+        unit={loaded.unit}
+        load={loadDay}
+        onOpenDetail={() => {
+          info.hide();
+          onOpenDay(date);
+        }}
+      />,
+      at,
+    );
   // Con el valor de fabrica si nunca lo toco: la lista guardada solo trae lo escrito.
   const watching = loaded.settings.get('deal_watchlist') ?? settingDefault('deal_watchlist');
   const blocked = loaded.settings.get('deal_blocklist') ?? settingDefault('deal_blocklist');
@@ -282,7 +307,9 @@ export function TodayScreen({
 
       {/* No horizontal scroller around it: twelve weeks fit across a phone, and a
           scroller here would swallow the swipe between tabs. */}
-      <Card>
+      {/* Tocar el papel de la cartilla, entre los cuadritos o al lado, abre la lista:
+          los cuadritos se quedan con su propio toque antes de llegar aqui. */}
+      <Card onPress={() => onOpen('Registros')} accessibilityLabel="Ver todos los registros">
         <View style={styles.gridHead}>
           <Text style={styles.gridTitle}>{WEEKS_SHOWN} semanas</Text>
           <Button
@@ -293,26 +320,12 @@ export function TodayScreen({
             onPress={() => onOpen('Registros')}
           />
         </View>
-        <DisciplineGrid weeks={weeks} onOpenDay={setOpenDay} />
+        <DisciplineGrid weeks={weeks} onOpenDay={peek} />
         <Text style={styles.gridFoot}>
           Máxima {longestStreak(loaded.days, today)} días · promedio{' '}
           {average === null ? '—' : Math.round(average)}
         </Text>
       </Card>
-
-      {openDay !== null && (
-        <DayDialog
-          date={openDay}
-          unit={loaded.unit}
-          load={loadDay}
-          onClose={() => setOpenDay(null)}
-          onOpenDetail={() => {
-            const date = openDay;
-            setOpenDay(null);
-            onOpenDay(date);
-          }}
-        />
-      )}
 
       <View style={styles.modules}>
         <ModuleCard
@@ -364,8 +377,18 @@ export function TodayScreen({
         />
       </View>
 
-      <Card title="Registro del día">
+      <Card>
+        <View style={styles.cardHead}>
+          <Text style={styles.cardTitle}>Registro del día</Text>
+          <IconButton
+            icon={Pencil}
+            selected={writing}
+            accessibilityLabel={writing ? 'Dejar de escribir' : 'Escribir el registro del día'}
+            onPress={() => setWriting(!writing)}
+          />
+        </View>
         <TodayLog
+          editing={writing}
           log={loaded.today.log}
           lastWeight={loaded.lastWeight}
           containers={loaded.containers}
@@ -379,8 +402,6 @@ export function TodayScreen({
           onLog={logDay}
         />
       </Card>
-
-      {targets && <TargetsCard targets={targets} />}
 
       <View style={styles.links}>
         <Button
@@ -408,6 +429,19 @@ export function TodayScreen({
 }
 
 const styles = sheet((theme) => ({
+  cardHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 2,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontFamily: font.black,
+    letterSpacing: 0.3,
+    color: theme.text,
+  },
   clock: {
     fontSize: 13,
     color: theme.textFaint,

@@ -11,6 +11,7 @@ import {
   weekRange,
   weekStart,
   weekday,
+  longDate,
   shortDate,
   dateAndTime,
 } from './dates.ts';
@@ -94,10 +95,16 @@ test('today is read in local time, not UTC', () => {
 });
 
 test('a date reads with the month in letters, never as two numbers', () => {
-  assert.equal(shortDate('2026-08-08'), '08-ago-2026');
-  assert.equal(shortDate('2026-01-31'), '31-ene-2026');
-  assert.equal(shortDate('2026-12-01'), '01-dic-2026');
+  assert.equal(shortDate('2026-08-08'), 'sáb, 08-ago-2026');
+  assert.equal(shortDate('2026-01-31'), 'sáb, 31-ene-2026');
+  assert.equal(shortDate('2026-12-01'), 'mar, 01-dic-2026');
   assert.throws(() => shortDate('2026-13-01'), /is not a date/);
+});
+
+test('un dia dicho en voz alta lleva su dia de la semana y su mes entero', () => {
+  assert.equal(longDate('2026-09-30'), 'miércoles, 30 de setiembre');
+  assert.equal(longDate('2026-01-01'), 'jueves, 1 de enero');
+  assert.throws(() => longDate('2026-13-01'), /is not a date/);
 });
 
 test('la fecha y la hora se leen como las dice en voz alta', () => {

@@ -74,7 +74,7 @@ const styles = sheet((theme) => ({
   },
   on: {
     backgroundColor: theme.accent,
-    ...hardShadow(theme, 3),
+    ...hardShadow(theme, 3, 'button'),
   },
   off: {
     backgroundColor: theme.surface,

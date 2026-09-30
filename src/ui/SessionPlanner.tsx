@@ -9,6 +9,7 @@ import type { PlannedExercise, RoutinePlan, TimeBudget } from '../training/index
 import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
 import { Chip } from './Chip.tsx';
+import { ConfirmAction } from './InfoBubble.tsx';
 import { Dumbbell, GripLines, MapPin, Moon, Play, Timer, Users, type LucideIcon } from './icons.ts';
 import { font, hardShadow, sheet, shape, theme } from './theme.ts';
 
@@ -555,12 +556,14 @@ export function SessionPlanner({
           </Text>
         </Card>
       ) : (
-        <Button
+        <ConfirmAction
           label="Hoy descanso"
           icon={Moon}
           block
+          question="¿Marcar hoy como descanso? Cuenta como día planeado y no penaliza."
+          yes="Sí, descanso"
           accessibilityLabel="Hoy descanso"
-          onPress={onRestDay}
+          onConfirm={onRestDay}
         />
       )}
     </View>

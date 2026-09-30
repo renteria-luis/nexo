@@ -7,6 +7,7 @@ import { useAppData } from '../../shell/AppData.tsx';
 import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
 import { IconButton } from '../IconButton.tsx';
+import { ConfirmButton } from '../InfoBubble.tsx';
 import { ChefHat, Pencil, Plus, Trash } from '../icons.ts';
 import { RecipeForm } from '../RecipeForm.tsx';
 import { font, sheet, shape } from '../theme.ts';
@@ -188,11 +189,11 @@ export function RecipesScreen() {
                     accessibilityLabel={`Corregir ${entry.recipe.name}`}
                     onPress={() => setEditing(entry.recipe)}
                   />
-                  <IconButton
+                  <ConfirmButton
                     icon={Trash}
-                    tone="danger"
+                    question={`¿Borrar ${entry.recipe.name}?`}
                     accessibilityLabel={`Borrar ${entry.recipe.name}`}
-                    onPress={() => {
+                    onConfirm={() => {
                       setOpen(null);
                       removeRecipe(entry.recipe.id)
                         .then(reload)

@@ -6,7 +6,7 @@ import type { Ingredient, NewRecipe, PantryItem, Recipe } from '../pantry/index.
 import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
 import { Chip } from './Chip.tsx';
-import { IconButton } from './IconButton.tsx';
+import { ConfirmButton } from './InfoBubble.tsx';
 import { Trash } from './icons.ts';
 import { NumericField } from './NumericField.tsx';
 import { SearchField } from './SearchField.tsx';
@@ -118,11 +118,11 @@ export function RecipeForm({
               ) : (
                 <Text style={styles.unit}>sin medir</Text>
               )}
-              <IconButton
+              <ConfirmButton
                 icon={Trash}
-                tone="danger"
+                question={`¿Quitar ${item.name} de la receta?`}
                 accessibilityLabel={`Quitar ${item.name}`}
-                onPress={() =>
+                onConfirm={() =>
                   setIngredients((before) =>
                     before.filter((one) => one.itemId !== ingredient.itemId),
                   )

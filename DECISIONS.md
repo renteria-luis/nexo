@@ -385,3 +385,31 @@ chevron. Cerrados de entrada: la cuenta ya dice si vale la pena abrirlo.
 Rejected: Dejarlos abiertos y confiar en el desplazamiento, y limitar cuantas ofertas
 muestra cada grupo (esconder ofertas es lo contrario de lo que pidio: prefiere ver de
 mas).
+
+## 2026-09-30 — Leer primero, escribir con el lapiz
+Context: Cada cartilla traia todos sus botones puestos, y leer el registro del dia, las
+series de un ejercicio o lo comido era deslizar entre botones que no estaba usando.
+Decision: Un lapiz en la cabecera de esas tres cartillas. Apagado, la cartilla es una
+lista compacta de una linea por dato; encendido, aparecen los campos, los botones de
+anotar y las papeleras. Borrar ademas pregunta en un globito pegado al boton.
+Rejected: Dejarlo todo visible (lo que habia) y esconder solo las papeleras, que era la
+mitad del ruido.
+
+## 2026-09-30 — Arriba va la fecha de hoy, no el nombre de la app
+Context: El nombre de la app ocupaba la barra de todas las pantallas y el ya sabe que app
+abrio.
+Decision: En su sitio va "viernes, 30 de setiembre". En un dia suelto no va nada, porque
+ahi la fecha que importa es la del dia abierto, que va en el titulo con flechas al dia
+anterior y al siguiente. El nombre se queda en el menu lateral.
+Rejected: Dejar el nombre, y poner la fecha ademas del nombre (dos cosas en una barra que
+solo tiene sitio para una).
+
+## 2026-09-30 — La banda de calorias sube 400 y la de proteina no tiene techo
+Context: "es por lo mismo que soy ecto". Comer 180 g de proteina o 2 900 kcal salia
+pintado como fuera de banda, y lo que le pasa a el es quedarse corto, no pasarse.
+Decision: La banda de calorias va de la meta menos 150 a la meta mas 550. La de proteina
+se pinta con suelo y sin techo, como la de sueno y la de pasos, y el desglose del dia dice
+"133 g o mas" en vez de "133 a 163". Lo que si engorda lo sigue cobrando la regla de las
+mil calorias libres (spec 4.1), que empieza mucho mas arriba.
+Rejected: Tocar las curvas de puntos, que ya no penalizaban ninguna de las dos cosas: lo
+que estaba mal era lo que se pintaba, no lo que se puntuaba.

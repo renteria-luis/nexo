@@ -137,7 +137,7 @@ const styles = sheet((theme) => ({
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    ...hardShadow(theme),
+    ...hardShadow(theme, shape.shadowOffset, 'button'),
   },
   large: {
     minHeight: 52,

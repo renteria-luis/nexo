@@ -88,12 +88,27 @@ export function dateAndTime(now: Date = new Date()): string {
   return `${day} de ${month} ${hours}:${minutes}`;
 }
 
-/** 2026-08-08 se lee 08-ago-2026: sin ambiguedad entre dia y mes. */
+const WEEKDAYS_ES = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
+
+const WEEKDAY_NAMES_ES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+
+/**
+ * 2026-08-08 se lee "sáb, 08-ago-2026": sin ambiguedad entre dia y mes, y con el dia de
+ * la semana, que es lo que de verdad usa para ubicarse ("el martes no entrene").
+ */
 export function shortDate(date: IsoDate): string {
   const [year, month, day] = date.split('-');
   const index = Number(month) - 1;
   if (!MONTHS_ES[index]) throw new Error(`${date} is not a date`);
-  return `${day}-${MONTHS_ES[index]}-${year}`;
+  return `${WEEKDAYS_ES[weekday(date) - 1]}, ${day}-${MONTHS_ES[index]}-${year}`;
+}
+
+/** "viernes, 30 de setiembre", que es como se dice un dia en voz alta. */
+export function longDate(date: IsoDate): string {
+  const [, month, day] = date.split('-');
+  const index = Number(month) - 1;
+  if (!MONTH_NAMES_ES[index]) throw new Error(`${date} is not a date`);
+  return `${WEEKDAY_NAMES_ES[weekday(date) - 1]}, ${Number(day)} de ${MONTH_NAMES_ES[index]}`;
 }
 
 export function addDays(date: IsoDate, days: number): IsoDate {

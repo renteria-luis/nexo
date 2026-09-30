@@ -3,11 +3,15 @@ import Svg, { Line, Rect } from 'react-native-svg';
 
 import { shortDate, type IsoDate } from '../../core/dates.ts';
 import type { Band, Point } from '../../shell/charts.ts';
-import { font, sheet, shape, theme } from '../theme.ts';
+import { font, sheet, theme } from '../theme.ts';
 
 import { Bubble, BUBBLE_WIDTH } from './Bubble.tsx';
 
 const HEIGHT = 110;
+/** Sitio arriba para el trazo del contorno: la barra mas alta se cortaba por la mitad. */
+const PAD = 2;
+/** El contorno de una barra, mas fino que el borde de la app (decision suya, 30-09). */
+const STROKE = 1.2;
 
 /**
  * Una barra por dia, con la banda objetivo pintada por detras.
@@ -44,10 +48,10 @@ export function DayBars({
   // El borde se dibuja a caballo del contorno, asi que la barra se estrecha lo que
   // mide ese trazo para que dos barras vecinas no se toquen.
   const barWidth = Math.max(2, step - 3);
-  // Con pocas barras el contorno es el de la casa, de dos puntos; con noventa dias la
-  // barra mide cuatro y un trazo de dos se la come entera.
-  const stroke = barWidth > 10 ? shape.border : 1.5;
-  const y = (value: number) => HEIGHT - (value / top) * HEIGHT;
+  // Con noventa dias la barra mide cuatro puntos y hasta este trazo se la come, asi que
+  // ahi adelgaza todavia mas.
+  const stroke = barWidth > 10 ? STROKE : 1;
+  const y = (value: number) => PAD + (HEIGHT - PAD) - (value / top) * (HEIGHT - PAD);
 
   const inside = (value: number) => !band || (value >= band.from && value <= band.to);
 
@@ -76,6 +80,7 @@ export function DayBars({
             y={y(point.value)}
             width={barWidth}
             height={Math.max(2, HEIGHT - y(point.value))}
+            rx={1}
             fill={open === index ? theme.accent : inside(point.value) ? theme.ok : theme.lineSoft}
             stroke={theme.line}
             strokeWidth={stroke}
@@ -84,11 +89,11 @@ export function DayBars({
         {/* La linea de base va encima de las barras: es el suelo del dibujo. */}
         <Line
           x1={0}
-          y1={HEIGHT - 1}
+          y1={HEIGHT - 0.6}
           x2={width}
-          y2={HEIGHT - 1}
+          y2={HEIGHT - 0.6}
           stroke={theme.line}
-          strokeWidth={2}
+          strokeWidth={STROKE}
         />
       </Svg>
 

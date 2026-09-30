@@ -68,12 +68,15 @@ export function useReveal(): Reveal {
 
 export function Screen({
   title,
+  header,
   children,
   overlay,
   onOverlayDismiss,
   scrollEnabled = true,
 }: {
   title?: string;
+  /** En lugar del titulo, cuando la pantalla necesita algo mas que una palabra. */
+  header?: ReactNode;
   children: ReactNode;
   /** Lo que va encima de la pantalla entera, fuera del scroll y sin ser un modal. */
   overlay?: ReactNode;
@@ -234,7 +237,7 @@ export function Screen({
         { paddingBottom: CONTENT_BOTTOM + (keyboard > 0 ? keyboard : barSpace) },
       ]}
     >
-      {title ? <Text style={styles.title}>{title}</Text> : null}
+      {header ?? (title ? <Text style={styles.title}>{title}</Text> : null)}
 
       {state.phase === 'opening' && <ActivityIndicator accessibilityLabel="Abriendo la base" />}
 

@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { Check, Circle, Minus, Plus } from './icons.ts';
+import { Check, Circle, Minus, Pencil, Plus, Trash } from './icons.ts';
 
 import { shortDate } from '../core/dates.ts';
 import { formatWeight, fromKg, snapToIncrement, toKg, type WeightUnit } from '../core/units.ts';
@@ -10,6 +10,7 @@ import {
   type E1rmMark,
   type LoggedSet,
 } from '../training/calculations.ts';
+import { fold } from '../nutrition/picker.ts';
 import { isPerSide, type CatalogExercise, type Swappable } from '../training/queries.ts';
 import type { SessionDraft } from '../core/session-draft.ts';
 import type { Implement } from '../training/sessions.ts';
@@ -17,7 +18,9 @@ import type { Implement } from '../training/sessions.ts';
 import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
 import { Chip } from './Chip.tsx';
-import { InfoDot, InfoText } from './InfoBubble.tsx';
+import { IconButton } from './IconButton.tsx';
+import { SearchField } from './SearchField.tsx';
+import { ConfirmButton, InfoDot, InfoText } from './InfoBubble.tsx';
 import { NumericField } from './NumericField.tsx';
 import { font, sheet, shape, theme } from './theme.ts';
 
@@ -249,9 +252,17 @@ export const SessionLog = memo(function SessionLog({
   // Spec 8.5: the plan is the session. The full catalogue is still one tap away,
   // because a machine can be taken and the swap has to be logged somewhere.
   const [showAll, setShowAll] = useState(false);
+  // Escribir busca en el catalogo entero: la maquina ocupada se cambia por otra que casi
+  // nunca esta en el plan de hoy, y recorrer treinta nombres con el pulgar no es buscar.
+  const [search, setSearch] = useState('');
+  // Con el lapiz apagado la cartilla solo se lee, que es lo que se hace entre serie y
+  // serie. Los botones de anotar y de quitar aparecen al encenderlo.
+  const [writing, setWriting] = useState(false);
   const inPlan = exercises.filter((item) => planExerciseIds.includes(item.id));
-  const visibleExercises =
-    showAll || inPlan.length === 0
+  const looking = search.trim() !== '';
+  const visibleExercises = looking
+    ? exercises.filter((item) => fold(item.name_es).includes(fold(search)))
+    : showAll || inPlan.length === 0
       ? exercises
       : exercises.filter(
           (item) => planExerciseIds.includes(item.id) || item.id === selectedExerciseId,
@@ -430,6 +441,12 @@ export const SessionLog = memo(function SessionLog({
             renglon entero igual, y asi se ve de un vistazo lo que falta de cada uno.
             El orden es alfabetico a proposito: se busca por nombre, no por plan. */}
         <Card title="Ejercicios">
+          <SearchField
+            value={search}
+            onChange={setSearch}
+            accessibilityLabel="Buscar un ejercicio"
+            note={`${exercises.length} en el catálogo`}
+          />
           <View style={styles.exerciseList}>
             {visibleExercises.map((item) => (
               <ExerciseRow
@@ -438,12 +455,15 @@ export const SessionLog = memo(function SessionLog({
                 done={setsDoneByExercise.get(item.id) ?? 0}
                 planned={plannedByExercise.get(item.id)}
                 selected={item.id === selectedExerciseId}
-                onPick={pick}
+                onPick={(id) => {
+                  setSearch('');
+                  pick(id);
+                }}
               />
             ))}
           </View>
 
-          {inPlan.length > 0 && inPlan.length < exercises.length && (
+          {!looking && inPlan.length > 0 && inPlan.length < exercises.length && (
             <Button
               label={showAll ? 'Solo la rutina de hoy' : 'Ver todos los ejercicios'}
               accessibilityLabel={
@@ -471,6 +491,12 @@ export const SessionLog = memo(function SessionLog({
                     <InfoText>{note}</InfoText>
                   </InfoDot>
                 )}
+                <IconButton
+                  icon={Pencil}
+                  selected={writing}
+                  accessibilityLabel={writing ? 'Dejar de anotar' : 'Anotar una serie'}
+                  onPress={() => setWriting((open) => !open)}
+                />
               </View>
 
               {/* Solo donde hay de verdad mas de una forma de hacerlo, que es un dato
@@ -558,13 +584,14 @@ export const SessionLog = memo(function SessionLog({
                         )}`
                       : ''}
                   </Text>
-                  <Pressable
-                    accessibilityLabel={`Quitar serie ${set.setIndex}`}
-                    onPress={() => onRemoveSet(set.setIndex)}
-                    style={({ pressed }) => [styles.remove, pressed && styles.pressedSoft]}
-                  >
-                    <Text style={styles.removeText}>quitar</Text>
-                  </Pressable>
+                  {writing && (
+                    <ConfirmButton
+                      icon={Trash}
+                      question={`¿Quitar la serie ${set.setIndex}?`}
+                      accessibilityLabel={`Quitar serie ${set.setIndex}`}
+                      onConfirm={() => onRemoveSet(set.setIndex)}
+                    />
+                  )}
                 </View>
               ))}
 
@@ -585,137 +612,139 @@ export const SessionLog = memo(function SessionLog({
               {/* Cuatro cuadrantes con su etiqueta y sus flechas. Entre serie y serie
                 el pulgar sabe donde va sin leer nada, que es lo que hace que se anote
                 mientras entrena y no al final de memoria. */}
-              <View style={styles.grid}>
-                <View style={styles.gridRow}>
-                  <View style={styles.cell}>
-                    <View style={styles.cellHead}>
-                      <Text style={styles.cellLabel}>peso</Text>
-                      <Pressable
-                        accessibilityLabel={`Cambiar a ${unit === 'lb' ? 'kilos' : 'libras'}`}
-                        onPress={flipUnit}
-                        style={({ pressed }) => [styles.unit, pressed && styles.pressedSoft]}
-                      >
-                        <Text style={styles.unitText}>{unit}</Text>
-                      </Pressable>
+              {writing && (
+                <View style={styles.grid}>
+                  <View style={styles.gridRow}>
+                    <View style={styles.cell}>
+                      <View style={styles.cellHead}>
+                        <Text style={styles.cellLabel}>peso</Text>
+                        <Pressable
+                          accessibilityLabel={`Cambiar a ${unit === 'lb' ? 'kilos' : 'libras'}`}
+                          onPress={flipUnit}
+                          style={({ pressed }) => [styles.unit, pressed && styles.pressedSoft]}
+                        >
+                          <Text style={styles.unitText}>{unit}</Text>
+                        </Pressable>
+                      </View>
+                      <View style={styles.cellRow}>
+                        <Pressable
+                          accessibilityLabel="Bajar peso"
+                          onPress={() => nudge(-1)}
+                          style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
+                        >
+                          <Minus size={18} color={theme.text} strokeWidth={1.75} />
+                        </Pressable>
+                        <NumericField
+                          value={weight}
+                          onChange={setWeightDraft}
+                          allowDecimal={true}
+                          accessibilityLabel="Peso"
+                          reveals={card}
+                          placeholder={unit}
+                          style={styles.cellInput}
+                          focusedStyle={styles.cellInputEditing}
+                        />
+                        <Pressable
+                          accessibilityLabel="Subir peso"
+                          onPress={() => nudge(1)}
+                          style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
+                        >
+                          <Plus size={18} color={theme.text} strokeWidth={1.75} />
+                        </Pressable>
+                      </View>
                     </View>
-                    <View style={styles.cellRow}>
-                      <Pressable
-                        accessibilityLabel="Bajar peso"
-                        onPress={() => nudge(-1)}
-                        style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
-                      >
-                        <Minus size={18} color={theme.text} strokeWidth={1.75} />
-                      </Pressable>
-                      <NumericField
-                        value={weight}
-                        onChange={setWeightDraft}
-                        allowDecimal={true}
-                        accessibilityLabel="Peso"
-                        reveals={card}
-                        placeholder={unit}
-                        style={styles.cellInput}
-                        focusedStyle={styles.cellInputEditing}
-                      />
-                      <Pressable
-                        accessibilityLabel="Subir peso"
-                        onPress={() => nudge(1)}
-                        style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
-                      >
-                        <Plus size={18} color={theme.text} strokeWidth={1.75} />
-                      </Pressable>
+
+                    <View style={styles.cell}>
+                      <View style={styles.cellHead}>
+                        <Text style={styles.cellLabel}>RPE</Text>
+                      </View>
+                      <View style={styles.cellRow}>
+                        <Pressable
+                          accessibilityLabel="Bajar RPE"
+                          onPress={() => stepRpe(-1)}
+                          style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
+                        >
+                          <Minus size={18} color={theme.text} strokeWidth={1.75} />
+                        </Pressable>
+                        <NumericField
+                          value={rpe}
+                          onChange={setRpeDraft}
+                          allowDecimal={false}
+                          accessibilityLabel="RPE"
+                          reveals={card}
+                          placeholder="—"
+                          style={styles.cellInput}
+                          focusedStyle={styles.cellInputEditing}
+                        />
+                        <Pressable
+                          accessibilityLabel="Subir RPE"
+                          onPress={() => stepRpe(1)}
+                          style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
+                        >
+                          <Plus size={18} color={theme.text} strokeWidth={1.75} />
+                        </Pressable>
+                      </View>
                     </View>
                   </View>
 
-                  <View style={styles.cell}>
-                    <View style={styles.cellHead}>
-                      <Text style={styles.cellLabel}>RPE</Text>
+                  <View style={styles.gridRow}>
+                    <View style={styles.cell}>
+                      <View style={styles.cellHead}>
+                        <Text style={styles.cellLabel}>reps</Text>
+                      </View>
+                      <View style={styles.cellRow}>
+                        <Pressable
+                          accessibilityLabel="Una repeticion menos"
+                          onPress={() => stepReps(-1)}
+                          style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
+                        >
+                          <Minus size={18} color={theme.text} strokeWidth={1.75} />
+                        </Pressable>
+                        <NumericField
+                          value={reps}
+                          onChange={setRepsDraft}
+                          allowDecimal={false}
+                          accessibilityLabel="Repeticiones"
+                          reveals={card}
+                          placeholder="0"
+                          style={styles.cellInput}
+                          focusedStyle={styles.cellInputEditing}
+                        />
+                        <Pressable
+                          accessibilityLabel="Una repeticion mas"
+                          onPress={() => stepReps(1)}
+                          style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
+                        >
+                          <Plus size={18} color={theme.text} strokeWidth={1.75} />
+                        </Pressable>
+                      </View>
                     </View>
-                    <View style={styles.cellRow}>
-                      <Pressable
-                        accessibilityLabel="Bajar RPE"
-                        onPress={() => stepRpe(-1)}
-                        style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
-                      >
-                        <Minus size={18} color={theme.text} strokeWidth={1.75} />
-                      </Pressable>
-                      <NumericField
-                        value={rpe}
-                        onChange={setRpeDraft}
-                        allowDecimal={false}
-                        accessibilityLabel="RPE"
-                        reveals={card}
-                        placeholder="—"
-                        style={styles.cellInput}
-                        focusedStyle={styles.cellInputEditing}
+
+                    <View style={styles.cell}>
+                      <View style={styles.cellHead} />
+                      <Button
+                        label="Serie"
+                        icon={Plus}
+                        variant="primary"
+                        size="large"
+                        block
+                        disabled={!canAdd}
+                        accessibilityLabel="Agregar serie"
+                        onPress={() => {
+                          if (!canAdd) return;
+                          const rpe =
+                            parsedRpe !== null && Number.isFinite(parsedRpe)
+                              ? Math.min(RPE_MAX, Math.max(0, parsedRpe))
+                              : null;
+                          onAddSet(toKg(parsedWeight, unit), parsedReps, { rpe, implement });
+                          clearDrafts();
+                        }}
+                        style={styles.serie}
                       />
-                      <Pressable
-                        accessibilityLabel="Subir RPE"
-                        onPress={() => stepRpe(1)}
-                        style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
-                      >
-                        <Plus size={18} color={theme.text} strokeWidth={1.75} />
-                      </Pressable>
                     </View>
                   </View>
                 </View>
-
-                <View style={styles.gridRow}>
-                  <View style={styles.cell}>
-                    <View style={styles.cellHead}>
-                      <Text style={styles.cellLabel}>reps</Text>
-                    </View>
-                    <View style={styles.cellRow}>
-                      <Pressable
-                        accessibilityLabel="Una repeticion menos"
-                        onPress={() => stepReps(-1)}
-                        style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
-                      >
-                        <Minus size={18} color={theme.text} strokeWidth={1.75} />
-                      </Pressable>
-                      <NumericField
-                        value={reps}
-                        onChange={setRepsDraft}
-                        allowDecimal={false}
-                        accessibilityLabel="Repeticiones"
-                        reveals={card}
-                        placeholder="0"
-                        style={styles.cellInput}
-                        focusedStyle={styles.cellInputEditing}
-                      />
-                      <Pressable
-                        accessibilityLabel="Una repeticion mas"
-                        onPress={() => stepReps(1)}
-                        style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
-                      >
-                        <Plus size={18} color={theme.text} strokeWidth={1.75} />
-                      </Pressable>
-                    </View>
-                  </View>
-
-                  <View style={styles.cell}>
-                    <View style={styles.cellHead} />
-                    <Button
-                      label="Serie"
-                      icon={Plus}
-                      variant="primary"
-                      size="large"
-                      block
-                      disabled={!canAdd}
-                      accessibilityLabel="Agregar serie"
-                      onPress={() => {
-                        if (!canAdd) return;
-                        const rpe =
-                          parsedRpe !== null && Number.isFinite(parsedRpe)
-                            ? Math.min(RPE_MAX, Math.max(0, parsedRpe))
-                            : null;
-                        onAddSet(toKg(parsedWeight, unit), parsedReps, { rpe, implement });
-                        clearDrafts();
-                      }}
-                      style={styles.serie}
-                    />
-                  </View>
-                </View>
-              </View>
+              )}
 
               {perSide && (
                 <Text style={styles.perSide}>
@@ -964,6 +993,8 @@ const styles = sheet((theme) => ({
     fontVariant: ['tabular-nums'],
   },
 
+  // Juntas: sin un boton en cada renglon, una serie ocupa lo que mide su linea y la
+  // lista entera se lee de un vistazo.
   setRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -971,7 +1002,8 @@ const styles = sheet((theme) => ({
     gap: 10,
     borderTopWidth: 1,
     borderTopColor: theme.lineSoft,
-    paddingTop: 7,
+    paddingTop: 4,
+    minHeight: 30,
   },
   setText: {
     flex: 1,
@@ -979,15 +1011,6 @@ const styles = sheet((theme) => ({
     fontFamily: font.bold,
     color: theme.text,
     fontVariant: ['tabular-nums'],
-  },
-  remove: {
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  removeText: {
-    fontSize: 12,
-    fontFamily: font.bold,
-    color: theme.danger,
   },
   planned: {
     fontSize: 13,

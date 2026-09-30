@@ -11,6 +11,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Button } from './Button.tsx';
+import type { LucideIcon } from './icons.ts';
+import { IconButton } from './IconButton.tsx';
 import { font, hardShadow, sheet, shape } from './theme.ts';
 
 /**
@@ -118,6 +121,112 @@ export function InfoDot({
   );
 }
 
+/**
+ * Preguntar antes de borrar, en el mismo globo y pegado al boton que se toco.
+ *
+ * Sin esto, un toque sin querer en una papelera borraba una serie o una comida sin mas.
+ * La pregunta sale donde esta el dedo, es corta, y tocar fuera es que no.
+ */
+function Ask({ question, yes, onYes }: { question: string; yes: string; onYes: () => void }) {
+  const { hide } = useInfo();
+  return (
+    <View style={styles.ask}>
+      <Text style={styles.line}>{question}</Text>
+      <View style={styles.askButtons}>
+        <Button
+          label={yes}
+          accessibilityLabel={yes}
+          variant="danger"
+          onPress={() => {
+            hide();
+            onYes();
+          }}
+        />
+        <Button label="No" accessibilityLabel="No" variant="ghost" onPress={hide} />
+      </View>
+    </View>
+  );
+}
+
+function useAsk() {
+  const { show } = useInfo();
+  return (spot: View | null, question: string, yes: string, onYes: () => void) =>
+    spot?.measureInWindow((x, y, width, height) =>
+      show(<Ask question={question} yes={yes} onYes={onYes} />, { x, y, width, height }),
+    );
+}
+
+/** Una papelera (o lo que sea) que pregunta antes de hacerlo. */
+export function ConfirmButton({
+  icon,
+  question,
+  accessibilityLabel,
+  onConfirm,
+  yes = 'Sí, borra',
+  tone = 'danger',
+  disabled = false,
+}: {
+  icon: LucideIcon;
+  question: string;
+  accessibilityLabel: string;
+  onConfirm: () => void;
+  yes?: string;
+  tone?: 'paper' | 'accent' | 'danger';
+  disabled?: boolean;
+}) {
+  const spot = useRef<View>(null);
+  const ask = useAsk();
+
+  return (
+    <View ref={spot} collapsable={false}>
+      <IconButton
+        icon={icon}
+        tone={tone}
+        disabled={disabled}
+        accessibilityLabel={accessibilityLabel}
+        onPress={() => ask(spot.current, question, yes, onConfirm)}
+      />
+    </View>
+  );
+}
+
+/** Lo mismo para un boton con palabras, como "Hoy descanso". */
+export function ConfirmAction({
+  label,
+  icon,
+  question,
+  accessibilityLabel,
+  onConfirm,
+  yes = 'Sí',
+  variant = 'secondary',
+  block = false,
+}: {
+  label: string;
+  icon?: LucideIcon;
+  question: string;
+  accessibilityLabel: string;
+  onConfirm: () => void;
+  yes?: string;
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+  block?: boolean;
+}) {
+  const spot = useRef<View>(null);
+  const ask = useAsk();
+
+  return (
+    <View ref={spot} collapsable={false} style={block ? styles.block : undefined}>
+      <Button
+        label={label}
+        icon={icon}
+        variant={variant}
+        block={block}
+        accessibilityLabel={accessibilityLabel}
+        onPress={() => ask(spot.current, question, yes, onConfirm)}
+      />
+    </View>
+  );
+}
+
 /** Una linea de texto dentro del globo, para lo que no trae su propia cartilla. */
 export function InfoText({ children }: { children: string }) {
   return (
@@ -165,6 +274,16 @@ const styles = sheet((theme) => ({
   },
   lines: {
     gap: 4,
+  },
+  ask: {
+    gap: 10,
+  },
+  askButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  block: {
+    alignSelf: 'stretch',
   },
   line: {
     fontSize: 13,

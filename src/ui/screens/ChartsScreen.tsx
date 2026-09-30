@@ -12,6 +12,7 @@ import { DayBars } from '../charts/DayBars.tsx';
 import { LineChart } from '../charts/LineChart.tsx';
 import { MuscleBars } from '../charts/MuscleBars.tsx';
 import { Chip } from '../Chip.tsx';
+import { Combobox } from '../Combobox.tsx';
 import { font, sheet, theme } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
@@ -179,17 +180,13 @@ export function ChartsScreen() {
                 El mejor 1RM estimado de cada día que lo entrenaste. Sale de tus series normales, no
                 de una prueba.
               </Text>
-              <View style={styles.chips}>
-                {data.trends.slice(0, 8).map((item) => (
-                  <Chip
-                    key={item.exerciseId}
-                    label={item.name}
-                    accessibilityLabel={`Ver ${item.name}`}
-                    selected={item.exerciseId === trend?.exerciseId}
-                    onPress={() => setExercise(item.exerciseId)}
-                  />
-                ))}
-              </View>
+              <Combobox
+                options={data.trends.map((item) => ({ id: item.exerciseId, label: item.name }))}
+                value={trend?.exerciseId ?? null}
+                onChange={setExercise}
+                placeholder="Elige un ejercicio"
+                accessibilityLabel="Elegir el ejercicio"
+              />
               {trend ? (
                 <LineChart
                   width={width}

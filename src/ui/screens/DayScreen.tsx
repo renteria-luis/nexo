@@ -2,7 +2,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 
-import { shortDate, todayIso } from '../../core/dates.ts';
+import { addDays, shortDate, todayIso } from '../../core/dates.ts';
 import { scoreText } from '../../core/day-report.ts';
 import { proteinBand } from '../../core/targets.ts';
 import { WEEKLY_SESSION_TARGET } from '../../core/discipline.ts';
@@ -12,13 +12,40 @@ import { fromKg } from '../../core/units.ts';
 import { Card } from '../Card.tsx';
 import { DayTraining } from '../DayTraining.tsx';
 import { FoodLog } from '../FoodLog.tsx';
-import { Star } from '../Star.tsx';
+import { ChevronLeft, ChevronRight, Pencil } from '../icons.ts';
+import { IconButton } from '../IconButton.tsx';
 import { TodayLog } from '../TodayLog.tsx';
-import { font, sheet, shape, theme } from '../theme.ts';
+import { font, sheet, shape } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
 
 const MISSING = '—';
+
+/**
+ * La fecha del dia abierto, con el dia anterior y el siguiente a los lados.
+ *
+ * Por fecha y no por el orden de la lista de registros: al mirar un martes, lo que se
+ * quiere ver despues es el lunes, no "el siguiente por nota".
+ */
+function DayHeader({ date, onGo }: { date: string; onGo: (next: string) => void }) {
+  const today = todayIso();
+  return (
+    <View style={styles.dayHead}>
+      <IconButton
+        icon={ChevronLeft}
+        accessibilityLabel="El día anterior"
+        onPress={() => onGo(addDays(date, -1))}
+      />
+      <Text style={styles.dayTitle}>{shortDate(date)}</Text>
+      <IconButton
+        icon={ChevronRight}
+        accessibilityLabel="El día siguiente"
+        disabled={date >= today}
+        onPress={() => onGo(addDays(date, 1))}
+      />
+    </View>
+  );
+}
 
 /** Un decimal solo cuando lo hay: "17.3/20", pero "22/22". */
 function points(earned: number): string {
@@ -36,9 +63,13 @@ export function DayScreen() {
 
   const { state, loadDay, editDay, addFoodOn, removeFood, openSessionOn, addSetOn, removeSetOn } =
     useAppData();
-  const navigation = useNavigation<{ navigate: (name: string) => void }>();
+  const navigation = useNavigation<{
+    navigate: (name: string) => void;
+    setParams: (params: { date: string }) => void;
+  }>();
   const [detail, setDetail] = useState<DayDetail | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const [writing, setWriting] = useState(false);
 
   const reload = useCallback(() => {
     loadDay(date)
@@ -73,29 +104,22 @@ export function DayScreen() {
   };
 
   return (
-    <Screen title={shortDate(date)}>
+    <Screen
+      header={<DayHeader date={date} onGo={(next) => navigation.setParams({ date: next })} />}
+    >
       {/* La nota primero y en grande: es la pregunta que trae aqui, por que ese
           cuadrito salio de ese color. */}
       <Card tone="accent">
-        <View style={styles.heroRow}>
-          <View style={styles.heroSide}>
-            <Text style={styles.heroEyebrow}>NOTA DEL DÍA</Text>
-            <Text style={styles.heroScore}>
-              {report.score === null ? MISSING : scoreText(report.score)}
-            </Text>
-            <Text style={styles.heroNote}>
-              de 100
-              {report.pointsWithoutData > 0
-                ? ` · ${Math.round(report.pointsWithoutData)} sin anotar`
-                : ' · día completo'}
-            </Text>
-          </View>
-          {/* El numero del dia, que es lo unico que la pegatina puede decir aqui sin
-              repetir la nota que tiene al lado. */}
-          <Star size={70} color={theme.surface} style={styles.star}>
-            <Text style={styles.starValue}>{String(Number(date.slice(8, 10)))}</Text>
-          </Star>
-        </View>
+        <Text style={styles.heroEyebrow}>NOTA DEL DÍA</Text>
+        <Text style={styles.heroScore}>
+          {report.score === null ? MISSING : scoreText(report.score)}
+        </Text>
+        <Text style={styles.heroNote}>
+          de 100
+          {report.pointsWithoutData > 0
+            ? ` · ${Math.round(report.pointsWithoutData)} sin anotar`
+            : ' · día completo'}
+        </Text>
       </Card>
 
       {report.noScore === 'sin-metas' && (
@@ -125,7 +149,7 @@ export function DayScreen() {
       )}
 
       {/* El desglose: que pedia cada cosa, que hiciste y cuantos puntos salieron. */}
-      <Card title="De dónde sale">
+      <Card>
         {report.lines.map((line, index) => (
           <View key={line.id} style={[styles.criterion, index > 0 && styles.ruled]}>
             <View style={styles.criterionText}>
@@ -205,15 +229,24 @@ export function DayScreen() {
         totals={day.nutrition}
         proteinBand={band}
         kcalTarget={day.targets?.kcal ?? null}
-        heading={`Lo que comió el ${shortDate(date)}`}
         onAdd={(entry) => after(addFoodOn(date, entry))}
         onOpenCatalogue={() => navigation.navigate('Alimentos')}
         history={loaded.foodHistory}
         onRemove={(entryId) => after(removeFood(entryId))}
       />
 
-      <Card title="Registro del día">
+      <Card>
+        <View style={styles.cardHead}>
+          <Text style={styles.cardTitle}>Registro del día</Text>
+          <IconButton
+            icon={Pencil}
+            selected={writing}
+            accessibilityLabel={writing ? 'Dejar de escribir' : 'Escribir el registro del día'}
+            onPress={() => setWriting(!writing)}
+          />
+        </View>
         <TodayLog
+          editing={writing}
           key={date}
           log={day.log}
           lastWeight={loaded.lastWeight}
@@ -235,14 +268,32 @@ export function DayScreen() {
 }
 
 const styles = sheet((theme) => ({
-  heroRow: {
+  cardHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 2,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontFamily: font.black,
+    letterSpacing: 0.3,
+    color: theme.text,
+  },
+  dayHead: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
   },
-  heroSide: {
-    flexShrink: 1,
+  dayTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 22,
+    fontFamily: font.display,
+    letterSpacing: -0.5,
+    color: theme.text,
   },
   heroEyebrow: {
     fontSize: 11,
@@ -261,15 +312,6 @@ const styles = sheet((theme) => ({
     fontSize: 12,
     fontFamily: font.bold,
     color: theme.accentInkSoft,
-  },
-  star: {
-    transform: [{ rotate: '-8deg' }],
-  },
-  starValue: {
-    fontSize: 24,
-    fontFamily: font.black,
-    color: theme.text,
-    fontVariant: ['tabular-nums'],
   },
   noticeText: {
     fontSize: 13,

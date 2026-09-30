@@ -165,6 +165,18 @@ use, and either one selects it. A palette is always selected, so turning the act
 switch off does nothing; that is the one place where a switch stands in for a radio, and
 the code says so out loud.
 
+### The pencil, and reading before writing
+
+Three screens carry a **pencil in the card's head row**: the day's log, the open
+exercise, and the day's food. With it off the card is a list you read; with it on the
+buttons appear — the fields, `+ Serie`, `Agregar`, the bins. Reading is what happens
+ninety-nine times out of a hundred, and with every button on screen the day's log was
+half a screen of scrolling to read six numbers.
+
+The same rule turned deletes into `ConfirmButton`: a bin asks in a bubble anchored to
+itself before it does anything, because a stray tap used to remove a set or a meal with
+no way back.
+
 ### The (i), and what it opens
 
 One button for the whole app: a **white circle with an `i`**, 26 pt, ink border, no
@@ -610,6 +622,13 @@ that decides what can be asked of it: a number for what is counted or weighed, t
 chips for what lasts, one switch for a spice. The recipe list sorts itself by what can
 be cooked **now** and says what is missing by name, so the card answers "qué como"
 without a trip to the other screen.
+
+Also done, and the reason most of the screens got shorter (2026-09-30): the date with
+its weekday everywhere (`shortDate`), today's date where the app's name used to be in
+`TopBar`, the day screen with **arrows to the day before and after**, the deals grouped
+into **folding** sections that start closed, the grid's squares opening a bubble instead
+of a modal and the paper around them opening Registros, one card for the day's food
+instead of three, and an exercise search box in place of the list of chips.
 
 The app icon is last, and it is his call.
 

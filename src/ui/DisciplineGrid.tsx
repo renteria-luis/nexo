@@ -52,7 +52,8 @@ export const DisciplineGrid = memo(function DisciplineGrid({
   onOpenDay,
 }: {
   weeks: GridWeek[];
-  onOpenDay?: (date: string) => void;
+  /** Donde se toco, para colgar el globito del dedo y no de la cartilla. */
+  onOpenDay?: (date: string, at: { x: number; y: number; width: number; height: number }) => void;
 }) {
   const today = todayIso();
 
@@ -72,7 +73,14 @@ export const DisciplineGrid = memo(function DisciplineGrid({
             <Pressable
               key={cell.date}
               accessibilityLabel={`Ver el ${cell.date}`}
-              onPress={() => onOpenDay?.(cell.date)}
+              onPress={(event) =>
+                onOpenDay?.(cell.date, {
+                  x: event.nativeEvent.pageX - 6,
+                  y: event.nativeEvent.pageY - 6,
+                  width: 12,
+                  height: 12,
+                })
+              }
               style={styles.touch}
             >
               <ScoreCell color={cell.color} fill={cell.fill} today={cell.date === today} />

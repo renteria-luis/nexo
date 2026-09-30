@@ -8,9 +8,8 @@ import { useAppData } from '../../shell/AppData.tsx';
 import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
 import { Chip } from '../Chip.tsx';
-import { IconButton } from '../IconButton.tsx';
 import { Plus, Trash } from '../icons.ts';
-import { InfoDot, InfoText } from '../InfoBubble.tsx';
+import { ConfirmButton, InfoDot, InfoText } from '../InfoBubble.tsx';
 import { NumericField } from '../NumericField.tsx';
 import { PantryForm } from '../PantryForm.tsx';
 import { Toggle } from '../Toggle.tsx';
@@ -129,11 +128,11 @@ export function PantryScreen() {
                             </InfoText>
                           </InfoDot>
                         )}
-                        <IconButton
+                        <ConfirmButton
                           icon={Trash}
-                          tone="danger"
+                          question={`¿Quitar ${item.name} de la despensa?`}
                           accessibilityLabel={`Quitar ${item.name}`}
-                          onPress={() => {
+                          onConfirm={() => {
                             setItems((before) =>
                               (before ?? []).filter((one) => one.id !== item.id),
                             );

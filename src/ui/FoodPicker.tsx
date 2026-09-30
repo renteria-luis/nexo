@@ -120,6 +120,17 @@ export function FoodPicker({
     />
   );
 
+  // Con algo elegido, la lista entera sobra: lo que sigue es la cantidad, que esta
+  // justo debajo. Y volver a tocarlo lo suelta, que es como se deshace un toque.
+  const chosen = selectedId === null ? null : foods.find((food) => food.id === selectedId);
+  if (chosen) {
+    return (
+      <View style={styles.picker}>
+        <Row food={chosen} selected onSelect={() => onSelect(chosen)} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.picker}>
       <View style={styles.searchRow}>

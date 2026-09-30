@@ -59,15 +59,91 @@ export type TodayLogProps = {
   waterTargetMl: number | null;
   /** El ultimo peso anotado, que se sigue mostrando los dias que no se pesa. */
   lastWeight: LastWeight | null;
+  /** Con el lapiz apagado solo se lee, que es lo que hace el resto del dia. */
+  editing: boolean;
   onLog: (entry: Omit<DailyLogEntry, 'date'>) => void;
 };
+
+/**
+ * Lo mismo en una linea por dato: icono, nombre y lo que hay.
+ *
+ * Es lo que se mira noventa y nueve veces de cada cien; escribir es lo raro. Con todos
+ * los botones puestos, leer el dia entero era media pantalla de deslizar.
+ */
+function Summary({
+  log,
+  waterTargetMl,
+  lastWeight,
+}: Pick<TodayLogProps, 'log' | 'waterTargetMl' | 'lastWeight'>) {
+  const weightKg = log?.weight_kg ?? lastWeight?.kg ?? null;
+  const rows: { icon: LucideIcon; label: string; value: string }[] = [
+    {
+      icon: Droplets,
+      label: 'Agua',
+      value: `${((log?.water_ml ?? 0) / 1000).toFixed(2)} L${
+        waterTargetMl === null ? '' : ` de ${(waterTargetMl / 1000).toFixed(1)} L`
+      }`,
+    },
+    {
+      icon: Pill,
+      label: 'Creatina',
+      value:
+        log?.creatine_taken == null ? 'sin anotar' : log.creatine_taken === 1 ? 'tomada' : 'no',
+    },
+    {
+      icon: Scale,
+      label: 'Peso',
+      value:
+        weightKg === null
+          ? 'sin anotar'
+          : `${weightKg} kg${log?.weight_kg == null ? ' (del último día)' : ''}`,
+    },
+    {
+      icon: Moon,
+      label: 'Sueño',
+      value:
+        log?.sleep_minutes == null
+          ? 'sin anotar'
+          : `${Math.floor(log.sleep_minutes / 60)} h ${log.sleep_minutes % 60} min`,
+    },
+    {
+      icon: Footprints,
+      label: 'Pasos',
+      value: log?.steps == null ? 'sin anotar' : String(log.steps),
+    },
+    {
+      icon: Wine,
+      label: 'Alcohol',
+      value: log?.alcohol_drinks == null ? 'sin anotar' : `${log.alcohol_drinks} tragos`,
+    },
+  ];
+
+  return (
+    <View style={styles.wrapper}>
+      {rows.map((row) => (
+        <View key={row.label} style={styles.line}>
+          <row.icon size={15} color={theme.textDim} strokeWidth={2.5} />
+          <Text style={styles.lineLabel}>{row.label}:</Text>
+          <Text style={styles.lineValue}>{row.value}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 /** Solo el numero del dia: el mes ya esta en la cabecera de la pantalla. */
 function dayOfMonth(date: string): string {
   return String(Number(date.slice(8, 10)));
 }
 
-export function TodayLog({ log, containers, waterTargetMl, lastWeight, onLog }: TodayLogProps) {
+export function TodayLog({
+  log,
+  containers,
+  waterTargetMl,
+  lastWeight,
+  editing,
+  onLog,
+}: TodayLogProps) {
   // Dos casillas porque asi lo dice en voz alta: siete y media, o ciento treinta
   // minutos. Cualquiera de las dos sola vale, y 7.5 en horas tambien.
   const slept = log?.sleep_minutes ?? null;
@@ -96,6 +172,10 @@ export function TodayLog({ log, containers, waterTargetMl, lastWeight, onLog }: 
 
   const waterMl = log?.water_ml ?? 0;
   const drinks = log?.alcohol_drinks ?? 0;
+
+  if (!editing) {
+    return <Summary log={log} waterTargetMl={waterTargetMl} lastWeight={lastWeight} />;
+  }
 
   return (
     <View style={styles.wrapper}>
@@ -242,6 +322,23 @@ export function TodayLog({ log, containers, waterTargetMl, lastWeight, onLog }: 
 const styles = sheet((theme) => ({
   wrapper: {
     alignSelf: 'stretch',
+  },
+  line: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 5,
+  },
+  lineLabel: {
+    fontSize: 14,
+    fontFamily: font.bold,
+    color: theme.textDim,
+  },
+  lineValue: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: font.black,
+    color: theme.text,
   },
   field: {
     gap: 7,

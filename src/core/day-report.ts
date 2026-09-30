@@ -147,7 +147,7 @@ function lines(input: ReportInput): CriterionLine[] {
       weight: CRITERION_WEIGHTS.protein,
       earned: earned('protein'),
       value: nutrition === null ? MISSING : `${Math.round(nutrition.proteinG)} g`,
-      target: protein === null ? MISSING : `${protein.from} a ${protein.to} g`,
+      target: protein === null ? MISSING : `${protein.from} g o más`,
     },
     {
       id: 'calories',

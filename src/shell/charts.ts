@@ -61,8 +61,9 @@ export type ChartsData = {
   proteinBand: Band | null;
   kcalBand: Band | null;
   /**
-   * Las dos son bandas con suelo y sin techo de verdad: dormir de mas o caminar de mas
-   * no esta fuera de sitio, asi que el techo es el mejor dia, solo para pintar la zona.
+   * Las tres con la de proteina son bandas con suelo y sin techo de verdad: dormir,
+   * caminar o comer proteina de mas no esta fuera de sitio, asi que el techo es el mejor
+   * dia, solo para pintar la zona.
    */
   sleepBand: Band | null;
   stepsBand: Band | null;
@@ -210,7 +211,9 @@ export async function loadCharts(
       ? floorBand(Math.min(targets.sleepMinutes, SLEEP_FULL_MINUTES), sleep)
       : null,
     stepsBand: targets ? floorBand(targets.steps, steps) : null,
-    proteinBand: targets ? proteinBand(targets) : null,
+    // Con suelo y sin techo, como el sueno y los pasos: comerse 180 g de proteina no
+    // esta fuera de sitio, y una banda cerrada lo pintaba como si lo estuviera.
+    proteinBand: targets ? floorBand(proteinBand(targets).from, protein) : null,
     kcalBand: targets
       ? { from: Math.round(kcalBand(targets).from), to: Math.round(kcalBand(targets).to) }
       : null,

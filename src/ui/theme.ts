@@ -90,24 +90,33 @@ export const shape = {
 } as const;
 
 /**
- * Lo que se encogieron todas las sombras el 2026-09-30, a peticion suya: el relieve
- * seguia diciendo lo mismo con menos grosor. Se aplica aqui y no en cada sitio para que
- * la sombra y el hundir al presionar no se puedan separar nunca.
+ * Lo que se encogieron las sombras el 2026-09-30, a peticion suya: el relieve seguia
+ * diciendo lo mismo mucho mas fino. Los botones conservan algo mas que el resto porque
+ * ahi la sombra es lo que dice "esto se aprieta", y en una cartilla solo es el papel.
+ *
+ * Se aplica aqui y en ningun otro sitio para que la sombra y lo que se hunde un boton al
+ * presionarlo no se puedan separar nunca.
  */
-const SHRINK = 0.6;
+const SHRINK = { paper: 0.3, button: 0.4 } as const;
 
-function shift(offset: number): number {
-  return Math.round(offset * SHRINK * 2) / 2;
+export type Relief = keyof typeof SHRINK;
+
+function shift(offset: number, relief: Relief): number {
+  return Math.round(offset * SHRINK[relief] * 10) / 10;
 }
 
 /**
  * La sombra dura del neobrutalismo: sin difuminar y opaca del todo, para que se lea
  * como un recorte de papel y no como una sombra de verdad.
  */
-export function hardShadow(palette: Palette, offset: number = shape.shadowOffset) {
+export function hardShadow(
+  palette: Palette,
+  offset: number = shape.shadowOffset,
+  relief: Relief = 'paper',
+) {
   return {
     shadowColor: palette.shadow,
-    shadowOffset: { width: shift(offset), height: shift(offset) },
+    shadowOffset: { width: shift(offset, relief), height: shift(offset, relief) },
     shadowOpacity: 1,
     shadowRadius: 0,
     // Android no tiene sombras sin difuminar, asi que alli se cae con elegancia a
@@ -117,9 +126,9 @@ export function hardShadow(palette: Palette, offset: number = shape.shadowOffset
 }
 
 /** Lo que se mueve un elemento al presionarlo, que es justo lo que mide su sombra. */
-export function pressed(offset: number = shape.shadowOffset) {
+export function pressed(offset: number = shape.shadowOffset, relief: Relief = 'button') {
   return {
-    transform: [{ translateX: shift(offset) }, { translateY: shift(offset) }],
+    transform: [{ translateX: shift(offset, relief) }, { translateY: shift(offset, relief) }],
     shadowOpacity: 0,
   };
 }

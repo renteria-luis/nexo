@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { shortDate } from '../core/dates.ts';
 import { hoursAndMinutes, litres, scoreText, thousands } from '../core/day-report.ts';
@@ -7,7 +7,7 @@ import { fromKg, type WeightUnit } from '../core/units.ts';
 import type { DayDetail } from '../shell/records.ts';
 
 import { Button } from './Button.tsx';
-import { font, hardShadow, sheet, shape } from './theme.ts';
+import { font, sheet } from './theme.ts';
 
 const MISSING = '—';
 
@@ -15,7 +15,6 @@ export type DayDialogProps = {
   date: string;
   unit: WeightUnit;
   load: (date: string) => Promise<DayDetail>;
-  onClose: () => void;
   onOpenDetail: () => void;
 };
 
@@ -23,8 +22,12 @@ export type DayDialogProps = {
  * El vistazo rapido de un dia: la nota, si entreno y lo que comio. Lo que no cabe
  * aqui vive un toque mas adentro, para que tocar un cuadrito no sea abrir una
  * pantalla entera cuando solo querias acordarte de que pasó ese martes.
+ *
+ * Va dentro del globito de `InfoBubble`, colgado del cuadrito que se toco (2026-09-30).
+ * Era un modal a pantalla completa, que para cinco renglones tapaba la cuadricula
+ * entera y obligaba a cerrarlo para mirar el siguiente dia.
  */
-export function DayDialog({ date, unit, load, onClose, onOpenDetail }: DayDialogProps) {
+export function DayDialog({ date, unit, load, onOpenDetail }: DayDialogProps) {
   const [detail, setDetail] = useState<DayDetail | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -74,72 +77,53 @@ export function DayDialog({ date, unit, load, onClose, onOpenDetail }: DayDialog
   ];
 
   return (
-    <Modal transparent animationType="fade" visible onRequestClose={onClose}>
-      <Pressable accessibilityLabel="Cerrar" onPress={onClose} style={styles.backdrop}>
-        {/* El toque de dentro no cierra: solo el de fuera. */}
-        <Pressable style={styles.card} onPress={() => undefined}>
-          <View style={styles.head}>
-            <Text style={styles.date}>{shortDate(date)}</Text>
-            <Text style={styles.score}>
-              {report?.score == null ? MISSING : scoreText(report.score)}
-            </Text>
-          </View>
+    <View style={styles.card}>
+      <View style={styles.head}>
+        <Text style={styles.date}>{shortDate(date)}</Text>
+        <Text style={styles.score}>
+          {report?.score == null ? MISSING : scoreText(report.score)}
+        </Text>
+      </View>
 
-          {report?.noScore === 'sin-metas' && (
-            <Text style={styles.why}>Sin nota: faltan tus metas en Ajustes.</Text>
-          )}
-          {report?.noScore === 'pocos-datos' && (
-            <Text style={styles.why}>Sin nota: no anotaste nada ese día.</Text>
-          )}
-          {/* La nota es sobre cien, asi que un dia a medio anotar y un dia malo dan
+      {report?.noScore === 'sin-metas' && (
+        <Text style={styles.why}>Sin nota: faltan tus metas en Ajustes.</Text>
+      )}
+      {report?.noScore === 'pocos-datos' && (
+        <Text style={styles.why}>Sin nota: no anotaste nada ese día.</Text>
+      )}
+      {/* La nota es sobre cien, asi que un dia a medio anotar y un dia malo dan
               parecido. Esta linea es la que los separa. */}
-          {report !== null && report.score !== null && report.pointsWithoutData > 0 && (
-            <Text style={styles.why}>
-              {Math.round(report.pointsWithoutData)} puntos sin anotar de los 100 del día.
-            </Text>
-          )}
+      {report !== null && report.score !== null && report.pointsWithoutData > 0 && (
+        <Text style={styles.why}>
+          {Math.round(report.pointsWithoutData)} puntos sin anotar de los 100 del día.
+        </Text>
+      )}
 
-          {rows.map((row) => (
-            <View key={row.label} style={styles.row}>
-              <Text style={styles.rowLabel}>{row.label}</Text>
-              <Text style={styles.rowValue}>{row.value}</Text>
-            </View>
-          ))}
+      {rows.map((row) => (
+        <View key={row.label} style={styles.row}>
+          <Text style={styles.rowLabel}>{row.label}</Text>
+          <Text style={styles.rowValue}>{row.value}</Text>
+        </View>
+      ))}
 
-          {problem && <Text style={styles.problem}>{problem}</Text>}
+      {problem && <Text style={styles.problem}>{problem}</Text>}
 
-          <View style={styles.buttons}>
-            <Button label="Cerrar" accessibilityLabel="Cerrar" variant="ghost" onPress={onClose} />
-            <Button
-              label="Ver detalles"
-              accessibilityLabel="Ver detalles del día"
-              variant="primary"
-              onPress={onOpenDetail}
-            />
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+      <View style={styles.buttons}>
+        <Button
+          label="Ver el día"
+          accessibilityLabel="Ver detalles del día"
+          variant="primary"
+          onPress={onOpenDetail}
+        />
+      </View>
+    </View>
   );
 }
 
 const styles = sheet((theme) => ({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.72)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
   card: {
     alignSelf: 'stretch',
-    backgroundColor: theme.surface,
-    borderWidth: shape.border,
-    borderColor: theme.line,
-    borderRadius: shape.radius,
-    padding: 16,
     gap: 8,
-    ...hardShadow(theme),
   },
   head: {
     flexDirection: 'row',

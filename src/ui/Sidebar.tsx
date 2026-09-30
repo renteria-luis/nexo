@@ -183,6 +183,23 @@ export function SidebarProvider({
 
   const api = useMemo(() => ({ open, close, isOpen: shown }), [open, close, shown]);
 
+  // Arrastrar desde el borde izquierdo lo abre, que es el gesto que ya tiene en la mano
+  // cualquiera que haya usado un menu de estos. Se toma en la fase de captura y solo
+  // cuando el dedo empieza pegado al borde y se va a la derecha: asi un toque normal
+  // sigue llegando a lo que haya debajo, y el carrusel de pestanas conserva el suyo.
+  const edge = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponderCapture: (_event, gesture) =>
+          !shown &&
+          gesture.x0 < 24 &&
+          gesture.dx > 12 &&
+          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
+        onPanResponderGrant: () => open(),
+      }),
+    [open, shown],
+  );
+
   // Deslizar el panel hacia la izquierda lo cierra, que es el gesto que ya espera
   // cualquiera que haya abierto uno de estos.
   const drag = useMemo(() => {
@@ -297,7 +314,9 @@ export function SidebarProvider({
 
   return (
     <Context.Provider value={api}>
-      {children}
+      <View style={styles.app} {...edge.panHandlers}>
+        {children}
+      </View>
       {shown && (
         <View style={StyleSheet.absoluteFill}>
           <Animated.View style={[styles.scrim, { opacity: slide }]}>
@@ -347,6 +366,9 @@ function Row({
 }
 
 const styles = sheet((theme) => ({
+  app: {
+    flex: 1,
+  },
   scrim: {
     position: 'absolute',
     top: 0,

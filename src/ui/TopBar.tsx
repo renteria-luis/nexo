@@ -1,5 +1,8 @@
+import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { longDate, todayIso } from '../core/dates.ts';
 
 import { Check, Menu, Settings } from './icons.ts';
 import { IconButton } from './IconButton.tsx';
@@ -15,34 +18,44 @@ import { font, hardShadow, pressed as pressedInto, sheet, shape, theme } from '.
  * principal se queda encima del carrusel, asi que no se mueve mientras las paginas se
  * deslizan por debajo.
  *
- * El nombre va en una pegatina amarilla plana, porque no se toca. A su izquierda, las
- * tres rayas que abren el menu lateral, que es donde vive todo lo que no cabe en la
- * barra de abajo. El boton de la derecha es lo unico con relieve ademas de ese: entrar
- * a Ajustes desde la pantalla principal, o cerrar la pantalla apilada y volver. No lleva titulo a proposito, porque el titulo
- * grande ya esta dentro de la pantalla y decirlo dos veces es ruido.
+ * Donde estaba el nombre de la app va la fecha de hoy (2026-09-30): el nombre lo sabe,
+ * y que dia es lo mira. En un dia suelto no va nada, porque ahi la fecha que importa es
+ * la del dia que esta mirando y esa la dice la pantalla.
+ *
+ * A la izquierda, las tres rayas que abren el menu lateral, que es donde vive todo lo
+ * que no cabe en la barra de abajo y donde si se queda el nombre de la app. El boton de
+ * la derecha es lo unico con relieve ademas de ese: entrar a Ajustes desde la pantalla
+ * principal, o cerrar la pantalla apilada y volver. No lleva titulo a proposito, porque
+ * el titulo grande ya esta dentro de la pantalla y decirlo dos veces es ruido.
  *
  * La raya de abajo la dibuja la barra y no el contenido: en el borde de una lista que
  * se desplaza, la raya se va con ella en cuanto se desliza, y lo que separa la barra
  * del papel desaparecia a mitad de la pantalla.
  */
+/** Fuera del render: leer el reloj dentro de un componente lo hace impuro. */
+function todayLabel(): string {
+  return longDate(todayIso());
+}
+
 export function TopBar({
   action,
   onPress,
   onMenu,
+  showDate = true,
 }: {
   action: 'settings' | 'done';
   onPress: () => void;
   onMenu: () => void;
+  showDate?: boolean;
 }) {
   const insets = useSafeAreaInsets();
+  const [today] = useState(todayLabel);
 
   return (
     <View style={[styles.bar, { paddingTop: insets.top + 6 }]}>
       <View style={styles.left}>
         <IconButton icon={Menu} accessibilityLabel="Abrir el menu" onPress={onMenu} />
-        <View style={styles.brand}>
-          <Text style={styles.brandText}>nexo</Text>
-        </View>
+        {showDate && <Text style={styles.today}>{today}</Text>}
       </View>
 
       {action === 'done' ? (
@@ -75,24 +88,16 @@ const styles = sheet((theme) => ({
     borderBottomColor: theme.line,
   },
   left: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  brand: {
-    backgroundColor: theme.accent,
-    borderWidth: shape.border,
-    borderColor: theme.line,
-    borderRadius: shape.radiusSmall,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
-  brandText: {
-    fontSize: 20,
-    lineHeight: 26,
-    fontFamily: font.display,
-    letterSpacing: -0.5,
-    color: theme.accentInk,
+  today: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: font.black,
+    color: theme.text,
   },
   action: {
     flexDirection: 'row',

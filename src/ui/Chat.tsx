@@ -116,10 +116,12 @@ export function Chat({ onClose }: { onClose: () => void }) {
       }
 
       case 'weight': {
-        const kg = toKg(command.value, loaded.unit);
-        if (today) logDay({ weightKg: kg });
-        else await editDay(date, { weightKg: kg });
-        return `Peso de ${when}: ${command.value} ${loaded.unit}`;
+        // Su peso siempre en kilos (decision suya, 2026-09-30): el ajuste de libras es
+        // para los discos del gimnasio, y el numero que escribe de si mismo lo piensa
+        // en kilos pase lo que pase ahi.
+        if (today) logDay({ weightKg: command.value });
+        else await editDay(date, { weightKg: command.value });
+        return `Peso de ${when}: ${command.value} kg`;
       }
 
       case 'steps':

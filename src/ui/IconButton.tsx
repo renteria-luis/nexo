@@ -65,7 +65,7 @@ const styles = sheet((theme) => ({
     borderRadius: shape.radiusSmall,
     alignItems: 'center',
     justifyContent: 'center',
-    ...hardShadow(theme, 3),
+    ...hardShadow(theme, 3, 'button'),
   },
   paper: {
     backgroundColor: theme.surface,

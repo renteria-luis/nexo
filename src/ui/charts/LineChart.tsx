@@ -86,7 +86,7 @@ export function LineChart({
           x2={width}
           y2={HEIGHT - 1}
           stroke={theme.line}
-          strokeWidth={2}
+          strokeWidth={1.2}
         />
         {series.map((line, index) => (
           <Path
@@ -95,7 +95,7 @@ export function LineChart({
               .map((point, i) => `${i === 0 ? 'M' : 'L'} ${x(point.date)} ${y(point.value)}`)
               .join(' ')}
             stroke={line.color}
-            strokeWidth={3}
+            strokeWidth={2.4}
             strokeLinecap="round"
             strokeLinejoin="round"
             fill="none"
@@ -112,7 +112,7 @@ export function LineChart({
                 r={3.5}
                 fill={line.color}
                 stroke={theme.line}
-                strokeWidth={1.5}
+                strokeWidth={1.2}
               />
             )),
           )}

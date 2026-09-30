@@ -9,6 +9,7 @@ import type { CatalogExercise } from '../training/queries.ts';
 import { Button } from './Button.tsx';
 import { Chip } from './Chip.tsx';
 import { IconButton } from './IconButton.tsx';
+import { ConfirmButton } from './InfoBubble.tsx';
 import { Check, Plus, Trash } from './icons.ts';
 import { NumericField } from './NumericField.tsx';
 import { font, sheet, shape } from './theme.ts';
@@ -151,11 +152,11 @@ export function DayTraining({
                 {set.setIndex}. {formatWeight(set.weightKg, unit)} {unit}
                 {exercise.perSide ? ' c/u' : ''} × {set.reps}
               </Text>
-              <IconButton
+              <ConfirmButton
                 icon={Trash}
-                tone="danger"
+                question={`¿Quitar la serie ${set.setIndex} de ${exercise.name}?`}
                 accessibilityLabel={`Quitar la serie ${set.setIndex} de ${exercise.name}`}
-                onPress={() => onRemoveSet(exercise.exerciseId, set.setIndex)}
+                onConfirm={() => onRemoveSet(exercise.exerciseId, set.setIndex)}
               />
             </View>
           ))}
