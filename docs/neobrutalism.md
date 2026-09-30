@@ -102,8 +102,9 @@ Rules that keep it readable:
 | `Screen` | `src/ui/screens/Screen.tsx` | the frame: scroll, title, database states, overlay slot (`onOverlayDismiss` makes the scrim close it) |
 | `TopBar` | `src/ui/TopBar.tsx` | the app's own header on every screen: the three lines that open the menu, the wordmark, and Ajustes or the done check |
 | `Sidebar` | `src/ui/Sidebar.tsx` | the side menu: every screen the app has, grouped. `useSidebar().open()` from anywhere |
+| `Assistant` | `src/ui/Assistant.tsx` | the floating ball and the chat window that travels with it |
 | `TabBar` | `src/ui/TabBar.tsx` | the app's own floating bottom bar, with the yellow block that slides to the open tab |
-| `CommandBar` | `src/ui/CommandBar.tsx` | the typed shortcut, already restyled |
+| `Chat` | `src/ui/Chat.tsx` | the assistant's chat, opened by `Assistant` / `Pet` |
 | `KeyboardBar` | `src/ui/KeyboardBar.tsx` | our bar on top of the system keyboard, with `listo` |
 | `TextField` | `src/ui/TextField.tsx` | any text that is typed. Never a bare `TextInput`, or it loses the bar and the lift |
 | `NumericField` | `src/ui/NumericField.tsx` | any number that is typed |
@@ -187,6 +188,54 @@ is height, and height does not go through the native driver.
 It lives **outside** `NavigationContainer`, above the tab bar and the header, and
 navigates through the container ref: a tab is not a screen of the stack, so an entry
 marked `tab: true` asks the stack for `nexo` with the tab as its `screen` param.
+
+### The floating ball
+
+`Pet` is the assistant's future body and for now only a ball: 56 pt so a thumb hits it
+without aiming, `accent` with the 2 px ink border and a 3 pt shadow, at 80 % opacity so
+it never quite hides what is under it, and fully opaque while it is held.
+
+It rests against a side, is dragged anywhere, and on release **keeps going**: the throw
+lands where the finger's velocity says it would, then the ball settles into the nearest
+side. All of it is one native-driven `Animated.spring`. `Animated.decay` would be the
+obvious tool and is the wrong one here: it stops wherever friction runs out, and a
+native-driven value cannot be read back from JavaScript, so knowing where it stopped
+would cost a listener firing every frame. Predicting the landing spot and springing to
+it feels the same and keeps the final position known.
+
+Its floor is `tabBarSpace()`, so it never parks on top of the bottom bar. A tap opens
+the chat, and a tap is a release that moved less than 6 pt, because a finger never holds
+perfectly still.
+
+### The chat
+
+`Chat` is a **window** over a dark scrim, not a screen: at most 360 x 460 pt, resting
+on the bottom edge where the ball lives, so what he was reading stays visible around it.
+The assistant is reachable from wherever he is and going to it should not lose his
+place. What he says is an `accent`
+bubble on the right, what the app answers is a paper one on the left, both with the ink
+border and a 3 pt shadow, which is the reference's message list in this style.
+
+The bubbles carry a 1.5 px border and no shadow. The hard shadow means "this can be
+pressed", and one per message turned the conversation into a column of buttons; the
+window keeps its own, because the window is the paper.
+
+**The ball and the window are one object.** Opening the chat sends the ball to the
+window's nearest top corner, and from there the window is drawn displaced by exactly
+how far the ball has strayed from that corner (`Animated.subtract`), so dragging the
+ball carries the window with it and closing sends the ball to the nearest side from
+wherever it ended up. There is one animated value for the pair and one spring that moves
+it, which is what fixed the earlier jam: the window used to stay put while the ball was
+sprung back to a fixed corner against the finger.
+
+The window does not resize for the keyboard either; the pair rises, which is the same
+one spring, so `KEYBOARD_ROOM` is reserved when its height is chosen.
+
+Its header carries three buttons: a new chat, the list of old ones, and close.
+`Assistant` owns where the window sits and how it moves; `Chat` owns only the
+conversation.
+
+It replaced `CommandBar`, which did the same parsing inside a card on Hoy.
 
 ## 6. Icons
 
@@ -436,7 +485,7 @@ palette while the light one is not finished.
 ## 11. Where the redesign stands
 
 Done: `theme.ts` (one light palette), `Button` (with `loading`), `Card`, `Chip`,
-`Toggle`, `Star`, `Screen`, `CommandBar`, `NumericField` styling,
+`Toggle`, `Star`, `Screen`, `NumericField` styling,
 `DisciplineGrid`, the three charts, `TargetsCard`, `PalettePicker`, `TodayLog`,
 `DayDialog`, the Ajustes controls, and the **Hoy** screen.
 
@@ -525,6 +574,13 @@ Ofertas and Finanzas left the bottom bar and the screens reached only from a car
 Ajustes stopped being hidden: the menu lists the fourteen places the app has, grouped by
 what he is doing when he wants them. The three lines that open it are in `TopBar`, so
 they are on every screen.
+
+Also done: **el asistente** (`Assistant` = `Pet` + `Chat`). It understands what the
+command bar understood and one thing more, the day: "25 set pasos 5000" writes to the
+25th. Anything that is not today is asked first, with what that day already says, and
+the conversation is kept in SQLite (migration 047) so old chats can be reopened. The
+model that understands free sentences is the next piece and lands behind this same
+screen.
 
 The app icon is last, and it is his call.
 

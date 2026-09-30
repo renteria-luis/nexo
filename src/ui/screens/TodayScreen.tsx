@@ -14,7 +14,6 @@ import { fromKg } from '../../core/units.ts';
 
 import { Button } from '../Button.tsx';
 import { Card, type CardTone } from '../Card.tsx';
-import { CommandBar } from '../CommandBar.tsx';
 import { DealAlert } from '../DealAlert.tsx';
 import { DayDialog } from '../DayDialog.tsx';
 import { DisciplineGrid } from '../DisciplineGrid.tsx';
@@ -236,8 +235,6 @@ export function TodayScreen({
           </View>
         </View>
       </Card>
-
-      <CommandBar />
 
       {loaded.readapting && (
         <Card tone="warn">

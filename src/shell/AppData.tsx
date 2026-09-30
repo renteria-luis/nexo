@@ -26,6 +26,15 @@ import {
   type DailyLogEntry,
   type LastWeight,
 } from '../core/daily-log.ts';
+import {
+  appendMessage,
+  lastChat,
+  listChats,
+  readChat,
+  startChat,
+  type ChatMessage,
+  type ChatSummary,
+} from '../core/assistant.ts';
 import { addDays, todayIso, trailingDays, weekStart, type IsoDate } from '../core/dates.ts';
 import type { ScoredDay } from '../core/heatmap.ts';
 import type { PaletteId } from '../core/palettes.ts';
@@ -481,6 +490,15 @@ export type AppData = {
     extra?: { isWarmup?: boolean; rpe?: number | null; restBeforeSeconds?: number | null },
   ) => Promise<void>;
   removeSetOn: (sessionId: string, exerciseId: string, setIndex: number) => Promise<void>;
+  /** Los chats con el asistente, del mas nuevo al mas viejo. */
+  loadChats: () => Promise<ChatSummary[]>;
+  /** El ultimo chat, que es el que se abre al tocar la bola. Null si no hay ninguno. */
+  lastChatId: () => Promise<string | null>;
+  loadChat: (chatId: string) => Promise<ChatMessage[]>;
+  /** Un chat nuevo. Solo se crea cuando hay algo que escribir en el. */
+  openChat: () => Promise<string>;
+  /** Una linea del chat. No recarga nada: lo que se habla no puntua ningun dia. */
+  sayInChat: (chatId: string, role: 'me' | 'app', body: string) => Promise<ChatMessage>;
   /** El volcado completo a un archivo, para respaldo y para entrenar modelos despues. */
   exportData: () => Promise<ExportOutcome>;
   /** Rechaza con el motivo cuando el archivo no sirve, y recarga la app cuando si. */
@@ -635,6 +653,19 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   );
 
   const loadStudies = useCallback(() => openDatabase().then(listStudies), []);
+
+  const loadChats = useCallback(() => openDatabase().then((db) => listChats(db)), []);
+  const lastChatId = useCallback(() => openDatabase().then(lastChat), []);
+  const loadChat = useCallback(
+    (chatId: string) => openDatabase().then((db) => readChat(db, chatId)),
+    [],
+  );
+  const openChat = useCallback(() => openDatabase().then((db) => startChat(db)), []);
+  const sayInChat = useCallback(
+    (chatId: string, role: 'me' | 'app', body: string) =>
+      openDatabase().then((db) => appendMessage(db, chatId, role, body)),
+    [],
+  );
 
   // Lo mismo para el resto de los lectores: la pantalla de graficas, la de registros,
   // la de un dia y la de experimentos cargan dentro de un efecto que depende de esta
@@ -908,6 +939,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         run((db) => consumeBatchPortion(db, batchId, todayIso(), mealSlot), false),
       loadWeek,
       loadStudies,
+      loadChats,
+      lastChatId,
+      loadChat,
+      openChat,
+      sayInChat,
       loadCatalog,
       loadExercise,
       // Editar el catalogo no cambia la nota de ningun dia, pero si lo que la pantalla
@@ -942,6 +978,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       loadPlan,
       loadRecords,
       loadStudies,
+      loadChats,
+      lastChatId,
+      loadChat,
+      openChat,
+      sayInChat,
       loadWeek,
       patch,
       refresh,

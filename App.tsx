@@ -38,6 +38,7 @@ import {
 } from '@expo-google-fonts/nunito';
 
 import { KeyboardBar } from './src/ui/KeyboardBar.tsx';
+import { Assistant } from './src/ui/Assistant.tsx';
 import { SidebarProvider, useSidebar } from './src/ui/Sidebar.tsx';
 import { SwipeLockProvider, useSwipeLock } from './src/ui/SwipeLock.tsx';
 import { FloatingBarSpace, TabBar, tabBarSpace } from './src/ui/TabBar.tsx';
@@ -262,6 +263,8 @@ export default function App() {
         <SwipeLockProvider>
           <SidebarProvider navigation={navigation}>
             <Navigation navigation={navigation} />
+            {/* Encima de todo menos del menu lateral, que si la tapa. */}
+            <Assistant />
           </SidebarProvider>
         </SwipeLockProvider>
         {/* La barra que corona el teclado del sistema, una sola para toda la app. */}

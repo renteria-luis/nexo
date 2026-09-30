@@ -243,6 +243,22 @@ export type NutritionFoodEntryRow = {
   batch_id: string | null;
 };
 
+export type AssistantRole = 'me' | 'app';
+
+/** Una conversacion con el asistente. Migracion 047. */
+export type CoreAssistantChatRow = {
+  id: string;
+  started_at: string;
+};
+
+export type CoreAssistantMessageRow = {
+  id: string;
+  chat_id: string;
+  role: AssistantRole;
+  body: string;
+  created_at: string;
+};
+
 /** Spec 5.12. One topic and at most one criterion each: see migration 014. */
 export type CoreStudyRow = {
   id: string;

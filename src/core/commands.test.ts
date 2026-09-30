@@ -3,14 +3,22 @@ import { test } from 'node:test';
 
 import { parseCommand } from './commands.ts';
 
+const TODAY = '2026-09-28';
+
 function ok(input: string) {
-  const parsed = parseCommand(input);
+  const parsed = parseCommand(input, TODAY);
   assert.ok(parsed.ok, `"${input}" should parse but said: ${parsed.ok ? '' : parsed.reason}`);
   return parsed.command;
 }
 
+function on(input: string) {
+  const parsed = parseCommand(input, TODAY);
+  assert.ok(parsed.ok, `"${input}" should parse but said: ${parsed.ok ? '' : parsed.reason}`);
+  return parsed.date;
+}
+
 function rejected(input: string) {
-  const parsed = parseCommand(input);
+  const parsed = parseCommand(input, TODAY);
   assert.equal(parsed.ok, false, `"${input}" should have been refused`);
   return parsed.ok ? '' : parsed.reason;
 }
@@ -45,4 +53,33 @@ test('a command it does not know writes nothing and says so', () => {
   assert.match(rejected('serie 65x8 rpe22'), /RPE va de 1 a 10/);
   assert.match(rejected('peso -3'), /Cuanto pesas/);
   assert.match(rejected('creatina quiza'), /creatina no/);
+});
+
+test('sin fecha escrita el comando es de hoy', () => {
+  assert.equal(on('agua 710'), TODAY);
+  assert.equal(on('hoy agua 710'), TODAY);
+  assert.equal(on('ayer pasos 8200'), '2026-09-27');
+  assert.equal(on('anteayer pasos 8200'), '2026-09-26');
+});
+
+test('la fecha va donde le salga, delante o detras', () => {
+  assert.equal(on('25 set pasos 5000'), '2026-09-25');
+  assert.equal(on('pasos 5000 25 set'), '2026-09-25');
+  assert.deepEqual(ok('25 set pasos 5000'), { kind: 'steps', steps: 5000 });
+});
+
+test('el anio se adivina y nunca cae en el futuro', () => {
+  assert.equal(on('25 setiembre pasos 5000'), '2026-09-25');
+  assert.equal(on('25 dic pasos 5000'), '2025-12-25');
+  assert.equal(on('25/09 pasos 5000'), '2026-09-25');
+  assert.equal(on('25-09-2025 pasos 5000'), '2025-09-25');
+  assert.equal(on('2025-09-25 pasos 5000'), '2025-09-25');
+});
+
+test('lo que no es una fecha se queda en el comando', () => {
+  assert.equal(on('peso 7.4'), TODAY);
+  assert.deepEqual(ok('peso 7.4'), { kind: 'weight', value: 7.4 });
+  assert.equal(on('serie 65x8'), TODAY);
+  assert.equal(on('creatina no'), TODAY);
+  assert.match(rejected('32 set pasos 5000'), /No conozco "32"/);
 });

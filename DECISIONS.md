@@ -305,3 +305,24 @@ por el ref del contenedor. La barra de abajo se queda con Hoy, Entreno y Comida,
 lo que usa a diario.
 Rejected: `@react-navigation/drawer`, que exige `react-native-reanimated` (la librería
 que tumbó la app el 21 de septiembre), y meter más pestañas abajo, que era el problema.
+
+## 2026-09-28 — El asistente reemplaza la linea de comandos, y pregunta antes de tocar otro dia
+Context: La linea de comandos vivia en una cartilla de Hoy y solo escribia en hoy. El
+quiere hablarle a la bola desde donde este, decirle "25 set pasos 5000", y que lo que se
+habla no se pierda.
+Decision: La bola abre un chat (`src/ui/Chat.tsx`). Entiende los mismos comandos de
+siempre mas la fecha, delante o detras, en las formas que el escribe (`ayer`, `25 set`,
+`25/09`, `2025-09-25`); sin anio se asume el de hoy y, si eso cayera en el futuro, el
+anterior. Escribir en un dia que no es hoy pide confirmacion y dice que hay ahora en ese
+dia. Cada chat se guarda entero en SQLite y abrir uno nuevo no borra el anterior. La
+`CommandBar` se borro: hacia lo mismo en menos sitios.
+Rejected: Dejar las dos (dos caminos para lo mismo que se separan en la siguiente
+version) y escribir en cualquier dia sin preguntar (corregir hoy se ve al momento; pisar
+un martes de hace tres semanas no se nota hasta que la cuadricula cambia de color).
+
+## 2026-09-28 — El peso escrito al asistente se convierte segun su unidad
+Context: La linea de comandos guardaba "peso 74.2" como 74.2 kg aunque el ajuste
+estuviera en libras, mientras que la serie si convertia. Una de las dos estaba mal.
+Decision: El asistente convierte con `toKg` igual que la serie, asi que en libras "peso
+165" guarda 74.8 kg. Si el escribe siempre en kilos no cambia nada.
+Rejected: Copiar el comportamiento anterior tal cual, que guardaba libras como kilos.

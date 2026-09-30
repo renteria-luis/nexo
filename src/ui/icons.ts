@@ -53,6 +53,7 @@ export { default as Plus } from 'lucide-react-native/icons/plus';
 export { default as RotateCcw } from 'lucide-react-native/icons/rotate-ccw';
 export { default as Scale } from 'lucide-react-native/icons/scale';
 export { default as Search } from 'lucide-react-native/icons/search';
+export { default as Send } from 'lucide-react-native/icons/send';
 export { default as Settings } from 'lucide-react-native/icons/settings';
 export { default as Tag } from 'lucide-react-native/icons/tag';
 export { default as Timer } from 'lucide-react-native/icons/timer';

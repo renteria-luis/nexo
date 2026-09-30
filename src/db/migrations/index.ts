@@ -44,6 +44,7 @@ import { sql as exerciseEditing } from './043_exercise_editing.ts';
 import { sql as kinderFoodScores } from './044_kinder_food_scores.ts';
 import { sql as dealGrams } from './045_deal_grams.ts';
 import { sql as dealPack } from './046_deal_pack.ts';
+import { sql as assistantChat } from './047_assistant_chat.ts';
 
 export type Migration = {
   id: string;
@@ -99,4 +100,5 @@ export const migrations: Migration[] = [
   { id: '044_kinder_food_scores', sql: kinderFoodScores },
   { id: '045_deal_grams', sql: dealGrams },
   { id: '046_deal_pack', sql: dealPack },
+  { id: '047_assistant_chat', sql: assistantChat },
 ];
