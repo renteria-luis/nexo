@@ -237,7 +237,11 @@ export function SettingsScreen({
     settings.get('sleep_target_minutes') ?? settingDefault('sleep_target_minutes'),
   );
   const [sleepHours, setSleepHours] = useState(String(Math.floor(storedSleep / 60)));
-  const [sleepMinutes, setSleepMinutes] = useState(String(storedSleep % 60));
+  // En blanco cuando son cero: el 0 lo escribia la app al guardar y el no lo habia
+  // tecleado. Vacio y cero son lo mismo al sumar, y el gris de la casilla lo dice.
+  const [sleepMinutes, setSleepMinutes] = useState(
+    storedSleep % 60 === 0 ? '' : String(storedSleep % 60),
+  );
   const commitSleep = () => {
     const total = (Number(sleepHours) || 0) * 60 + (Number(sleepMinutes) || 0);
     const problem = settingProblem('sleep_target_minutes', String(total));
@@ -303,6 +307,7 @@ export function SettingsScreen({
             <NumericField
               value={sleepMinutes}
               onChange={setSleepMinutes}
+              placeholder="0"
               accessibilityLabel="Minutos de sueño"
               onCommit={commitSleep}
               onFocus={() => setEditing('sleep')}

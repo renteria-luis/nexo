@@ -22,7 +22,8 @@ import { Card } from './Card.tsx';
 import { Chip } from './Chip.tsx';
 import { FoodPicker } from './FoodPicker.tsx';
 import { IconButton } from './IconButton.tsx';
-import { Info, Plus, RotateCcw, Trash, TriangleAlert } from './icons.ts';
+import { InfoDot } from './InfoBubble.tsx';
+import { Plus, RotateCcw, Trash, TriangleAlert } from './icons.ts';
 import { NumericField } from './NumericField.tsx';
 import { PortionMacros } from './PortionMacros.tsx';
 import { Star } from './Star.tsx';
@@ -93,7 +94,6 @@ export function FoodLog({
   });
   const repeatable = history.lastMealBySlot.get(slot) ?? null;
   // Una burbuja abierta a la vez: la de otra porcion se cierra sola.
-  const [openPortion, setOpenPortion] = useState<string | null>(null);
   // La cantidad no sirve sin la unidad y el boton de al lado, asi que lo que se sube
   // por encima del teclado es la fila entera.
   const addRow = useRef<View>(null);
@@ -123,15 +123,8 @@ export function FoodLog({
     // boton o una fila se quedan con el toque antes de llegar aqui.
     <View
       style={styles.wrapper}
-      onStartShouldSetResponder={foodId === null && openPortion === null ? undefined : () => true}
-      onResponderRelease={
-        foodId === null && openPortion === null
-          ? undefined
-          : () => {
-              setFoodId(null);
-              setOpenPortion(null);
-            }
-      }
+      onStartShouldSetResponder={foodId === null ? undefined : () => true}
+      onResponderRelease={foodId === null ? undefined : () => setFoodId(null)}
     >
       {/* Las calorias son el numero grande y la proteina va en la estrella: la meta de
           proteina es la que decide si el dia de comida cuenta, y es la que tiene que
@@ -152,7 +145,9 @@ export function FoodLog({
                 : kcalTarget === null
                   ? 'kcal · sin metas todavía'
                   : `kcal de ${kcalTarget} · ${
-                      left !== null && left >= 0 ? `faltan ${left}` : `${Math.abs(left ?? 0)} de más`
+                      left !== null && left >= 0
+                        ? `faltan ${left}`
+                        : `${Math.abs(left ?? 0)} de más`
                     }`}
             </Text>
           </View>
@@ -232,14 +227,9 @@ export function FoodLog({
           portions.map((portion, index) => (
             <View key={portion.entryId} style={[styles.entry, index > 0 && styles.ruled]}>
               <View style={styles.entryRow}>
-                <IconButton
-                  icon={Info}
-                  accessibilityLabel={`Qué aporta ${portion.food.name}`}
-                  selected={openPortion === portion.entryId}
-                  onPress={() =>
-                    setOpenPortion(openPortion === portion.entryId ? null : portion.entryId)
-                  }
-                />
+                <InfoDot accessibilityLabel={`Qué aporta ${portion.food.name}`}>
+                  <PortionMacros food={portion.food} quantity={portion.quantity} />
+                </InfoDot>
                 <View style={styles.entryText}>
                   <Text style={styles.entryName}>
                     {portionLabel(portion.food, portion.quantity)}
@@ -253,9 +243,6 @@ export function FoodLog({
                   onPress={() => onRemove(portion.entryId)}
                 />
               </View>
-              {openPortion === portion.entryId && (
-                <PortionMacros food={portion.food} quantity={portion.quantity} />
-              )}
             </View>
           ))
         )}

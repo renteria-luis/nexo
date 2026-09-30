@@ -3,7 +3,7 @@ import { Text, View } from 'react-native';
 import type { NutritionFoodRow } from '../db/types.ts';
 import { referenceAmount, roundAmount, unitLabel } from '../nutrition/index.ts';
 
-import { font, sheet, shape } from './theme.ts';
+import { font, sheet } from './theme.ts';
 
 /**
  * Lo que aporta una porcion, sin repetir el nombre del alimento.
@@ -11,6 +11,9 @@ import { font, sheet, shape } from './theme.ts';
  * Dos numeros por fila: lo que dice la ficha y, entre parentesis, lo que suman los
  * que se comio. Asi la misma burbuja responde "cuanto trae uno" y "cuanto me meti",
  * que son las dos preguntas y hasta ahora habia que hacer la cuenta a mano.
+ *
+ * Sin borde ni fondo propios: esto va dentro del globo de la (i) (`InfoBubble`), que ya
+ * los pone.
  */
 export type PortionMacrosProps = {
   food: NutritionFoodRow;
@@ -26,8 +29,7 @@ type Row = {
 
 export function PortionMacros({ food, quantity }: PortionMacrosProps) {
   const per = referenceAmount(food);
-  const reference =
-    food.unit_kind === 'count' ? `1 ${food.base_unit}` : `${per} ${food.base_unit}`;
+  const reference = food.unit_kind === 'count' ? `1 ${food.base_unit}` : `${per} ${food.base_unit}`;
 
   const rows: Row[] = [
     { label: 'kcal', perUnit: food.kcal, unit: '' },
@@ -63,12 +65,6 @@ export function PortionMacros({ food, quantity }: PortionMacrosProps) {
 
 const styles = sheet((theme) => ({
   bubble: {
-    borderWidth: shape.border,
-    borderColor: theme.line,
-    borderRadius: shape.radiusSmall,
-    backgroundColor: theme.bg,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
     gap: 3,
     alignSelf: 'stretch',
   },

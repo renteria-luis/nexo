@@ -37,6 +37,7 @@ import {
   useFonts,
 } from '@expo-google-fonts/nunito';
 
+import { InfoProvider } from './src/ui/InfoBubble.tsx';
 import { KeyboardBar } from './src/ui/KeyboardBar.tsx';
 import { Assistant } from './src/ui/Assistant.tsx';
 import { SidebarProvider, useSidebar } from './src/ui/Sidebar.tsx';
@@ -262,7 +263,11 @@ export default function App() {
       <AppDataProvider>
         <SwipeLockProvider>
           <SidebarProvider navigation={navigation}>
-            <Navigation navigation={navigation} />
+            {/* El globito de la (i) se dibuja aqui para que no lo recorte la lista
+                dentro de la que vive el boton que lo abre. */}
+            <InfoProvider>
+              <Navigation navigation={navigation} />
+            </InfoProvider>
             {/* Encima de todo menos del menu lateral, que si la tapa. */}
             <Assistant />
           </SidebarProvider>

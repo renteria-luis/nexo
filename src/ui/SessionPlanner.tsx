@@ -334,6 +334,10 @@ export type SessionPlannerProps = {
 };
 
 /**
+ * El gimnasio es obligatorio desde que existe "Otro" (migracion 048): antes no se podia
+ * decir la verdad cuando estaba en otro sitio, y una sesion sin gimnasio deja sin
+ * explicacion los pesos que no cuadran con los de siempre.
+ *
  * Spec 8.5: gym and routine first, then the time he has, then the trimmed plan for
  * approval. Spec 8.3 rule 7 is the reason this screen exists at all: the trim is
  * never applied behind his back. The gym step waits for the geofence (spec 5.2).
@@ -413,7 +417,7 @@ export function SessionPlanner({
   return (
     <View style={styles.wrapper}>
       <Card title="Entreno de hoy">
-        <Field label="Dónde" icon={MapPin} first>
+        <Field label="Dónde *" icon={MapPin} first>
           <View style={styles.chips}>
             {gyms.map((gym) => (
               <Chip
@@ -442,7 +446,7 @@ export function SessionPlanner({
                         `${outcome.fix.gym.name}, a ${Math.round(outcome.fix.distanceM)} m`,
                       );
                     } else if (outcome.kind === 'elsewhere') {
-                      setWhereNote('No estás en ninguno de los dos');
+                      setWhereNote('No estás en ninguno de los dos: marca Otro');
                     } else {
                       setWhereNote('Sin permiso de ubicación');
                     }
@@ -536,11 +540,11 @@ export function SessionPlanner({
         variant="primary"
         size="large"
         block
-        disabled={!selected || exercises.length === 0}
+        disabled={!selected || gymId === null || exercises.length === 0}
         accessibilityLabel="Empezar entreno"
         onPress={() => {
-          if (!selected || exercises.length === 0) return;
-          onStart(selected, budget, exercises, company ?? undefined, gymId ?? undefined);
+          if (!selected || gymId === null || exercises.length === 0) return;
+          onStart(selected, budget, exercises, company ?? undefined, gymId);
         }}
       />
 

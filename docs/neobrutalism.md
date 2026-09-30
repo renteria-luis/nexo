@@ -95,7 +95,8 @@ Rules that keep it readable:
 | `Button` | `src/ui/Button.tsx` | any action. `primary` / `secondary` / `ghost` / `danger`, `size="large"`, `block`, `icon` |
 | `Card` | `src/ui/Card.tsx` | any block of information. `tone`, `raised`, `onPress`, `title` |
 | `Chip` | `src/ui/Chip.tsx` | one option out of a short list. Selected = yellow and raised |
-| `IconButton` | `src/ui/IconButton.tsx` | an action that is only an icon: the (i) on a portion, the bin on a row |
+| `IconButton` | `src/ui/IconButton.tsx` | an action that is only an icon: the bin on a row, the arrows on a portion |
+| `InfoDot` / `InfoProvider` | `src/ui/InfoBubble.tsx` | the app's one (i), and the bubble it opens over everything else |
 | `SearchField` | `src/ui/SearchField.tsx` | a search box: the magnifier, the text, and a clear button once something is typed |
 | `Toggle` | `src/ui/Toggle.tsx` | one thing that is on or off, in a row with its label |
 | `Star` | `src/ui/Star.tsx` | the one decorative sticker per screen, with a number inside |
@@ -158,6 +159,22 @@ card shows the three colours of the scale, the switch on the right says which on
 use, and either one selects it. A palette is always selected, so turning the active
 switch off does nothing; that is the one place where a switch stands in for a radio, and
 the code says so out loud.
+
+### The (i), and what it opens
+
+One button for the whole app: a **white circle with an `i`**, 26 pt, ink border, no
+shadow box. There used to be two — a bordered square in Comida and a bare letter in
+Entreno — and both opened their text *inside* the screen, pushing everything below them
+down. Reading two lines should not move the page.
+
+What it says now comes up as a **bubble over the page**, the same object the charts use:
+paper, ink border, 3 pt shadow. It closes by tapping anywhere outside.
+
+The bubble is rendered from `InfoProvider` at the root of the app, not next to the
+button, because inside a scrolling list the list's edge would cut it off. It is placed
+from what the dot measures in the window (`measureInWindow`): below when there is room,
+above when there is not, and the side that is pinned is the one touching the dot, so its
+height never has to be known before it is drawn.
 
 ### The side menu
 

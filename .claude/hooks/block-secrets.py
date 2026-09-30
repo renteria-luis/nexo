@@ -59,7 +59,9 @@ ASSIGNMENT = re.compile(
     re.I,
 )
 
-# Files that stay local: SPEC.md carries personal health data (CLAUDE.md, security section).
+# Files that stay local: SPEC.md carries personal health data (CLAUDE.md, security
+# section). Editing it is allowed and is the owner's call to ask for; what this blocks is
+# putting it in git, which is the part that cannot be undone once the repo is public.
 NEVER_COMMIT = [r"(^|/)SPEC\.md$"]
 
 # A path pattern anchored with $ matches a whole filename. Inside a shell command the
@@ -71,7 +73,8 @@ def as_command_pattern(pattern):
     return pattern.replace("(^|/)", r"(?:^|[\s/=:'\"])").replace("$", TOKEN_END)
 
 
-COMMAND_PATH_PATTERNS = [as_command_pattern(p) for p in SECRET_PATH_PATTERNS + NEVER_COMMIT]
+SECRET_COMMAND_PATTERNS = [as_command_pattern(p) for p in SECRET_PATH_PATTERNS]
+NEVER_COMMIT_COMMAND_PATTERNS = [as_command_pattern(p) for p in NEVER_COMMIT]
 
 # A filename inside a heredoc body is prose being written, not a file being touched.
 # Strip those bodies before scanning for paths; content scanning still sees them.
@@ -91,9 +94,6 @@ def check_path(path, where):
         if re.search(pattern, path, re.I):
             deny(f"{where} touches a credential or database file ({path}). "
                  "Secrets live in environment variables on the ingestion server, never in this repo.")
-    for pattern in NEVER_COMMIT:
-        if re.search(pattern, path):
-            deny(f"{where} touches {path}, which must stay local and out of git.")
 
 
 def check_content(text, where):
@@ -132,10 +132,14 @@ def main():
             deny("git add -f bypasses .gitignore, which is the only thing keeping "
                  "secrets and SPEC.md out of a public repo.")
         paths_only = HEREDOC_BODY.sub("<<STRIPPED", command)
-        for pattern in COMMAND_PATH_PATTERNS:
+        for pattern in SECRET_COMMAND_PATTERNS:
             if re.search(pattern, paths_only, re.I):
                 if GIT_STAGING.search(paths_only) or re.search(r">>?|tee\b|cp\b|mv\b|install\b", paths_only):
                     deny(f"command writes or stages a protected file: {command}")
+        # SPEC.md is different: it may be written, never committed.
+        for pattern in NEVER_COMMIT_COMMAND_PATTERNS:
+            if re.search(pattern, paths_only) and GIT_STAGING.search(paths_only):
+                deny(f"command stages SPEC.md, which must stay local and out of git: {command}")
         check_content(command, "Bash command")
 
     sys.exit(0)

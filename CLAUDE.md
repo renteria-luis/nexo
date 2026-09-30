@@ -6,6 +6,8 @@ Personal single-user iOS app. Modules: Training, Nutrition, Deals, and later Fin
 
 **`SPEC.md` in this repo is the source of truth.** Read it before any work. If a request contradicts the spec, say so and ask — do not silently follow either one.
 
+**Never write to `SPEC.md` unless the owner asks for it in that message.** Propose the change instead: say which section, quote the exact text you would add, and stop. The hook in `.claude/hooks/` blocks committing it, not editing it — the thing that keeps you from rewriting the spec on your own initiative is this rule, and a spec that drifts because an agent tidied it is a source of truth that is no longer true.
+
 Stack: Expo / React Native / TypeScript. Local-first (SQLite on device). A separate Node ingestion service appears in Phase 1 for the Deals module only. The owner has no Mac; builds go through GitHub Actions macOS runners and are sideloaded.
 
 ## Language

@@ -17,6 +17,7 @@ import type { Implement } from '../training/sessions.ts';
 import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
 import { Chip } from './Chip.tsx';
+import { InfoDot, InfoText } from './InfoBubble.tsx';
 import { NumericField } from './NumericField.tsx';
 import { font, sheet, shape, theme } from './theme.ts';
 
@@ -270,7 +271,6 @@ export const SessionLog = memo(function SessionLog({
   // Reabrir el entreno se pregunta: el boton esta al lado de la hora de fin y un
   // dedazo ahi vuelve a abrir una sesion que ya estaba cerrada.
   const [reopening, setReopening] = useState(false);
-  const [showTechnique, setShowTechnique] = useState(false);
   // Con que lo esta haciendo hoy. Null es "con lo que dice el catalogo".
   const [implement, setImplement] = useState<Implement | null>(
     (draft?.implement as Implement | null) ?? null,
@@ -318,7 +318,6 @@ export const SessionLog = memo(function SessionLog({
     setWeightDraft(null);
     setRepsDraft(null);
     setRpeDraft(null);
-    setShowTechnique(false);
     setImplement(null);
   }
 
@@ -468,25 +467,11 @@ export const SessionLog = memo(function SessionLog({
               <View style={styles.exerciseHead}>
                 <Text style={styles.exerciseTitle}>{exercise.name_es}</Text>
                 {note !== null && (
-                  <Pressable
-                    accessibilityLabel={`Ver la tecnica de ${exercise.name_es}`}
-                    onPress={() => setShowTechnique((open) => !open)}
-                    style={({ pressed }) => [styles.info, pressed && styles.pressedSoft]}
-                  >
-                    <Text style={styles.infoText}>i</Text>
-                  </Pressable>
+                  <InfoDot accessibilityLabel={`Ver la técnica de ${exercise.name_es}`}>
+                    <InfoText>{note}</InfoText>
+                  </InfoDot>
                 )}
               </View>
-
-              {showTechnique && note !== null && (
-                <View style={styles.technique}>
-                  {note.split('\n').map((line) => (
-                    <Text key={line} style={styles.techniqueLine}>
-                      {line}
-                    </Text>
-                  ))}
-                </View>
-              )}
 
               {/* Solo donde hay de verdad mas de una forma de hacerlo, que es un dato
                   del ejercicio y ya no una suposicion por el tipo de equipo. */}
