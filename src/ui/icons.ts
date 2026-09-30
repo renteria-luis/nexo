@@ -11,6 +11,10 @@
 //
 // Adding an icon: find its name at lucide.dev/icons, add the line, keep it sorted.
 
+export { default as BookOpen } from 'lucide-react-native/icons/book-open';
+export { default as CalendarDays } from 'lucide-react-native/icons/calendar-days';
+export { default as Carrot } from 'lucide-react-native/icons/carrot';
+export { default as ChartLine } from 'lucide-react-native/icons/chart-line';
 export { default as Check } from 'lucide-react-native/icons/check';
 export { default as ChevronDown } from 'lucide-react-native/icons/chevron-down';
 export { default as ChevronLeft } from 'lucide-react-native/icons/chevron-left';
@@ -23,13 +27,23 @@ export { default as Dumbbell } from 'lucide-react-native/icons/dumbbell';
 export { default as ExternalLink } from 'lucide-react-native/icons/external-link';
 export { default as Eye } from 'lucide-react-native/icons/eye';
 export { default as EyeOff } from 'lucide-react-native/icons/eye-off';
+export { default as FlaskConical } from 'lucide-react-native/icons/flask-conical';
 export { default as Footprints } from 'lucide-react-native/icons/footprints';
+export { default as GraduationCap } from 'lucide-react-native/icons/graduation-cap';
 // Las tres rayas: aqui no son un menu, son el asa de arrastre de una lista.
 export { default as GripLines } from 'lucide-react-native/icons/menu';
+// El reloj que retrocede. `icons/history` es solo un alias del paquete: no existe
+// como modulo, asi que Metro no lo encuentra.
+export { default as History } from 'lucide-react-native/icons/rotate-ccw-clock';
 export { default as Info } from 'lucide-react-native/icons/info';
 export { default as LayoutGrid } from 'lucide-react-native/icons/layout-grid';
+export { default as Library } from 'lucide-react-native/icons/library';
+export { default as Lightbulb } from 'lucide-react-native/icons/lightbulb';
+export { default as List } from 'lucide-react-native/icons/list';
 export { default as LoaderCircle } from 'lucide-react-native/icons/loader-circle';
 export { default as MapPin } from 'lucide-react-native/icons/map-pin';
+// Las mismas tres rayas, cuando de verdad son un menu.
+export { default as Menu } from 'lucide-react-native/icons/menu';
 export { default as Minus } from 'lucide-react-native/icons/minus';
 export { default as Moon } from 'lucide-react-native/icons/moon';
 export { default as Pencil } from 'lucide-react-native/icons/pencil';

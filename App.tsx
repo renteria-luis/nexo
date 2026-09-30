@@ -38,6 +38,7 @@ import {
 } from '@expo-google-fonts/nunito';
 
 import { KeyboardBar } from './src/ui/KeyboardBar.tsx';
+import { SidebarProvider, useSidebar } from './src/ui/Sidebar.tsx';
 import { SwipeLockProvider, useSwipeLock } from './src/ui/SwipeLock.tsx';
 import { FloatingBarSpace, TabBar, tabBarSpace } from './src/ui/TabBar.tsx';
 import { TopBar } from './src/ui/TopBar.tsx';
@@ -173,9 +174,9 @@ const NUDGE_ROUTES: Record<string, string> = {
   semana: 'Resumen semanal',
 };
 
-function Navigation() {
+function Navigation({ navigation }: { navigation: ReturnType<typeof useNavigationContainerRef> }) {
   const { nudgeTarget, clearNudgeTarget } = useAppData();
-  const navigation = useNavigationContainerRef();
+  const sidebar = useSidebar();
 
   useEffect(() => {
     if (nudgeTarget === null) return;
@@ -198,9 +199,13 @@ function Navigation() {
           // que es lo unico que se puede hacer desde ahi.
           header: ({ navigation, back }) =>
             back ? (
-              <TopBar action="done" onPress={navigation.goBack} />
+              <TopBar action="done" onPress={navigation.goBack} onMenu={sidebar.open} />
             ) : (
-              <TopBar action="settings" onPress={() => navigation.navigate('Ajustes')} />
+              <TopBar
+                action="settings"
+                onPress={() => navigation.navigate('Ajustes')}
+                onMenu={sidebar.open}
+              />
             ),
           contentStyle: { backgroundColor: theme.bg },
         }}
@@ -246,13 +251,18 @@ export default function App() {
     Nunito_700Bold,
     Nunito_800ExtraBold,
   });
+  // Arriba del navegador porque el menu lateral tambien lo necesita, y vive por fuera
+  // para quedar encima de la barra de abajo y del encabezado.
+  const navigation = useNavigationContainerRef();
   if (!ready) return null;
 
   return (
     <SafeAreaProvider>
       <AppDataProvider>
         <SwipeLockProvider>
-          <Navigation />
+          <SidebarProvider navigation={navigation}>
+            <Navigation navigation={navigation} />
+          </SidebarProvider>
         </SwipeLockProvider>
         {/* La barra que corona el teclado del sistema, una sola para toda la app. */}
         <KeyboardBar />

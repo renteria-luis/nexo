@@ -100,7 +100,8 @@ Rules that keep it readable:
 | `Toggle` | `src/ui/Toggle.tsx` | one thing that is on or off, in a row with its label |
 | `Star` | `src/ui/Star.tsx` | the one decorative sticker per screen, with a number inside |
 | `Screen` | `src/ui/screens/Screen.tsx` | the frame: scroll, title, database states, overlay slot (`onOverlayDismiss` makes the scrim close it) |
-| `TopBar` | `src/ui/TopBar.tsx` | the app's own header on every screen: the wordmark, and Ajustes or the done check |
+| `TopBar` | `src/ui/TopBar.tsx` | the app's own header on every screen: the three lines that open the menu, the wordmark, and Ajustes or the done check |
+| `Sidebar` | `src/ui/Sidebar.tsx` | the side menu: every screen the app has, grouped. `useSidebar().open()` from anywhere |
 | `TabBar` | `src/ui/TabBar.tsx` | the app's own floating bottom bar, with the yellow block that slides to the open tab |
 | `CommandBar` | `src/ui/CommandBar.tsx` | the typed shortcut, already restyled |
 | `KeyboardBar` | `src/ui/KeyboardBar.tsx` | our bar on top of the system keyboard, with `listo` |
@@ -156,6 +157,36 @@ card shows the three colours of the scale, the switch on the right says which on
 use, and either one selects it. A palette is always selected, so turning the active
 switch off does nothing; that is the one place where a switch stands in for a radio, and
 the code says so out loud.
+
+### The side menu
+
+The bottom bar is for the thumb and for what happens every day, so it holds three tabs.
+Everything else lives in `Sidebar`, built to the reference's own sidebar
+([neobrutalism.dev/docs/sidebar](https://www.neobrutalism.dev/docs/sidebar)): the
+wordmark over a rule, uppercase section titles, one row per place with a **bare icon**
+— no badge box, the icon sits in the line like the label does — and a foot rule with
+Finanzas and Ajustes under it.
+
+A section's rows can be **folders**: Historial, Catálogo and Saber carry a chevron, fold
+open in place, and their children hang off a **vertical rule** that ties them to the
+parent, which is the one piece of structure the reference draws. Children get their own
+icons, unlike the reference, because here they are places and not settings. What is
+folded open survives closing the menu. The screen you are on is drawn as the selected
+row, yellow with the ink border, read once when the menu opens.
+
+It slides in from the left over a dark scrim and closes by tapping outside, swiping
+left, or choosing something. There is no close button: three ways out is enough, and the
+fourth would cost the header's only line.
+
+Hand-written rather than `@react-navigation/drawer`, which needs
+`react-native-reanimated` — the library that crashed the app on 2026-09-21
+(`docs/sliders.md`). It is one `Animated.Value` on the native driver plus a
+`PanResponder`. Folding is the app's one `LayoutAnimation`, because what changes there
+is height, and height does not go through the native driver.
+
+It lives **outside** `NavigationContainer`, above the tab bar and the header, and
+navigates through the container ref: a tab is not a screen of the stack, so an entry
+marked `tab: true` asks the stack for `nexo` with the tab as its `screen` param.
 
 ## 6. Icons
 
@@ -488,6 +519,12 @@ by value, and each one carries the two numbers that justify the module at all �
 per kilo and the grams of protein per dollar — as filled tags rather than a sentence.
 `PendingScreen` uses a `Card` with `raised={false}`, which is how this style says "there
 is nothing to touch here".
+
+Also done: **el menú lateral** (`Sidebar`), which is what made room for all of that.
+Ofertas and Finanzas left the bottom bar and the screens reached only from a card inside
+Ajustes stopped being hidden: the menu lists the fourteen places the app has, grouped by
+what he is doing when he wants them. The three lines that open it are in `TopBar`, so
+they are on every screen.
 
 The app icon is last, and it is his call.
 

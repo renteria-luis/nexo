@@ -291,3 +291,17 @@ chica: de más antes que de menos, por decisión suya.
 Rejected: Dejar la pestaña (gasta un sitio de la barra en algo que mira una vez por
 semana) y buscar por palabra exacta (perdería "EGGS" al escribir "egg", que es
 justamente lo que no quiere).
+
+## 2026-09-28 — Un menú lateral, y la barra de abajo se queda con tres
+Context: Ofertas y Finanzas salieron de la barra de abajo, y varias pantallas que ya
+existen (Registros, Resumen semanal, Gráficas, los dos catálogos, Lecturas,
+Recomendaciones, Experimentos) solo se abrían desde una cartilla suelta o desde Ajustes.
+Hacía falta un sitio donde esté todo sin gastar la barra, y hace falta sitio para la
+despensa y el asistente que vienen después.
+Decision: Un menú lateral escrito a mano (`src/ui/Sidebar.tsx`), agrupado en Día a día,
+Historial, Catálogo, Ofertas y Saber, con Finanzas y Ajustes en el pie. Se abre con las
+tres rayas del encabezado, vive fuera del navegador para quedar encima de todo, y navega
+por el ref del contenedor. La barra de abajo se queda con Hoy, Entreno y Comida, que es
+lo que usa a diario.
+Rejected: `@react-navigation/drawer`, que exige `react-native-reanimated` (la librería
+que tumbó la app el 21 de septiembre), y meter más pestañas abajo, que era el problema.

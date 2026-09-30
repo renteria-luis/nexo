@@ -1,7 +1,7 @@
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Check, Settings } from './icons.ts';
+import { Check, Menu, Settings } from './icons.ts';
 import { IconButton } from './IconButton.tsx';
 import { font, hardShadow, pressed as pressedInto, sheet, shape, theme } from './theme.ts';
 
@@ -15,22 +15,34 @@ import { font, hardShadow, pressed as pressedInto, sheet, shape, theme } from '.
  * principal se queda encima del carrusel, asi que no se mueve mientras las paginas se
  * deslizan por debajo.
  *
- * El nombre va en una pegatina amarilla plana, porque no se toca. El boton de la
- * derecha es lo unico con sombra: entrar a Ajustes desde la pantalla principal, o
- * cerrar la pantalla apilada y volver. No lleva titulo a proposito, porque el titulo
+ * El nombre va en una pegatina amarilla plana, porque no se toca. A su izquierda, las
+ * tres rayas que abren el menu lateral, que es donde vive todo lo que no cabe en la
+ * barra de abajo. El boton de la derecha es lo unico con relieve ademas de ese: entrar
+ * a Ajustes desde la pantalla principal, o cerrar la pantalla apilada y volver. No lleva titulo a proposito, porque el titulo
  * grande ya esta dentro de la pantalla y decirlo dos veces es ruido.
  *
  * La raya de abajo la dibuja la barra y no el contenido: en el borde de una lista que
  * se desplaza, la raya se va con ella en cuanto se desliza, y lo que separa la barra
  * del papel desaparecia a mitad de la pantalla.
  */
-export function TopBar({ action, onPress }: { action: 'settings' | 'done'; onPress: () => void }) {
+export function TopBar({
+  action,
+  onPress,
+  onMenu,
+}: {
+  action: 'settings' | 'done';
+  onPress: () => void;
+  onMenu: () => void;
+}) {
   const insets = useSafeAreaInsets();
 
   return (
     <View style={[styles.bar, { paddingTop: insets.top + 6 }]}>
-      <View style={styles.brand}>
-        <Text style={styles.brandText}>nexo</Text>
+      <View style={styles.left}>
+        <IconButton icon={Menu} accessibilityLabel="Abrir el menu" onPress={onMenu} />
+        <View style={styles.brand}>
+          <Text style={styles.brandText}>nexo</Text>
+        </View>
       </View>
 
       {action === 'done' ? (
@@ -61,6 +73,11 @@ const styles = sheet((theme) => ({
     backgroundColor: theme.bg,
     borderBottomWidth: shape.border,
     borderBottomColor: theme.line,
+  },
+  left: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   brand: {
     backgroundColor: theme.accent,
