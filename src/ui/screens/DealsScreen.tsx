@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Linking, Text, View } from 'react-native';
+import { LayoutAnimation, Linking, Pressable, Text, View } from 'react-native';
 
 import { todayIso } from '../../core/dates.ts';
 import {
@@ -15,8 +15,8 @@ import { useAppData } from '../../shell/AppData.tsx';
 import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
 import { Chip } from '../Chip.tsx';
-import { ExternalLink, RotateCcw } from '../icons.ts';
-import { font, sheet, shape } from '../theme.ts';
+import { ChevronDown, ChevronUp, ExternalLink, RotateCcw } from '../icons.ts';
+import { font, sheet, shape, theme } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
 
@@ -158,6 +158,16 @@ export function DealsScreen() {
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [group, setGroup] = useState<Group>('product');
+  // Los grupos abiertos. Cerrados de entrada: con veinte productos, la lista entera
+  // desplegada obliga a deslizar media pantalla para llegar al siguiente.
+  const [open_, setOpen] = useState<string[]>([]);
+
+  const fold = (name: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setOpen((before) =>
+      before.includes(name) ? before.filter((one) => one !== name) : [...before, name],
+    );
+  };
 
   if (state.phase !== 'ready') return <Screen title="Ofertas">{null}</Screen>;
 
@@ -246,7 +256,11 @@ export function DealsScreen() {
             label={option.label}
             accessibilityLabel={`Agrupar ${option.label.toLowerCase()}`}
             selected={option.id === group}
-            onPress={() => setGroup(option.id)}
+            onPress={() => {
+              setGroup(option.id);
+              // Los grupos de antes no son los de ahora.
+              setOpen([]);
+            }}
           />
         ))}
       </View>
@@ -292,29 +306,65 @@ export function DealsScreen() {
         </Card>
       )}
 
-      {groups.map(({ name, rows }) => (
-        <Card key={name ?? 'todas'} title={name ?? undefined}>
-          {name !== null && (
-            <Text style={styles.count}>
-              {rows.length} {rows.length === 1 ? 'oferta' : 'ofertas'}
-            </Text>
-          )}
-          {rows.map(({ item }) => (
-            <DealRow
-              key={item.deal.id}
-              item={item}
-              discounts={discounts}
-              showStore={group !== 'store'}
-              onOpen={open}
-            />
-          ))}
-        </Card>
-      ))}
+      {groups.map(({ name, rows }) => {
+        const shown = name === null || open_.includes(name);
+        return (
+          <Card key={name ?? 'todas'}>
+            {name !== null && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${name}, ${rows.length} ofertas`}
+                onPress={() => fold(name)}
+                style={({ pressed }) => [styles.group, pressed && styles.groupPressed]}
+              >
+                <View style={styles.groupText}>
+                  <Text style={styles.groupTitle}>{name}</Text>
+                  <Text style={styles.count}>
+                    {rows.length} {rows.length === 1 ? 'oferta' : 'ofertas'}
+                  </Text>
+                </View>
+                {shown ? (
+                  <ChevronUp size={18} color={theme.text} strokeWidth={2.5} />
+                ) : (
+                  <ChevronDown size={18} color={theme.text} strokeWidth={2.5} />
+                )}
+              </Pressable>
+            )}
+            {shown &&
+              rows.map(({ item }) => (
+                <DealRow
+                  key={item.deal.id}
+                  item={item}
+                  discounts={discounts}
+                  showStore={group !== 'store'}
+                  onOpen={open}
+                />
+              ))}
+          </Card>
+        );
+      })}
     </Screen>
   );
 }
 
 const styles = sheet((theme) => ({
+  group: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 2,
+  },
+  groupPressed: {
+    opacity: 0.7,
+  },
+  groupText: {
+    flex: 1,
+  },
+  groupTitle: {
+    fontSize: 15,
+    fontFamily: font.black,
+    color: theme.text,
+  },
   chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -341,7 +391,6 @@ const styles = sheet((theme) => ({
     letterSpacing: 0.6,
     color: theme.textFaint,
     textTransform: 'uppercase',
-    marginTop: -4,
   },
   deal: {
     gap: 6,

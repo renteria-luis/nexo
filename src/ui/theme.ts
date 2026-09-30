@@ -90,13 +90,24 @@ export const shape = {
 } as const;
 
 /**
+ * Lo que se encogieron todas las sombras el 2026-09-30, a peticion suya: el relieve
+ * seguia diciendo lo mismo con menos grosor. Se aplica aqui y no en cada sitio para que
+ * la sombra y el hundir al presionar no se puedan separar nunca.
+ */
+const SHRINK = 0.6;
+
+function shift(offset: number): number {
+  return Math.round(offset * SHRINK * 2) / 2;
+}
+
+/**
  * La sombra dura del neobrutalismo: sin difuminar y opaca del todo, para que se lea
  * como un recorte de papel y no como una sombra de verdad.
  */
 export function hardShadow(palette: Palette, offset: number = shape.shadowOffset) {
   return {
     shadowColor: palette.shadow,
-    shadowOffset: { width: offset, height: offset },
+    shadowOffset: { width: shift(offset), height: shift(offset) },
     shadowOpacity: 1,
     shadowRadius: 0,
     // Android no tiene sombras sin difuminar, asi que alli se cae con elegancia a
@@ -108,7 +119,7 @@ export function hardShadow(palette: Palette, offset: number = shape.shadowOffset
 /** Lo que se mueve un elemento al presionarlo, que es justo lo que mide su sombra. */
 export function pressed(offset: number = shape.shadowOffset) {
   return {
-    transform: [{ translateX: offset }, { translateY: offset }],
+    transform: [{ translateX: shift(offset) }, { translateY: shift(offset) }],
     shadowOpacity: 0,
   };
 }

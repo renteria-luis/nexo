@@ -53,12 +53,11 @@ export function PantryForm({
 
   const foods = state.phase === 'ready' ? state.loaded.foods : [];
   const chosen = foods.find((food) => food.id === foodId) ?? null;
-  const found =
-    search.trim() === ''
-      ? []
-      : foods
-          .filter((food) => food.name.toLowerCase().includes(search.trim().toLowerCase()))
-          .slice(0, 6);
+  // Sin escribir nada tambien salen: una casilla de busqueda vacia encima de una lista
+  // vacia no dice que haya nada que tocar.
+  const found = foods
+    .filter((food) => food.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .slice(0, 8);
 
   const counted = kind === 'counted' || kind === 'weighed';
 
@@ -164,21 +163,25 @@ export function PantryForm({
         </>
       )}
 
-      <Text style={styles.label}>Su ficha del catálogo</Text>
+      <Text style={styles.label}>Qué alimento es (opcional)</Text>
+      <Text style={styles.note}>
+        Toca el de tu catálogo que sea esto. Sirve para que una receta con esto sepa sus calorías y
+        su proteína; sin él la cosa se cuenta igual, pero al cocinar no se puede pesar la olla.
+      </Text>
       {chosen === null ? (
         <>
           <SearchField
             value={search}
             onChange={setSearch}
             accessibilityLabel="Buscar el alimento"
-            note="Sin ficha, una receta con esto no puede pesar la olla"
+            note={`${foods.length} alimentos en tu catálogo`}
           />
           <View style={styles.row}>
             {found.map((food) => (
               <Chip
                 key={food.id}
                 label={food.name}
-                accessibilityLabel={food.name}
+                accessibilityLabel={`Es ${food.name}`}
                 onPress={() => {
                   setFoodId(food.id);
                   setSearch('');
@@ -196,6 +199,7 @@ export function PantryForm({
             selected
             onPress={() => setFoodId(null)}
           />
+          <Text style={styles.note}>Tócalo para quitarlo</Text>
         </View>
       )}
 
@@ -227,6 +231,11 @@ const styles = sheet((theme) => ({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: 8,
+  },
+  note: {
+    fontSize: 12,
+    fontFamily: font.regular,
+    color: theme.textDim,
   },
   input: {
     fontSize: 15,

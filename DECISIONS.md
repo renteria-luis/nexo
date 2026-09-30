@@ -376,3 +376,12 @@ es su porcion, de un toque. Si algun ingrediente medido no tiene ficha con peso,
 descuenta la despensa igual pero no hay lote, y la pantalla dice cual lo impidio.
 Rejected: Una tabla de macros propia del recetario (dos verdades que se separan) y
 adivinar el peso de lo que no tiene ficha (spec 16.3 regla 5).
+
+## 2026-09-30 — Las ofertas se pliegan por grupo, y empiezan cerradas
+Context: "por producto" dejaba veinte grupos abiertos y habia que deslizar media
+pantalla para llegar al siguiente producto.
+Decision: Cada grupo, de producto o de tienda, es una cabecera con su cuenta y un
+chevron. Cerrados de entrada: la cuenta ya dice si vale la pena abrirlo.
+Rejected: Dejarlos abiertos y confiar en el desplazamiento, y limitar cuantas ofertas
+muestra cada grupo (esconder ofertas es lo contrario de lo que pidio: prefiere ver de
+mas).

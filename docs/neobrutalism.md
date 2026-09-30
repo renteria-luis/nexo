@@ -13,7 +13,7 @@ Pulled from the reference's own stylesheet (`/_next/static/css/…`, the `:root`
 |---|---|---|
 | border width | `2px`, and nothing else exists in their CSS | `shape.border = 2` |
 | radius | `--border-radius: 5px` | `shape.radius = 10`, `radiusSmall = 7`, `radiusLarge = 25` |
-| shadow | `4px 4px 0px 0px var(--border)` | `hardShadow()` → offset 4, radius 0, opacity 1 |
+| shadow | `4px 4px 0px 0px var(--border)` | `hardShadow()` → nominal 4, drawn at 2.4, radius 0, opacity 1 |
 | pressed | translate by the shadow offset + `shadow-none`, 150 ms | `pressed()` → same translate, no animation |
 | page | `--background: #dcebfe` (a pastel tint) | `bg: #fff4e0` cream |
 | modes | light and dark | **light only** (see below) |
@@ -87,6 +87,10 @@ Rules that keep it readable:
   has. `elevation: 0` means Android gets no shadow, and this app is iOS only.
 - One offset only: 4 for cards and buttons, 3 for chips and keys, 2 for the today
   square in the grid. No blur anywhere, ever.
+- **Those numbers are nominal.** On 2026-09-30 every shadow was shrunk to 60 % of them
+  (`SHRINK` in `theme.ts`), because the relief said the same thing thinner. The factor
+  lives in `hardShadow()` and `pressed()` together and nowhere else, so the distance a
+  thing travels when pressed can never drift from the shadow it is pressing into.
 
 ## 5. What is already built (reuse before writing)
 
