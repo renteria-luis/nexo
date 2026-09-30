@@ -13,7 +13,7 @@ import { COMMAND_HELP } from './commands.ts';
 import type { IsoDate } from './dates.ts';
 
 /** Lo poco que sabe contestar de su propia informacion. Spec 20.2 punto 4. */
-export type Question = 'marca' | 'nota' | 'racha' | 'proteina';
+export type Question = 'marca' | 'nota' | 'racha' | 'proteina' | 'entreno';
 
 export type Intent =
   /** Una linea de la gramatica de comandos, todavia sin validar. */
@@ -21,7 +21,7 @@ export type Intent =
   | { kind: 'ask'; question: Question; exercise: string | null; date: string | null }
   | { kind: 'none'; reply: string };
 
-const QUESTIONS: Question[] = ['marca', 'nota', 'racha', 'proteina'];
+const QUESTIONS: Question[] = ['marca', 'nota', 'racha', 'proteina', 'entreno'];
 
 /**
  * El esquema que viaja con la llamada. Es el trozo de JSON Schema que entiende Apple:
@@ -34,8 +34,10 @@ export const INTENT_SCHEMA = {
   properties: {
     tipo: {
       type: 'string',
-      enum: ['anotar', 'preguntar', 'nada'],
-      description: 'anotar si hay algo que guardar, preguntar si pide un dato suyo, nada si no',
+      enum: ['nada', 'anotar', 'preguntar'],
+      description:
+        'nada si es un saludo, una charla o algo que no sabes; anotar si dijo un dato ' +
+        'suyo para guardar; preguntar solo si pide uno de los datos de la lista',
     },
     comando: {
       type: 'string',
@@ -69,8 +71,18 @@ export const INTENT_SCHEMA = {
 export function instructions(today: IsoDate, unit: string): string {
   return [
     'Eres el asistente de una app personal de entreno y comida, de un solo dueño.',
-    'Traduces lo que el escribe a una linea de comando de la app. No inventas ningun numero:',
-    'si no dijo la cantidad, no la pongas.',
+    'Lees lo ultimo que el escribio y contestas una sola cosa sobre ESO, no sobre los',
+    'ejemplos ni sobre lo que se dijo antes.',
+    '',
+    'Elige el tipo asi:',
+    '  - "anotar" solo si dijo un dato suyo con su numero. Devuelves la linea de comando.',
+    '  - "preguntar" solo si pide uno de estos datos: marca (su mejor 1RM de un',
+    '    ejercicio), nota (la nota de un dia), racha, proteina (la de hoy), entreno',
+    '    (cuando entreno por ultima vez).',
+    '  - "nada" en todo lo demas: saludos, charla, y cualquier cosa que no sea',
+    '    exactamente una de las dos de arriba. Ante la duda, "nada".',
+    '',
+    'No inventas ningun numero: si no dijo la cantidad, es "nada" y se la pides.',
     '',
     'Comandos:',
     ...COMMAND_HELP.map((row) => `  ${row}`),
@@ -78,13 +90,15 @@ export function instructions(today: IsoDate, unit: string): string {
     `El peso va en ${unit}. Hoy es ${today}.`,
     'Si el dia no es hoy, la fecha va delante del comando: "ayer", "anteayer", "25 set", "25/09".',
     '',
-    'Ejemplos:',
+    'Ejemplos, cada uno independiente del anterior:',
+    '  "cual es mi mejor press banca" -> preguntar, pregunta "marca", ejercicio "press banca"',
+    '  "que nota saque ayer" -> preguntar, pregunta "nota", fecha "ayer"',
     '  "ayer dormi como seis y media" -> anotar, comando "ayer sueno 390m"',
     '  "me pese 74 y medio" -> anotar, comando "peso 74.5"',
     '  "ya tome la creatina" -> anotar, comando "creatina"',
-    '  "tome un vaso de agua" -> nada, respuesta "Dime cuantos ml"',
-    '  "cual es mi mejor press banca" -> preguntar, pregunta "marca", ejercicio "press banca"',
-    '  "que nota saque ayer" -> preguntar, pregunta "nota", fecha "ayer"',
+    '  "hola" -> nada, respuesta "Dime que anotaste."',
+    '  "que tal tu dia" -> nada, respuesta "Aqui solo llevo lo tuyo."',
+    '  "tome un vaso de agua" -> nada, respuesta "Dime cuantos ml."',
   ].join('\n');
 }
 

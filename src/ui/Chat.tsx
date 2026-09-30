@@ -53,6 +53,7 @@ export function Chat({ onClose }: { onClose: () => void }) {
     editDay,
     loadDay,
     loadCharts,
+    loadRecords,
     loadChat,
     loadChats,
     lastChatId,
@@ -190,6 +191,15 @@ export function Chat({ onClose }: { onClose: () => void }) {
         return `La nota de ${dayOf(date)} es ${scoreText(report.score)} de 100.`;
       }
 
+      case 'entreno': {
+        const rows = await loadRecords('quarter');
+        const last = rows.find((row) => row.trained);
+        if (last === undefined) return 'No tengo ningún entreno en los últimos 90 días.';
+        const ago = Math.round((Date.parse(todayIso()) - Date.parse(last.date)) / 86_400_000);
+        if (ago === 0) return 'Entrenaste hoy.';
+        return `La última vez que entrenaste fue el ${shortDate(last.date)}, hace ${ago} ${ago === 1 ? 'día' : 'días'}.`;
+      }
+
       case 'marca': {
         if (asked.exercise === null) return '¿De qué ejercicio?';
         const { trends } = await loadCharts(90);
@@ -220,9 +230,11 @@ export function Chat({ onClose }: { onClose: () => void }) {
 
     setThinking(true);
     try {
-      const recent = said.slice(-4).map((message) => ({
+      // Solo la ultima pregunta y su respuesta: con mas, un modelo pequeno que ya
+      // contesto mal una vez se queda repitiendo lo mismo pase lo que pase.
+      const recent = said.slice(-2).map((message) => ({
         role: message.role === 'me' ? ('user' as const) : ('assistant' as const),
-        content: message.body.slice(0, 200),
+        content: message.body.slice(0, 160),
       }));
       const answer = await askModel(
         [...recent, { role: 'user', content: text }],

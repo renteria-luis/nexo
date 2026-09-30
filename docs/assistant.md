@@ -69,13 +69,34 @@ side rejects it.
 
 ## Questions
 
-Four, and they are answered by the app, not by the model: the best estimated 1RM for an
-exercise (from the charts loader's `trends`), the score of a day, the current streak, and
-today's protein against the target. The model only picks which one was asked and for what
-— exact answers from SQLite instead of a small model reciting numbers it half remembers.
+Five, and they are answered by the app, not by the model: the best estimated 1RM for an
+exercise (from the charts loader's `trends`), the score of a day, the current streak,
+today's protein against the target, and when he last trained. The model only picks which
+one was asked and for what — exact answers from SQLite instead of a small model reciting
+numbers it half remembers.
 
 Adding a fifth means adding it to the enum in `INTENT_SCHEMA`, to `Question`, and to
 `lookUp` in `Chat.tsx`. There is no free-form query path on purpose.
+
+## What a 3B model gets wrong, and what fixed it
+
+First run on the phone, every message came back as `preguntar / marca / press banca`:
+"hola", "cuándo fui al gym por última vez", "hoy dormí 5h52m". It was not reading the
+input at all, it was **copying the last example in the prompt**, which happened to be
+that one. Three changes:
+
+- the rules now say what each `tipo` is for and that **"nada" is the answer when in
+  doubt**, and `nada` is first in the enum;
+- the examples end with the "nada" ones, and each is marked as independent of the last,
+  so the nearest thing to copy is a refusal rather than a question;
+- the history sent along is **the last exchange only**. With four messages, one wrong
+  answer fed itself: the model saw its own "no tengo marcas de press banca" and said it
+  again.
+
+The lesson generalises: with guided generation the answer always has the right shape, so
+a model that has stopped reading looks exactly like a model that is working. Anything
+that decides what happens must be checked by code afterwards, which is why nothing it
+proposes is written without the parser and a confirmation.
 
 ## What is not built yet
 
