@@ -639,7 +639,12 @@ gone, the grid's squares opening a bubble instead
 of a modal and the paper around them opening Registros, one card for the day's food
 instead of three, and an exercise search box in place of the list of chips.
 
-The app icon is last, and it is his call.
+Done last, as planned: **the app icon** (`scripts/make-icon.mjs`, which writes
+`assets/`). It is the discipline grid — four days as four squares, each filled from the
+bottom to what it scored, in the same pastel fills, with the 2 px ink border and the hard
+shadow scaled up. It is drawn by a script and not exported from a design tool because the
+palette moves: when the colours went pastel an image file would have gone stale in
+silence, and a script that reads the same hexes cannot.
 
 Sources: the reference's own stylesheet and docs
 ([neobrutalism.dev](https://www.neobrutalism.dev/docs)), lucide's package layout

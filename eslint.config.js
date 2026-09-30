@@ -10,4 +10,10 @@ module.exports = defineConfig([
   {
     ignores: ['dist/*'],
   },
+  {
+    // Los scripts sueltos corren en node, no en el telefono: ahi Buffer existe y la
+    // configuracion de Expo no lo declara.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: { Buffer: 'readonly' } },
+  },
 ]);
