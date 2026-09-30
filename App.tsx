@@ -17,6 +17,8 @@ import { DealsScreen } from './src/ui/screens/DealsScreen.tsx';
 import { ExerciseScreen, ExercisesScreen } from './src/ui/screens/ExercisesScreen.tsx';
 import { ExperimentsScreen } from './src/ui/screens/ExperimentsScreen.tsx';
 import { NutritionScreen } from './src/ui/screens/NutritionScreen.tsx';
+import { PantryScreen } from './src/ui/screens/PantryScreen.tsx';
+import { RecipesScreen } from './src/ui/screens/RecipesScreen.tsx';
 import { PendingScreen } from './src/ui/screens/PendingScreen.tsx';
 import { ReadingsScreen } from './src/ui/screens/ReadingsScreen.tsx';
 import { ChartsScreen } from './src/ui/screens/ChartsScreen.tsx';
@@ -234,6 +236,8 @@ function Navigation({ navigation }: { navigation: ReturnType<typeof useNavigatio
         {/* La ficha es su propia pantalla: asi el gesto de volver regresa a la lista. */}
         <RootStack.Screen name="Ejercicio" component={ExerciseScreen} />
         <RootStack.Screen name="Alimentos" component={FoodsScreen} />
+        <RootStack.Screen name="Despensa" component={PantryScreen} />
+        <RootStack.Screen name="Recetas" component={RecipesScreen} />
         <RootStack.Screen name="Registros" component={RecordsScreen} />
         <RootStack.Screen name="Recomendaciones" component={RoutineNotesScreen} />
         <RootStack.Screen name="Experimentos" component={ExperimentsScreen} />

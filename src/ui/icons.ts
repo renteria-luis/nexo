@@ -16,6 +16,7 @@ export { default as CalendarDays } from 'lucide-react-native/icons/calendar-days
 export { default as Carrot } from 'lucide-react-native/icons/carrot';
 export { default as ChartLine } from 'lucide-react-native/icons/chart-line';
 export { default as Check } from 'lucide-react-native/icons/check';
+export { default as ChefHat } from 'lucide-react-native/icons/chef-hat';
 export { default as ChevronDown } from 'lucide-react-native/icons/chevron-down';
 export { default as ChevronLeft } from 'lucide-react-native/icons/chevron-left';
 export { default as ChevronRight } from 'lucide-react-native/icons/chevron-right';
@@ -50,6 +51,7 @@ export { default as Pencil } from 'lucide-react-native/icons/pencil';
 export { default as Pill } from 'lucide-react-native/icons/pill';
 export { default as Play } from 'lucide-react-native/icons/play';
 export { default as Plus } from 'lucide-react-native/icons/plus';
+export { default as Refrigerator } from 'lucide-react-native/icons/refrigerator';
 export { default as RotateCcw } from 'lucide-react-native/icons/rotate-ccw';
 export { default as Scale } from 'lucide-react-native/icons/scale';
 export { default as Search } from 'lucide-react-native/icons/search';

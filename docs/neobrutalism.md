@@ -106,6 +106,7 @@ Rules that keep it readable:
 | `Assistant` | `src/ui/Assistant.tsx` | the floating ball and the chat window that travels with it |
 | `TabBar` | `src/ui/TabBar.tsx` | the app's own floating bottom bar, with the yellow block that slides to the open tab |
 | `Chat` | `src/ui/Chat.tsx` | the assistant's chat, opened by `Assistant` / `Pet` |
+| `PantryForm` / `RecipeForm` | `src/ui/` | the two editors behind Despensa and Recetas |
 | `KeyboardBar` | `src/ui/KeyboardBar.tsx` | our bar on top of the system keyboard, with `listo` |
 | `TextField` | `src/ui/TextField.tsx` | any text that is typed. Never a bare `TextInput`, or it loses the bar and the lift |
 | `NumericField` | `src/ui/NumericField.tsx` | any number that is typed |
@@ -598,6 +599,13 @@ command bar understood and one thing more, the day: "25 set pasos 5000" writes t
 the conversation is kept in SQLite (migration 047) so old chats can be reopened. The
 model that understands free sentences is the next piece and lands behind this same
 screen.
+
+Also done: **Despensa** and **Recetas** (`PantryScreen`, `RecipesScreen`, with
+`PantryForm` and `RecipeForm`). The pantry is grouped by how a thing is held, because
+that decides what can be asked of it: a number for what is counted or weighed, three
+chips for what lasts, one switch for a spice. The recipe list sorts itself by what can
+be cooked **now** and says what is missing by name, so the card answers "qué como"
+without a trip to the other screen.
 
 The app icon is last, and it is his call.
 

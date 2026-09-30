@@ -114,8 +114,10 @@ export async function listFoods(
   db: SQLiteDatabase,
   { archived = false }: { archived?: boolean } = {},
 ): Promise<NutritionFoodRow[]> {
+  // Lo que creo una olla al cocinarla no sale aqui: existe para que el lote tenga de
+  // que tirar, y la forma de anotarlo es su porcion (spec 7.3), no volver a pesarlo.
   return db.getAllAsync<NutritionFoodRow>(
-    'SELECT * FROM nutrition_food WHERE archived = ? ORDER BY name;',
+    'SELECT * FROM nutrition_food WHERE archived = ? AND from_recipe = 0 ORDER BY name;',
     [archived ? 1 : 0],
   );
 }

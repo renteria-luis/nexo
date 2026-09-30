@@ -213,6 +213,8 @@ export type NutritionFoodRow = {
   archived: SqlBool;
   /** Las cantidades que salen de boton al anotarlo, o null para las de siempre. */
   quick_amounts: string | null;
+  /** 1 cuando lo creo una olla al cocinarla (migracion 049). No sale en el catalogo. */
+  from_recipe: SqlBool;
 };
 
 export type NutritionContainerRow = {
@@ -241,6 +243,37 @@ export type NutritionFoodEntryRow = {
   date: IsoDate;
   meal_slot: string;
   batch_id: string | null;
+};
+
+/** Spec 21.1: las cuatro formas de tener algo en la nevera. */
+export type PantryKind = 'counted' | 'weighed' | 'durable' | 'spice';
+export type PantryState = 'hay' | 'poco' | 'no hay';
+
+export type PantryItemRow = {
+  id: string;
+  name: string;
+  kind: PantryKind;
+  quantity: number | null;
+  unit: string | null;
+  state: PantryState | null;
+  has_it: SqlBool | null;
+  food_id: string | null;
+  updated_at: string;
+};
+
+export type PantryRecipeRow = {
+  id: string;
+  name: string;
+  steps: string;
+  portions: number;
+  created_at: string;
+};
+
+export type PantryRecipeIngredientRow = {
+  recipe_id: string;
+  item_id: string;
+  amount: number | null;
+  position: number;
 };
 
 export type AssistantRole = 'me' | 'app';

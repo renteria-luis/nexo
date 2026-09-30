@@ -72,6 +72,7 @@ function food(overrides: Partial<NutritionFoodRow> = {}): NutritionFoodRow {
   return {
     id: 'chicken',
     name: 'Pechuga de pollo',
+    from_recipe: 0,
     keywords: null,
     archived: 0,
     quick_amounts: null,

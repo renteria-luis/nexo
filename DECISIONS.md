@@ -353,3 +353,26 @@ trae de fabrica se eligio midiendo sobre un dia real: 126 pasan a 87 sin perder 
 oferta de lo que si come.
 Rejected: Afinar la busqueda (perderia "EGGS" al escribir "egg", que es justo lo que el
 pidio que no pasara) y excluir "breaded" o "pasta", que si son comida suya.
+
+## 2026-09-30 — La despensa dice lo ultimo que el escribio, y no se descuenta sola
+Context: Fase 4, spec 21. Una despensa que se descuenta cuando come acaba en ficcion en
+una semana, porque cocina de paquetes que la app nunca vio y come cosas que nunca anoto.
+Decision: Cuatro formas de tener algo, que son las que hay en su nevera: contado,
+pesado, duradero (`hay` / `poco` / `no hay`) y especia (si o no). Lo duradero y las
+especias no llevan cantidad a proposito: no va a pesar un cacito de whey, y pedirle
+gramos ahi garantiza que el numero este mal. Lo unico que descuenta solo es cocinar una
+receta, y solo lo que se midio.
+Rejected: Pedir gramos de todo (un numero exacto inventado es peor que uno grueso
+verdadero) y descontar al comer una porcion.
+
+## 2026-09-30 — Cocinar una receta crea un alimento suyo, invisible en el catalogo
+Context: Spec 21.4 dice que cocinar deja un lote (spec 7.3), y un lote necesita un
+alimento del que tirar. Una olla de pollo con arroz no es ninguno de los alimentos del
+catalogo.
+Decision: Cocinar crea o actualiza un alimento por receta (`recipe-<id>`) con las cifras
+por gramo que salen de sus ingredientes, marcado con `from_recipe`, y el lote cuelga de
+el. Ese alimento no sale ni en el catalogo ni en el buscador: la forma de anotar una olla
+es su porcion, de un toque. Si algun ingrediente medido no tiene ficha con peso, se
+descuenta la despensa igual pero no hay lote, y la pantalla dice cual lo impidio.
+Rejected: Una tabla de macros propia del recetario (dos verdades que se separan) y
+adivinar el peso de lo que no tiene ficha (spec 16.3 regla 5).

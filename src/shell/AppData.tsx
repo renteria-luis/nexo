@@ -63,6 +63,20 @@ import {
 } from '../core/experiments.ts';
 import type { GymLocation } from '../core/geo.ts';
 import { listDeals, listDiscounts, listSources, type DealWithContext } from '../deals/index.ts';
+import {
+  cookRecipe,
+  listPantry,
+  listRecipes,
+  removePantryItem,
+  removeRecipe,
+  savePantryItem,
+  saveRecipe,
+  type Cooked,
+  type NewPantryItem,
+  type NewRecipe,
+  type PantryItem,
+  type Recipe,
+} from '../pantry/index.ts';
 import { stepsAdvice, type StepsAdvice } from '../core/steps.ts';
 import { listStudies } from '../core/studies.ts';
 import {
@@ -490,6 +504,15 @@ export type AppData = {
     extra?: { isWarmup?: boolean; rpe?: number | null; restBeforeSeconds?: number | null },
   ) => Promise<void>;
   removeSetOn: (sessionId: string, exerciseId: string, setIndex: number) => Promise<void>;
+  /** Lo que hay en la nevera, spec 21. No puntua nada, asi que no recarga el resto. */
+  loadPantry: () => Promise<PantryItem[]>;
+  savePantryItem: (item: NewPantryItem) => Promise<void>;
+  removePantryItem: (id: string) => Promise<void>;
+  loadRecipes: () => Promise<Recipe[]>;
+  saveRecipe: (recipe: NewRecipe) => Promise<void>;
+  removeRecipe: (id: string) => Promise<void>;
+  /** Descuenta lo que se uso y deja la olla como lote, o dice que se lo impidio. */
+  cookRecipe: (recipeId: string) => Promise<Cooked>;
   /** Los chats con el asistente, del mas nuevo al mas viejo. */
   loadChats: () => Promise<ChatSummary[]>;
   /** El ultimo chat, que es el que se abre al tocar la bola. Null si no hay ninguno. */
@@ -653,6 +676,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   );
 
   const loadStudies = useCallback(() => openDatabase().then(listStudies), []);
+
+  const loadPantry = useCallback(() => openDatabase().then(listPantry), []);
+  const loadRecipes = useCallback(() => openDatabase().then(listRecipes), []);
 
   const loadChats = useCallback(() => openDatabase().then((db) => listChats(db)), []);
   const lastChatId = useCallback(() => openDatabase().then(lastChat), []);
@@ -939,6 +965,19 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         run((db) => consumeBatchPortion(db, batchId, todayIso(), mealSlot), false),
       loadWeek,
       loadStudies,
+      loadPantry,
+      loadRecipes,
+      savePantryItem: (item) => write((db) => savePantryItem(db, item), false),
+      removePantryItem: (id) => write((db) => removePantryItem(db, id), false),
+      saveRecipe: (recipe) => write((db) => saveRecipe(db, recipe), false),
+      removeRecipe: (id) => write((db) => removeRecipe(db, id), false),
+      // Esta si recarga: la olla aparece como lote en Comida.
+      cookRecipe: async (recipeId) => {
+        const db = await openDatabase();
+        const cooked = await cookRecipe(db, recipeId, todayIso());
+        refresh();
+        return cooked;
+      },
       loadChats,
       lastChatId,
       loadChat,
@@ -978,6 +1017,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       loadPlan,
       loadRecords,
       loadStudies,
+      loadPantry,
+      loadRecipes,
       loadChats,
       lastChatId,
       loadChat,
