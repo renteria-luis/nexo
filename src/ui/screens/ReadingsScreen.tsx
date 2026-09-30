@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Linking, Pressable, Text, View } from 'react-native';
+import { Linking, Text, View } from 'react-native';
 
 import { CRITERION_WEIGHTS, type CriterionId } from '../../core/discipline.ts';
 import { groupByTopic, type StudyTopic } from '../../core/studies.ts';
 import type { CoreStudyRow } from '../../db/types.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 
+import { Button } from '../Button.tsx';
+import { Card } from '../Card.tsx';
+import { ExternalLink } from '../icons.ts';
+import { font, sheet, shape } from '../theme.ts';
+
 import { Screen } from './Screen.tsx';
-import { mono, sheet } from '../theme.ts';
 
 const TOPIC_ES: Record<string, string> = {
   sleep: 'Sueño',
@@ -39,32 +43,34 @@ function reference(study: CoreStudyRow): string {
   return [study.authors, study.year, study.journal].filter(Boolean).join(' · ');
 }
 
-function Study({ study }: { study: CoreStudyRow }) {
+function Study({ study, first }: { study: CoreStudyRow; first: boolean }) {
   const criterion = study.criterion as CriterionId | null;
   const link =
     study.open_access_url ?? (study.pmid ? `https://pubmed.ncbi.nlm.nih.gov/${study.pmid}/` : null);
 
   return (
-    <View style={styles.study}>
+    <View style={[styles.study, !first && styles.ruled]}>
       <Text style={styles.summary}>{study.summary}</Text>
       <Text style={styles.title}>{study.title}</Text>
       {reference(study) !== '' && <Text style={styles.reference}>{reference(study)}</Text>}
       {criterion && (
+        // Lo que sostiene y cuanto pesa, que es lo que lo ata a la nota y no a una
+        // lista de lecturas sueltas.
         <Text style={styles.criterion}>
-          Sostiene el criterio {CRITERION_ES[criterion]}, {CRITERION_WEIGHTS[criterion]} de 100
-          puntos de la nota
+          {CRITERION_ES[criterion]} · {CRITERION_WEIGHTS[criterion]} de 100 puntos
         </Text>
       )}
       {link && (
-        <Pressable
+        <Button
+          label="Leerlo"
           accessibilityLabel={`Abrir el estudio ${study.id}`}
+          variant="ghost"
+          icon={ExternalLink}
+          style={styles.link}
           onPress={() => {
             Linking.openURL(link).catch((error: unknown) => console.error(error));
           }}
-          style={styles.link}
-        >
-          <Text style={styles.linkText}>Leerlo ›</Text>
-        </Pressable>
+        />
       )}
     </View>
   );
@@ -104,12 +110,11 @@ export function ReadingsScreen() {
       {problem && <Text style={styles.problem}>{problem}</Text>}
 
       {topics?.map((topic) => (
-        <View key={topic.topic} style={styles.topic}>
-          <Text style={styles.topicName}>{TOPIC_ES[topic.topic] ?? topic.topic}</Text>
-          {topic.studies.map((study) => (
-            <Study key={study.id} study={study} />
+        <Card key={topic.topic} title={TOPIC_ES[topic.topic] ?? topic.topic}>
+          {topic.studies.map((study, index) => (
+            <Study key={study.id} study={study} first={index === 0} />
           ))}
-        </View>
+        </Card>
       ))}
     </Screen>
   );
@@ -117,55 +122,55 @@ export function ReadingsScreen() {
 
 const styles = sheet((theme) => ({
   intro: {
-    fontSize: 12,
+    fontSize: 13,
+    fontFamily: font.regular,
     color: theme.textFaint,
   },
   problem: {
-    fontSize: 12,
+    fontSize: 13,
+    fontFamily: font.bold,
     color: theme.danger,
   },
-  topic: {
-    gap: 8,
-    marginTop: 14,
-  },
-  topicName: {
-    fontSize: 14,
-    fontFamily: mono,
-    color: theme.text,
-  },
   study: {
-    borderTopWidth: 1,
+    gap: 4,
+    paddingTop: 2,
+  },
+  ruled: {
+    borderTopWidth: shape.border,
     borderTopColor: theme.line,
-    paddingTop: 8,
-    gap: 3,
+    paddingTop: 10,
   },
   summary: {
-    fontSize: 13,
-    fontFamily: mono,
+    fontSize: 14,
+    fontFamily: font.bold,
     color: theme.text,
   },
   title: {
-    fontSize: 11,
+    fontSize: 12,
+    fontFamily: font.regular,
     color: theme.textFaint,
-    fontFamily: mono,
   },
   reference: {
     fontSize: 11,
+    fontFamily: font.regular,
     color: theme.textGhost,
-    fontFamily: mono,
   },
   criterion: {
+    alignSelf: 'flex-start',
     fontSize: 11,
-    color: theme.ok,
-    fontFamily: mono,
+    fontFamily: font.black,
+    color: theme.accentInk,
+    backgroundColor: theme.accent,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    overflow: 'hidden',
+    marginTop: 2,
   },
   link: {
     alignSelf: 'flex-start',
-    paddingVertical: 4,
-  },
-  linkText: {
-    fontSize: 12,
-    color: theme.textDim,
-    fontFamily: mono,
+    marginLeft: -8,
   },
 }));

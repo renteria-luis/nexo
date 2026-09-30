@@ -9,10 +9,12 @@ import { WEEKLY_SESSION_TARGET } from '../../core/discipline.ts';
 import type { DayDetail } from '../../shell/records.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 import { fromKg } from '../../core/units.ts';
+import { Card } from '../Card.tsx';
 import { DayTraining } from '../DayTraining.tsx';
 import { FoodLog } from '../FoodLog.tsx';
+import { Star } from '../Star.tsx';
 import { TodayLog } from '../TodayLog.tsx';
-import { mono, sheet } from '../theme.ts';
+import { font, sheet, shape, theme } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
 
@@ -21,15 +23,6 @@ const MISSING = '—';
 /** Un decimal solo cuando lo hay: "17.3/20", pero "22/22". */
 function points(earned: number): string {
   return Number.isInteger(earned) ? String(earned) : earned.toFixed(1);
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {children}
-    </View>
-  );
 }
 
 /**
@@ -41,16 +34,8 @@ export function DayScreen() {
   const route = useRoute<{ key: string; name: string; params?: { date?: string } }>();
   const date = route.params?.date ?? todayIso();
 
-  const {
-    state,
-    loadDay,
-    editDay,
-    addFoodOn,
-    removeFood,
-    openSessionOn,
-    addSetOn,
-    removeSetOn,
-  } = useAppData();
+  const { state, loadDay, editDay, addFoodOn, removeFood, openSessionOn, addSetOn, removeSetOn } =
+    useAppData();
   const navigation = useNavigation<{ navigate: (name: string) => void }>();
   const [detail, setDetail] = useState<DayDetail | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -89,53 +74,72 @@ export function DayScreen() {
 
   return (
     <Screen title={shortDate(date)}>
-      <View style={styles.head}>
-        <Text style={styles.date}>{shortDate(date)}</Text>
-        <Text style={styles.score}>
-          {report.score === null ? MISSING : scoreText(report.score)}
-        </Text>
-      </View>
+      {/* La nota primero y en grande: es la pregunta que trae aqui, por que ese
+          cuadrito salio de ese color. */}
+      <Card tone="accent">
+        <View style={styles.heroRow}>
+          <View style={styles.heroSide}>
+            <Text style={styles.heroEyebrow}>NOTA DEL DÍA</Text>
+            <Text style={styles.heroScore}>
+              {report.score === null ? MISSING : scoreText(report.score)}
+            </Text>
+            <Text style={styles.heroNote}>
+              de 100
+              {report.pointsWithoutData > 0
+                ? ` · ${Math.round(report.pointsWithoutData)} sin anotar`
+                : ' · día completo'}
+            </Text>
+          </View>
+          {/* El numero del dia, que es lo unico que la pegatina puede decir aqui sin
+              repetir la nota que tiene al lado. */}
+          <Star size={70} color={theme.surface} style={styles.star}>
+            <Text style={styles.starValue}>{String(Number(date.slice(8, 10)))}</Text>
+          </Star>
+        </View>
+      </Card>
 
       {report.noScore === 'sin-metas' && (
-        <Text style={styles.warn}>
-          Gris porque no hay metas todavía: llena estatura, fecha de nacimiento y tu peso en Ajustes
-          y todos los días se vuelven a calcular solos.
-        </Text>
+        <Card tone="warn">
+          <Text style={styles.noticeText}>
+            Gris porque no hay metas todavía: llena estatura, fecha de nacimiento y tu peso en
+            Ajustes y todos los días se vuelven a calcular solos.
+          </Text>
+        </Card>
       )}
       {report.noScore === 'pocos-datos' && (
-        <Text style={styles.warn}>
-          Gris porque ese día no quedó nada anotado. Con un solo criterio ya hay nota.
-        </Text>
-      )}
-      {report.score !== null && report.pointsWithoutData > 0 && (
-        <Text style={styles.warn}>
-          {Math.round(report.pointsWithoutData)} de los 100 puntos del día se quedaron sin anotar,
-          que no es lo mismo que no haberlos cumplido.
-        </Text>
+        <Card tone="warn">
+          <Text style={styles.noticeText}>
+            Gris porque ese día no quedó nada anotado. Con un solo criterio ya hay nota.
+          </Text>
+        </Card>
       )}
       {day.log?.rest_day === 1 && (
-        <Text style={styles.ok}>
-          Descanso planeado: no se penaliza no haber entrenado.{' '}
-          {day.bestWeekSessions >= WEEKLY_SESSION_TARGET
-            ? `La semana que lo rodea tiene ${day.bestWeekSessions} sesiones, así que este descanso vale como entrenar.`
-            : `Valdrá como entrenar cuando la semana que lo rodea llegue a ${WEEKLY_SESSION_TARGET} sesiones; va en ${day.bestWeekSessions}, y cuentan las de los días que vengan.`}
-        </Text>
+        <Card tone="ok">
+          <Text style={styles.noticeText}>
+            Descanso planeado: no se penaliza no haber entrenado.{' '}
+            {day.bestWeekSessions >= WEEKLY_SESSION_TARGET
+              ? `La semana que lo rodea tiene ${day.bestWeekSessions} sesiones, así que este descanso vale como entrenar.`
+              : `Valdrá como entrenar cuando la semana que lo rodea llegue a ${WEEKLY_SESSION_TARGET} sesiones; va en ${day.bestWeekSessions}, y cuentan las de los días que vengan.`}
+          </Text>
+        </Card>
       )}
 
       {/* El desglose: que pedia cada cosa, que hiciste y cuantos puntos salieron. */}
-      <Section title="Nota">
-        {report.lines.map((line) => (
-          <View key={line.id} style={styles.criterion}>
-            <Text style={styles.criterionLabel}>{line.label}</Text>
-            <Text style={styles.criterionValue}>
-              {line.value}
-              {line.target === null ? null : (
-                <Text style={styles.criterionTarget}> de {line.target}</Text>
-              )}
-            </Text>
+      <Card title="De dónde sale">
+        {report.lines.map((line, index) => (
+          <View key={line.id} style={[styles.criterion, index > 0 && styles.ruled]}>
+            <View style={styles.criterionText}>
+              <Text style={styles.criterionLabel}>{line.label}</Text>
+              <Text style={styles.criterionValue}>
+                {line.value}
+                {line.target === null ? null : (
+                  <Text style={styles.criterionTarget}> de {line.target}</Text>
+                )}
+              </Text>
+            </View>
             <Text
               style={[
-                styles.criterionPoints,
+                styles.points,
                 line.earned === null
                   ? styles.pointsMissing
                   : line.earned >= line.weight
@@ -155,9 +159,9 @@ export function DayScreen() {
             Penalización {Math.round(report.penalty)} por no entrenar un día que tocaba.
           </Text>
         )}
-      </Section>
+      </Card>
 
-      <Section title="Entreno">
+      <Card title="Entreno">
         <DayTraining
           sessionId={day.session?.id ?? null}
           retroactive={day.session?.is_retroactive === 1}
@@ -192,24 +196,23 @@ export function DayScreen() {
             mancuernas contadas por las dos
           </Text>
         )}
-      </Section>
+      </Card>
 
-      <Section title="Comida">
-        <FoodLog
-          foods={loaded.foods}
-          portions={day.portions}
-          totals={day.nutrition}
-          proteinBand={band}
-          kcalTarget={day.targets?.kcal ?? null}
-          heading={`Lo que comió el ${shortDate(date)}`}
-          onAdd={(entry) => after(addFoodOn(date, entry))}
-          onOpenCatalogue={() => navigation.navigate('Alimentos')}
-          history={loaded.foodHistory}
-          onRemove={(entryId) => after(removeFood(entryId))}
-        />
-      </Section>
+      {/* La comida trae sus propias cartillas, asi que no va dentro de otra. */}
+      <FoodLog
+        foods={loaded.foods}
+        portions={day.portions}
+        totals={day.nutrition}
+        proteinBand={band}
+        kcalTarget={day.targets?.kcal ?? null}
+        heading={`Lo que comió el ${shortDate(date)}`}
+        onAdd={(entry) => after(addFoodOn(date, entry))}
+        onOpenCatalogue={() => navigation.navigate('Alimentos')}
+        history={loaded.foodHistory}
+        onRemove={(entryId) => after(removeFood(entryId))}
+      />
 
-      <Section title="Registro del día">
+      <Card title="Registro del día">
         <TodayLog
           key={date}
           log={day.log}
@@ -224,7 +227,7 @@ export function DayScreen() {
           }
           onLog={(entry) => after(editDay(date, entry))}
         />
-      </Section>
+      </Card>
 
       {problem && <Text style={styles.problem}>{problem}</Text>}
     </Screen>
@@ -232,100 +235,127 @@ export function DayScreen() {
 }
 
 const styles = sheet((theme) => ({
-  head: {
+  heroRow: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 10,
   },
-  date: {
-    fontSize: 20,
-    color: theme.text,
-    fontFamily: mono,
+  heroSide: {
+    flexShrink: 1,
   },
-  score: {
-    fontSize: 34,
+  heroEyebrow: {
+    fontSize: 11,
+    fontFamily: font.black,
+    letterSpacing: 1.2,
+    color: theme.accentInkSoft,
+  },
+  heroScore: {
+    fontSize: 52,
+    lineHeight: 58,
+    fontFamily: font.display,
+    color: theme.accentInk,
+    fontVariant: ['tabular-nums'],
+  },
+  heroNote: {
+    fontSize: 12,
+    fontFamily: font.bold,
+    color: theme.accentInkSoft,
+  },
+  star: {
+    transform: [{ rotate: '-8deg' }],
+  },
+  starValue: {
+    fontSize: 24,
+    fontFamily: font.black,
     color: theme.text,
-    fontFamily: mono,
+    fontVariant: ['tabular-nums'],
+  },
+  noticeText: {
+    fontSize: 13,
+    fontFamily: font.regular,
+    color: theme.accentInk,
   },
   loading: {
-    fontSize: 12,
-    color: theme.textGhost,
-  },
-  warn: {
-    fontSize: 12,
-    color: theme.warn,
-    backgroundColor: theme.warnBg,
-    borderRadius: 6,
-    padding: 10,
-    overflow: 'hidden',
-    lineHeight: 18,
-  },
-  ok: {
-    fontSize: 12,
-    color: theme.ok,
-  },
-  section: {
-    borderTopWidth: 1,
-    borderTopColor: theme.line,
-    paddingTop: 10,
-    marginTop: 6,
-    gap: 8,
-  },
-  sectionTitle: {
-    fontSize: 11,
-    color: theme.textGhost,
-    fontFamily: mono,
-    textTransform: 'lowercase',
+    fontSize: 13,
+    fontFamily: font.regular,
+    color: theme.textFaint,
   },
   criterion: {
     flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 8,
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 4,
+  },
+  ruled: {
+    borderTopWidth: shape.border,
+    borderTopColor: theme.line,
+    paddingTop: 8,
+  },
+  criterionText: {
+    flex: 1,
+    gap: 1,
   },
   criterionLabel: {
-    fontSize: 13,
-    color: theme.textDim,
-    fontFamily: mono,
-    width: 78,
+    fontSize: 12,
+    fontFamily: font.black,
+    letterSpacing: 0.6,
+    color: theme.textFaint,
+    textTransform: 'uppercase',
   },
   criterionValue: {
-    flex: 1,
-    fontSize: 13,
+    fontSize: 15,
+    fontFamily: font.bold,
     color: theme.text,
-    fontFamily: mono,
+    fontVariant: ['tabular-nums'],
   },
   criterionTarget: {
-    color: theme.textGhost,
+    fontFamily: font.regular,
+    color: theme.textFaint,
   },
-  criterionPoints: {
-    fontSize: 13,
-    fontFamily: mono,
-    textAlign: 'right',
-    minWidth: 52,
+  // Los puntos en su casilla, del color que dice como salio: la palabra de al lado ya
+  // dice que criterio es, asi que aqui el color no es la unica senal.
+  points: {
+    minWidth: 62,
+    textAlign: 'center',
+    fontSize: 14,
+    fontFamily: font.black,
+    color: theme.accentInk,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    overflow: 'hidden',
+    fontVariant: ['tabular-nums'],
   },
   pointsFull: {
-    color: theme.ok,
+    backgroundColor: theme.ok,
   },
   pointsPartial: {
-    color: theme.warn,
+    backgroundColor: theme.warn,
   },
   pointsZero: {
-    color: theme.danger,
+    backgroundColor: theme.danger,
   },
   pointsMissing: {
-    color: theme.textGhost,
+    backgroundColor: theme.bg,
+    color: theme.textFaint,
   },
   penalty: {
-    fontSize: 12,
+    fontSize: 13,
+    fontFamily: font.bold,
     color: theme.danger,
   },
   volume: {
-    fontSize: 11,
-    color: theme.textGhost,
-    fontFamily: mono,
+    fontSize: 12,
+    fontFamily: font.regular,
+    color: theme.textFaint,
+    fontVariant: ['tabular-nums'],
   },
   problem: {
-    fontSize: 12,
+    fontSize: 13,
+    fontFamily: font.bold,
     color: theme.danger,
   },
 }));

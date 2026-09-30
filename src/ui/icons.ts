@@ -13,12 +13,14 @@
 
 export { default as Check } from 'lucide-react-native/icons/check';
 export { default as ChevronDown } from 'lucide-react-native/icons/chevron-down';
+export { default as ChevronLeft } from 'lucide-react-native/icons/chevron-left';
 export { default as ChevronRight } from 'lucide-react-native/icons/chevron-right';
 export { default as ChevronUp } from 'lucide-react-native/icons/chevron-up';
 export { default as Circle } from 'lucide-react-native/icons/circle';
 export { default as Command } from 'lucide-react-native/icons/command';
 export { default as Droplets } from 'lucide-react-native/icons/droplets';
 export { default as Dumbbell } from 'lucide-react-native/icons/dumbbell';
+export { default as ExternalLink } from 'lucide-react-native/icons/external-link';
 export { default as Eye } from 'lucide-react-native/icons/eye';
 export { default as EyeOff } from 'lucide-react-native/icons/eye-off';
 export { default as Footprints } from 'lucide-react-native/icons/footprints';

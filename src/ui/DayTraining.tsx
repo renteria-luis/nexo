@@ -1,13 +1,17 @@
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { formatWeight, toKg, type WeightUnit } from '../core/units.ts';
 import type { TrainingRoutineRow } from '../db/types.ts';
 import type { DayExercise } from '../shell/records.ts';
 import type { CatalogExercise } from '../training/queries.ts';
 
+import { Button } from './Button.tsx';
+import { Chip } from './Chip.tsx';
+import { IconButton } from './IconButton.tsx';
+import { Check, Plus, Trash } from './icons.ts';
 import { NumericField } from './NumericField.tsx';
-import { mono, sheet } from './theme.ts';
+import { font, sheet, shape } from './theme.ts';
 
 function clock(seconds: number): string {
   const whole = Math.max(0, Math.round(seconds));
@@ -63,6 +67,36 @@ export function DayTraining({
     setReps('');
   };
 
+  /** Las dos casillas y el boton de guardar, iguales para un ejercicio o para otro. */
+  const form = (exerciseId: string, what: string) => (
+    <View style={styles.addRow}>
+      <NumericField
+        value={weight}
+        onChange={setWeight}
+        allowDecimal={true}
+        accessibilityLabel={`Peso para ${what}`}
+        placeholder={unit}
+        style={styles.input}
+        focusedStyle={styles.inputEditing}
+      />
+      <NumericField
+        value={reps}
+        onChange={setReps}
+        allowDecimal={false}
+        accessibilityLabel={`Repeticiones para ${what}`}
+        placeholder="reps"
+        style={styles.input}
+        focusedStyle={styles.inputEditing}
+      />
+      <IconButton
+        icon={Check}
+        tone="accent"
+        accessibilityLabel={`Guardar la serie de ${what}`}
+        onPress={() => submit(exerciseId)}
+      />
+    </View>
+  );
+
   if (sessionId === null) {
     return (
       <View style={styles.block}>
@@ -70,22 +104,20 @@ export function DayTraining({
         <Text style={styles.hint}>Si entrenaste y no lo anotaste, escríbelo ahora:</Text>
         <View style={styles.chips}>
           {routines.map((routine) => (
-            <Pressable
+            <Chip
               key={routine.id}
+              label={routine.name}
+              icon={Plus}
               accessibilityLabel={`Escribir un entreno de ${routine.name}`}
               onPress={() => onCreateSession(routine.id)}
-              style={styles.chip}
-            >
-              <Text style={styles.chipText}>+ {routine.name}</Text>
-            </Pressable>
+            />
           ))}
-          <Pressable
+          <Chip
+            label="suelto"
+            icon={Plus}
             accessibilityLabel="Escribir un entreno sin rutina"
             onPress={() => onCreateSession(null)}
-            style={styles.chip}
-          >
-            <Text style={styles.chipText}>+ suelto</Text>
-          </Pressable>
+          />
         </View>
       </View>
     );
@@ -100,8 +132,8 @@ export function DayTraining({
         {retroactive ? ' · escrito después' : ''}
       </Text>
 
-      {exercises.map((exercise) => (
-        <View key={exercise.exerciseId} style={styles.exercise}>
+      {exercises.map((exercise, index) => (
+        <View key={exercise.exerciseId} style={[styles.exercise, index > 0 && styles.ruled]}>
           <View style={styles.exerciseTop}>
             <Text style={styles.exerciseName}>{exercise.name}</Text>
             <Text style={styles.exerciseMeta}>
@@ -119,52 +151,25 @@ export function DayTraining({
                 {set.setIndex}. {formatWeight(set.weightKg, unit)} {unit}
                 {exercise.perSide ? ' c/u' : ''} × {set.reps}
               </Text>
-              <Pressable
+              <IconButton
+                icon={Trash}
+                tone="danger"
                 accessibilityLabel={`Quitar la serie ${set.setIndex} de ${exercise.name}`}
                 onPress={() => onRemoveSet(exercise.exerciseId, set.setIndex)}
-                style={styles.remove}
-              >
-                <Text style={styles.removeText}>quitar</Text>
-              </Pressable>
+              />
             </View>
           ))}
 
           {adding === exercise.exerciseId ? (
-            <View style={styles.addRow}>
-              <NumericField
-                value={weight}
-                onChange={setWeight}
-                allowDecimal={true}
-                accessibilityLabel={`Peso para ${exercise.name}`}
-                placeholder={unit}
-                style={styles.input}
-                focusedStyle={styles.inputEditing}
-              />
-              <NumericField
-                value={reps}
-                onChange={setReps}
-                allowDecimal={false}
-                accessibilityLabel={`Repeticiones para ${exercise.name}`}
-                placeholder="reps"
-                style={styles.input}
-                focusedStyle={styles.inputEditing}
-              />
-              <Pressable
-                accessibilityLabel={`Guardar la serie de ${exercise.name}`}
-                onPress={() => submit(exercise.exerciseId)}
-                style={styles.save}
-              >
-                <Text style={styles.saveText}>guardar</Text>
-              </Pressable>
-            </View>
+            form(exercise.exerciseId, exercise.name)
           ) : (
-            <Pressable
+            <Button
+              label="Serie"
+              icon={Plus}
               accessibilityLabel={`Agregar una serie a ${exercise.name}`}
-              onPress={() => setAdding(exercise.exerciseId)}
               style={styles.more}
-            >
-              <Text style={styles.moreText}>+ serie</Text>
-            </Pressable>
+              onPress={() => setAdding(exercise.exerciseId)}
+            />
           )}
         </View>
       ))}
@@ -174,132 +179,82 @@ export function DayTraining({
         {catalog
           .filter((item) => !exercises.some((done) => done.exerciseId === item.id))
           .map((item) => (
-            <Pressable
+            <Chip
               key={item.id}
+              label={item.name_es}
               accessibilityLabel={`Agregar ${item.name_es}`}
+              selected={adding === item.id}
               onPress={() => setAdding(item.id)}
-              style={[styles.chip, adding === item.id && styles.chipSelected]}
-            >
-              <Text style={[styles.chipText, adding === item.id && styles.chipTextSelected]}>
-                {item.name_es}
-              </Text>
-            </Pressable>
+            />
           ))}
       </View>
 
-      {adding !== null && !exercises.some((done) => done.exerciseId === adding) && (
-        <View style={styles.addRow}>
-          <NumericField
-            value={weight}
-            onChange={setWeight}
-            allowDecimal={true}
-            accessibilityLabel="Peso del ejercicio nuevo"
-            placeholder={unit}
-            style={styles.input}
-            focusedStyle={styles.inputEditing}
-          />
-          <NumericField
-            value={reps}
-            onChange={setReps}
-            allowDecimal={false}
-            accessibilityLabel="Repeticiones del ejercicio nuevo"
-            placeholder="reps"
-            style={styles.input}
-            focusedStyle={styles.inputEditing}
-          />
-          <Pressable
-            accessibilityLabel="Guardar la serie del ejercicio nuevo"
-            onPress={() => submit(adding)}
-            style={styles.save}
-          >
-            <Text style={styles.saveText}>guardar</Text>
-          </Pressable>
-        </View>
-      )}
+      {adding !== null &&
+        !exercises.some((done) => done.exerciseId === adding) &&
+        form(adding, 'el ejercicio nuevo')}
     </View>
   );
 }
 
 const styles = sheet((theme) => ({
   block: {
-    gap: 8,
+    gap: 10,
   },
   line: {
-    fontSize: 12,
-    color: theme.textDim,
-    fontFamily: mono,
-  },
-  empty: {
     fontSize: 13,
     color: theme.textFaint,
+    fontFamily: font.bold,
+  },
+  empty: {
+    fontSize: 15,
+    fontFamily: font.black,
+    color: theme.text,
   },
   hint: {
-    fontSize: 11,
-    color: theme.textGhost,
+    fontSize: 12,
+    fontFamily: font.regular,
+    color: theme.textFaint,
   },
   chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
-  },
-  chip: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    minHeight: 38,
-    justifyContent: 'center',
-  },
-  chipSelected: {
-    borderColor: theme.accent,
-    backgroundColor: theme.accent,
-  },
-  chipText: {
-    fontSize: 12,
-    color: theme.text,
-    fontFamily: mono,
-  },
-  chipTextSelected: {
-    color: theme.accentInk,
+    gap: 8,
   },
   exercise: {
-    borderTopWidth: 1,
+    gap: 6,
+    paddingTop: 2,
+  },
+  ruled: {
+    borderTopWidth: shape.border,
     borderTopColor: theme.line,
-    paddingTop: 8,
-    gap: 4,
+    paddingTop: 10,
   },
   exerciseTop: {
     gap: 2,
   },
   exerciseName: {
-    fontSize: 14,
+    fontSize: 15,
+    fontFamily: font.black,
     color: theme.text,
-    fontFamily: mono,
   },
   exerciseMeta: {
-    fontSize: 11,
-    color: theme.textGhost,
-    fontFamily: mono,
+    fontSize: 12,
+    fontFamily: font.regular,
+    color: theme.textFaint,
+    fontVariant: ['tabular-nums'],
   },
   setRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 10,
   },
   setText: {
+    flex: 1,
     fontSize: 14,
+    fontFamily: font.bold,
     color: theme.text,
-    fontFamily: mono,
-  },
-  remove: {
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-  },
-  removeText: {
-    fontSize: 11,
-    color: theme.textGhost,
-    fontFamily: mono,
+    fontVariant: ['tabular-nums'],
   },
   addRow: {
     flexDirection: 'row',
@@ -308,40 +263,21 @@ const styles = sheet((theme) => ({
   },
   input: {
     flex: 1,
-    borderWidth: 1,
+    borderWidth: shape.border,
     borderColor: theme.line,
-    borderRadius: 6,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.surface,
     paddingHorizontal: 10,
-    paddingVertical: 10,
+    paddingVertical: 9,
     fontSize: 15,
+    fontFamily: font.black,
     color: theme.text,
-    fontFamily: mono,
-    // Sin esto el campo no encoge por debajo de su ancho natural y la fila
-    // se sale de la pantalla, que es el desbordamiento clasico de flex.
-    minWidth: 0,
+    fontVariant: ['tabular-nums'],
   },
   inputEditing: {
-    borderColor: theme.accent,
-  },
-  save: {
-    borderWidth: 1,
-    borderColor: theme.accent,
-    borderRadius: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  saveText: {
-    fontSize: 13,
-    color: theme.accent,
-    fontFamily: mono,
+    backgroundColor: theme.surfaceHigh,
   },
   more: {
     alignSelf: 'flex-start',
-    paddingVertical: 6,
-  },
-  moreText: {
-    fontSize: 12,
-    color: theme.accent,
-    fontFamily: mono,
   },
 }));

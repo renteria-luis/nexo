@@ -14,9 +14,11 @@ import {
   type RecordSort,
   type RecordWindow,
 } from '../../shell/records.ts';
-import { ChevronRight } from '../icons.ts';
 
-import { mono, sheet, theme } from '../theme.ts';
+import { Card } from '../Card.tsx';
+import { Chip } from '../Chip.tsx';
+import { ChevronRight } from '../icons.ts';
+import { font, sheet, shape, theme } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
 
@@ -56,141 +58,151 @@ export function RecordsScreen() {
 
   return (
     <Screen title="Registros">
-      <Text style={styles.label}>periodo</Text>
-      <View style={styles.chips}>
-        {RECORD_WINDOWS.map((option) => (
-          <Pressable
-            key={option.id}
-            accessibilityLabel={`Ver ${option.label}`}
-            onPress={() => setWindow(option.id)}
-            style={[styles.chip, option.id === window && styles.chipSelected]}
-          >
-            <Text style={[styles.chipText, option.id === window && styles.chipTextSelected]}>
-              {option.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      <Card>
+        <Text style={styles.label}>Periodo</Text>
+        <View style={styles.chips}>
+          {RECORD_WINDOWS.map((option) => (
+            <Chip
+              key={option.id}
+              label={option.label}
+              accessibilityLabel={`Ver ${option.label}`}
+              selected={option.id === window}
+              onPress={() => setWindow(option.id)}
+            />
+          ))}
+        </View>
 
-      <Text style={styles.label}>ordenar por</Text>
-      <View style={styles.chips}>
-        {RECORD_SORTS.map((option) => (
-          <Pressable
-            key={option.id}
-            accessibilityLabel={`Ordenar por ${option.label}`}
-            onPress={() => setSort(option.id)}
-            style={[styles.chip, option.id === sort && styles.chipSelected]}
-          >
-            <Text style={[styles.chipText, option.id === sort && styles.chipTextSelected]}>
-              {option.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {rows !== null && rows.length === 0 && (
-        <Text style={styles.empty}>No hay nada registrado en este periodo.</Text>
-      )}
-
-      {sorted.map((row) => (
-        <Pressable
-          key={row.date}
-          accessibilityLabel={`Ver el ${shortDate(row.date)}`}
-          onPress={() => navigation.navigate('Día', { date: row.date })}
-          style={styles.row}
-        >
-          <Text style={styles.rowScore}>
-            {row.score === null ? MISSING : scoreText(row.score)}
-          </Text>
-          <View style={styles.rowBody}>
-            <Text style={styles.rowDate}>{shortDate(row.date)}</Text>
-            <Text style={styles.rowDetail}>
-              {[
-                row.trained ? 'entrenó' : row.restDay ? 'descanso' : 'sin entreno',
-                row.volume > 0 ? `${Math.round(fromKg(row.volume, unit))} ${unit}` : null,
-                row.proteinG === null ? null : `${Math.round(row.proteinG)} g prot`,
-                row.kcal === null ? null : `${Math.round(row.kcal)} kcal`,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </Text>
-          </View>
-          <ChevronRight size={18} color={theme.textGhost} strokeWidth={1.75} />
-        </Pressable>
-      ))}
+        <Text style={styles.label}>Ordenar por</Text>
+        <View style={styles.chips}>
+          {RECORD_SORTS.map((option) => (
+            <Chip
+              key={option.id}
+              label={option.label}
+              accessibilityLabel={`Ordenar por ${option.label}`}
+              selected={option.id === sort}
+              onPress={() => setSort(option.id)}
+            />
+          ))}
+        </View>
+      </Card>
 
       {problem && <Text style={styles.problem}>{problem}</Text>}
+
+      {rows !== null && rows.length === 0 && (
+        <Card>
+          <Text style={styles.empty}>No hay nada registrado en este periodo.</Text>
+        </Card>
+      )}
+
+      {sorted.length > 0 && (
+        <Card>
+          {sorted.map((row, index) => (
+            <Pressable
+              key={row.date}
+              accessibilityRole="button"
+              accessibilityLabel={`Ver el ${shortDate(row.date)}`}
+              onPress={() => navigation.navigate('Día', { date: row.date })}
+              style={({ pressed }) => [
+                styles.row,
+                index > 0 && styles.ruled,
+                pressed && styles.rowPressed,
+              ]}
+            >
+              {/* La nota en su casilla: es lo primero que se busca al recorrer la
+                  lista, y un numero suelto en una fila se pierde entre el texto. */}
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>
+                  {row.score === null ? MISSING : scoreText(row.score)}
+                </Text>
+              </View>
+              <View style={styles.body}>
+                <Text style={styles.date}>{shortDate(row.date)}</Text>
+                <Text style={styles.detail}>
+                  {[
+                    row.trained ? 'entrenó' : row.restDay ? 'descanso' : 'sin entreno',
+                    row.volume > 0 ? `${Math.round(fromKg(row.volume, unit))} ${unit}` : null,
+                    row.proteinG === null ? null : `${Math.round(row.proteinG)} g prot`,
+                    row.kcal === null ? null : `${Math.round(row.kcal)} kcal`,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </Text>
+              </View>
+              <ChevronRight size={18} color={theme.textFaint} strokeWidth={2.5} />
+            </Pressable>
+          ))}
+        </Card>
+      )}
     </Screen>
   );
 }
 
 const styles = sheet((theme) => ({
   label: {
-    fontSize: 11,
-    color: theme.textGhost,
-    fontFamily: mono,
+    fontSize: 12,
+    fontFamily: font.black,
+    letterSpacing: 0.6,
+    color: theme.textFaint,
+    textTransform: 'uppercase',
   },
   chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
-  },
-  chip: {
-    borderWidth: 1,
-    borderColor: theme.line,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    minHeight: 38,
-    justifyContent: 'center',
-  },
-  chipSelected: {
-    borderColor: theme.accent,
-    backgroundColor: theme.accent,
-  },
-  chipText: {
-    fontSize: 12,
-    color: theme.text,
-    fontFamily: mono,
-  },
-  chipTextSelected: {
-    color: theme.accentInk,
+    gap: 8,
   },
   empty: {
-    fontSize: 12,
-    color: theme.textGhost,
-    marginTop: 12,
+    fontSize: 13,
+    fontFamily: font.regular,
+    color: theme.textFaint,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderTopWidth: 1,
+    paddingVertical: 10,
+  },
+  ruled: {
+    borderTopWidth: shape.border,
     borderTopColor: theme.line,
-    paddingVertical: 12,
   },
-  rowScore: {
-    fontSize: 20,
+  rowPressed: {
+    opacity: 0.55,
+  },
+  badge: {
+    minWidth: 46,
+    minHeight: 40,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.bg,
+  },
+  badgeText: {
+    fontSize: 18,
+    fontFamily: font.black,
     color: theme.text,
-    fontFamily: mono,
-    width: 42,
+    fontVariant: ['tabular-nums'],
   },
-  rowBody: {
+  body: {
     flex: 1,
     gap: 2,
   },
-  rowDate: {
-    fontSize: 14,
+  date: {
+    fontSize: 15,
+    fontFamily: font.black,
     color: theme.text,
-    fontFamily: mono,
   },
-  rowDetail: {
-    fontSize: 11,
+  detail: {
+    fontSize: 12,
+    fontFamily: font.regular,
     color: theme.textFaint,
-    fontFamily: mono,
+    fontVariant: ['tabular-nums'],
   },
   problem: {
-    fontSize: 12,
+    fontSize: 13,
+    fontFamily: font.bold,
     color: theme.danger,
   },
 }));

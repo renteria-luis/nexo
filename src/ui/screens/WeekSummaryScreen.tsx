@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
-import { addDays, todayIso, weekStart } from '../../core/dates.ts';
+import { addDays, shortDate, todayIso, weekStart } from '../../core/dates.ts';
 import { fromKg } from '../../core/units.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 import { SET_BAND, type Comparison, type MuscleWeek, type WeekSummary } from '../../shell/week.ts';
 
+import { Card } from '../Card.tsx';
+import { ChevronLeft, ChevronRight } from '../icons.ts';
+import { IconButton } from '../IconButton.tsx';
 import { MUSCLE_ES } from '../muscles.ts';
+import { font, sheet, shape } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
-import { mono, sheet } from '../theme.ts';
 
 const BAND_ES: Record<MuscleWeek['band'], string> = {
   below: 'bajo la banda',
@@ -23,12 +26,13 @@ function show(value: number | null, digits = 0, suffix = ''): string {
 }
 
 function compare(value: Comparison, digits: number, suffix: string): string {
-  return `${show(value.thisWeek, digits, suffix)} esta semana · ${show(value.previousWeek, digits, suffix)} la anterior`;
+  return `${show(value.thisWeek, digits, suffix)} · antes ${show(value.previousWeek, digits, suffix)}`;
 }
 
-function Line({ label, value }: { label: string; value: string }) {
+/** Un dato de la semana: el nombre a la izquierda y el numero a la derecha. */
+function Line({ label, value, first = false }: { label: string; value: string; first?: boolean }) {
   return (
-    <View style={styles.line}>
+    <View style={[styles.line, !first && styles.ruled]}>
       <Text style={styles.lineLabel}>{label}</Text>
       <Text style={styles.lineValue}>{value}</Text>
     </View>
@@ -65,95 +69,100 @@ export function WeekSummaryScreen() {
   return (
     <Screen title="Resumen semanal">
       <View style={styles.nav}>
-        <Pressable
+        <IconButton
+          icon={ChevronLeft}
           accessibilityLabel="Semana anterior"
           onPress={() => setAnchor((date) => addDays(date, -7))}
-          style={styles.navButton}
-        >
-          <Text style={styles.navText}>‹</Text>
-        </Pressable>
+        />
         <Text style={styles.range}>
-          {summary ? `${summary.range.from} a ${summary.range.to}` : 'Cargando'}
+          {summary ? `${shortDate(summary.range.from)} a ${shortDate(summary.range.to)}` : '…'}
         </Text>
-        <Pressable
+        <IconButton
+          icon={ChevronRight}
           accessibilityLabel="Semana siguiente"
           disabled={!canGoForward}
           onPress={() => setAnchor((date) => addDays(date, 7))}
-          style={[styles.navButton, !canGoForward && styles.navDisabled]}
-        >
-          <Text style={styles.navText}>›</Text>
-        </Pressable>
+        />
       </View>
 
       {problem && <Text style={styles.problem}>{problem}</Text>}
 
       {summary && (
         <>
-          <Text style={styles.section}>
-            Series por músculo, banda de {SET_BAND.from} a {SET_BAND.to} directas
-          </Text>
-          {summary.muscles.length === 0 ? (
-            <Text style={styles.empty}>Sin series registradas esta semana.</Text>
-          ) : (
-            summary.muscles.map((muscle) => (
-              <View key={muscle.muscle} style={styles.muscle}>
-                <Text style={styles.muscleName}>
-                  {MUSCLE_ES[muscle.muscle] ?? muscle.muscle} · {muscle.directSets} directas (
-                  {muscle.weightedSets} ponderadas) · {BAND_ES[muscle.band]}
-                </Text>
-                <Text style={styles.muscleDetail}>
-                  Volumen {Math.round(fromKg(muscle.volumeKg, unit))} {unit} · promedio 4 semanas{' '}
-                  {muscle.priorAverageVolumeKg === null
-                    ? '—'
-                    : `${Math.round(fromKg(muscle.priorAverageVolumeKg, unit))} ${unit}`}
-                </Text>
-              </View>
-            ))
-          )}
+          <Card title="Series por músculo">
+            <Text style={styles.note}>
+              La banda útil va de {SET_BAND.from} a {SET_BAND.to} series directas por semana.
+            </Text>
+            {summary.muscles.length === 0 ? (
+              <Text style={styles.empty}>Sin series registradas esta semana.</Text>
+            ) : (
+              summary.muscles.map((muscle, index) => (
+                <View key={muscle.muscle} style={[styles.muscle, index > 0 && styles.ruled]}>
+                  <View style={styles.muscleHead}>
+                    <Text style={styles.muscleName}>
+                      {MUSCLE_ES[muscle.muscle] ?? muscle.muscle}
+                    </Text>
+                    <Text style={styles.muscleSets}>{muscle.directSets}</Text>
+                  </View>
+                  <View style={styles.tags}>
+                    <Text style={[styles.tag, styles[muscle.band]]}>{BAND_ES[muscle.band]}</Text>
+                    <Text style={styles.muscleDetail}>
+                      {muscle.weightedSets} ponderadas · {Math.round(fromKg(muscle.volumeKg, unit))}{' '}
+                      {unit}
+                      {muscle.priorAverageVolumeKg === null
+                        ? ''
+                        : `, antes ${Math.round(fromKg(muscle.priorAverageVolumeKg, unit))}`}
+                    </Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </Card>
 
-          <Text style={styles.section}>Promedios de la semana</Text>
-          <Line
-            label="Sueño"
-            value={
-              summary.averages.sleepMinutes === null
-                ? '—'
-                : `${Math.floor(summary.averages.sleepMinutes / 60)} h ${Math.round(summary.averages.sleepMinutes % 60)} min`
-            }
-          />
-          <Line
-            label="Proteína"
-            value={`${show(summary.averages.proteinG, 0, ' g')} · ${summary.averages.foodDays} días con comida`}
-          />
-          <Line label="Calorías" value={show(summary.averages.kcal, 0, ' kcal')} />
-          <Line label="Pasos" value={show(summary.averages.steps)} />
-          <Line
-            label="Agua"
-            value={
-              summary.averages.waterMl === null
-                ? '—'
-                : `${(summary.averages.waterMl / 1000).toFixed(2)} L`
-            }
-          />
+          <Card title="Promedios de la semana">
+            <Line
+              first
+              label="Sueño"
+              value={
+                summary.averages.sleepMinutes === null
+                  ? '—'
+                  : `${Math.floor(summary.averages.sleepMinutes / 60)} h ${Math.round(summary.averages.sleepMinutes % 60)} min`
+              }
+            />
+            <Line
+              label="Proteína"
+              value={`${show(summary.averages.proteinG, 0, ' g')} · ${summary.averages.foodDays} días con comida`}
+            />
+            <Line label="Calorías" value={show(summary.averages.kcal, 0, ' kcal')} />
+            <Line label="Pasos" value={show(summary.averages.steps)} />
+            <Line
+              label="Agua"
+              value={
+                summary.averages.waterMl === null
+                  ? '—'
+                  : `${(summary.averages.waterMl / 1000).toFixed(2)} L`
+              }
+            />
+            <Line label="Peso, media de 7 días" value={compare(summary.weightKg, 1, ' kg')} />
+          </Card>
 
-          <Text style={styles.section}>Peso promedio</Text>
-          <Line label="Siete días" value={compare(summary.weightKg, 1, ' kg')} />
+          <Card title="Lo que cuesta">
+            <Line
+              first
+              label="Alcohol"
+              value={`${summary.alcohol.drinks} tragos en ${summary.alcohol.daysWithDrinks} días`}
+            />
+            <Line label="Jr. Bacon Cheeseburgers" value={String(summary.jbcCount)} />
+            <Line
+              label={`Creatina, ${summary.creatine.windowDays} días`}
+              value={`${summary.creatine.taken} de ${summary.creatine.logged} anotados`}
+            />
+          </Card>
 
-          <Text style={styles.section}>Lo que cuesta</Text>
-          <Line
-            label="Alcohol"
-            value={`${summary.alcohol.drinks} tragos en ${summary.alcohol.daysWithDrinks} días`}
-          />
-          <Line label="Jr. Bacon Cheeseburgers" value={String(summary.jbcCount)} />
-
-          <Text style={styles.section}>Creatina, {summary.creatine.windowDays} días</Text>
-          <Line
-            label="Tomada"
-            value={`${summary.creatine.taken} de ${summary.creatine.logged} días registrados`}
-          />
-
-          <Text style={styles.section}>Recuperación</Text>
-          <Line label="Pulso en reposo" value={compare(summary.restingHr, 0, ' lpm')} />
-          <Line label="VFC" value={compare(summary.hrvMs, 0, ' ms')} />
+          <Card title="Recuperación">
+            <Line first label="Pulso en reposo" value={compare(summary.restingHr, 0, ' lpm')} />
+            <Line label="VFC" value={compare(summary.hrvMs, 0, ' ms')} />
+          </Card>
         </>
       )}
     </Screen>
@@ -165,69 +174,110 @@ const styles = sheet((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  navButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 4,
-  },
-  navDisabled: {
-    opacity: 0.3,
-  },
-  navText: {
-    fontSize: 22,
-    fontFamily: mono,
-    color: theme.text,
+    gap: 12,
   },
   range: {
-    fontSize: 13,
-    fontFamily: mono,
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 15,
+    fontFamily: font.black,
     color: theme.text,
+    fontVariant: ['tabular-nums'],
   },
-  problem: {
+  note: {
     fontSize: 12,
-    color: theme.danger,
-  },
-  section: {
-    fontSize: 14,
-    marginTop: 10,
-    fontFamily: mono,
-    color: theme.text,
+    fontFamily: font.regular,
+    color: theme.textFaint,
   },
   empty: {
-    fontSize: 12,
-    color: theme.textGhost,
+    fontSize: 13,
+    fontFamily: font.regular,
+    color: theme.textFaint,
+  },
+  problem: {
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.danger,
+  },
+  ruled: {
+    borderTopWidth: shape.border,
+    borderTopColor: theme.line,
+    paddingTop: 8,
   },
   muscle: {
-    borderTopWidth: 1,
-    borderTopColor: theme.line,
-    paddingTop: 6,
-    gap: 2,
+    gap: 4,
+  },
+  muscleHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 10,
   },
   muscleName: {
-    fontSize: 12,
-    fontFamily: mono,
+    flexShrink: 1,
+    fontSize: 15,
+    fontFamily: font.black,
     color: theme.text,
   },
-  muscleDetail: {
+  muscleSets: {
+    fontSize: 17,
+    fontFamily: font.black,
+    color: theme.text,
+    fontVariant: ['tabular-nums'],
+  },
+  tags: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  // La palabra dice en que banda esta; el color solo acompana, como en la cuadricula.
+  tag: {
     fontSize: 11,
+    fontFamily: font.black,
+    color: theme.accentInk,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    overflow: 'hidden',
+  },
+  within: {
+    backgroundColor: theme.ok,
+  },
+  below: {
+    backgroundColor: theme.warn,
+  },
+  above: {
+    backgroundColor: theme.info,
+  },
+  muscleDetail: {
+    flexShrink: 1,
+    fontSize: 12,
+    fontFamily: font.regular,
     color: theme.textFaint,
-    fontFamily: mono,
+    fontVariant: ['tabular-nums'],
   },
   line: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'baseline',
     gap: 12,
+    paddingTop: 2,
   },
   lineLabel: {
-    fontSize: 12,
-    color: theme.textDim,
-    fontFamily: mono,
+    flexShrink: 1,
+    fontSize: 14,
+    fontFamily: font.bold,
+    color: theme.text,
   },
   lineValue: {
-    fontSize: 12,
     flexShrink: 1,
     textAlign: 'right',
-    fontFamily: mono,
+    fontSize: 14,
+    fontFamily: font.black,
     color: theme.text,
+    fontVariant: ['tabular-nums'],
   },
 }));

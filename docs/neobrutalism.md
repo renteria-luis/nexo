@@ -466,9 +466,23 @@ floor rather than a range — above the target is fine, so the band is painted f
 target to the best day and "inside" means "above". Both read `core_daily_log`, which the
 charts loader already had in hand, so they cost a query of nothing.
 
-Left, screen by screen: Ofertas (`DealsScreen`) and the pushed screens (`DayScreen`,
-`RecordsScreen`, `WeekSummaryScreen`, `ReadingsScreen`,
-`RoutineNotesScreen`, `ExperimentsScreen`, `PendingScreen`). Each one is the same job:
+Also done: **Registros**, **Resumen semanal**, **Lecturas** and **el día**
+(`RecordsScreen`, `WeekSummaryScreen`, `ReadingsScreen`, `DayScreen` with
+`DayTraining`). Three patterns came out of them and are worth copying:
+
+- **A number that is the point of a row gets a box.** The score in the records list and
+  the points of each criterion in a day are boxed, bordered and tabular, because a bare
+  number in a line of prose is read last. The criterion's box is filled by how it went —
+  lime, orange, coral, or the page's cream when there was no data — and the word next to
+  it says which criterion it is, so the colour is never carrying the meaning alone.
+- **A week's muscle is a name, a count and a word**: "en banda" on lime, "bajo la banda"
+  on orange, "sobre la banda" on blue. Same rule.
+- **A day opens on its score**, in the accent card with the day of the month in the star,
+  and the breakdown under it is titled "De dónde sale", which is the question that
+  brought him there.
+
+Left, screen by screen: Ofertas (`DealsScreen`), `RoutineNotesScreen`,
+`ExperimentsScreen` and `PendingScreen`. Each one is the same job:
 replace hand-rolled boxes with `Card`,
 option rows with `Chip`, actions with `Button`, set a family on every `Text`, and give
 every `Pressable` a pressed style.
