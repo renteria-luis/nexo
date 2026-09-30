@@ -8,6 +8,11 @@
 // De mas antes que de menos, por decision suya: "prefiero que me muestre de mas a que no
 // me muestre algo". Por eso busca dentro de la palabra ("egg" encuentra "EGGS") y no
 // intenta ser lista con singulares y plurales.
+//
+// Ese mismo buscar dentro es generoso en las dos direcciones: "milk" trae leche
+// condensada, de coco, con chocolate, de avena y la de biberon para perros. Por eso hay
+// una segunda lista, la de palabras que la tiran aunque coincida. Si una palabra esta en
+// las dos gana la de fuera, asi que lo que quiere ver no puede estar excluido.
 
 import { fold } from '../nutrition/picker.ts';
 
@@ -40,6 +45,7 @@ export type WatchedDeal = {
 export function watchedDeals(
   deals: readonly DealWithContext[],
   words: readonly string[],
+  blocked: readonly string[] = [],
 ): WatchedDeal[] {
   if (words.length === 0) return [];
 
@@ -50,6 +56,7 @@ export function watchedDeals(
     const haystack = fold(`${item.deal.title} ${item.deal.description ?? ''}`);
     const word = words.find((needle) => haystack.includes(needle));
     if (word === undefined || seen.has(item.deal.id)) continue;
+    if (blocked.some((needle) => haystack.includes(needle))) continue;
     seen.add(item.deal.id);
     found.push({ item, word });
   }

@@ -168,7 +168,8 @@ export function TodayScreen({
   const { loaded } = state;
   // Con el valor de fabrica si nunca lo toco: la lista guardada solo trae lo escrito.
   const watching = loaded.settings.get('deal_watchlist') ?? settingDefault('deal_watchlist');
-  const watched = watchedDeals(loaded.deals, watchWords(watching));
+  const blocked = loaded.settings.get('deal_blocklist') ?? settingDefault('deal_blocklist');
+  const watched = watchedDeals(loaded.deals, watchWords(watching), watchWords(blocked));
   const collected = newestFetch(loaded.deals);
   const seen = Number(loaded.settings.get('deals_seen_at') ?? '0');
   // Una sola vez por recoleccion: si ya lo vio, la cartilla sigue ahi pero no se abre

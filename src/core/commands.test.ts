@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { parseCommand } from './commands.ts';
+import { dateFrom, parseCommand } from './commands.ts';
 
 const TODAY = '2026-09-28';
 
@@ -82,4 +82,11 @@ test('lo que no es una fecha se queda en el comando', () => {
   assert.equal(on('serie 65x8'), TODAY);
   assert.equal(on('creatina no'), TODAY);
   assert.match(rejected('32 set pasos 5000'), /No conozco "32"/);
+});
+
+test('una fecha suelta, sin comando, para las preguntas', () => {
+  assert.equal(dateFrom('ayer', TODAY), '2026-09-27');
+  assert.equal(dateFrom('25 set', TODAY), '2026-09-25');
+  assert.equal(dateFrom('el martes', TODAY), null);
+  assert.equal(dateFrom('', TODAY), null);
 });

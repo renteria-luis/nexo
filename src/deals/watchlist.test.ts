@@ -66,6 +66,31 @@ test('una oferta no sale dos veces aunque dos palabras la encuentren', () => {
   assert.equal(found[0].word, 'egg');
 });
 
+test('una palabra excluida tira la oferta aunque la haya encontrado otra', () => {
+  const deals = [
+    deal('LACTANTIA PURFILTRE MILK', '4 L'),
+    deal('EAGLE BRAND SWEETENED CONDENSED MILK', '300 ML'),
+    deal('ROOSTER COCONUT MILK', '398 ML'),
+    deal('PetAg Esbilac Milk Replacer', null),
+  ];
+
+  const found = watchedDeals(
+    deals,
+    watchWords('milk'),
+    watchWords('condensed, coconut, milk replacer'),
+  );
+  assert.deepEqual(
+    found.map((one) => one.item.deal.title),
+    ['LACTANTIA PURFILTRE MILK'],
+  );
+});
+
+test('excluir gana a vigilar, asi que lo que quiere ver no puede estar en las dos', () => {
+  const deals = [deal('CHOCOLATE MILK', '2 L')];
+  assert.equal(watchedDeals(deals, watchWords('chocolate'), watchWords('chocolate')).length, 0);
+  assert.equal(watchedDeals(deals, watchWords('chocolate'), []).length, 1);
+});
+
 test('lo mas nuevo de la recoleccion decide si ya lo vio', () => {
   assert.equal(newestFetch([deal('a', null, 10), deal('b', null, 30)]), 30);
   assert.equal(newestFetch([]), null);

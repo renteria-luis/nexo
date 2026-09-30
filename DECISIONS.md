@@ -326,3 +326,30 @@ estuviera en libras, mientras que la serie si convertia. Una de las dos estaba m
 Decision: El asistente convierte con `toKg` igual que la serie, asi que en libras "peso
 165" guarda 74.8 kg. Si el escribe siempre en kilos no cambia nada.
 Rejected: Copiar el comportamiento anterior tal cual, que guardaba libras como kilos.
+
+## 2026-09-29 — El modelo vive en el telefono, y solo traduce
+Context: El asistente entendia comandos pero no frases. El quiere hablarle normal ("ayer
+dormi como seis y media") y que ademas conteste cosas suyas ("cual fue mi mejor marca"),
+y que sea gratis.
+Decision: Apple Foundation Models dentro del telefono (`@react-native-ai/apple`, iOS 26,
+su iPhone 16 Pro Max). Gratis, sin cuenta, sin limite y sin conexion. El modelo no
+escribe nunca: se le pide un objeto con esquema y lo unico que puede proponer es una
+linea de la misma gramatica de comandos, que vuelve a pasar por el parser; todo lo que
+proponga se confirma antes de escribirse. Las preguntas son cuatro y las contesta la app
+desde SQLite, no el modelo. Se usa solo el modulo nativo, no el envoltorio del paquete,
+que arrastra el SDK de Vercel y zod al bundle y revienta al importarse si no esta
+compilado.
+Rejected: RAG (su informacion es pequena, local y relacional: una consulta exacta gana a
+recuperar texto), texto libre en vez de esquema, y la nube por defecto, que queda como
+respaldo explicito para cuando el modelo del telefono se quede corto.
+
+## 2026-09-29 — Palabras que ignorar en las ofertas
+Context: Buscar dentro de la palabra es generoso en las dos direcciones. Vigilar "milk"
+traia leche condensada, de coco, con chocolate, de avena, chocolate con leche y la de
+biberon para perros: 126 coincidencias en un dia de 408 ofertas.
+Decision: Una segunda lista en Ajustes (`deal_blocklist`), con el mismo formato. Una
+oferta que coincida con una palabra vigilada y tambien con una excluida no sale. Lo que
+trae de fabrica se eligio midiendo sobre un dia real: 126 pasan a 87 sin perder ninguna
+oferta de lo que si come.
+Rejected: Afinar la busqueda (perderia "EGGS" al escribir "egg", que es justo lo que el
+pidio que no pasara) y excluir "breaded" o "pasta", que si son comida suya.

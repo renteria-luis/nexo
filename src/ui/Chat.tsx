@@ -2,10 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Keyboard, Pressable, ScrollView, Text, View } from 'react-native';
 
 import type { ChatMessage, ChatSummary } from '../core/assistant.ts';
-import { COMMAND_HELP, parseCommand, type Command } from '../core/commands.ts';
+import { COMMAND_HELP, dateFrom, parseCommand, type Command } from '../core/commands.ts';
+import { scoreText } from '../core/day-report.ts';
 import { shortDate, todayIso, type IsoDate } from '../core/dates.ts';
-import { toKg } from '../core/units.ts';
+import { currentStreak } from '../core/discipline.ts';
+import { INTENT_SCHEMA, instructions, readIntent, type Intent } from '../core/intent.ts';
+import { toKg, withUnit } from '../core/units.ts';
+import { fold } from '../nutrition/picker.ts';
 import { useAppData } from '../shell/AppData.tsx';
+import { askModel, modelReady } from '../shell/model.ts';
 
 import { Button } from './Button.tsx';
 import { List, Plus, Send, X } from './icons.ts';
@@ -16,13 +21,16 @@ import { font, hardShadow, sheet, shape } from './theme.ts';
 /**
  * El chat con el asistente, que es lo que la bola abre.
  *
- * Por ahora entiende lo mismo que entendia la linea de comandos, que es lo que el
- * escribe de verdad, mas la fecha: "25 set pasos 5000" va al 25 de septiembre. El
- * modelo que entienda frases sueltas viene despues; esto ya escribe en la base y ya
- * guarda la conversacion, que es lo que hace falta para colgarle un modelo encima.
+ * Lo que escribe pasa primero por el parser de comandos, que es codigo: "25 set pasos
+ * 5000" no necesita modelo ninguno y es instantaneo. Solo cuando el parser no lo
+ * reconoce entra el modelo del telefono (spec 20.3), y lo unico que se le pide es que
+ * traduzca la frase a una linea de esa misma gramatica, que vuelve a pasar por el
+ * parser. El modelo nunca escribe: propone una linea y el parser decide.
  *
- * Nada se escribe en otro dia sin preguntar. Corregir hoy es barato de ver; cambiar un
- * martes de hace tres semanas no se nota hasta que la cuadricula ya cambio de color.
+ * Nada se escribe en otro dia sin preguntar, y nada de lo que interprete el modelo se
+ * escribe sin preguntar. Corregir hoy es barato de ver; cambiar un martes de hace tres
+ * semanas no se nota hasta que la cuadricula ya cambio de color, y un modelo pequeño que
+ * lee "seis y media" como seis minutos lo hace sin avisar.
  *
  * Solo la conversacion: donde se pone la ventana y como se mueve es cosa de
  * `Assistant`, que es quien la lleva pegada a la bola.
@@ -44,6 +52,7 @@ export function Chat({ onClose }: { onClose: () => void }) {
     logSet,
     editDay,
     loadDay,
+    loadCharts,
     loadChat,
     loadChats,
     lastChatId,
@@ -55,6 +64,7 @@ export function Chat({ onClose }: { onClose: () => void }) {
   const [draft, setDraft] = useState('');
   const [pending, setPending] = useState<Pending | null>(null);
   const [history, setHistory] = useState<ChatSummary[] | null>(null);
+  const [thinking, setThinking] = useState(false);
   const scroll = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -155,6 +165,104 @@ export function Chat({ onClose }: { onClose: () => void }) {
     return '';
   };
 
+  /** Lo que sabe contestar de su propia informacion. Spec 20.2 punto 4. */
+  const lookUp = async (asked: Extract<Intent, { kind: 'ask' }>): Promise<string> => {
+    switch (asked.question) {
+      case 'racha': {
+        const streak = currentStreak(loaded.days, todayIso());
+        if (streak === 0) return 'Hoy no llevas racha.';
+        return `Llevas ${streak} ${streak === 1 ? 'día' : 'días'} de racha.`;
+      }
+
+      case 'proteina': {
+        const eaten = Math.round(loaded.today.nutrition?.proteinG ?? 0);
+        const target = loaded.today.targets?.proteinG ?? null;
+        if (target === null) return `Hoy llevas ${eaten} g de proteína.`;
+        const left = Math.round(target - eaten);
+        if (left > 0) return `Hoy llevas ${eaten} g de proteína, te faltan ${left} para la meta.`;
+        return `Hoy llevas ${eaten} g de proteína, ${-left} por encima de la meta.`;
+      }
+
+      case 'nota': {
+        const date = (asked.date === null ? null : dateFrom(asked.date, todayIso())) ?? todayIso();
+        const { report } = await loadDay(date);
+        if (report.score === null) return `${dayOf(date)} no tiene nota todavía.`;
+        return `La nota de ${dayOf(date)} es ${scoreText(report.score)} de 100.`;
+      }
+
+      case 'marca': {
+        if (asked.exercise === null) return '¿De qué ejercicio?';
+        const { trends } = await loadCharts(90);
+        const wanted = fold(asked.exercise);
+        const trend = trends.find((one) => {
+          const name = fold(one.name);
+          return name.includes(wanted) || wanted.includes(name);
+        });
+        if (trend === undefined || trend.points.length === 0) {
+          return `No tengo marcas de "${asked.exercise}" en los últimos 90 días.`;
+        }
+        const best = trend.points.reduce((top, one) => (one.value > top.value ? one : top));
+        return `Tu mejor ${trend.name}: ${withUnit(best.value, loaded.unit)} estimados, el ${shortDate(best.date)}.`;
+      }
+    }
+  };
+
+  /**
+   * Lo que no es un comando se lo lleva el modelo del telefono, que solo puede contestar
+   * con una linea de la misma gramatica. Esa linea vuelve al parser, y lo que salga de
+   * ahi se pregunta antes de escribirlo.
+   */
+  const interpret = async (text: string, into: string, why: string) => {
+    if (!modelReady()) {
+      await say('app', `${why}\n\nY el modelo del teléfono no está disponible.`, into);
+      return;
+    }
+
+    setThinking(true);
+    try {
+      const recent = said.slice(-4).map((message) => ({
+        role: message.role === 'me' ? ('user' as const) : ('assistant' as const),
+        content: message.body.slice(0, 200),
+      }));
+      const answer = await askModel(
+        [...recent, { role: 'user', content: text }],
+        INTENT_SCHEMA,
+        instructions(todayIso(), loaded.unit),
+      );
+      const intent = readIntent(answer);
+
+      if (intent.kind === 'ask') {
+        await say('app', await lookUp(intent), into);
+        return;
+      }
+      if (intent.kind === 'none') {
+        await say('app', intent.reply, into);
+        return;
+      }
+
+      const parsed = parseCommand(intent.line, todayIso());
+      if (!parsed.ok) {
+        await say('app', `Entendí "${intent.line}", pero no me cuadra: ${parsed.reason}`, into);
+        return;
+      }
+      if (parsed.command.kind === 'help') {
+        await say('app', await run(parsed.command, parsed.date), into);
+        return;
+      }
+
+      setPending({ command: parsed.command, date: parsed.date });
+      const note = await already(parsed.command, parsed.date);
+      const when = parsed.date === todayIso() ? '' : ` Va al ${shortDate(parsed.date)}.`;
+      await say('app', `Entendí: ${intent.line}.${when}${note} ¿Lo escribo?`, into);
+    } catch (error) {
+      // Una frase suya que no llego a ninguna parte tiene que decirlo, no quedarse en un
+      // "no entendí" que parece que la culpa es de como lo escribio.
+      await say('app', `El modelo falló: ${(error as Error).message}`, into);
+    } finally {
+      setThinking(false);
+    }
+  };
+
   const submit = async () => {
     const text = draft.trim();
     if (text === '') return;
@@ -178,7 +286,7 @@ export function Chat({ onClose }: { onClose: () => void }) {
 
     const parsed = parseCommand(text, todayIso());
     if (!parsed.ok) {
-      await say('app', parsed.reason, into);
+      await interpret(text, into, parsed.reason);
       return;
     }
 
@@ -277,6 +385,11 @@ export function Chat({ onClose }: { onClose: () => void }) {
               </Text>
             </View>
           ))}
+          {thinking && (
+            <View style={[styles.bubble, styles.theirs]}>
+              <Text style={styles.theirsText}>pensando…</Text>
+            </View>
+          )}
           {pending !== null && (
             <View style={styles.answers}>
               <Button label="Sí, escríbelo" accessibilityLabel="Sí" onPress={() => answer(true)} />
@@ -307,7 +420,7 @@ export function Chat({ onClose }: { onClose: () => void }) {
             tone="accent"
             accessibilityLabel="Enviar"
             onPress={submit}
-            disabled={draft.trim() === ''}
+            disabled={draft.trim() === '' || thinking}
           />
         </View>
       )}

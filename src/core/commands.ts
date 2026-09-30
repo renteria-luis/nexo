@@ -117,6 +117,15 @@ function readDate(words: string[], today: IsoDate): IsoDate | null {
   return null;
 }
 
+/**
+ * La fecha que dice un trozo de texto suelto, sin comando ninguno: "ayer", "25 set".
+ * Null si eso no es una fecha. Spec 20.2 punto 2.
+ */
+export function dateFrom(input: string, today: IsoDate = todayIso()): IsoDate | null {
+  const words = plain(input).split(/\s+/).filter(Boolean);
+  return words.length === 0 ? null : readDate(words, today);
+}
+
 /** Saca la fecha del principio o del final y devuelve el comando que queda. */
 function splitDate(parts: string[], today: IsoDate): { date: IsoDate; rest: string[] } {
   for (let size = Math.min(3, parts.length - 1); size >= 1; size -= 1) {

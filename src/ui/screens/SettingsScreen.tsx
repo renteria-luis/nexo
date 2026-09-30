@@ -390,6 +390,21 @@ export function SettingsScreen({
           Separadas por coma. Si la palabra aparece en el nombre o en la letra chica, la oferta te
           sale al abrir la app.
         </Text>
+
+        <Field label="Palabras que ignoro">
+          <TextField
+            value={settings.get('deal_blocklist') ?? settingDefault('deal_blocklist') ?? ''}
+            onChange={(text) => onSaveSetting('deal_blocklist', text)}
+            accessibilityLabel="Palabras que ignoro en las ofertas"
+            placeholder="chocolate, coconut, condensed"
+            autoCapitalize="none"
+            style={styles.input}
+            focusedStyle={styles.inputWriting}
+          />
+        </Field>
+        <Text style={styles.note}>
+          Estas mandan: una oferta con una de ellas no sale, aunque vigiles otra que sí tenga.
+        </Text>
       </Card>
 
       <Card title="Catálogo">
