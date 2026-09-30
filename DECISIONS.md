@@ -423,3 +423,25 @@ componentes son los mismos en las dos pantallas, asi que llevan el modo por prop
 (`editing` en `TodayLog`, `record` en `FoodLog`) en lugar de decidirlo por su cuenta.
 Rejected: Duplicar los componentes para que cada pantalla tenga el suyo, que es como se
 acaba con dos comportamientos que se separan solos.
+
+## 2026-09-30 — La paleta pasa a pastel
+Context: Los cinco colores planos del neobrutalismo, a plena saturacion, en una pantalla
+entera de cartillas: cansa.
+Decision: Los mismos cinco tonos con la saturacion bajada y el brillo subido, y un sexto
+tono calido (`surfaceWarm`) para la isla de abajo, que era blanca. La tinta sigue siendo
+negra encima de todos, que es lo que mantiene el contraste. Las paletas de la cuadricula
+(spec 4.5) no se tocan: no son decoracion, son la escala que le deja leer la nota con su
+daltonismo, y suavizarlas la romperia.
+Rejected: Cambiar solo el amarillo (el resto seguiria gritando) y bajar tambien la
+cuadricula.
+
+## 2026-09-30 — El respaldo roto se cae entero, no a medias
+Context: Al restaurar, la comprobacion de referencias se hacia despues de confirmar la
+transaccion: un respaldo viejo encima de datos nuevos avisaba de "referencias rotas"
+cuando ya las habia escrito, y el telefono se quedaba en ese estado.
+Decision: La comprobacion entra dentro de la transaccion, asi que un respaldo que dejaria
+algo colgando no se aplica y el telefono se queda con lo que tenia. El mensaje dice en
+que tabla.
+Rejected: Encender las claves foraneas durante la carga (las tablas se escriben en orden
+alfabetico y una sesion entra antes que su gimnasio) y arreglar las filas colgantes a
+mano al vuelo, que es decidir por el que se borra.

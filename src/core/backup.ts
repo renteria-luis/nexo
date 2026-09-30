@@ -135,9 +135,10 @@ export type ImportResult = { tables: number; rows: number; skipped: string[] };
  * Reemplaza el contenido del telefono por el del respaldo.
  *
  * Las claves foraneas se apagan durante la carga porque las tablas se escriben en
- * orden alfabetico y una sesion puede entrar antes que su gimnasio; al final se
- * vuelven a encender y se comprueba todo de golpe, asi que un respaldo inconsistente
- * falla en voz alta y no deja la base a medio camino.
+ * orden alfabetico y una sesion puede entrar antes que su gimnasio. La comprobacion se
+ * hace de golpe al final y **dentro de la misma transaccion**: asi un respaldo
+ * inconsistente la tumba entera y el telefono se queda con lo que tenia. Comprobar
+ * despues de confirmar dejaba la base rota y solo avisaba de ello.
  */
 export async function importBackup(db: SQLiteDatabase, backup: Backup): Promise<ImportResult> {
   const applied = await db.getAllAsync<{ id: string }>(`SELECT id FROM ${MIGRATION_TABLE};`);
@@ -179,14 +180,19 @@ export async function importBackup(db: SQLiteDatabase, backup: Backup): Promise<
           writtenRows += 1;
         }
       }
+
+      const broken = await db.getAllAsync<{ table: string }>('PRAGMA foreign_key_check;');
+      if (broken.length > 0) {
+        // Con el nombre de la tabla: casi siempre es un respaldo viejo restaurado sobre
+        // datos nuevos que apuntaban a algo que ese respaldo no tiene.
+        const where = [...new Set(broken.map((row) => row.table))].join(', ');
+        throw new Error(
+          `el respaldo dejaria ${broken.length} referencias rotas en ${where}, asi que no se aplico`,
+        );
+      }
     });
   } finally {
     await db.execAsync('PRAGMA foreign_keys = ON;');
-  }
-
-  const broken = await db.getAllAsync<{ table: string }>('PRAGMA foreign_key_check;');
-  if (broken.length > 0) {
-    throw new Error(`el respaldo dejo ${broken.length} referencias rotas`);
   }
 
   return { tables: writtenTables, rows: writtenRows, skipped };

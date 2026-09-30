@@ -152,7 +152,7 @@ const styles = sheet((theme) => ({
   island: {
     alignSelf: 'center',
     width: ISLAND_WIDTH,
-    backgroundColor: theme.surface,
+    backgroundColor: theme.surfaceWarm,
     borderWidth: shape.border,
     borderColor: theme.line,
     borderRadius: ISLAND_HEIGHT / 2 - 2,

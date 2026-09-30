@@ -45,13 +45,14 @@ function shiftFor(index: number, from: number | null, to: number | null): number
   return 0;
 }
 
+/** Corto a proposito: "12-15" y no "12 a 15 repeticiones", que es lo mismo tres veces. */
 function reps(exercise: PlannedExercise): string {
   if (exercise.repMode === 'amrap') return 'al fallo técnico';
   if (exercise.repMode === 'failure') return 'al fallo';
   if (exercise.repMin === null || exercise.repMax === null) return '';
   return exercise.repMin === exercise.repMax
-    ? `${exercise.repMin} repeticiones`
-    : `${exercise.repMin} a ${exercise.repMax} repeticiones`;
+    ? String(exercise.repMin)
+    : `${exercise.repMin}-${exercise.repMax}`;
 }
 
 /** Una decision del entreno, con su icono y su raya. Igual que el registro del dia. */
@@ -178,7 +179,7 @@ const OrderRow = memo(function OrderRow({
           {exercise.name}
         </Text>
         <Text style={styles.detail} numberOfLines={1}>
-          {exercise.sets} × {reps(exercise)} · {TIER_ES[exercise.tier]} · desc.{' '}
+          {exercise.sets} × {reps(exercise)} · {TIER_ES[exercise.tier]} ·{' '}
           {Math.round(exercise.restSeconds / 60)} min
           {exercise.unilateral ? ' · por brazo' : ''}
         </Text>
@@ -514,12 +515,6 @@ export function SessionPlanner({
 
       {exercises.length > 0 && (
         <Card title="El orden de hoy">
-          <Text style={styles.note}>
-            En este orden los vas a hacer, y al completar las series de uno allá adentro se abre el
-            siguiente solo. Arrástralo de las tres rayas para moverlo de sitio. Con − y + le quitas
-            o le pones series.
-          </Text>
-
           <Order
             exercises={exercises}
             onReorder={reorder}

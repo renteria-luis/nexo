@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { newestFetch, watchedDeals, watchWords } from '../../deals/index.ts';
 import { useAppData, WEEKS_SHOWN } from '../../shell/AppData.tsx';
-import { addDays, dateAndTime, todayIso, weekStart } from '../../core/dates.ts';
+import { addDays, todayIso, weekStart } from '../../core/dates.ts';
 import { scoreText } from '../../core/day-report.ts';
 import { currentStreak, longestStreak } from '../../core/discipline.ts';
 import { averageScore, buildGrid } from '../../core/heatmap.ts';
@@ -65,23 +65,6 @@ function ModuleCard({
       {detail ? <Text style={styles.moduleDetail}>{detail}</Text> : null}
     </Card>
   );
-}
-
-/**
- * La fecha y la hora de arriba, refrescandose solas.
- *
- * Aparte del resto de la pantalla porque el minuto que pasa no tiene que volver a
- * armar la cuadricula de doce semanas ni repintar las cartillas.
- */
-function Clock() {
-  const [text, setText] = useState(() => dateAndTime());
-
-  useEffect(() => {
-    const tick = setInterval(() => setText(dateAndTime()), 20_000);
-    return () => clearInterval(tick);
-  }, []);
-
-  return <Text style={styles.clock}>{text}</Text>;
 }
 
 function round1(value: number): string {
@@ -224,8 +207,6 @@ export function TodayScreen({
         ) : null
       }
     >
-      <Clock />
-
       {/* Lo primero y lo mas grande, porque es de lo que va la app entera. La racha va
           dentro de la estrella: es el numero que mas le mueve a no romper el dia. Toda
           la cartilla abre el dia de hoy con el desglose de donde salio cada punto. */}
@@ -410,12 +391,6 @@ export function TodayScreen({
 }
 
 const styles = sheet((theme) => ({
-  clock: {
-    fontSize: 13,
-    color: theme.textFaint,
-    fontFamily: font.bold,
-    marginTop: -4,
-  },
   heroRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -38,15 +38,20 @@ Differences on purpose:
 
 ## 2. Colour
 
-Five flat, saturated colours, the same in light and dark mode:
+Five flat colours, **pastel since 2026-09-30**: the same five hues the style started
+with, with the saturation down and the brightness up, because the screen was shouting.
+The reference's own values are in the third column.
 
-| Name | Hex | Means, in this app |
-|---|---|---|
-| `accent` | `#ffdc58` yellow | the day's score, the primary action, anything selected |
-| `ok` | `#a3e636` lime | training, and "inside the band" |
-| `info` | `#88aaee` blue | food, and "above the band" |
-| `warn` | `#ff9f45` orange | notices that need a decision, "below the band" |
-| `danger` | `#ff6b6b` coral | deals, destructive buttons |
+| Name | Hex | Was | Means, in this app |
+|---|---|---|---|
+| `accent` | `#ffe9a8` yellow | `#ffdc58` | the day's score, the primary action, anything selected |
+| `ok` | `#cfeda6` lime | `#a3e636` | training, and "inside the band" |
+| `info` | `#bccdf4` blue | `#88aaee` | food, and "above the band" |
+| `warn` | `#ffd0a3` orange | `#ff9f45` | notices that need a decision, "below the band" |
+| `danger` | `#ffb3b3` coral | `#ff6b6b` | deals, destructive buttons |
+
+`surfaceWarm` (`#f7e7c8`) is the sixth: the bottom bar's paper, warmer than a card and
+deeper than the page, so the island reads as an object on top rather than a hole.
 
 Rules that keep it readable:
 

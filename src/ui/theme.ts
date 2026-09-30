@@ -18,6 +18,8 @@ export type Palette = {
   bg: string;
   surface: string;
   surfaceHigh: string;
+  /** El papel calido de la isla de abajo, que no es blanco ni es el fondo. */
+  surfaceWarm: string;
   /** El borde de todo lo que se toca, y el color de la sombra dura. */
   line: string;
   lineSoft: string;
@@ -44,17 +46,25 @@ export type Palette = {
   infoLine: string;
 };
 
-/** Los colores planos del neobrutalismo, los mismos en claro y en oscuro. */
-const YELLOW = '#ffdc58';
-const LIME = '#a3e636';
-const BLUE = '#88aaee';
-const CORAL = '#ff6b6b';
-const ORANGE = '#ff9f45';
+/**
+ * Los colores planos del estilo, en su version pastel (2026-09-30, a peticion suya).
+ *
+ * Son los mismos cinco tonos de siempre, con la saturacion bajada y el brillo subido:
+ * el amarillo sigue siendo el amarillo y el coral sigue leyendose como alarma, pero la
+ * pantalla deja de gritar. La tinta sigue siendo negra encima de todos ellos, que es lo
+ * que mantiene el contraste donde importa.
+ */
+const YELLOW = '#ffe9a8';
+const LIME = '#cfeda6';
+const BLUE = '#bccdf4';
+const CORAL = '#ffb3b3';
+const ORANGE = '#ffd0a3';
 
 export const LIGHT: Palette = {
   bg: '#fff4e0',
   surface: '#fffdf7',
-  surfaceHigh: '#ffe8b8',
+  surfaceHigh: '#ffeccb',
+  surfaceWarm: '#f7e7c8',
   line: '#121212',
   lineSoft: '#c9c2b0',
   lineStrong: '#121212',
@@ -70,12 +80,12 @@ export const LIGHT: Palette = {
   accentInkSoft: 'rgba(18, 18, 18, 0.68)',
 
   ok: LIME,
-  okBg: '#eaf8cf',
+  okBg: '#eef8de',
   warn: ORANGE,
-  warnBg: '#ffe9d2',
+  warnBg: '#ffeedd',
   danger: CORAL,
   info: BLUE,
-  infoBg: '#e3ebff',
+  infoBg: '#eaf0ff',
   infoLine: '#121212',
 };
 

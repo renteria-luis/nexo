@@ -1,5 +1,15 @@
-import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import {
+  Keyboard,
+  LayoutAnimation,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -49,6 +59,30 @@ export function InfoProvider({ children }: { children: ReactNode }) {
   const [shown, setShown] = useState<{ content: ReactNode; from: Spot } | null>(null);
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  // El globo puede llevar dentro una casilla de busqueda (el combobox), y el teclado se
+  // come la mitad de abajo de la pantalla: mientras esta arriba, el suelo es el teclado.
+  const [keyboard, setKeyboard] = useState(0);
+
+  useEffect(() => {
+    const up = Keyboard.addListener('keyboardWillShow', (event) => {
+      LayoutAnimation.configureNext({
+        duration: event.duration > 0 ? event.duration : 250,
+        update: { type: LayoutAnimation.Types.keyboard },
+      });
+      setKeyboard(event.endCoordinates.height);
+    });
+    const down = Keyboard.addListener('keyboardWillHide', (event) => {
+      LayoutAnimation.configureNext({
+        duration: event.duration > 0 ? event.duration : 200,
+        update: { type: LayoutAnimation.Types.keyboard },
+      });
+      setKeyboard(0);
+    });
+    return () => {
+      up.remove();
+      down.remove();
+    };
+  }, []);
 
   const api = useMemo<InfoApi>(
     () => ({
@@ -61,7 +95,8 @@ export function InfoProvider({ children }: { children: ReactNode }) {
   const place = (from: Spot) => {
     const wide = Math.min(WIDE, width - 2 * GAP);
     const left = Math.min(Math.max(from.x + from.width / 2 - wide / 2, GAP), width - wide - GAP);
-    const under = height - (from.y + from.height) - insets.bottom - GAP;
+    const floor = height - (keyboard > 0 ? keyboard : insets.bottom);
+    const under = floor - (from.y + from.height) - GAP;
     const over = from.y - insets.top - GAP;
 
     if (under >= over) {
