@@ -9,6 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -157,6 +158,7 @@ export function SidebarProvider({
   // La pantalla en la que esta, para marcarla. Se lee al abrir y no en cada cuadro.
   const [here, setHere] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
 
   const close = useCallback(() => {
     Animated.timing(slide, {
@@ -183,21 +185,23 @@ export function SidebarProvider({
 
   const api = useMemo(() => ({ open, close, isOpen: shown }), [open, close, shown]);
 
-  // Arrastrar desde el borde izquierdo lo abre, que es el gesto que ya tiene en la mano
-  // cualquiera que haya usado un menu de estos. Se toma en la fase de captura y solo
-  // cuando el dedo empieza pegado al borde y se va a la derecha: asi un toque normal
-  // sigue llegando a lo que haya debajo, y el carrusel de pestanas conserva el suyo.
+  // Arrastrar desde el borde izquierdo lo abre, y solo ahi: en Hoy, que es la primera
+  // pestana y la unica donde ese gesto no es el del carrusel, y empezando dentro del
+  // 15% izquierdo de la pantalla. Se toma en la fase de captura, asi que un toque normal
+  // sigue llegando a lo que haya debajo.
   const edge = useMemo(
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponderCapture: (_event, gesture) =>
           !shown &&
-          gesture.x0 < 24 &&
+          navigation.isReady() &&
+          navigation.getCurrentRoute()?.name === 'Hoy' &&
+          gesture.x0 < width * 0.15 &&
           gesture.dx > 12 &&
           Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
         onPanResponderGrant: () => open(),
       }),
-    [open, shown],
+    [navigation, open, shown, width],
   );
 
   // Deslizar el panel hacia la izquierda lo cierra, que es el gesto que ya espera

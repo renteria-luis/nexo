@@ -26,6 +26,7 @@ import { Pencil, Plus, RotateCcw, Trash, TriangleAlert } from './icons.ts';
 import { IconButton } from './IconButton.tsx';
 import { NumericField } from './NumericField.tsx';
 import { PortionMacros } from './PortionMacros.tsx';
+import { Star } from './Star.tsx';
 import { font, sheet, shape, theme } from './theme.ts';
 
 /** Un macro del dia en su cuadrito: el nombre arriba, el numero grande debajo. */
@@ -63,6 +64,14 @@ export type FoodLogProps = {
   history: FoodHistory;
   /** Sin esto no se ofrece repetir: solo tiene sentido sobre el dia de hoy. */
   onRepeatMeal?: (meal: LastMeal, slot: string) => void;
+  /** "Comida de hoy" salvo cuando el dia no es hoy. */
+  heading?: string;
+  /**
+   * Un dia que abrio desde Registros, que se mira mucho mas de lo que se corrige: una
+   * sola cartilla, compacta, y los botones detras del lapiz. Hoy no, porque hoy lo
+   * esta anotando todo el rato.
+   */
+  record?: boolean;
 };
 
 /** Los que salen arriba con su total: son los unicos que pueden mostrar un hueco. */
@@ -79,9 +88,11 @@ export function FoodLog({
   onOpenCatalogue,
   history,
   onRepeatMeal,
+  heading = 'Comida de hoy',
+  record = false,
 }: FoodLogProps) {
   const [foodId, setFoodId] = useState<string | null>(null);
-  // Leer lo que llevo comido es lo de todos los dias; anotar es el rato de comer.
+  // Solo en un dia de Registros: ahi el lapiz decide si se ven los botones.
   const [writing, setWriting] = useState(false);
   const [quantity, setQuantity] = useState('1');
   // Abre en el espacio de comida en el que esta el reloj: a las tres de la tarde no
@@ -116,6 +127,219 @@ export function FoodLog({
   const kcal = totals === null ? null : Math.round(totals.kcal);
   const left = kcal !== null && kcalTarget !== null ? kcalTarget - kcal : null;
 
+  // Lo mismo en las dos formas: la lista de lo anotado y lo que hace falta para anotar.
+  const shown = !record || writing;
+
+  const eaten = (
+    <>
+      {portions.length === 0 ? (
+        <Text style={styles.empty}>Nada por ahora. Abajo eliges y anotas.</Text>
+      ) : (
+        portions.map((portion, index) => (
+          <View key={portion.entryId} style={[styles.entry, index > 0 && styles.ruled]}>
+            <View style={styles.entryRow}>
+              <InfoDot accessibilityLabel={`Qué aporta ${portion.food.name}`}>
+                <PortionMacros food={portion.food} quantity={portion.quantity} />
+              </InfoDot>
+              <View style={styles.entryText}>
+                <Text style={styles.entryName}>{portionLabel(portion.food, portion.quantity)}</Text>
+                <Text style={styles.entryMeta}>{portion.mealSlot}</Text>
+              </View>
+              {shown && (
+                <ConfirmButton
+                  icon={Trash}
+                  question={`¿Quitar ${portion.food.name}?`}
+                  accessibilityLabel={`Quitar ${portion.food.name}`}
+                  onConfirm={() => onRemove(portion.entryId)}
+                />
+              )}
+            </View>
+          </View>
+        ))
+      )}
+    </>
+  );
+
+  const picker = (
+    <>
+      <View style={styles.chips}>
+        {MEAL_SLOTS.map((name) => (
+          <Chip key={name} label={name} selected={name === slot} onPress={() => setSlot(name)} />
+        ))}
+      </View>
+
+      {repeatable && onRepeatMeal && (
+        <Button
+          label={`Repetir ${slot} del ${shortDate(repeatable.date)} · ${
+            repeatable.entries.length
+          } ${repeatable.entries.length === 1 ? 'cosa' : 'cosas'}`}
+          accessibilityLabel={`Repetir ${slot} del ${shortDate(repeatable.date)}`}
+          icon={RotateCcw}
+          block
+          onPress={() => onRepeatMeal(repeatable, slot)}
+        />
+      )}
+
+      <FoodPicker
+        foods={foods}
+        history={history}
+        slot={slot}
+        selectedId={foodId}
+        onOpenCatalogue={onOpenCatalogue}
+        onSelect={(food) => {
+          // El mismo otra vez lo suelta: es como se deshace un toque sin querer.
+          if (food.id === foodId) {
+            setFoodId(null);
+            return;
+          }
+          setFoodId(food.id);
+          // Con la cantidad de la ultima vez ya puesta, anotar son dos toques.
+          setQuantity(roundAmount(history.lastQuantity.get(food.id) ?? 1));
+        }}
+      />
+
+      {selected && (
+        <View style={styles.chips}>
+          {quickAmountsFor(selected).map((amount) => (
+            <Chip
+              key={amount}
+              label={`${amount} ${unitLabel(selected, amount)}`}
+              selected={quantity === String(amount)}
+              onPress={() => setQuantity(String(amount))}
+            />
+          ))}
+        </View>
+      )}
+
+      {/* Sin alimento elegido no hay nada que anotar, y un boton de agregar suelto
+            es un toque sin querer. */}
+      {selected && (
+        <View ref={addRow} collapsable={false} style={styles.addRow}>
+          <NumericField
+            value={quantity}
+            onChange={setQuantity}
+            allowDecimal
+            accessibilityLabel="Cantidad"
+            reveals={addRow}
+            style={styles.input}
+            focusedStyle={styles.inputWriting}
+          />
+          <Text style={styles.unit}>{unitLabel(selected, parsed)}</Text>
+          <Button
+            label="Agregar"
+            accessibilityLabel="Agregar comida"
+            variant="primary"
+            icon={Plus}
+            disabled={!canAdd}
+            style={styles.add}
+            onPress={() => {
+              if (!canAdd) return;
+              onAdd({
+                foodId: selected.id,
+                quantity: parsed,
+                unit: selected.base_unit,
+                mealSlot: slot,
+              });
+            }}
+          />
+        </View>
+      )}
+    </>
+  );
+
+  if (record) {
+    return (
+      <View
+        style={styles.wrapper}
+        onStartShouldSetResponder={foodId === null ? undefined : () => true}
+        onResponderRelease={foodId === null ? undefined : () => setFoodId(null)}
+      >
+        <Card>
+          <View style={styles.cardHead}>
+            <Text style={styles.cardTitle}>Comida</Text>
+            <IconButton
+              icon={Pencil}
+              selected={writing}
+              accessibilityLabel={writing ? 'Dejar de anotar' : 'Anotar comida'}
+              onPress={() => setWriting((open) => !open)}
+            />
+          </View>
+
+          {totals && (
+            <View style={styles.stats}>
+              <Stat
+                label="Calorías"
+                value={`${kcal === null ? '—' : kcal}${mark('kcal')}`}
+                note={
+                  kcalTarget === null
+                    ? undefined
+                    : left !== null && left >= 0
+                      ? `faltan ${left} de ${kcalTarget}`
+                      : `${Math.abs(left ?? 0)} sobre ${kcalTarget}`
+                }
+              />
+              <Stat
+                label="Proteína"
+                value={`${Math.round(totals.proteinG)}${mark('protein_g')} g`}
+                note={proteinBand ? `meta ${proteinBand.from} o más` : undefined}
+              />
+              <Stat
+                label="Carbos"
+                value={`${roundAmount(totals.carbsG)}${mark('carbs_g')} g`}
+                note={totals.fibreG > 0 ? `fibra ${roundAmount(totals.fibreG)} g` : undefined}
+              />
+              <Stat label="Grasa" value={`${roundAmount(totals.fatG)}${mark('fat_g')} g`} />
+              <Stat
+                label="Sodio"
+                value={`${roundAmount(totals.sodiumMg)}${mark('sodium_mg')} mg`}
+                note={totals.sodiumOverLimit ? 'sobre 2300' : undefined}
+                alert={totals.sodiumOverLimit}
+              />
+              {/* Spec 7.5: los lacteos se muestran y nunca se restan, y la carga
+                    glucemica solo aparece cuando algo comido trae indice. */}
+              {totals.dairy.portions > 0 && (
+                <Stat
+                  label="Lácteos"
+                  value={
+                    totals.dairy.millilitresG > 0
+                      ? `${roundAmount(totals.dairy.millilitresG)} ml`
+                      : `${totals.dairy.portions}`
+                  }
+                  note={
+                    totals.dairy.millilitresG > 0
+                      ? `${roundAmount(totals.dairy.proteinG)} g de proteína`
+                      : 'porciones'
+                  }
+                />
+              )}
+              {totals.glycemicLoad !== null && (
+                <Stat
+                  label="Carga glucémica"
+                  value={`${roundAmount(totals.glycemicLoad)}${mark('glycemic_index')}`}
+                />
+              )}
+            </View>
+          )}
+
+          {shownGaps.length > 0 && (
+            <View style={styles.gap}>
+              <TriangleAlert size={16} color={theme.text} strokeWidth={2.5} />
+              <Text style={styles.gapText}>
+                El signo + marca totales incompletos:{' '}
+                {[...new Set(shownGaps.map((entry) => entry.foodName))].join(', ')} no trae todos
+                los datos. Se arreglan en editar alimentos.
+              </Text>
+            </View>
+          )}
+
+          {eaten}
+
+          {writing && <View style={styles.writing}>{picker}</View>}
+        </Card>
+      </View>
+    );
+  }
+
   return (
     // Tocar donde no hay nada suelta el alimento elegido, igual que el teclado: un
     // boton o una fila se quedan con el toque antes de llegar aqui.
@@ -124,35 +348,50 @@ export function FoodLog({
       onStartShouldSetResponder={foodId === null ? undefined : () => true}
       onResponderRelease={foodId === null ? undefined : () => setFoodId(null)}
     >
-      <Card>
-        <View style={styles.cardHead}>
-          <Text style={styles.cardTitle}>Comida</Text>
-          <IconButton
-            icon={Pencil}
-            selected={writing}
-            accessibilityLabel={writing ? 'Dejar de anotar' : 'Anotar comida'}
-            onPress={() => setWriting((open) => !open)}
-          />
+      {/* Las calorias son el numero grande y la proteina va en la estrella: la meta de
+          proteina es la que decide si el dia de comida cuenta, y es la que tiene que
+          verse sin leer nada. El titulo de la cartilla de metas tambien dice
+          "Calorias" y "Proteina"; el rotulo de aqui es lo que separa lo comido de lo
+          que toca comer. */}
+      <Card tone="info">
+        <View style={styles.heroRow}>
+          <View style={styles.heroSide}>
+            <Text style={styles.heroEyebrow}>{heading.toUpperCase()}</Text>
+            <Text style={styles.heroValue}>
+              {kcal === null ? '—' : kcal}
+              {kcal === null ? '' : mark('kcal')}
+            </Text>
+            <Text style={styles.heroNote}>
+              {kcal === null
+                ? 'Todavía no anotaste nada'
+                : kcalTarget === null
+                  ? 'kcal · sin metas todavía'
+                  : `kcal de ${kcalTarget} · ${
+                      left !== null && left >= 0
+                        ? `faltan ${left}`
+                        : `${Math.abs(left ?? 0)} de más`
+                    }`}
+            </Text>
+          </View>
+          <View style={styles.heroStar}>
+            <Star size={78} color={theme.surface} style={styles.star}>
+              <Text style={styles.starValue}>
+                {totals === null ? '—' : Math.round(totals.proteinG)}
+              </Text>
+            </Star>
+            <Text style={styles.starLabel}>g de proteína{mark('protein_g')}</Text>
+            {proteinBand && (
+              <Text style={styles.starLabel}>
+                meta {proteinBand.from} a {proteinBand.to}
+              </Text>
+            )}
+          </View>
         </View>
+      </Card>
 
-        {totals && (
+      {totals && (
+        <Card title="Lo que llevas">
           <View style={styles.stats}>
-            <Stat
-              label="Calorías"
-              value={`${kcal === null ? '—' : kcal}${mark('kcal')}`}
-              note={
-                kcalTarget === null
-                  ? undefined
-                  : left !== null && left >= 0
-                    ? `faltan ${left} de ${kcalTarget}`
-                    : `${Math.abs(left ?? 0)} sobre ${kcalTarget}`
-              }
-            />
-            <Stat
-              label="Proteína"
-              value={`${totals === null ? '—' : Math.round(totals.proteinG)}${mark('protein_g')} g`}
-              note={proteinBand ? `meta ${proteinBand.from} o más` : undefined}
-            />
             <Stat
               label="Carbos"
               value={`${roundAmount(totals.carbsG)}${mark('carbs_g')} g`}
@@ -189,147 +428,28 @@ export function FoodLog({
               />
             )}
           </View>
-        )}
 
-        {shownGaps.length > 0 && (
-          <View style={styles.gap}>
-            <TriangleAlert size={16} color={theme.text} strokeWidth={2.5} />
-            <Text style={styles.gapText}>
-              El signo + marca totales incompletos:{' '}
-              {[...new Set(shownGaps.map((entry) => entry.foodName))].join(', ')} no trae todos los
-              datos. Se arreglan en editar alimentos.
-            </Text>
-          </View>
-        )}
-
-        {portions.length === 0 ? (
-          <Text style={styles.empty}>Nada por ahora. Con el lápiz eliges y anotas.</Text>
-        ) : (
-          portions.map((portion, index) => (
-            <View key={portion.entryId} style={[styles.entry, index > 0 && styles.ruled]}>
-              <View style={styles.entryRow}>
-                <InfoDot accessibilityLabel={`Qué aporta ${portion.food.name}`}>
-                  <PortionMacros food={portion.food} quantity={portion.quantity} />
-                </InfoDot>
-                <View style={styles.entryText}>
-                  <Text style={styles.entryName}>
-                    {portionLabel(portion.food, portion.quantity)}
-                  </Text>
-                  <Text style={styles.entryMeta}>{portion.mealSlot}</Text>
-                </View>
-                {writing && (
-                  <ConfirmButton
-                    icon={Trash}
-                    question={`¿Quitar ${portion.food.name}?`}
-                    accessibilityLabel={`Quitar ${portion.food.name}`}
-                    onConfirm={() => onRemove(portion.entryId)}
-                  />
-                )}
-              </View>
+          {shownGaps.length > 0 && (
+            <View style={styles.gap}>
+              <TriangleAlert size={16} color={theme.text} strokeWidth={2.5} />
+              <Text style={styles.gapText}>
+                El signo + marca totales incompletos:{' '}
+                {[...new Set(shownGaps.map((entry) => entry.foodName))].join(', ')} no trae todos
+                los datos. Se arreglan en editar alimentos.
+              </Text>
             </View>
-          ))
-        )}
-        {writing && (
-          <View style={styles.writing}>
-            <View style={styles.chips}>
-              {MEAL_SLOTS.map((name) => (
-                <Chip
-                  key={name}
-                  label={name}
-                  selected={name === slot}
-                  onPress={() => setSlot(name)}
-                />
-              ))}
-            </View>
+          )}
+        </Card>
+      )}
 
-            {repeatable && onRepeatMeal && (
-              <Button
-                label={`Repetir ${slot} del ${shortDate(repeatable.date)} · ${
-                  repeatable.entries.length
-                } ${repeatable.entries.length === 1 ? 'cosa' : 'cosas'}`}
-                accessibilityLabel={`Repetir ${slot} del ${shortDate(repeatable.date)}`}
-                icon={RotateCcw}
-                block
-                onPress={() => onRepeatMeal(repeatable, slot)}
-              />
-            )}
+      <Card title="Lo anotado">{eaten}</Card>
 
-            <FoodPicker
-              foods={foods}
-              history={history}
-              slot={slot}
-              selectedId={foodId}
-              onOpenCatalogue={onOpenCatalogue}
-              onSelect={(food) => {
-                // El mismo otra vez lo suelta: es como se deshace un toque sin querer.
-                if (food.id === foodId) {
-                  setFoodId(null);
-                  return;
-                }
-                setFoodId(food.id);
-                // Con la cantidad de la ultima vez ya puesta, anotar son dos toques.
-                setQuantity(roundAmount(history.lastQuantity.get(food.id) ?? 1));
-              }}
-            />
-
-            {selected && (
-              <View style={styles.chips}>
-                {quickAmountsFor(selected).map((amount) => (
-                  <Chip
-                    key={amount}
-                    label={`${amount} ${unitLabel(selected, amount)}`}
-                    selected={quantity === String(amount)}
-                    onPress={() => setQuantity(String(amount))}
-                  />
-                ))}
-              </View>
-            )}
-
-            {/* Sin alimento elegido no hay nada que anotar, y un boton de agregar suelto
-            es un toque sin querer. */}
-            {selected && (
-              <View ref={addRow} collapsable={false} style={styles.addRow}>
-                <NumericField
-                  value={quantity}
-                  onChange={setQuantity}
-                  allowDecimal
-                  accessibilityLabel="Cantidad"
-                  reveals={addRow}
-                  style={styles.input}
-                  focusedStyle={styles.inputWriting}
-                />
-                <Text style={styles.unit}>{unitLabel(selected, parsed)}</Text>
-                <Button
-                  label="Agregar"
-                  accessibilityLabel="Agregar comida"
-                  variant="primary"
-                  icon={Plus}
-                  disabled={!canAdd}
-                  style={styles.add}
-                  onPress={() => {
-                    if (!canAdd) return;
-                    onAdd({
-                      foodId: selected.id,
-                      quantity: parsed,
-                      unit: selected.base_unit,
-                      mealSlot: slot,
-                    });
-                  }}
-                />
-              </View>
-            )}
-          </View>
-        )}
-      </Card>
+      <Card title="Anotar">{picker}</Card>
     </View>
   );
 }
 
 const styles = sheet((theme) => ({
-  wrapper: {
-    alignSelf: 'stretch',
-    gap: 12,
-  },
   cardHead: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -348,6 +468,56 @@ const styles = sheet((theme) => ({
     borderTopColor: theme.line,
     paddingTop: 10,
     marginTop: 4,
+  },
+  wrapper: {
+    alignSelf: 'stretch',
+    gap: 12,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  heroSide: {
+    flexShrink: 1,
+  },
+  heroEyebrow: {
+    fontSize: 11,
+    fontFamily: font.black,
+    letterSpacing: 1.2,
+    color: theme.accentInkSoft,
+  },
+  heroValue: {
+    fontSize: 48,
+    lineHeight: 54,
+    fontFamily: font.display,
+    color: theme.accentInk,
+    fontVariant: ['tabular-nums'],
+  },
+  heroNote: {
+    fontSize: 12,
+    fontFamily: font.bold,
+    color: theme.accentInk,
+  },
+  heroStar: {
+    alignItems: 'center',
+    gap: 2,
+  },
+  star: {
+    // Pegada un poco torcida: es un sticker, no un icono alineado a la rejilla.
+    transform: [{ rotate: '-8deg' }],
+  },
+  starValue: {
+    fontSize: 26,
+    fontFamily: font.black,
+    color: theme.text,
+    fontVariant: ['tabular-nums'],
+  },
+  starLabel: {
+    fontSize: 11,
+    fontFamily: font.bold,
+    color: theme.accentInkSoft,
   },
   stats: {
     flexDirection: 'row',

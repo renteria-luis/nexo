@@ -34,6 +34,11 @@ const ISLAND_PADDING = 6;
  * es redonda por las esquinas, y una isla mas abajo y mas ancha se comeria la curva.
  */
 const SIDE_GAP = 20;
+/**
+ * Lo ancha que es de lo que le cabe. Tres pestanas no necesitan la pantalla entera, y
+ * una isla corta se lee como un objeto puesto encima en vez de como otra barra pegada.
+ */
+const ISLAND_WIDTH = '70%';
 /** Lo bajo que va cuando el telefono no tiene raya de gestos: pegada no, pero casi. */
 const FLOOR_GAP = 8;
 /** Lo que se mete dentro del area segura de abajo, para no quedar flotando tan arriba. */
@@ -142,11 +147,15 @@ const styles = sheet((theme) => ({
     bottom: 0,
     paddingHorizontal: SIDE_GAP,
   },
+  // Sin esquinas: el radio es casi la mitad de su alto, que es lo que la deja a un pelo
+  // de ser una pastilla sin llegar a serlo.
   island: {
+    alignSelf: 'center',
+    width: ISLAND_WIDTH,
     backgroundColor: theme.surface,
     borderWidth: shape.border,
     borderColor: theme.line,
-    borderRadius: shape.radiusLarge,
+    borderRadius: ISLAND_HEIGHT / 2 - 2,
     padding: ISLAND_PADDING,
     ...hardShadow(theme),
   },
@@ -161,8 +170,8 @@ const styles = sheet((theme) => ({
     backgroundColor: theme.accent,
     borderWidth: shape.border,
     borderColor: theme.line,
-    borderRadius: shape.radiusSmall,
-    ...hardShadow(theme, 3),
+    borderRadius: ROW_HEIGHT / 2 - 2,
+    ...hardShadow(theme, 3, 'button'),
   },
   item: {
     flex: 1,

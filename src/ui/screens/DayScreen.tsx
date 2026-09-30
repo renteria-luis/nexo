@@ -224,6 +224,8 @@ export function DayScreen() {
 
       {/* La comida trae sus propias cartillas, asi que no va dentro de otra. */}
       <FoodLog
+        record
+        heading={`Comida del ${shortDate(date)}`}
         foods={loaded.foods}
         portions={day.portions}
         totals={day.nutrition}

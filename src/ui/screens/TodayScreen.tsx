@@ -18,16 +18,7 @@ import { DealAlert } from '../DealAlert.tsx';
 import { DayDialog } from '../DayDialog.tsx';
 import { DisciplineGrid } from '../DisciplineGrid.tsx';
 import { useInfo } from '../InfoBubble.tsx';
-import {
-  ChevronRight,
-  Dumbbell,
-  Pencil,
-  Tag,
-  Utensils,
-  Wallet,
-  type LucideIcon,
-} from '../icons.ts';
-import { IconButton } from '../IconButton.tsx';
+import { ChevronRight, Dumbbell, Tag, Utensils, Wallet, type LucideIcon } from '../icons.ts';
 import { Star } from '../Star.tsx';
 import { TodayLog } from '../TodayLog.tsx';
 import { font, sheet, shape, theme } from '../theme.ts';
@@ -151,7 +142,6 @@ export function TodayScreen({
     declineStepsTarget,
     saveSetting,
   } = useAppData();
-  const [writing, setWriting] = useState(false);
   const info = useInfo();
   // El aviso de ofertas: se abre solo la primera vez que hay recoleccion nueva, y
   // despues queda a un toque en su cartilla.
@@ -377,18 +367,9 @@ export function TodayScreen({
         />
       </View>
 
-      <Card>
-        <View style={styles.cardHead}>
-          <Text style={styles.cardTitle}>Registro del día</Text>
-          <IconButton
-            icon={Pencil}
-            selected={writing}
-            accessibilityLabel={writing ? 'Dejar de escribir' : 'Escribir el registro del día'}
-            onPress={() => setWriting(!writing)}
-          />
-        </View>
+      <Card title="Registro del día">
         <TodayLog
-          editing={writing}
+          editing
           log={loaded.today.log}
           lastWeight={loaded.lastWeight}
           containers={loaded.containers}
@@ -429,19 +410,6 @@ export function TodayScreen({
 }
 
 const styles = sheet((theme) => ({
-  cardHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginBottom: 2,
-  },
-  cardTitle: {
-    fontSize: 15,
-    fontFamily: font.black,
-    letterSpacing: 0.3,
-    color: theme.text,
-  },
   clock: {
     fontSize: 13,
     color: theme.textFaint,

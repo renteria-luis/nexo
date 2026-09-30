@@ -413,3 +413,13 @@ se pinta con suelo y sin techo, como la de sueno y la de pasos, y el desglose de
 mil calorias libres (spec 4.1), que empieza mucho mas arriba.
 Rejected: Tocar las curvas de puntos, que ya no penalizaban ninguna de las dos cosas: lo
 que estaba mal era lo que se pintaba, no lo que se puntuaba.
+
+## 2026-09-30 — El lapiz es de los registros, no de hoy
+Context: Se puso el modo lectura tambien en Hoy y en la pestana de Comida, y ahi estorba:
+son las dos pantallas que esta escribiendo todo el dia.
+Decision: El lapiz vive en un dia abierto desde Registros y en la cartilla del ejercicio
+durante el entreno. Hoy y Comida se quedan como estaban, con todo a la vista. Los
+componentes son los mismos en las dos pantallas, asi que llevan el modo por prop
+(`editing` en `TodayLog`, `record` en `FoodLog`) en lugar de decidirlo por su cuenta.
+Rejected: Duplicar los componentes para que cada pantalla tenga el suyo, que es como se
+acaba con dos comportamientos que se separan solos.
