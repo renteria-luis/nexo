@@ -10,7 +10,6 @@ import type { ChartsData } from '../../shell/charts.ts';
 import { Card } from '../Card.tsx';
 import { DayBars } from '../charts/DayBars.tsx';
 import { LineChart } from '../charts/LineChart.tsx';
-import { VolumeChart } from '../charts/VolumeChart.tsx';
 import { MuscleBars } from '../charts/MuscleBars.tsx';
 import { Chip } from '../Chip.tsx';
 import { clockFace } from '../../training/pace.ts';
@@ -38,6 +37,52 @@ const WINDOWS: { days: number; label: string }[] = [
  * El ancho se mide una vez y lo usan todas, porque el SVG necesita numeros, no
  * porcentajes.
  */
+/**
+ * Las formas de mirar un ejercicio. Cada una contesta una pregunta distinta, y por eso
+ * son un selector y no una grafica con todo encima: una linea sobre las barras no se
+ * puede tocar, porque la barra se queda con el dedo.
+ */
+const MEASURES = [
+  {
+    id: 'volume',
+    label: 'Volumen',
+    inKg: true,
+    note: 'Todo lo que moviste ese día: peso por repeticiones, sumando las series. Las mancuernas cuentan las dos.',
+  },
+  {
+    id: 'topWeight',
+    label: 'Peso máximo',
+    inKg: true,
+    note: 'El peso más alto que cargaste ese día, tal como lo escribiste. Con mancuernas, el de una.',
+  },
+  {
+    id: 'e1rm',
+    label: '1RM estimado',
+    inKg: true,
+    note: 'Lo que levantarías una sola vez, calculado sobre tu mejor serie. Sirve para comparar días con repeticiones distintas.',
+  },
+  {
+    id: 'intensity',
+    label: 'Peso medio por repetición',
+    inKg: true,
+    note: 'El volumen entre las repeticiones. Dice si el día fue pesado o largo, que no es lo mismo.',
+  },
+  {
+    id: 'reps',
+    label: 'Repeticiones',
+    inKg: false,
+    note: 'Cuántas repeticiones hiciste en total ese día.',
+  },
+  {
+    id: 'sets',
+    label: 'Series',
+    inKg: false,
+    note: 'Cuántas series le dedicaste. Es la medida con la que se cuenta el volumen semanal por músculo.',
+  },
+] as const;
+
+type MeasureId = (typeof MEASURES)[number]['id'];
+
 export function ChartsScreen() {
   const { state, loadCharts } = useAppData();
   const navigation = useNavigation<{
@@ -49,6 +94,8 @@ export function ChartsScreen() {
   const [days, setDays] = useState(90);
   const [data, setData] = useState<ChartsData | null>(null);
   const [exercise, setExercise] = useState<string | null>(null);
+  const [measureId, setMeasure] = useState<MeasureId>('volume');
+  const measure = MEASURES.find((one) => one.id === measureId) ?? MEASURES[0];
   const [problem, setProblem] = useState<string | null>(null);
   // El SVG necesita un ancho en numeros. Se calcula de la ventana menos los margenes
   // en vez de medirlo: medir deja el primer dibujo en cero.
@@ -178,11 +225,6 @@ export function ChartsScreen() {
             </Card>
 
             <Card title="Progreso por ejercicio">
-              <Text style={styles.note}>
-                Las barras son lo que moviste ese día: peso por repeticiones, todas las series. La
-                línea es tu 1RM estimado, que solo mira el peso. Sube el volumen y es trabajo; sube
-                la línea y es fuerza.
-              </Text>
               <Combobox
                 options={data.trends.map((item) => ({ id: item.exerciseId, label: item.name }))}
                 value={trend?.exerciseId ?? null}
@@ -190,14 +232,24 @@ export function ChartsScreen() {
                 placeholder="Elige un ejercicio"
                 accessibilityLabel="Elegir el ejercicio"
               />
+              <Combobox
+                options={MEASURES.map((one) => ({ id: one.id, label: one.label }))}
+                value={measure.id}
+                onChange={(id) => setMeasure((id as MeasureId) ?? 'volume')}
+                placeholder="Qué quieres ver"
+                accessibilityLabel="Elegir qué se mide"
+              />
+              <Text style={styles.note}>{measure.note}</Text>
               {trend ? (
-                <VolumeChart
+                <DayBars
+                  points={trend[measure.id]}
                   width={width}
-                  volume={trend.volume}
-                  strength={trend.points}
-                  formatVolume={(value) => `${Math.round(fromKg(value, unit))} ${unit}`}
-                  formatStrength={(value) => `${Math.round(fromKg(value, unit))} ${unit}`}
-                  {...bubble(`trend-${trend.exerciseId}`)}
+                  format={(value) =>
+                    measure.inKg
+                      ? `${Math.round(fromKg(value, unit))} ${unit}`
+                      : `${Math.round(value)}`
+                  }
+                  {...bubble(`trend-${trend.exerciseId}-${measure.id}`)}
                 />
               ) : (
                 <Text style={styles.loading}>

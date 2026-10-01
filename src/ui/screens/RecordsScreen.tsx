@@ -119,7 +119,11 @@ export function RecordsScreen() {
                 <Text style={styles.date}>{shortDate(row.date)}</Text>
                 <Text style={styles.detail}>
                   {[
-                    row.trained ? 'entrenó' : row.restDay ? 'descanso' : 'sin entreno',
+                    row.trained
+                      ? `entrenó${row.routineName === null ? '' : ` (${row.routineName})`}`
+                      : row.restDay
+                        ? 'descanso'
+                        : 'sin entreno',
                     row.volume > 0 ? `${Math.round(fromKg(row.volume, unit))} ${unit}` : null,
                     row.proteinG === null ? null : `${Math.round(row.proteinG)} g prot`,
                     row.kcal === null ? null : `${Math.round(row.kcal)} kcal`,

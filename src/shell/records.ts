@@ -133,7 +133,10 @@ export type DayRow = {
   date: IsoDate;
   score: number | null;
   hasData: boolean;
+  /** Entreno de verdad: hay series anotadas, no solo una sesion abierta y vacia. */
   trained: boolean;
+  /** La rutina de ese dia, para poder decir "entrenó (pull)". */
+  routineName: string | null;
   restDay: boolean;
   /** Carga total del dia, con las mancuernas contadas por las dos. */
   volume: number;
@@ -146,7 +149,7 @@ export type DayRow = {
  * nada no aparece: la lista es de lo que hizo, no del calendario.
  */
 export async function listDayRows(db: SQLiteDatabase, range: DateRange): Promise<DayRow[]> {
-  const [logs, sets, portions, sessionDates] = await Promise.all([
+  const [logs, sets, portions, sessionDates, routines] = await Promise.all([
     db.getAllAsync<CoreDailyLogRow>(
       'SELECT * FROM core_daily_log WHERE date BETWEEN ? AND ? ORDER BY date;',
       [range.from, range.to],
@@ -154,14 +157,26 @@ export async function listDayRows(db: SQLiteDatabase, range: DateRange): Promise
     listWorkingSets(db, range),
     listPortionsBetween(db, range),
     listSessionDates(db, range),
+    db.getAllAsync<{ date: IsoDate; routine: string | null }>(
+      `SELECT s.date, r.name AS routine
+         FROM training_session s
+         LEFT JOIN training_routine r ON r.id = s.routine_id
+        WHERE s.date BETWEEN ? AND ?;`,
+      [range.from, range.to],
+    ),
   ]);
 
   const volumeByDate = new Map<IsoDate, number>();
+  const setsByDate = new Map<IsoDate, number>();
   for (const set of sets) {
     volumeByDate.set(set.date, (volumeByDate.get(set.date) ?? 0) + volumeLoad([set]));
+    setsByDate.set(set.date, (setsByDate.get(set.date) ?? 0) + 1);
   }
+  const routineByDate = new Map(routines.map((row) => [row.date, row.routine]));
 
-  const trained = new Set(sessionDates);
+  // Una sesion abierta y cerrada sin anotar nada no es un entreno: el dia que marco
+  // descanso salia como "entrenó" y al abrirlo no habia ni una serie.
+  const trained = new Set(sessionDates.filter((date) => (setsByDate.get(date) ?? 0) > 0));
   const dates = new Set<IsoDate>([
     ...logs.filter((log) => log.has_data === 1 || log.score !== null).map((log) => log.date),
     ...trained,
@@ -182,6 +197,7 @@ export async function listDayRows(db: SQLiteDatabase, range: DateRange): Promise
         score: log?.score ?? null,
         hasData: log?.has_data === 1 || trained.has(date) || totals !== null,
         trained: trained.has(date),
+        routineName: trained.has(date) ? (routineByDate.get(date) ?? null) : null,
         restDay: log?.rest_day === 1,
         volume: volumeByDate.get(date) ?? 0,
         proteinG: totals?.proteinG ?? null,

@@ -7,7 +7,11 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { storeScore, upsertDailyLog } from '../core/daily-log.ts';
 import { migrations } from '../db/migrations/index.ts';
 import { computeTargets } from '../core/targets.ts';
-import { backdateFirstSnapshot, setInitialTargets, writeTargetSnapshot } from '../core/snapshots.ts';
+import {
+  backdateFirstSnapshot,
+  setInitialTargets,
+  writeTargetSnapshot,
+} from '../core/snapshots.ts';
 import { addFoodEntry } from '../nutrition/index.ts';
 import { addSet, startSession } from '../training/index.ts';
 
@@ -74,6 +78,7 @@ function row(fields: Partial<DayRow>): DayRow {
     score: null,
     hasData: true,
     trained: false,
+    routineName: null,
     restDay: false,
     volume: 0,
     proteinG: null,
@@ -304,9 +309,9 @@ test('las graficas leen lo mismo que el resto de la app', async () => {
   assert.ok(charts.weightAverage.length > 0);
 
   const peck = charts.trends.find((trend) => trend.exerciseId === 'peck-deck');
-  assert.equal(peck?.points.length, 2);
+  assert.equal(peck?.e1rm.length, 2);
   // Epley sobre 55 x 10 proyecta mas que sobre 50 x 10, que es toda la grafica.
-  assert.ok((peck?.points[1].value ?? 0) > (peck?.points[0].value ?? 0));
+  assert.ok((peck?.e1rm[1].value ?? 0) > (peck?.e1rm[0].value ?? 0));
 
   assert.equal(charts.muscles.find((bar) => bar.muscle === 'chest')?.sets, 2);
   assert.equal(Math.round(charts.protein[0].value), 42);
@@ -410,4 +415,30 @@ test('volver a puntuar lo que ya tiene nota no cuesta una consulta por dia', asy
   const before = count();
   assert.equal(await rescoreMissing(db, { from: dates[0], to: TODAY }, TODAY), 0);
   assert.equal(count() - before, 1);
+});
+
+test('una sesion sin ninguna serie no es un entreno en la lista', async () => {
+  const db = fresh();
+  // El caso real: marco descanso, la app dejo una sesion abierta de antes y el dia salia
+  // como "entrenó" aunque al abrirlo no hubiera ni una serie.
+  await startSession(db, { date: '2026-09-22', timeBudget: 'completo', routineId: 'pull' });
+  await upsertDailyLog(db, { date: '2026-09-22', restDay: true });
+
+  const [only] = await listDayRows(db, { from: '2026-09-22', to: '2026-09-22' });
+  assert.equal(only.trained, false);
+  assert.equal(only.routineName, null);
+});
+
+test('un dia con series dice que rutina fue', async () => {
+  const db = fresh();
+  const sessionId = await startSession(db, {
+    date: '2026-09-22',
+    timeBudget: 'completo',
+    routineId: 'pull',
+  });
+  await addSet(db, { sessionId, exerciseId: 'pull-up', weightKg: 0, reps: 8 });
+
+  const [only] = await listDayRows(db, { from: '2026-09-22', to: '2026-09-22' });
+  assert.equal(only.trained, true);
+  assert.equal(only.routineName, 'Pull');
 });

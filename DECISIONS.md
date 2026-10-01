@@ -479,3 +479,15 @@ Decision: Fuera el boton. Cada oferta ya lleva la insignia de su fuente, que es 
 hacia falta de verdad para distinguir Flipp de Flashfood cuando entre.
 Rejected: Dejarlo (un boton que promete abrir una app y abre el navegador miente) y
 probar `flipp://`, que no esta declarado y no hace nada.
+
+## 2026-10-01 — El progreso de un ejercicio se mira con un selector, no con dos capas
+Context: La grafica llevaba barras de volumen y encima una linea de 1RM, y la linea no se
+podia tocar: la barra se queda con el dedo.
+Decision: Un segundo selector que elige que se mide, y una sola serie de barras. Seis
+medidas, porque cada una contesta algo distinto: volumen (el trabajo del dia), peso
+maximo (el numero que escribio, con mancuernas el de una), 1RM estimado (compara dias con
+repeticiones distintas), peso medio por repeticion (pesado contra largo), repeticiones y
+series. El volumen cuenta las dos mancuernas, como en toda la app; el peso maximo no,
+porque es lo que lee en el disco.
+Rejected: Hacer tocable la linea por encima de las barras (dos zonas de toque pisadas en
+el mismo sitio) y dejar una sola medida, que era lo que habia.

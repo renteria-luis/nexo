@@ -210,10 +210,10 @@ export function Chat({ onClose }: { onClose: () => void }) {
           const name = fold(one.name);
           return name.includes(wanted) || wanted.includes(name);
         });
-        if (trend === undefined || trend.points.length === 0) {
+        if (trend === undefined || trend.e1rm.length === 0) {
           return `No tengo marcas de "${asked.exercise}" en los últimos 90 días.`;
         }
-        const best = trend.points.reduce((top, one) => (one.value > top.value ? one : top));
+        const best = trend.e1rm.reduce((top, one) => (one.value > top.value ? one : top));
         return `Tu mejor ${trend.name}: ${withUnit(best.value, loaded.unit)} estimados, el ${shortDate(best.date)}.`;
       }
     }

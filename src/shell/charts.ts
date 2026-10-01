@@ -53,13 +53,30 @@ export type MuscleBar = {
   sources: MuscleSource[];
 };
 
+/**
+ * Las formas de mirar el progreso de un ejercicio. No sobran: cada una contesta una
+ * pregunta distinta y las cuatro primeras se mueven por separado.
+ *
+ * - `volume` es el trabajo total del dia (peso por repeticiones, todas las series), que
+ *   sube al meter otra serie aunque el peso no se mueva.
+ * - `topWeight` es el peso mas alto que cargo, tal como lo escribio: con mancuernas, el
+ *   de una. Es lo que contesta "¿ya subi de 90 a 95?".
+ * - `e1rm` es lo que levantaria una sola vez, estimado sobre su mejor serie: compara
+ *   dias con repeticiones distintas, que el peso suelto no puede.
+ * - `intensity` es el peso medio por repeticion (volumen entre repeticiones): dice si el
+ *   dia fue pesado o largo, que es la diferencia entre fuerza e hipertrofia.
+ * - `reps` y `sets` son el trabajo contado, que es como se mide el volumen semanal por
+ *   musculo en spec 13.2.
+ */
 export type ExerciseTrend = {
   exerciseId: string;
   name: string;
-  /** El mejor 1RM estimado de cada dia que lo entreno. */
-  points: Point[];
-  /** Y lo que movio ese dia en ese ejercicio: peso por repeticiones, todas las series. */
   volume: Point[];
+  topWeight: Point[];
+  e1rm: Point[];
+  intensity: Point[];
+  reps: Point[];
+  sets: Point[];
 };
 
 export type ChartsData = {
@@ -206,24 +223,41 @@ export async function loadCharts(
 
   const trends: ExerciseTrend[] = [];
   for (const [exerciseId, byDate] of byExercise) {
-    const points: Point[] = [];
-    const volume: Point[] = [];
+    const trend: Omit<ExerciseTrend, 'exerciseId' | 'name'> = {
+      volume: [],
+      topWeight: [],
+      e1rm: [],
+      intensity: [],
+      reps: [],
+      sets: [],
+    };
+
     for (const [date, daySets] of [...byDate.entries()].sort()) {
-      const best = bestE1rmOfDay(daySets);
-      if (best !== null) points.push({ date, value: best });
-      // Lo que movio: el peso efectivo por repeticiones, sumando todas las series del
-      // dia. Las tres cosas que pidio (peso, repeticiones y series) en un solo numero.
+      const totalReps = daySets.reduce((total, set) => total + set.reps, 0);
+      // El volumen cuenta las dos mancuernas (`setLoad`), que es la convencion de toda
+      // la app; el peso maximo es el numero que el escribio, que es el que lee en el
+      // disco o en la maquina.
       const moved = daySets.reduce((total, set) => total + setLoad(set as never) * set.reps, 0);
-      if (moved > 0) {
-        volume.push({ date, value: moved, note: `${daySets.length} series` });
+      const heaviest = Math.max(...daySets.map((set) => set.weightKg));
+      const note = `${daySets.length} ${daySets.length === 1 ? 'serie' : 'series'} · ${totalReps} reps`;
+
+      const best = bestE1rmOfDay(daySets);
+      if (best !== null) trend.e1rm.push({ date, value: best, note });
+      if (moved > 0) trend.volume.push({ date, value: moved, note });
+      if (heaviest > 0) trend.topWeight.push({ date, value: heaviest, note });
+      if (moved > 0 && totalReps > 0) {
+        trend.intensity.push({ date, value: moved / totalReps, note });
       }
+      trend.reps.push({ date, value: totalReps, note });
+      trend.sets.push({ date, value: daySets.length, note });
     }
+
     // Un solo punto no es una tendencia, es un punto.
-    if (points.length >= 2) {
-      trends.push({ exerciseId, name: nameOf.get(exerciseId) ?? exerciseId, points, volume });
+    if (trend.sets.length >= 2) {
+      trends.push({ exerciseId, name: nameOf.get(exerciseId) ?? exerciseId, ...trend });
     }
   }
-  trends.sort((a, b) => b.points.length - a.points.length);
+  trends.sort((a, b) => b.sets.length - a.sets.length);
 
   const gymMinutes: Point[] = times
     .filter((session) => session.trusted && session.minutes > 0 && isWithin(session.date, range))
