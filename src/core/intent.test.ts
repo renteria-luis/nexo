@@ -40,7 +40,12 @@ test('lo que no encaja se queda en nada y no escribe', () => {
 
 test('el esquema es el trozo de json schema que entiende Apple', () => {
   assert.equal(INTENT_SCHEMA.type, 'object');
-  assert.deepEqual(INTENT_SCHEMA.required, ['tipo']);
+  // Todos obligatorios: un campo opcional es un campo que el modelo del telefono se
+  // ahorra, y se ahorraba justo el que decia que hacer (2026-10-01).
+  assert.deepEqual(
+    Object.keys(INTENT_SCHEMA.properties).sort(),
+    [...INTENT_SCHEMA.required].sort(),
+  );
   // Cadenas con enum y nada mas: ni anyOf anidado ni tipos que el parser de Swift no lea.
   for (const property of Object.values(INTENT_SCHEMA.properties)) {
     assert.equal(property.type, 'string');

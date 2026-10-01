@@ -26,6 +26,17 @@ const QUESTIONS: Question[] = ['marca', 'nota', 'racha', 'proteina', 'entreno'];
 /**
  * El esquema que viaja con la llamada. Es el trozo de JSON Schema que entiende Apple:
  * objetos, cadenas con `enum`, y nada mas complicado que eso.
+ *
+ * **Todos los campos son obligatorios, y eso no es un descuido.** Con `required` solo en
+ * `tipo`, el modelo del telefono rellenaba ese y se saltaba el resto: elegia "anotar" y
+ * no escribia el comando, o "preguntar" sin decir que preguntaba, y la app contestaba
+ * "entendi que querias anotar algo, pero no que". Lo que guia la generacion es el
+ * esquema, no las instrucciones: un campo opcional es un campo que un modelo pequeno se
+ * ahorra. Obligandolos, `pregunta` ademas solo puede salir de la lista, porque Apple
+ * restringe la decodificacion a los valores del `enum`.
+ *
+ * Los que no vienen al caso llegan con cualquier cosa dentro (una cadena vacia, un
+ * ejercicio inventado) y se ignoran: solo se lee el que corresponde al `tipo`.
  */
 export const INTENT_SCHEMA = {
   type: 'object',
@@ -41,27 +52,33 @@ export const INTENT_SCHEMA = {
     },
     comando: {
       type: 'string',
-      description: 'Solo con tipo anotar: la linea exacta en la gramatica de la app',
+      description:
+        'Con tipo anotar, la linea exacta en la gramatica de la app ("ayer sueno 390m"). ' +
+        'Con cualquier otro tipo, cadena vacia',
     },
     pregunta: {
       type: 'string',
       enum: QUESTIONS,
-      description: 'Solo con tipo preguntar',
+      description:
+        'Con tipo preguntar, cual de los datos pide. Con cualquier otro tipo da igual: ' +
+        'pon marca y no se mira',
     },
     ejercicio: {
       type: 'string',
-      description: 'El ejercicio por el que pregunta, cuando la pregunta es marca',
+      description: 'El ejercicio por el que pregunta si la pregunta es marca; si no, cadena vacia',
     },
     fecha: {
       type: 'string',
-      description: 'El dia por el que pregunta, escrito como el lo dijo',
+      description: 'El dia por el que pregunta, escrito como el lo dijo; si no dijo ninguno, vacia',
     },
     respuesta: {
       type: 'string',
-      description: 'Solo con tipo nada: una frase corta diciendo que hace falta',
+      description:
+        'Con tipo nada, una frase corta diciendo que hace falta o que no sabes eso. ' +
+        'Con cualquier otro tipo, cadena vacia',
     },
   },
-  required: ['tipo'],
+  required: ['tipo', 'comando', 'pregunta', 'ejercicio', 'fecha', 'respuesta'],
 } as const;
 
 /**
@@ -83,6 +100,7 @@ export function instructions(today: IsoDate, unit: string): string {
     '    exactamente una de las dos de arriba. Ante la duda, "nada".',
     '',
     'No inventas ningun numero: si no dijo la cantidad, es "nada" y se la pides.',
+    'Contestas siempre los seis campos. Los que no vienen al caso van vacios.',
     '',
     'Comandos:',
     ...COMMAND_HELP.map((row) => `  ${row}`),
@@ -96,6 +114,11 @@ export function instructions(today: IsoDate, unit: string): string {
     '  "ayer dormi como seis y media" -> anotar, comando "ayer sueno 390m"',
     '  "me pese 74 y medio" -> anotar, comando "peso 74.5"',
     '  "ya tome la creatina" -> anotar, comando "creatina"',
+    '  "dormi 1 hora" -> anotar, comando "sueno 60m"',
+    '  "camine como nueve mil pasos" -> anotar, comando "pasos 9000"',
+    '  "cuanta racha llevo" -> preguntar, pregunta "racha"',
+    '  "cuanta proteina llevo" -> preguntar, pregunta "proteina"',
+    '  "cuando entrene por ultima vez" -> preguntar, pregunta "entreno"',
     '  "hola" -> nada, respuesta "Dime que anotaste."',
     '  "que tal tu dia" -> nada, respuesta "Aqui solo llevo lo tuyo."',
     '  "tome un vaso de agua" -> nada, respuesta "Dime cuantos ml."',
@@ -128,15 +151,26 @@ export function readIntent(answer: unknown): Intent {
 
   if (kind === 'anotar') {
     const line = text(body.comando);
-    if (line === null)
-      return { kind: 'none', reply: 'Entendí que querías anotar algo, pero no qué.' };
+    if (line === null) {
+      return {
+        kind: 'none',
+        reply: 'Entendí que querías anotar algo, pero no qué. Dímelo con el número: "sueno 60m".',
+      };
+    }
     return { kind: 'write', line };
   }
 
   if (kind === 'preguntar') {
     const asked = text(body.pregunta);
     const question = QUESTIONS.find((one) => one === asked);
-    if (question === undefined) return { kind: 'none', reply: 'Eso no lo sé contestar todavía.' };
+    if (question === undefined) {
+      return {
+        kind: 'none',
+        reply:
+          'De lo tuyo sé contestar: tu mejor marca de un ejercicio, la nota de un día, tu ' +
+          'racha, la proteína de hoy y cuándo entrenaste por última vez.',
+      };
+    }
     return { kind: 'ask', question, exercise: text(body.ejercicio), date: text(body.fecha) };
   }
 
