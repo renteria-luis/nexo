@@ -106,8 +106,19 @@ export function computeTargets(
 // lo que se le muestra como meta.
 const KCAL_FULL_MARGIN = 150;
 
+/**
+ * Y por arriba, cuatrocientas mas (decision del dueno, 2026-09-30). Es ectomorfo: el
+ * problema que tiene es quedarse corto, no pasarse, y una banda que se cierra 150 por
+ * encima pinta de gris los dias que mas le sirven. Lo que si engorda lo cobra la regla
+ * de las mil calorias libres de spec 4.1, que empieza mucho mas arriba.
+ */
+const KCAL_EXTRA_ROOM = 400;
+
 export function kcalBand(targets: TargetValues): { from: number; to: number } {
-  return { from: targets.kcal - KCAL_FULL_MARGIN, to: targets.kcal + KCAL_FULL_MARGIN };
+  return {
+    from: targets.kcal - KCAL_FULL_MARGIN,
+    to: targets.kcal + KCAL_FULL_MARGIN + KCAL_EXTRA_ROOM,
+  };
 }
 
 /**

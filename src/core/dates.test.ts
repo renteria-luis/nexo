@@ -12,6 +12,7 @@ import {
   weekStart,
   weekday,
   longDate,
+  shortDay,
   shortDate,
   dateAndTime,
 } from './dates.ts';
@@ -112,4 +113,9 @@ test('la fecha y la hora se leen como las dice en voz alta', () => {
   assert.equal(dateAndTime(new Date(2026, 0, 3, 7, 5)), '3 de enero 07:05');
   // Reloj de 24 horas: las nueve de la noche no son las 9.
   assert.equal(dateAndTime(new Date(2026, 11, 31, 21, 0)), '31 de diciembre 21:00');
+});
+
+test('un dia de una lista va sin ano, que se da por supuesto', () => {
+  assert.equal(shortDay('2026-09-27'), 'dom 27-sep');
+  assert.equal(shortDay('2026-01-01'), 'jue 01-ene');
 });

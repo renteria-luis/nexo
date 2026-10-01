@@ -103,6 +103,14 @@ export function shortDate(date: IsoDate): string {
   return `${WEEKDAYS_ES[weekday(date) - 1]}, ${day}-${MONTHS_ES[index]}-${year}`;
 }
 
+/** "dom 28-sep", para una lista de dias donde el ano se da por supuesto. */
+export function shortDay(date: IsoDate): string {
+  const [, month, day] = date.split('-');
+  const index = Number(month) - 1;
+  if (!MONTHS_ES[index]) throw new Error(`${date} is not a date`);
+  return `${WEEKDAYS_ES[weekday(date) - 1]} ${day}-${MONTHS_ES[index]}`;
+}
+
 /** "viernes, 30 de setiembre", que es como se dice un dia en voz alta. */
 export function longDate(date: IsoDate): string {
   const [, month, day] = date.split('-');

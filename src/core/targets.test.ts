@@ -91,11 +91,21 @@ test('the calorie band follows the target instead of staying at 2400', () => {
   const targets = computeTargets(73, profile, '2026-09-13');
   const band = kcalBand(targets);
 
-  assert.equal(band.to - band.from, 300);
   assert.equal(band.from, targets.kcal - 150);
+  // Decision del dueno (2026-09-30): 400 mas por arriba. Es ectomorfo y lo que le pasa
+  // es quedarse corto, asi que comer de mas no puede pintarse como un dia fuera de sitio.
+  assert.equal(band.to, targets.kcal + 550);
 
   const heavier = computeTargets(85, profile, '2026-09-13');
   assert.ok(kcalBand(heavier).from > band.from);
+});
+
+test('con su peso de la spec, la banda de calorias es la que el pidio ver', () => {
+  // 2 425 de meta: de 2 275 a 2 975, y no a 2 575.
+  const targets = computeTargets(74.2, profile, '2026-09-13');
+  assert.equal(kcalBand(targets).from, targets.kcal - 150);
+  assert.equal(kcalBand(targets).to, targets.kcal + 550);
+  assert.equal(kcalBand(targets).to - kcalBand(targets).from, 700);
 });
 
 test('the fat floor wins when energy alone would put it lower', () => {

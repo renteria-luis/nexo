@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
-import { shortDate } from '../../core/dates.ts';
+import { shortDay } from '../../core/dates.ts';
 import type { Band, MuscleBar } from '../../shell/charts.ts';
 import { MUSCLE_ES } from '../muscles.ts';
 import { font, sheet, shape } from '../theme.ts';
@@ -69,7 +69,7 @@ export function MuscleBars({ bars, band }: { bars: MuscleBar[]; band: Band }) {
                   </Text>
                   <Text style={styles.sourceMeta}>
                     {source.sets} {source.sets === 1 ? 'serie' : 'series'} ·{' '}
-                    {source.days.map((day) => shortDate(day).slice(0, 6)).join(', ')}
+                    {source.days.map(shortDay).join(' · ')}
                   </Text>
                 </View>
               ))}
