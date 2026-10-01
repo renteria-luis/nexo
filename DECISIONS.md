@@ -445,3 +445,37 @@ que tabla.
 Rejected: Encender las claves foraneas durante la carga (las tablas se escriben en orden
 alfabetico y una sesion entra antes que su gimnasio) y arreglar las filas colgantes a
 mano al vuelo, que es decidir por el que se borra.
+
+## 2026-09-30 — El tiempo de una sesion dice si vale
+Context: Quiere ver, antes de empezar, cuanto suele tardar un dia como el de hoy, y a que
+hora va a salir. Pero unos dias cierra el entreno al salir del gym y otros en casa, y un
+promedio con esos dos mezclados no dice nada.
+Decision: Cada sesion lleva `duration_trusted` (migracion 050) y solo las marcadas entran
+en el promedio y en la grafica de tiempo. El interruptor y el ajuste de horas y minutos
+estan en el registro de ese dia. Lo ya guardado entra marcado si dura entre veinte
+minutos y cuatro horas, que es un punto de partida, no una afirmacion.
+Es la mediana y no la media, como las horas aprendidas de spec 18.2: con cuatro sesiones,
+el dia que se quedo charlando mueve la media veinte minutos y la mediana nada. Se dice
+por tipo de dia (misma rutina, mismo gym, mismo recorte) porque son duraciones
+distintas, y sin ninguna sesion de fiar de ese tipo no se muestra nada.
+Rejected: Guardar los minutos aparte (dos numeros que pueden decir cosas distintas; se
+mueve la hora de salida) y estimar lo que le queda por los ejercicios que faltan, que es
+otro problema y el pidio solo el tiempo.
+
+## 2026-09-30 — Una sola pantalla rota, y es la del descanso
+Context: Entre serie y serie el telefono esta apoyado en la maquina y lo unico que hace
+falta mirar es el reloj del descanso.
+Decision: Con `expo-screen-orientation`, la app sigue de pie en todas partes y solo la
+pantalla de entreno, con una sesion abierta, permite girar. De lado se ve otra cosa: el
+descanso en grande, el ejercicio y la serie anterior, y nada que tocar.
+Rejected: Permitir el giro en toda la app (las cartillas se estiran y ninguna otra
+pantalla gana nada) y meter el reloj grande en la vertical, donde compite con los campos.
+
+## 2026-09-30 — El boton de abrir en Flipp se quita
+Context: Sigue abriendo Safari. El enlace de `/action` es universal y Flipp lo declara,
+pero quien decide si va a la app o al navegador es iOS, y una vez que ha ido a Safari se
+queda yendo; desde la app no hay forma de forzarlo.
+Decision: Fuera el boton. Cada oferta ya lleva la insignia de su fuente, que es lo que
+hacia falta de verdad para distinguir Flipp de Flashfood cuando entre.
+Rejected: Dejarlo (un boton que promete abrir una app y abre el navegador miente) y
+probar `flipp://`, que no esta declarado y no hace nada.

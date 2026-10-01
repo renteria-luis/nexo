@@ -240,6 +240,9 @@ export function FoodLog({
                 unit: selected.base_unit,
                 mealSlot: slot,
               });
+              // Anotado es terminado: se suelta el alimento y vuelve la lista, que es lo
+              // que hace falta para anotar lo siguiente.
+              setFoodId(null);
             }}
           />
         </View>

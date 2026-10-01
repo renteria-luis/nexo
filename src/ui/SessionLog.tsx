@@ -19,6 +19,7 @@ import type { Implement } from '../training/sessions.ts';
 import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
 import { Chip } from './Chip.tsx';
+import { clock, Elapsed } from './Elapsed.tsx';
 import { SearchField } from './SearchField.tsx';
 import { ConfirmButton, InfoDot, InfoText } from './InfoBubble.tsx';
 import { NumericField } from './NumericField.tsx';
@@ -78,39 +79,6 @@ function progressOf(done: number, planned: number | undefined): 'done' | 'partia
 function hhmm(timestamp: number): string {
   const when = new Date(timestamp);
   return `${when.getHours()}:${String(when.getMinutes()).padStart(2, '0')}`;
-}
-
-function clock(seconds: number): string {
-  const whole = Math.max(0, Math.round(seconds));
-  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
-}
-
-/**
- * El tiempo que lleva corriendo desde un instante, contandose solo.
- *
- * Vive en su propio componente a proposito: el segundo que pasa solo tiene que
- * repintar estos cuatro caracteres, no la pantalla entera del entreno. Cuando el
- * reloj estaba en el componente grande, cada segundo volvia a dibujar la lista de
- * series, el selector de ejercicio y el formulario, y eso se nota justo cuando esta
- * escribiendo un peso.
- *
- * Quien lo usa le pasa el instante tambien como clave, asi que empezar a contar de
- * nuevo es montarlo de nuevo y no hay que sincronizar nada por dentro.
- */
-function Elapsed({ since, prefix = '' }: { since: number; prefix?: string }) {
-  const [seconds, setSeconds] = useState(() => (Date.now() - since) / 1000);
-
-  useEffect(() => {
-    const tick = setInterval(() => setSeconds((Date.now() - since) / 1000), 1000);
-    return () => clearInterval(tick);
-  }, [since]);
-
-  return (
-    <>
-      {prefix}
-      {clock(seconds)}
-    </>
-  );
 }
 
 export type SessionLogProps = {

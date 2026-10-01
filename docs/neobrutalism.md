@@ -120,7 +120,7 @@ Rules that keep it readable:
 | `TextField` | `src/ui/TextField.tsx` | any text that is typed. Never a bare `TextInput`, or it loses the bar and the lift |
 | `NumericField` | `src/ui/NumericField.tsx` | any number that is typed |
 | `DisciplineGrid` | `src/ui/DisciplineGrid.tsx` | the twelve weeks. Memoized; feed it stable props |
-| `DayBars` / `LineChart` / `MuscleBars` | `src/ui/charts/` | the charts |
+| `DayBars` / `LineChart` / `MuscleBars` / `VolumeChart` | `src/ui/charts/` | the charts |
 | `Bubble` | `src/ui/charts/Bubble.tsx` | what a chart says when you tap it: date, value, and the way into that day |
 
 Writing a fourth variant of one of these is the failure mode this file exists to
@@ -638,6 +638,16 @@ into **folding** sections that start closed, a bottom bar 70 % as wide with its 
 gone, the grid's squares opening a bubble instead
 of a modal and the paper around them opening Registros, one card for the day's food
 instead of three, and an exercise search box in place of the list of chips.
+
+Also done: **the landscape rest screen** (`RestLandscape`). It is the only screen in the
+app that rotates, and it rotates because between sets the phone is lying on the machine:
+the rest clock at 96 pt, the exercise, the set he just did, and nothing to touch.
+`expo-screen-orientation` keeps everything else upright, and `TrainingScreen` unlocks it
+only while a session is open.
+
+Also done: **`VolumeChart`**, bars and a line on the same drawing — what he moved each
+day (weight x reps x sets) and what he lifts in one rep, each on its own scale, because
+the first is work and the second is strength and they move apart.
 
 Done last, as planned: **the app icon** (`scripts/make-icon.mjs`, which writes
 `assets/`). It is the discipline grid — four days as four squares, each filled from the

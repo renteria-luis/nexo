@@ -1,6 +1,7 @@
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Text, View } from 'react-native';
+import { Text, useWindowDimensions, View } from 'react-native';
 
 import { useAppData } from '../../shell/AppData.tsx';
 import { Button } from '../Button.tsx';
@@ -9,6 +10,8 @@ import { ChevronRight } from '../icons.ts';
 import { nextPendingExercise } from '../../training/routines.ts';
 import type { Implement } from '../../training/sessions.ts';
 import { Chip } from '../Chip.tsx';
+import { formatWeight } from '../../core/units.ts';
+import { RestLandscape } from '../RestLandscape.tsx';
 import { SessionLog } from '../SessionLog.tsx';
 import { SessionPlanner } from '../SessionPlanner.tsx';
 import { useSwipeLock } from '../SwipeLock.tsx';
@@ -41,6 +44,7 @@ export function TrainingScreen() {
   const [changingRoutine, setChangingRoutine] = useState(false);
   // Lo que suele tardar un dia como el de hoy, para poder decir a que hora sale.
   const [pace, setPace] = useState<number | null>(null);
+  const { width, height } = useWindowDimensions();
   // Mientras arrastra una fila del orden, ni la pantalla se desplaza ni se pasa de
   // pestana: los dos gestos son nativos y se llevan el toque aunque este tomado.
   const [dragging, setDragging] = useState(false);
@@ -173,6 +177,26 @@ export function TrainingScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kindKey, loadPace]);
 
+  // La unica pantalla que rota. Se permite al entrar con un entreno abierto y se vuelve
+  // a dejar de pie al salir: en el resto de la app el horizontal no aporta nada y las
+  // cartillas se estiran feas.
+  const rotatable = openSessionId !== null;
+  useFocusEffect(
+    useCallback(() => {
+      const lock = (mode: ScreenOrientation.OrientationLock) =>
+        ScreenOrientation.lockAsync(mode).catch(() => undefined);
+
+      lock(
+        rotatable
+          ? ScreenOrientation.OrientationLock.ALL
+          : ScreenOrientation.OrientationLock.PORTRAIT_UP,
+      );
+      return () => {
+        lock(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+      };
+    }, [rotatable]),
+  );
+
   const chosen = useRef<string | null>(null);
   useEffect(() => {
     if (openSessionId === null) {
@@ -190,6 +214,27 @@ export function TrainingScreen() {
   const session = loaded.today.session;
   const planned = loaded.plan.find((entry) => entry.exerciseId === exerciseId);
   const routine = loaded.routines.find((item) => item.id === session?.routine_id) ?? null;
+
+  // De lado y con el entreno abierto, la pantalla es otra cosa: el descanso en grande y
+  // nada mas. Spec 9: el descanso se mide, no se exige, y mirarlo no deberia costar
+  // levantar el telefono.
+  const exercise = loaded.exercise.exercises.find((item) => item.id === exerciseId) ?? null;
+  const previous = loaded.exercise.todaySets.at(-1) ?? null;
+  if (session !== null && session.end_time === null && width > height) {
+    return (
+      <RestLandscape
+        exerciseName={exercise?.name_es ?? 'Entreno'}
+        since={previous?.timestamp ?? session.start_time}
+        suggestedRestSeconds={exercise?.default_rest_seconds ?? null}
+        setNumber={previous?.setIndex ?? null}
+        lastSet={
+          previous === null
+            ? null
+            : `${formatWeight(previous.weightKg, loaded.unit)} ${loaded.unit} × ${previous.reps}`
+        }
+      />
+    );
+  }
 
   return (
     <Screen title="Entreno" scrollEnabled={!dragging}>
