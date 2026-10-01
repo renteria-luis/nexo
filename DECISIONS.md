@@ -491,3 +491,17 @@ series. El volumen cuenta las dos mancuernas, como en toda la app; el peso maxim
 porque es lo que lee en el disco.
 Rejected: Hacer tocable la linea por encima de las barras (dos zonas de toque pisadas en
 el mismo sitio) y dejar una sola medida, que era lo que habia.
+
+## 2026-10-01 — La creatina se mira como un deposito, no como un si o un no
+Context: La cuadricula dice si la tomo cada dia, y eso no contesta lo que el quiere
+saber: si ya le esta haciendo efecto, y cuanto le cuesta saltarse un dia o dos.
+Decision: Una grafica del deposito, de 0 a 100%, estimada dia a dia. Los dos extremos son
+medidos (Hultman 1996, que entra en Lecturas con la migracion 051): 3 g al dia llenan en
+28 dias, y dejandola se vacia en 30. Entre medias, sube como un deposito que se satura
+(cada dia entra una parte de lo que falta, porque el transporte al musculo se satura) y
+baja en linea recta (cada dia se pierde lo mismo, porque lo que sale es el desgaste
+normal y no sabe cuanto queda). Un dia sin anotar cuenta como no tomada, que es la
+lectura conservadora.
+Rejected: Pintar solo si la tomo o no (es lo que ya hace la cuadricula y no dice nada del
+efecto) y suponer que los dias sin anotar si la tomo, que es prometerle un efecto con
+dias que nadie registro.

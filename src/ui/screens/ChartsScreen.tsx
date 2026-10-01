@@ -1,7 +1,8 @@
 import { useNavigation } from '@react-navigation/native';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Text, useWindowDimensions, View } from 'react-native';
 
+import { readSaturation, sayLevel } from '../../core/creatine.ts';
 import { hoursAndMinutes, scoreText, thousands } from '../../core/day-report.ts';
 import { fromKg } from '../../core/units.ts';
 import { useAppData } from '../../shell/AppData.tsx';
@@ -96,6 +97,21 @@ export function ChartsScreen() {
   const [exercise, setExercise] = useState<string | null>(null);
   const [measureId, setMeasure] = useState<MeasureId>('volume');
   const measure = MEASURES.find((one) => one.id === measureId) ?? MEASURES[0];
+  // La lectura de hoy sale de la misma serie que la grafica, para que el numero grande y
+  // la ultima barra no puedan decir cosas distintas.
+  const creatine = useMemo(
+    () =>
+      data === null
+        ? null
+        : readSaturation(
+            data.creatine.map((point) => ({ date: point.date, value: point.value / 100 })),
+            data.creatine.map((point, index) => ({
+              date: point.date,
+              taken: index > 0 && point.value > data.creatine[index - 1].value,
+            })),
+          ),
+    [data],
+  );
   const [problem, setProblem] = useState<string | null>(null);
   // El SVG necesita un ancho en numeros. Se calcula de la ventana menos los margenes
   // en vez de medirlo: medir deja el primer dibujo en cero.
@@ -272,6 +288,42 @@ export function ChartsScreen() {
               />
             </Card>
 
+            {/* La creatina no se nota el dia que se toma, asi que un si o un no por dia no
+                dice nada: lo que dice algo es el deposito. */}
+            <Card title="Creatina">
+              {creatine === null ? (
+                <Text style={styles.note}>
+                  Anota la creatina unos días y aquí verás cuánta llevas dentro.
+                </Text>
+              ) : (
+                <>
+                  <View style={styles.creatineHead}>
+                    <Text style={styles.creatineValue}>{Math.round(creatine.level * 100)}%</Text>
+                    <Text style={styles.creatineNote}>
+                      {sayLevel(creatine.level)}
+                      {'\n'}
+                      {creatine.streak > 0
+                        ? `${creatine.streak} ${creatine.streak === 1 ? 'día' : 'días'} seguidos tomándola`
+                        : `${-creatine.streak} ${creatine.streak === -1 ? 'día' : 'días'} sin tomarla`}
+                      {creatine.trend === 'estable' ? '' : ` · ${creatine.trend}`}
+                    </Text>
+                  </View>
+                  <DayBars
+                    points={data.creatine}
+                    width={width}
+                    band={{ from: 90, to: 100 }}
+                    max={100}
+                    format={(value) => `${Math.round(value)}% del depósito`}
+                    {...bubble('creatine')}
+                  />
+                  <Text style={styles.note}>
+                    Estimado: tomándola a diario se llena en 28 días, y dejándola se vacía en 30
+                    (Hultman 1996, en Lecturas). Un día sin anotar cuenta como no tomada.
+                  </Text>
+                </>
+              )}
+            </Card>
+
             {/* El peso al final: cambia poco y se pesa poco, asi que no tiene por que
                 abrir la pantalla. */}
             <Card title="Peso corporal">
@@ -297,6 +349,24 @@ export function ChartsScreen() {
 }
 
 const styles = sheet((theme) => ({
+  creatineHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 12,
+  },
+  creatineValue: {
+    fontSize: 40,
+    lineHeight: 44,
+    fontFamily: font.display,
+    color: theme.text,
+    fontVariant: ['tabular-nums'],
+  },
+  creatineNote: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: font.bold,
+    color: theme.textDim,
+  },
   sheet: {
     gap: 12,
   },

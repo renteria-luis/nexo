@@ -21,6 +21,8 @@ import {
   setLoad,
 } from '../training/index.ts';
 
+import { saturationSeries } from '../core/creatine.ts';
+
 import { SET_BAND } from './week.ts';
 
 /** Los recortes de tiempo, dichos como los eligio. */
@@ -106,6 +108,12 @@ export type ChartsData = {
    * entreno, no cuanto entreno.
    */
   gymMinutes: Point[];
+  /**
+   * Cuanta creatina lleva el musculo, de 0 a 100, estimada dia a dia (`core/creatine.ts`).
+   * Se calcula desde el primer dia que la anoto y no desde el principio de la ventana:
+   * el deposito que tiene hoy viene de las semanas de antes.
+   */
+  creatine: Point[];
   /** Series directas por musculo en los ultimos siete dias. */
   muscles: MuscleBar[];
   setBand: Band;
@@ -133,16 +141,23 @@ export async function loadCharts(
   const range = trailingDays(today, days);
   const week = trailingDays(today, 7);
 
-  const [logs, portions, sets, weekSets, muscleMap, targets, names, times] = await Promise.all([
-    listDailyLogs(db, range),
-    listPortionsBetween(db, range),
-    listWorkingSets(db, range),
-    listWorkingSets(db, week),
-    loadExerciseMuscles(db),
-    targetsInForceOn(db, today),
-    db.getAllAsync<{ id: string; name_es: string }>('SELECT id, name_es FROM training_exercise;'),
-    listSessionTimes(db),
-  ]);
+  const [logs, portions, sets, weekSets, muscleMap, targets, names, times, creatineLog] =
+    await Promise.all([
+      listDailyLogs(db, range),
+      listPortionsBetween(db, range),
+      listWorkingSets(db, range),
+      listWorkingSets(db, week),
+      loadExerciseMuscles(db),
+      targetsInForceOn(db, today),
+      db.getAllAsync<{ id: string; name_es: string }>('SELECT id, name_es FROM training_exercise;'),
+      listSessionTimes(db),
+      // Toda la historia, no la ventana: el deposito de hoy lo llenaron las semanas de
+      // antes, y empezar la cuenta en el borde de la grafica lo pintaria vacio.
+      db.getAllAsync<{ date: IsoDate; creatine_taken: number | null }>(
+        `SELECT date, creatine_taken FROM core_daily_log
+        WHERE creatine_taken IS NOT NULL ORDER BY date;`,
+      ),
+    ]);
 
   const weighIns = toWeighIns(logs);
   const weight: Point[] = [];
@@ -269,9 +284,17 @@ export async function loadCharts(
         .join(' · '),
     }));
 
+  const creatine = saturationSeries(
+    creatineLog.map((row) => ({ date: row.date, taken: row.creatine_taken === 1 })),
+    today,
+  )
+    .filter((day) => isWithin(day.date, range))
+    .map((day) => ({ date: day.date, value: Math.round(day.value * 100) }));
+
   return {
     from: range.from,
     to: range.to,
+    creatine,
     gymMinutes,
     weight,
     weightAverage,

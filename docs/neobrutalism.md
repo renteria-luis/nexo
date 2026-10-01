@@ -639,6 +639,10 @@ gone, the grid's squares opening a bubble instead
 of a modal and the paper around them opening Registros, one card for the day's food
 instead of three, and an exercise search box in place of the list of chips.
 
+Also done: **la creatina como depósito** in Gráficas: a percentage, a sentence that says
+what that percentage means, and the daily bars with the 90–100 band painted behind. The
+big number and the last bar come from the same series on purpose, so they cannot disagree.
+
 Also done: **the landscape rest screen** (`RestLandscape`). It is the only screen in the
 app that rotates, and it rotates because between sets the phone is lying on the machine:
 the rest clock at 96 pt, the exercise, the set he just did, and nothing to touch.
