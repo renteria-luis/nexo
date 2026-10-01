@@ -6,12 +6,15 @@ import type { TrainingRoutineRow } from '../db/types.ts';
 import type { DayExercise } from '../shell/records.ts';
 import type { CatalogExercise } from '../training/queries.ts';
 
+import { clockFace } from '../training/pace.ts';
+
 import { Button } from './Button.tsx';
 import { Chip } from './Chip.tsx';
+import { Check, Pencil, Plus, Trash } from './icons.ts';
 import { IconButton } from './IconButton.tsx';
 import { ConfirmButton } from './InfoBubble.tsx';
-import { Check, Pencil, Plus, Trash } from './icons.ts';
 import { NumericField } from './NumericField.tsx';
+import { Toggle } from './Toggle.tsx';
 import { font, sheet, shape } from './theme.ts';
 
 function clock(seconds: number): string {
@@ -25,6 +28,8 @@ export type DayTrainingProps = {
   routineName: string | null;
   gymName: string | null;
   minutes: number | null;
+  /** Si esa duracion sirve para hacer cuentas con ella (migracion 050). */
+  trusted: boolean;
   exercises: DayExercise[];
   catalog: CatalogExercise[];
   routines: TrainingRoutineRow[];
@@ -32,6 +37,8 @@ export type DayTrainingProps = {
   onCreateSession: (routineId: string | null) => void;
   onAddSet: (exerciseId: string, weightKg: number, reps: number) => void;
   onRemoveSet: (exerciseId: string, setIndex: number) => void;
+  onTrustTime: (trusted: boolean) => void;
+  onSetMinutes: (minutes: number) => void;
 };
 
 /**
@@ -45,6 +52,7 @@ export function DayTraining({
   routineName,
   gymName,
   minutes,
+  trusted,
   exercises,
   catalog,
   routines,
@@ -52,11 +60,15 @@ export function DayTraining({
   onCreateSession,
   onAddSet,
   onRemoveSet,
+  onTrustTime,
+  onSetMinutes,
 }: DayTrainingProps) {
   const [adding, setAdding] = useState<string | null>(null);
   // Un dia de Registros se mira mucho mas de lo que se corrige: los botones de anotar y
   // de quitar aparecen con el lapiz, igual que en el resto de la cartilla.
   const [writing, setWriting] = useState(false);
+  const [hours, setHours] = useState(minutes === null ? '' : String(Math.floor(minutes / 60)));
+  const [mins, setMins] = useState(minutes === null ? '' : String(minutes % 60));
   const [weight, setWeight] = useState('');
   const [reps, setReps] = useState('');
 
@@ -142,6 +154,52 @@ export function DayTraining({
         />
       </View>
 
+      {/* El tiempo del dia, y si vale. Solo las marcadas entran en el promedio que ve
+          antes de empezar y en la grafica de tiempo: un dia que cerro en casa dos horas
+          despues no dice nada de lo que tarda. */}
+      <View style={styles.time}>
+        <Text style={styles.timeValue}>
+          {minutes === null ? 'sin hora de entrada o de salida' : clockFace(minutes)}
+        </Text>
+        {minutes !== null && (
+          <View style={styles.timeSwitch}>
+            <Text style={styles.timeLabel}>¿este tiempo es preciso?</Text>
+            <Toggle
+              value={trusted}
+              accessibilityLabel="Este tiempo es preciso"
+              onChange={onTrustTime}
+            />
+          </View>
+        )}
+      </View>
+
+      {writing && (
+        <View style={styles.timeEdit}>
+          <NumericField
+            value={hours}
+            onChange={setHours}
+            accessibilityLabel="Horas que duró"
+            placeholder="0"
+            style={styles.timeInput}
+          />
+          <Text style={styles.timeUnit}>h</Text>
+          <NumericField
+            value={mins}
+            onChange={setMins}
+            accessibilityLabel="Minutos que duró"
+            placeholder="0"
+            style={styles.timeInput}
+          />
+          <Text style={styles.timeUnit}>min</Text>
+          <Button
+            label="Ajustar"
+            accessibilityLabel="Ajustar el tiempo del entreno"
+            disabled={(Number(hours) || 0) * 60 + (Number(mins) || 0) <= 0}
+            onPress={() => onSetMinutes((Number(hours) || 0) * 60 + (Number(mins) || 0))}
+          />
+        </View>
+      )}
+
       {exercises.map((exercise, index) => (
         <View key={exercise.exerciseId} style={[styles.exercise, index > 0 && styles.ruled]}>
           <View style={styles.exerciseTop}>
@@ -217,6 +275,54 @@ const styles = sheet((theme) => ({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
+  },
+  time: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  timeValue: {
+    fontSize: 20,
+    fontFamily: font.black,
+    color: theme.text,
+    fontVariant: ['tabular-nums'],
+  },
+  timeSwitch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  timeLabel: {
+    fontSize: 12,
+    fontFamily: font.bold,
+    color: theme.textDim,
+  },
+  timeEdit: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  timeInput: {
+    width: 64,
+    fontSize: 15,
+    fontFamily: font.black,
+    color: theme.text,
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.surface,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+  },
+  timeUnit: {
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.textDim,
   },
   block: {
     gap: 10,

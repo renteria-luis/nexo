@@ -167,6 +167,8 @@ export type TrainingSessionRow = {
   crowding: Crowding | null;
   is_retroactive: SqlBool;
   notes: string | null;
+  /** 1 cuando la hora de entrada y la de salida son de fiar (migracion 050). */
+  duration_trusted: SqlBool;
 };
 
 export type TrainingSetEntryRow = {

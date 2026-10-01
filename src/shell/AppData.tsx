@@ -152,10 +152,15 @@ import {
   loadSessionPlan,
   saveSessionPlan,
   getSessionOn,
+  listSessionTimes,
+  setDurationTrusted,
   setSessionDetails,
+  setSessionMinutes,
   setSessionRoutine,
   startSession,
+  usualMinutes,
   type SessionDetails,
+  type SessionKind,
   type PlannedExercise,
   type PlannedSet,
   type RoutinePlan,
@@ -504,6 +509,11 @@ export type AppData = {
     extra?: { isWarmup?: boolean; rpe?: number | null; restBeforeSeconds?: number | null },
   ) => Promise<void>;
   removeSetOn: (sessionId: string, exerciseId: string, setIndex: number) => Promise<void>;
+  /** Lo que suele tardar un dia asi, o null si no hay sesiones de fiar con que decirlo. */
+  loadPace: (kind: SessionKind) => Promise<number | null>;
+  /** Si el tiempo de esa sesion sirve para hacer cuentas, y cuanto duro de verdad. */
+  trustSessionTime: (sessionId: string, trusted: boolean) => Promise<void>;
+  editSessionMinutes: (sessionId: string, minutes: number) => Promise<void>;
   /** Lo que hay en la nevera, spec 21. No puntua nada, asi que no recarga el resto. */
   loadPantry: () => Promise<PantryItem[]>;
   savePantryItem: (item: NewPantryItem) => Promise<void>;
@@ -676,6 +686,14 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   );
 
   const loadStudies = useCallback(() => openDatabase().then(listStudies), []);
+
+  const loadPace = useCallback(
+    (kind: SessionKind) =>
+      openDatabase()
+        .then(listSessionTimes)
+        .then((times) => usualMinutes(times, kind)),
+    [],
+  );
 
   const loadPantry = useCallback(() => openDatabase().then(listPantry), []);
   const loadRecipes = useCallback(() => openDatabase().then(listRecipes), []);
@@ -965,6 +983,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         run((db) => consumeBatchPortion(db, batchId, todayIso(), mealSlot), false),
       loadWeek,
       loadStudies,
+      loadPace,
+      trustSessionTime: (sessionId, trusted) =>
+        write((db) => setDurationTrusted(db, sessionId, trusted), false),
+      editSessionMinutes: (sessionId, minutes) =>
+        write((db) => setSessionMinutes(db, sessionId, minutes), false),
       loadPantry,
       loadRecipes,
       savePantryItem: (item) => write((db) => savePantryItem(db, item), false),
@@ -1017,6 +1040,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       loadPlan,
       loadRecords,
       loadStudies,
+      loadPace,
       loadPantry,
       loadRecipes,
       loadChats,

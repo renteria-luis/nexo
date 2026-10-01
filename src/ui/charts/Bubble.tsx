@@ -11,12 +11,15 @@ import { font, hardShadow, sheet, shape } from '../theme.ts';
 export function Bubble({
   date,
   value,
+  note,
   width,
   left,
   onOpenDay,
 }: {
   date: string;
   value: string;
+  /** Lo que ese dia fue, cuando el numero solo no lo dice: la rutina, las series. */
+  note?: string;
   width: number;
   left: number;
   onOpenDay?: () => void;
@@ -25,6 +28,7 @@ export function Bubble({
     <View style={[styles.bubble, { left, width }]}>
       <Text style={styles.date}>{date}</Text>
       <Text style={styles.value}>{value}</Text>
+      {note ? <Text style={styles.note}>{note}</Text> : null}
       {onOpenDay && (
         <Pressable
           accessibilityLabel={`Ver los detalles del ${date}`}
@@ -65,6 +69,11 @@ const styles = sheet((theme) => ({
     color: theme.text,
     fontFamily: font.black,
     fontVariant: ['tabular-nums'],
+  },
+  note: {
+    fontSize: 11,
+    color: theme.textDim,
+    fontFamily: font.bold,
   },
   button: {
     marginTop: 2,

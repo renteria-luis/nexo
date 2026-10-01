@@ -116,6 +116,7 @@ export function DayBars({
         <Bubble
           date={shortDate(points[open].date)}
           value={format(points[open].value)}
+          note={points[open].note}
           width={BUBBLE_WIDTH}
           left={bubbleLeft}
           onOpenDay={onOpenDay ? () => onOpenDay(points[open].date) : undefined}

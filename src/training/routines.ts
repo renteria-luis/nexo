@@ -8,6 +8,9 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { TrainingRoutineRow, TrainingSessionRow } from '../db/types.ts';
 
+import { usualMinutes } from './pace.ts';
+import { listSessionTimes } from './sessions.ts';
+
 export type TimeBudget = TrainingSessionRow['time_budget'];
 
 /** Spec 8.3 rule 5: tier 2 and 3 rest drops to this at -50% and Express. */
@@ -69,6 +72,8 @@ export type RoutinePlan = {
   budget: TimeBudget;
   exercises: PlannedExercise[];
   estimatedSeconds: number;
+  /** Lo que suele tardar un dia asi, o null si todavia no hay con que decirlo. */
+  usualMinutes: number | null;
 };
 
 /** Null means the exercise is dropped at that budget, which is the dash in spec 8.4. */
@@ -293,12 +298,17 @@ export async function loadRoutinePlan(
   if (!routine) throw new Error(`there is no routine called ${routineId}`);
 
   const planned = trimRoutine(exercises, budget);
+  // Lo que tarda de verdad, al lado de lo que el plan calcula: el calculo suma series y
+  // descansos, y el no es una suma de series y descansos.
+  const times = await listSessionTimes(db);
+
   return {
     routineId,
     name: routine.name,
     budget,
     exercises: planned,
     estimatedSeconds: estimateSeconds(planned),
+    usualMinutes: usualMinutes(times, { gymId, routineId, budget }),
   };
 }
 

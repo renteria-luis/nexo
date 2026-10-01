@@ -158,10 +158,7 @@ export async function updateExercise(
   if (edit.name !== undefined) {
     const name = edit.name.trim();
     if (name === '') throw new Error('an exercise needs a name');
-    await db.runAsync('UPDATE training_exercise SET name_es = ? WHERE id = ?;', [
-      name,
-      exerciseId,
-    ]);
+    await db.runAsync('UPDATE training_exercise SET name_es = ? WHERE id = ?;', [name, exerciseId]);
   }
 
   if (edit.restSeconds !== undefined) {

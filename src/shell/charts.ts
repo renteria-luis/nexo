@@ -7,13 +7,14 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { listDailyLogs, toWeighIns } from '../core/daily-log.ts';
-import { trailingDays, type IsoDate } from '../core/dates.ts';
+import { isWithin, trailingDays, type IsoDate } from '../core/dates.ts';
 import { SLEEP_FULL_MINUTES } from '../core/discipline.ts';
 import { targetsInForceOn } from '../core/snapshots.ts';
 import { kcalBand, proteinBand, rollingWeightAverage } from '../core/targets.ts';
 import { dailyTotals, listPortionsBetween } from '../nutrition/index.ts';
 import {
   epleyE1rm,
+  listSessionTimes,
   listWorkingSets,
   loadExerciseMuscles,
   setCountsByMuscle,
@@ -22,7 +23,20 @@ import {
 
 import { SET_BAND } from './week.ts';
 
-export type Point = { date: IsoDate; value: number };
+/** Los recortes de tiempo, dichos como los eligio. */
+const BUDGET_ES: Record<string, string> = {
+  completo: 'completo',
+  minus_25: '25% menos',
+  minus_50: '50% menos',
+  express: 'express',
+};
+
+export type Point = {
+  date: IsoDate;
+  value: number;
+  /** Lo que el globito dice ademas del numero: de que fue ese dia. */
+  note?: string;
+};
 export type Band = { from: number; to: number };
 
 export type MuscleSource = {
@@ -44,6 +58,8 @@ export type ExerciseTrend = {
   name: string;
   /** El mejor 1RM estimado de cada dia que lo entreno. */
   points: Point[];
+  /** Y lo que movio ese dia en ese ejercicio: peso por repeticiones, todas las series. */
+  volume: Point[];
 };
 
 export type ChartsData = {
@@ -67,6 +83,12 @@ export type ChartsData = {
    */
   sleepBand: Band | null;
   stepsBand: Band | null;
+  /**
+   * Lo que duro cada dia en el gym, solo de las sesiones cuya hora marco como buena
+   * (migracion 050). Sin ese filtro la grafica mide cuando se acordo de cerrar el
+   * entreno, no cuanto entreno.
+   */
+  gymMinutes: Point[];
   /** Series directas por musculo en los ultimos siete dias. */
   muscles: MuscleBar[];
   setBand: Band;
@@ -94,7 +116,7 @@ export async function loadCharts(
   const range = trailingDays(today, days);
   const week = trailingDays(today, 7);
 
-  const [logs, portions, sets, weekSets, muscleMap, targets, names] = await Promise.all([
+  const [logs, portions, sets, weekSets, muscleMap, targets, names, times] = await Promise.all([
     listDailyLogs(db, range),
     listPortionsBetween(db, range),
     listWorkingSets(db, range),
@@ -102,6 +124,7 @@ export async function loadCharts(
     loadExerciseMuscles(db),
     targetsInForceOn(db, today),
     db.getAllAsync<{ id: string; name_es: string }>('SELECT id, name_es FROM training_exercise;'),
+    listSessionTimes(db),
   ]);
 
   const weighIns = toWeighIns(logs);
@@ -184,20 +207,38 @@ export async function loadCharts(
   const trends: ExerciseTrend[] = [];
   for (const [exerciseId, byDate] of byExercise) {
     const points: Point[] = [];
+    const volume: Point[] = [];
     for (const [date, daySets] of [...byDate.entries()].sort()) {
       const best = bestE1rmOfDay(daySets);
       if (best !== null) points.push({ date, value: best });
+      // Lo que movio: el peso efectivo por repeticiones, sumando todas las series del
+      // dia. Las tres cosas que pidio (peso, repeticiones y series) en un solo numero.
+      const moved = daySets.reduce((total, set) => total + setLoad(set as never) * set.reps, 0);
+      if (moved > 0) {
+        volume.push({ date, value: moved, note: `${daySets.length} series` });
+      }
     }
     // Un solo punto no es una tendencia, es un punto.
     if (points.length >= 2) {
-      trends.push({ exerciseId, name: nameOf.get(exerciseId) ?? exerciseId, points });
+      trends.push({ exerciseId, name: nameOf.get(exerciseId) ?? exerciseId, points, volume });
     }
   }
   trends.sort((a, b) => b.points.length - a.points.length);
 
+  const gymMinutes: Point[] = times
+    .filter((session) => session.trusted && session.minutes > 0 && isWithin(session.date, range))
+    .map((session) => ({
+      date: session.date,
+      value: session.minutes,
+      note: [session.routineName ?? 'sin rutina', BUDGET_ES[session.budget] ?? session.budget]
+        .filter(Boolean)
+        .join(' · '),
+    }));
+
   return {
     from: range.from,
     to: range.to,
+    gymMinutes,
     weight,
     weightAverage,
     score,

@@ -10,8 +10,10 @@ import type { ChartsData } from '../../shell/charts.ts';
 import { Card } from '../Card.tsx';
 import { DayBars } from '../charts/DayBars.tsx';
 import { LineChart } from '../charts/LineChart.tsx';
+import { VolumeChart } from '../charts/VolumeChart.tsx';
 import { MuscleBars } from '../charts/MuscleBars.tsx';
 import { Chip } from '../Chip.tsx';
+import { clockFace } from '../../training/pace.ts';
 import { Combobox } from '../Combobox.tsx';
 import { font, sheet, theme } from '../theme.ts';
 
@@ -175,10 +177,11 @@ export function ChartsScreen() {
               <MuscleBars bars={data.muscles} band={data.setBand} />
             </Card>
 
-            <Card title="Fuerza por ejercicio">
+            <Card title="Progreso por ejercicio">
               <Text style={styles.note}>
-                El mejor 1RM estimado de cada día que lo entrenaste. Sale de tus series normales, no
-                de una prueba.
+                Las barras son lo que moviste ese día: peso por repeticiones, todas las series. La
+                línea es tu 1RM estimado, que solo mira el peso. Sube el volumen y es trabajo; sube
+                la línea y es fuerza.
               </Text>
               <Combobox
                 options={data.trends.map((item) => ({ id: item.exerciseId, label: item.name }))}
@@ -188,10 +191,12 @@ export function ChartsScreen() {
                 accessibilityLabel="Elegir el ejercicio"
               />
               {trend ? (
-                <LineChart
+                <VolumeChart
                   width={width}
-                  format={(value) => `${Math.round(fromKg(value, unit))} ${unit}`}
-                  series={[{ points: trend.points, color: theme.accent, dots: true }]}
+                  volume={trend.volume}
+                  strength={trend.points}
+                  formatVolume={(value) => `${Math.round(fromKg(value, unit))} ${unit}`}
+                  formatStrength={(value) => `${Math.round(fromKg(value, unit))} ${unit}`}
                   {...bubble(`trend-${trend.exerciseId}`)}
                 />
               ) : (
@@ -199,6 +204,20 @@ export function ChartsScreen() {
                   Anota dos sesiones de un ejercicio y aparece aquí.
                 </Text>
               )}
+            </Card>
+
+            {/* El tiempo que pasa dentro, que es lo que de verdad le cuesta un entreno. */}
+            <Card title="Tiempo en el gym">
+              <Text style={styles.note}>
+                Solo los días cuyo tiempo marcaste como preciso, en el registro de ese día. Toca una
+                barra para ver de qué fue.
+              </Text>
+              <DayBars
+                points={data.gymMinutes}
+                width={width}
+                format={(value) => clockFace(value)}
+                {...bubble('gym-minutes')}
+              />
             </Card>
 
             {/* El peso al final: cambia poco y se pesa poco, asi que no tiene por que

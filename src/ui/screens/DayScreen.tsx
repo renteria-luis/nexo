@@ -61,8 +61,18 @@ export function DayScreen() {
   const route = useRoute<{ key: string; name: string; params?: { date?: string } }>();
   const date = route.params?.date ?? todayIso();
 
-  const { state, loadDay, editDay, addFoodOn, removeFood, openSessionOn, addSetOn, removeSetOn } =
-    useAppData();
+  const {
+    state,
+    loadDay,
+    editDay,
+    addFoodOn,
+    removeFood,
+    openSessionOn,
+    addSetOn,
+    removeSetOn,
+    trustSessionTime,
+    editSessionMinutes,
+  } = useAppData();
   const navigation = useNavigation<{
     navigate: (name: string) => void;
     setParams: (params: { date: string }) => void;
@@ -192,6 +202,7 @@ export function DayScreen() {
           routineName={detail.routineName}
           gymName={detail.gymName}
           minutes={detail.sessionMinutes}
+          trusted={day.session?.duration_trusted === 1}
           exercises={detail.exercises}
           catalog={loaded.exercise.exercises}
           routines={loaded.routines}
@@ -212,6 +223,16 @@ export function DayScreen() {
             const sessionId = day.session?.id;
             if (!sessionId) return;
             after(removeSetOn(sessionId, exerciseId, setIndex));
+          }}
+          onTrustTime={(trust) => {
+            const sessionId = day.session?.id;
+            if (!sessionId) return;
+            after(trustSessionTime(sessionId, trust));
+          }}
+          onSetMinutes={(howLong) => {
+            const sessionId = day.session?.id;
+            if (!sessionId) return;
+            after(editSessionMinutes(sessionId, howLong));
           }}
         />
         {detail.exercises.length > 0 && (

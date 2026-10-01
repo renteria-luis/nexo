@@ -11,6 +11,7 @@ import {
   type LoggedSet,
 } from '../training/calculations.ts';
 import { fold } from '../nutrition/picker.ts';
+import { finishingAt } from '../training/pace.ts';
 import { isPerSide, type CatalogExercise, type Swappable } from '../training/queries.ts';
 import type { SessionDraft } from '../core/session-draft.ts';
 import type { Implement } from '../training/sessions.ts';
@@ -141,6 +142,8 @@ export type SessionLogProps = {
   onRemoveSet: (setIndex: number) => void;
   /** Cuando toco empezar, para el reloj de la sesion. */
   startedAt: number | null;
+  /** Lo que suele tardar un dia asi, para decir a que hora sale. Null si no se sabe. */
+  usualMinutes: number | null;
   /** Lo que quedo escrito la ultima vez que estuvo aqui, si la app se cerro. */
   draft: SessionDraft | null;
   onDraftChange: (draft: {
@@ -239,6 +242,7 @@ export const SessionLog = memo(function SessionLog({
   onAddSet,
   onRemoveSet,
   startedAt,
+  usualMinutes,
   draft,
   onDraftChange,
   finishedAt,
@@ -427,6 +431,13 @@ export const SessionLog = memo(function SessionLog({
                   clock((finishedAt - startedAt) / 1000)
                 )}
               </Text>
+              {/* A que hora sale si tarda lo de siempre. Es un calculo de una resta y no
+                  mira que ejercicios faltan: dice el rato que suele estar, no el que le
+                  queda. Sin dias de fiar de este tipo no sale nada, que es mejor que un
+                  numero inventado. */}
+              {finishedAt === null && usualMinutes !== null && (
+                <Text style={styles.finishing}>sales ~{finishingAt(startedAt, usualMinutes)}</Text>
+              )}
             </View>
           )}
         </View>
@@ -822,6 +833,12 @@ const styles = sheet((theme) => ({
     fontSize: 30,
     fontFamily: font.display,
     color: theme.text,
+    fontVariant: ['tabular-nums'],
+  },
+  finishing: {
+    fontSize: 11,
+    fontFamily: font.bold,
+    color: theme.textFaint,
     fontVariant: ['tabular-nums'],
   },
   sessionClock: {

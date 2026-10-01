@@ -33,11 +33,14 @@ export function TrainingScreen() {
     reopenSession,
     switchRoutine,
     whereAmI,
+    loadPace,
   } = useAppData();
   const navigation = useNavigation<{
     navigate: (name: string, params?: { routineId?: string }) => void;
   }>();
   const [changingRoutine, setChangingRoutine] = useState(false);
+  // Lo que suele tardar un dia como el de hoy, para poder decir a que hora sale.
+  const [pace, setPace] = useState<number | null>(null);
   // Mientras arrastra una fila del orden, ni la pantalla se desplaza ni se pasa de
   // pestana: los dos gestos son nativos y se llevan el toque aunque este tomado.
   const [dragging, setDragging] = useState(false);
@@ -143,6 +146,33 @@ export function TrainingScreen() {
   // Y se elige una vez por sesion, no una vez por "no hay nada elegido": al empezar otra
   // sesion en la misma sentada seguia puesto el ejercicio de la anterior, y entonces esto
   // no elegia nada.
+  // El promedio del tipo de dia que esta entrenando. Se pide una vez por sesion: es una
+  // consulta de nada, pero no tiene por que repetirse en cada serie que anota.
+  const kind =
+    state.phase === 'ready' && state.loaded.today.session
+      ? {
+          gymId: state.loaded.today.session.gym_id,
+          routineId: state.loaded.today.session.routine_id,
+          budget: state.loaded.today.session.time_budget as string,
+        }
+      : null;
+  const kindKey = kind === null ? null : `${kind.gymId}|${kind.routineId}|${kind.budget}`;
+
+  useEffect(() => {
+    if (kind === null) return;
+    let alive = true;
+    loadPace(kind)
+      .then((minutes) => {
+        if (alive) setPace(minutes);
+      })
+      .catch((error: unknown) => console.error(error));
+    return () => {
+      alive = false;
+    };
+    // La firma es la dependencia: el objeto se arma en cada render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kindKey, loadPace]);
+
   const chosen = useRef<string | null>(null);
   useEffect(() => {
     if (openSessionId === null) {
@@ -251,6 +281,7 @@ export function TrainingScreen() {
             onAddSet={logSet}
             onRemoveSet={removeSet}
             startedAt={session.start_time}
+            usualMinutes={pace}
             draft={loaded.sessionDraft}
             onDraftChange={changeDraft}
             finishedAt={session.end_time}

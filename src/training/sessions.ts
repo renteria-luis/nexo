@@ -9,10 +9,18 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { trailingDays, type IsoDate } from '../core/dates.ts';
-import type { TrainingSessionRow, TrainingSetEntryRow } from '../db/types.ts';
+import type { SqlBool, TrainingSessionRow, TrainingSetEntryRow } from '../db/types.ts';
+
+import type { PastSession } from './pace.ts';
 
 import type { LoggedSet } from './calculations.ts';
 import { isPerSide } from './queries.ts';
+
+/** Una sesion con su duracion, para el promedio (`pace.ts`) y para la grafica. */
+export type SessionTime = PastSession & {
+  date: IsoDate;
+  routineName: string | null;
+};
 
 export type NewSession = {
   date: IsoDate;
@@ -303,4 +311,92 @@ export function marksWindow(onDate: IsoDate, floor: IsoDate | null) {
   const window = trailingDays(onDate, MARKS_WINDOW_DAYS);
   // Spec 6.5: while readapting, comparisons only reach back to the day he returned.
   return floor && floor > window.from ? { from: floor, to: window.to } : window;
+}
+
+/**
+ * Si la duracion de esa sesion sirve para hacer cuentas (migracion 050).
+ *
+ * Es el unico dato de un entreno que no se mide: se declara. La hora de entrada la pone
+ * la app al empezar, pero la de salida depende de que se acuerde de cerrar el entreno al
+ * salir, y eso unos dias pasa y otros no.
+ */
+export async function setDurationTrusted(
+  db: SQLiteDatabase,
+  sessionId: string,
+  trusted: boolean,
+): Promise<void> {
+  await db.runAsync('UPDATE training_session SET duration_trusted = ? WHERE id = ?;', [
+    trusted ? 1 : 0,
+    sessionId,
+  ]);
+}
+
+/**
+ * Corrige cuanto duro, moviendo la hora de salida.
+ *
+ * Mover el final y no guardar los minutos aparte: asi la duracion sigue saliendo de la
+ * misma resta de siempre y no hay dos numeros que puedan decir cosas distintas. Sin hora
+ * de entrada no hay de donde contar, asi que se pone la del final menos lo que duro.
+ */
+export async function setSessionMinutes(
+  db: SQLiteDatabase,
+  sessionId: string,
+  minutes: number,
+): Promise<void> {
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    throw new Error(`un entreno no puede durar ${minutes} minutos`);
+  }
+
+  const session = await db.getFirstAsync<{ start_time: number | null; end_time: number | null }>(
+    'SELECT start_time, end_time FROM training_session WHERE id = ?;',
+    [sessionId],
+  );
+  if (!session) throw new Error(`there is no session called ${sessionId}`);
+
+  const span = Math.round(minutes) * 60_000;
+  if (session.start_time !== null) {
+    await db.runAsync('UPDATE training_session SET end_time = ? WHERE id = ?;', [
+      session.start_time + span,
+      sessionId,
+    ]);
+    return;
+  }
+
+  const end = session.end_time ?? Date.now();
+  await db.runAsync('UPDATE training_session SET start_time = ?, end_time = ? WHERE id = ?;', [
+    end - span,
+    end,
+    sessionId,
+  ]);
+}
+
+/** Lo que duro cada sesion, para el promedio y para la grafica de tiempo. */
+export async function listSessionTimes(db: SQLiteDatabase): Promise<SessionTime[]> {
+  const rows = await db.getAllAsync<{
+    date: IsoDate;
+    gym_id: string | null;
+    routine_id: string | null;
+    time_budget: string;
+    minutes: number | null;
+    duration_trusted: SqlBool;
+    routine: string | null;
+  }>(
+    `SELECT s.date, s.gym_id, s.routine_id, s.time_budget, s.duration_trusted,
+            CAST((s.end_time - s.start_time) / 60000 AS INTEGER) AS minutes,
+            r.name AS routine
+       FROM training_session s
+       LEFT JOIN training_routine r ON r.id = s.routine_id
+      WHERE s.start_time IS NOT NULL AND s.end_time IS NOT NULL
+      ORDER BY s.date;`,
+  );
+
+  return rows.map((row) => ({
+    date: row.date,
+    gymId: row.gym_id,
+    routineId: row.routine_id,
+    routineName: row.routine,
+    budget: row.time_budget,
+    minutes: row.minutes ?? 0,
+    trusted: row.duration_trusted === 1,
+  }));
 }

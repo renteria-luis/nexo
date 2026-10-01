@@ -8,6 +8,8 @@ import type { PlannedExercise, RoutinePlan, TimeBudget } from '../training/index
 
 import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
+import { clockFace } from '../training/pace.ts';
+
 import { Chip } from './Chip.tsx';
 import { ConfirmAction } from './InfoBubble.tsx';
 import { Dumbbell, GripLines, MapPin, Moon, Play, Timer, Users, type LucideIcon } from './icons.ts';
@@ -524,7 +526,10 @@ export function SessionPlanner({
 
           {plan && (
             <Text style={styles.estimate}>
-              {exercises.length} ejercicios · unos {Math.round(seconds / 60)} min
+              {exercises.length} ejercicios · {clockFace(seconds / 60)} de plan
+              {/* Y lo que tarda de verdad, cuando hay con que decirlo: el plan suma
+                  series y descansos, y el no es una suma de series y descansos. */}
+              {plan.usualMinutes === null ? '' : ` · sueles tardar ${clockFace(plan.usualMinutes)}`}
             </Text>
           )}
         </Card>
