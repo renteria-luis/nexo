@@ -1,9 +1,9 @@
-import { Linking, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 
 import { unitPrice, type WatchedDeal } from '../deals/index.ts';
 
 import { Button } from './Button.tsx';
-import { ExternalLink, X } from './icons.ts';
+import { X } from './icons.ts';
 import { IconButton } from './IconButton.tsx';
 import { font, hardShadow, sheet, shape } from './theme.ts';
 
@@ -54,21 +54,6 @@ export function DealAlert({
                   .filter(Boolean)
                   .join(' · ')}
               </Text>
-              {item.deal.source_url !== null && (
-                <Button
-                  label="Abrir en Flipp"
-                  accessibilityLabel={`Abrir ${item.deal.title} en Flipp`}
-                  variant="ghost"
-                  icon={ExternalLink}
-                  style={styles.open}
-                  onPress={() => {
-                    const url = item.deal.source_url;
-                    if (url !== null) {
-                      Linking.openURL(url).catch((error: unknown) => console.error(error));
-                    }
-                  }}
-                />
-              )}
             </View>
           );
         })}
@@ -158,10 +143,6 @@ const styles = sheet((theme) => ({
     fontFamily: font.regular,
     color: theme.textFaint,
     fontVariant: ['tabular-nums'],
-  },
-  open: {
-    alignSelf: 'flex-start',
-    marginLeft: -8,
   },
   foot: {
     flexDirection: 'row',

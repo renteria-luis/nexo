@@ -10,7 +10,7 @@ import { Button } from './Button.tsx';
 import { Chip } from './Chip.tsx';
 import { IconButton } from './IconButton.tsx';
 import { ConfirmButton } from './InfoBubble.tsx';
-import { Check, Plus, Trash } from './icons.ts';
+import { Check, Pencil, Plus, Trash } from './icons.ts';
 import { NumericField } from './NumericField.tsx';
 import { font, sheet, shape } from './theme.ts';
 
@@ -54,6 +54,9 @@ export function DayTraining({
   onRemoveSet,
 }: DayTrainingProps) {
   const [adding, setAdding] = useState<string | null>(null);
+  // Un dia de Registros se mira mucho mas de lo que se corrige: los botones de anotar y
+  // de quitar aparecen con el lapiz, igual que en el resto de la cartilla.
+  const [writing, setWriting] = useState(false);
   const [weight, setWeight] = useState('');
   const [reps, setReps] = useState('');
 
@@ -126,12 +129,18 @@ export function DayTraining({
 
   return (
     <View style={styles.block}>
-      <Text style={styles.line}>
-        {[routineName ?? 'Sin rutina', gymName, minutes === null ? null : `${minutes} min`]
-          .filter(Boolean)
-          .join(' · ')}
-        {retroactive ? ' · escrito después' : ''}
-      </Text>
+      <View style={styles.head}>
+        <Text style={styles.line}>
+          {[routineName ?? 'Sin rutina', gymName].filter(Boolean).join(' · ')}
+          {retroactive ? ' · escrito después' : ''}
+        </Text>
+        <IconButton
+          icon={Pencil}
+          selected={writing}
+          accessibilityLabel={writing ? 'Dejar de corregir' : 'Corregir el entreno'}
+          onPress={() => setWriting((open) => !open)}
+        />
+      </View>
 
       {exercises.map((exercise, index) => (
         <View key={exercise.exerciseId} style={[styles.exercise, index > 0 && styles.ruled]}>
@@ -152,45 +161,50 @@ export function DayTraining({
                 {set.setIndex}. {formatWeight(set.weightKg, unit)} {unit}
                 {exercise.perSide ? ' c/u' : ''} × {set.reps}
               </Text>
-              <ConfirmButton
-                icon={Trash}
-                question={`¿Quitar la serie ${set.setIndex} de ${exercise.name}?`}
-                accessibilityLabel={`Quitar la serie ${set.setIndex} de ${exercise.name}`}
-                onConfirm={() => onRemoveSet(exercise.exerciseId, set.setIndex)}
-              />
+              {writing && (
+                <ConfirmButton
+                  icon={Trash}
+                  question={`¿Quitar la serie ${set.setIndex} de ${exercise.name}?`}
+                  accessibilityLabel={`Quitar la serie ${set.setIndex} de ${exercise.name}`}
+                  onConfirm={() => onRemoveSet(exercise.exerciseId, set.setIndex)}
+                />
+              )}
             </View>
           ))}
 
-          {adding === exercise.exerciseId ? (
-            form(exercise.exerciseId, exercise.name)
-          ) : (
-            <Button
-              label="Serie"
-              icon={Plus}
-              accessibilityLabel={`Agregar una serie a ${exercise.name}`}
-              style={styles.more}
-              onPress={() => setAdding(exercise.exerciseId)}
-            />
-          )}
+          {writing &&
+            (adding === exercise.exerciseId ? (
+              form(exercise.exerciseId, exercise.name)
+            ) : (
+              <Button
+                label="Serie"
+                icon={Plus}
+                accessibilityLabel={`Agregar una serie a ${exercise.name}`}
+                style={styles.more}
+                onPress={() => setAdding(exercise.exerciseId)}
+              />
+            ))}
         </View>
       ))}
 
-      <Text style={styles.hint}>Agregar otro ejercicio a este día:</Text>
+      {writing && <Text style={styles.hint}>Agregar otro ejercicio a este día:</Text>}
       <View style={styles.chips}>
-        {catalog
-          .filter((item) => !exercises.some((done) => done.exerciseId === item.id))
-          .map((item) => (
-            <Chip
-              key={item.id}
-              label={item.name_es}
-              accessibilityLabel={`Agregar ${item.name_es}`}
-              selected={adding === item.id}
-              onPress={() => setAdding(item.id)}
-            />
-          ))}
+        {writing &&
+          catalog
+            .filter((item) => !exercises.some((done) => done.exerciseId === item.id))
+            .map((item) => (
+              <Chip
+                key={item.id}
+                label={item.name_es}
+                accessibilityLabel={`Agregar ${item.name_es}`}
+                selected={adding === item.id}
+                onPress={() => setAdding(item.id)}
+              />
+            ))}
       </View>
 
-      {adding !== null &&
+      {writing &&
+        adding !== null &&
         !exercises.some((done) => done.exerciseId === adding) &&
         form(adding, 'el ejercicio nuevo')}
     </View>
@@ -198,6 +212,12 @@ export function DayTraining({
 }
 
 const styles = sheet((theme) => ({
+  head: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
   block: {
     gap: 10,
   },

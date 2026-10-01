@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LayoutAnimation, Linking, Pressable, Text, View } from 'react-native';
+import { LayoutAnimation, Pressable, Text, View } from 'react-native';
 
 import { todayIso } from '../../core/dates.ts';
 import {
@@ -15,7 +15,7 @@ import { useAppData } from '../../shell/AppData.tsx';
 import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
 import { Chip } from '../Chip.tsx';
-import { ChevronDown, ChevronUp, ExternalLink, RotateCcw } from '../icons.ts';
+import { ChevronDown, ChevronUp, RotateCcw } from '../icons.ts';
 import { font, sheet, shape, theme } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
@@ -68,17 +68,21 @@ function ago(fetchedAt: number | null): string {
 /**
  * Una oferta. Lo que la hace valer la pena sobre abrir Flipp es la segunda linea: el
  * precio por kilo y, cuando la comida esta en su catalogo, la proteina por dolar.
+ *
+ * Ya no lleva boton de abrir (2026-09-30). El enlace de `/action` es universal y Flipp
+ * lo declara, pero quien decide si va a la app o a Safari es iOS, y una vez que ha ido a
+ * Safari se queda yendo; no hay forma de forzarlo desde aqui. Un boton que promete abrir
+ * una app y abre el navegador miente, asi que en su lugar queda la insignia que dice de
+ * que app es la oferta, que ademas es lo que va a hacer falta cuando entre Flashfood.
  */
 function DealRow({
   item,
   discounts,
   showStore,
-  onOpen,
 }: {
   item: DealWithContext;
   discounts: DealsDiscountRow[];
   showStore: boolean;
-  onOpen: (item: DealWithContext) => void;
 }) {
   const { deal, source, retailer, food, stale } = item;
   const chain = retailer?.chain ?? null;
@@ -134,16 +138,6 @@ function DealRow({
         {/* Spec 16.3 rule 2: la insignia de la fuente va en cada oferta. */}
         <Text style={styles.mark}>{source.name}</Text>
       </View>
-
-      {/* Spec 16.3 rule 3: el boton dice que app abre, y el enlace de /action abre la
-          app de Flipp en ese articulo cuando esta instalada. */}
-      <Button
-        label={`Abrir en ${source.name}`}
-        accessibilityLabel={`Abrir ${deal.title} en ${source.name}`}
-        icon={ExternalLink}
-        block
-        onPress={() => onOpen(item)}
-      />
     </View>
   );
 }
@@ -232,21 +226,6 @@ export function DealsScreen() {
             return difference !== 0 ? difference : b.rows.length - a.rows.length;
           });
 
-  const open = async (item: DealWithContext) => {
-    // El enlace de /action es universal: iOS se lo da a la app de Flipp si esta
-    // instalada, y a Safari si no. Preguntar antes con canOpenURL no servia de nada,
-    // porque iOS solo contesta por los esquemas declarados en el Info.plist propio.
-    const url = item.deal.source_url ?? item.source.web_fallback_url;
-    if (url === null) {
-      // Spec 16.3 rule 4: never fail silently.
-      setNote(`${item.source.name} no dejó un enlace para esta oferta.`);
-      return;
-    }
-    await Linking.openURL(url).catch(() => {
-      setNote(`No se pudo abrir ${item.source.name}. El enlace era ${url}`);
-    });
-  };
-
   return (
     <Screen title="Ofertas">
       <View style={styles.chips}>
@@ -280,7 +259,7 @@ export function DealsScreen() {
               setNote(
                 outcome.kind === 'ok'
                   ? `${outcome.count} ofertas, ${ago(outcome.fetchedAt)}`
-                  : `No se pudo actualizar: ${outcome.reason}`,
+                  : outcome.reason,
               );
             })
             .finally(() => setBusy(false));
@@ -337,7 +316,6 @@ export function DealsScreen() {
                   item={item}
                   discounts={discounts}
                   showStore={group !== 'store'}
-                  onOpen={open}
                 />
               ))}
           </Card>
