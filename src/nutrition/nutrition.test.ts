@@ -353,8 +353,33 @@ test('open batches come back oldest first and closed ones do not', async () => {
 
   const open = await listOpenBatches(db);
   assert.deepEqual(
-    open.map((entry) => entry.id),
+    open.map((entry) => entry.batch.id),
     ['older', 'newer'],
+  );
+});
+
+test('a batch on a food he archived still comes back with its food', async () => {
+  const { db } = seeded();
+  const chicken = await chickenBreast(db);
+  const batch = await createBatch(db, {
+    foodId: chicken,
+    rawWeightG: 1600,
+    portionsCount: 8,
+    cookedDate: '2026-09-13',
+    fatDrained: false,
+  });
+
+  // Deleting a food that has a batch archives it, which takes it off the picker list.
+  assert.equal(await removeFood(db, chicken), 'archivado');
+  assert.equal(
+    (await listFoods(db)).some((food) => food.id === chicken),
+    false,
+  );
+
+  const open = await listOpenBatches(db);
+  assert.deepEqual(
+    open.map((entry) => [entry.batch.id, entry.food.id]),
+    [[batch, chicken]],
   );
 });
 

@@ -56,8 +56,8 @@ function fresh(): { db: SQLiteDatabase; raw: DatabaseSync } {
 }
 
 const profile: TargetProfile = {
-  heightCm: 170,
-  birthDate: '1996-08-30',
+  heightCm: 180,
+  birthDate: '1990-01-15',
   activityFactor: 1.55,
   phase: 'recomp',
   sleepMinutes: 420,

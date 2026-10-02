@@ -85,13 +85,33 @@ export async function listPortionsBetween(
   return byDate;
 }
 
-/** Batches with portions left, oldest first, which is the order they spoil in. */
-export async function listOpenBatches(db: SQLiteDatabase): Promise<NutritionBatchRow[]> {
-  return db.getAllAsync<NutritionBatchRow>(
-    `SELECT * FROM nutrition_batch
-      WHERE portions_remaining > 0
-   ORDER BY cooked_date;`,
-  );
+export type BatchWithFood = { batch: NutritionBatchRow; food: NutritionFoodRow };
+
+/**
+ * Batches with portions left, oldest first, which is the order they spoil in, each with
+ * the food it draws from. The food is read here rather than found in `listFoods`, which
+ * hides the pot a recipe made and anything archived: both can still have portions in the
+ * fridge, and looking them up there failed the whole app the first time he cooked.
+ */
+export async function listOpenBatches(db: SQLiteDatabase): Promise<BatchWithFood[]> {
+  const [batches, foods] = await Promise.all([
+    db.getAllAsync<NutritionBatchRow>(
+      `SELECT * FROM nutrition_batch
+        WHERE portions_remaining > 0
+     ORDER BY cooked_date;`,
+    ),
+    db.getAllAsync<NutritionFoodRow>(
+      `SELECT * FROM nutrition_food
+        WHERE id IN (SELECT food_id FROM nutrition_batch WHERE portions_remaining > 0);`,
+    ),
+  ]);
+
+  const byId = new Map(foods.map((food) => [food.id, food]));
+  return batches.map((batch) => {
+    const food = byId.get(batch.food_id);
+    if (!food) throw new Error(`batch ${batch.id} points at food ${batch.food_id}, which is gone`);
+    return { batch, food };
+  });
 }
 
 export async function getFood(db: SQLiteDatabase, foodId: string): Promise<NutritionFoodRow> {

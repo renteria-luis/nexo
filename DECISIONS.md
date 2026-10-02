@@ -99,13 +99,13 @@ Rejected: Semana fija de lunes a domingo. Rompe el "rolling, not pinned to weekd
 de §4.3 y castiga al que mueve un entreno de domingo a lunes.
 
 ## 2026-09-25 — El sueño, la proteína y las calorías se puntúan con curvas
-Context: Durmió 5 h 05 por trabajo y la app le dio 0 de 20, igual que si no hubiera
+Context: Una noche corta por trabajo le dio 0 de 20, igual que si no hubiera
 dormido nada. El umbral de §3.5 (cero por debajo de 6 h) no dice lo que dice la
 evidencia, y lo mismo pasaba con la proteína y las calorías, que eran bandas con
 acantilado.
 Decision: Tres criterios pasan a leerse de una curva de puntos con rectas entre
 ellos. La del sueño es la escala que él escribió a partir de Saner 2020, con los 20
-puntos en las 8 h; 5 h 05 ahora son 7.3. La de proteína sigue la meseta de Morton
+puntos en las 8 h; una noche corta ya no vale cero. La de proteína sigue la meseta de Morton
 2018 (1.62 g/kg, IC 1.03-2.20). La de calorías se ancla en Areta 2014 (diez días al
 80% bajan la síntesis 16%) y baja más suave por arriba, donde se gana grasa pero no
 se pierde músculo. Cada criterio guarda sus decimales y la nota del día también:
@@ -224,15 +224,14 @@ al relieve) y apagarlo en toda la app (habría que rehacer el botón de volver y
 en las doce pantallas apiladas, y perder el gesto tal como lo pinta iOS).
 
 ## 2026-09-27 — Comer bien deja de restar nota
-Context: Comió 204 g de proteína, o sea 2.8 g/kg, y la nota le puso 14.5 de 16. La curva
+Context: Un día comió proteína muy por encima de la meseta y la nota le puso 14.5 de 16. La curva
 bajaba pasada la meseta de Morton porque la proteína de más no aporta y le quita sitio a
 los otros macros. La cuadrícula acabó castigando un día de comer bien, que es lo
 contrario de lo que tiene que enseñarle.
 Decision: La proteína por encima de la banda no resta: la curva llega a 1 en 1.8 g/kg y
 se queda ahí. Y las calorías dejan de tener curva por arriba: mil calorías por encima
 del piso de la banda no cuestan nada, y a partir de ahí un punto de los diez por cada
-doscientas. Con su banda de 2 275 a 2 575, el primer punto se pierde en 3 275 y el
-décimo en 5 275. Por debajo todo sigue igual, porque quedarse corto sí compromete las
+doscientas. Por debajo todo sigue igual, porque quedarse corto sí compromete las
 metas 1 a 3 ese mismo día. Migración 044 borra las notas guardadas para que se rehagan.
 Rejected: Dejar las dos caras en la misma curva (era lo que había: simétrico y barato de
 explicar, pero trata igual engordar despacio que dejar de comer) y quitarle todo el
@@ -332,7 +331,7 @@ Context: El asistente entendia comandos pero no frases. El quiere hablarle norma
 dormi como seis y media") y que ademas conteste cosas suyas ("cual fue mi mejor marca"),
 y que sea gratis.
 Decision: Apple Foundation Models dentro del telefono (`@react-native-ai/apple`, iOS 26,
-su iPhone 16 Pro Max). Gratis, sin cuenta, sin limite y sin conexion. El modelo no
+su iPhone). Gratis, sin cuenta, sin limite y sin conexion. El modelo no
 escribe nunca: se le pide un objeto con esquema y lo unico que puede proponer es una
 linea de la misma gramatica de comandos, que vuelve a pasar por el parser; todo lo que
 proponga se confirma antes de escribirse. Las preguntas son cuatro y las contesta la app
@@ -405,11 +404,11 @@ Rejected: Dejar el nombre, y poner la fecha ademas del nombre (dos cosas en una 
 solo tiene sitio para una).
 
 ## 2026-09-30 — La banda de calorias sube 400 y la de proteina no tiene techo
-Context: "es por lo mismo que soy ecto". Comer 180 g de proteina o 2 900 kcal salia
-pintado como fuera de banda, y lo que le pasa a el es quedarse corto, no pasarse.
+Context: Comer de mas en proteina o en calorias salia pintado como fuera de banda, y lo
+que le pasa a el es quedarse corto, no pasarse.
 Decision: La banda de calorias va de la meta menos 150 a la meta mas 550. La de proteina
 se pinta con suelo y sin techo, como la de sueno y la de pasos, y el desglose del dia dice
-"133 g o mas" en vez de "133 a 163". Lo que si engorda lo sigue cobrando la regla de las
+"N g o mas" en vez de "N a M". Lo que si engorda lo sigue cobrando la regla de las
 mil calorias libres (spec 4.1), que empieza mucho mas arriba.
 Rejected: Tocar las curvas de puntos, que ya no penalizaban ninguna de las dos cosas: lo
 que estaba mal era lo que se pintaba, no lo que se puntuaba.
@@ -430,8 +429,8 @@ entera de cartillas: cansa.
 Decision: Los mismos cinco tonos con la saturacion bajada y el brillo subido, y un sexto
 tono calido (`surfaceWarm`) para la isla de abajo, que era blanca. La tinta sigue siendo
 negra encima de todos, que es lo que mantiene el contraste. Las paletas de la cuadricula
-(spec 4.5) no se tocan: no son decoracion, son la escala que le deja leer la nota con su
-daltonismo, y suavizarlas la romperia.
+(spec 4.5) no se tocan: no son decoracion, son la escala que le deja leer la nota, y
+suavizarlas la romperia.
 Rejected: Cambiar solo el amarillo (el resto seguiria gritando) y bajar tambien la
 cuadricula.
 
@@ -627,3 +626,14 @@ Decision: El peso corporal va siempre en kilos, se escriba donde se escriba. La 
 Ajustes es para los pesos del gimnasio: las series si se convierten con ella. Reemplaza la
 entrada del 2026-09-28.
 Rejected: Convertir el peso corporal con la unidad de Ajustes.
+
+## 2026-10-03 — Los commits salen con el correo privado de GitHub
+Context: El repo es publico y cada commit lleva a la vista el correo de quien lo hizo. La
+auditoria del 1 de octubre encontro el correo personal en todos los commits hechos desde la
+computadora, y la fecha de nacimiento de la spec en diez archivos publicados.
+Decision: Este repo firma con la direccion noreply de GitHub (`user.email` del repo), y
+`.githooks/pre-commit` rechaza un commit con cualquier otra. Los tests y los scripts usan un
+perfil inventado, y `src/public-repo.test.ts` falla si la fecha de nacimiento de la spec
+aparece en algun archivo publicado, escrita de cualquier forma.
+Rejected: Confiar solo en la config, que una copia nueva del repo no trae, y reescribir ya
+el historial para borrar lo subido, que no tiene vuelta atras y queda para que el lo decida.

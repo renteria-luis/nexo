@@ -4,6 +4,7 @@ import { Pressable, Text, View } from 'react-native';
 import { todayIso } from '../../core/dates.ts';
 import { type NudgeKind } from '../../core/nudges.ts';
 import type { PaletteId } from '../../core/palettes.ts';
+import { exportNote } from '../../shell/backup-file.ts';
 import {
   nudgesEnabled,
   nudgesOffFrom,
@@ -446,13 +447,7 @@ export function SettingsScreen({
               setBusy('exportar');
               setBackupNote('Escribiendo…');
               onExport()
-                .then((outcome) => {
-                  setBackupNote(
-                    outcome.shared
-                      ? `Listo, ${Math.round(outcome.bytes / 1024)} KB.`
-                      : `Guardado en el teléfono, ${Math.round(outcome.bytes / 1024)} KB: ${outcome.uri}`,
-                  );
-                })
+                .then((outcome) => setBackupNote(exportNote(outcome)))
                 .catch((error: unknown) => {
                   setBackupNote(error instanceof Error ? error.message : String(error));
                 })

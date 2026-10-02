@@ -27,7 +27,7 @@ function fromUtcMs(ms: number): IsoDate {
 }
 
 /**
- * Si es un dia que existe en el calendario. La forma AAAA-MM-DD no basta: 1996-30-08
+ * Si es un dia que existe en el calendario. La forma AAAA-MM-DD no basta: 1990-15-01
  * la cumple y no es ninguna fecha, y hasta ahora eso se guardaba y reventaba al
  * arrancar, con la app entera bloqueada en la pantalla de error.
  */

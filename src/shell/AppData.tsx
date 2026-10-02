@@ -172,6 +172,7 @@ import { WATER_ACTION_ML, type NudgeKind } from '../core/nudges.ts';
 import { listenToNudges, syncNudges } from './notifications.ts';
 import { recordNudgeAction } from './nudges.ts';
 import { loadCharts as loadChartsData, type ChartsData } from './charts.ts';
+import { afterFailedLoad, type LoadState } from './load-state.ts';
 import {
   listDayRows,
   loadDayDetail,
@@ -237,8 +238,7 @@ export type Loaded = {
   sessionDraft: SessionDraft | null;
 };
 
-export type AppState =
-  { phase: 'opening' } | { phase: 'ready'; loaded: Loaded } | { phase: 'failed'; message: string };
+export type AppState = LoadState<Loaded>;
 
 /**
  * Todo lo que la app necesita para pintarse, leido de una vez.
@@ -321,16 +321,12 @@ async function load(exerciseId: string | null, settle: boolean): Promise<Loaded>
     listSources(db),
   ]);
 
-  const batches: OpenBatch[] = openBatches.map((batch) => {
-    const food = foods.find((item) => item.id === batch.food_id);
-    if (!food) throw new Error(`batch ${batch.id} points at food ${batch.food_id}, which is gone`);
-    return {
-      batch,
-      food,
-      macros: portionMacros(batch, food),
-      spoilage: spoilageWarning(batch, today),
-    };
-  });
+  const batches: OpenBatch[] = openBatches.map(({ batch, food }) => ({
+    batch,
+    food,
+    macros: portionMacros(batch, food),
+    spoilage: spoilageWarning(batch, today),
+  }));
 
   return {
     days: (() => {
@@ -449,6 +445,8 @@ export type AppData = {
   logExperimentReading: (id: string, date: IsoDate, value: number, note?: string) => Promise<void>;
   finishExperiment: (id: string, endDate: IsoDate) => Promise<void>;
   removeSet: (setIndex: number) => void;
+  /** Vuelve a leer todo despues de una carga que fallo. */
+  retry: () => void;
   resetDatabase: () => void;
   dismissTargetChange: (effectiveFrom: IsoDate) => void;
   raiseStepsTarget: (next: number) => void;
@@ -561,11 +559,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback((settle = true) => {
     load(openExercise.current, settle)
-      .then((loaded) => setState({ phase: 'ready', loaded }))
+      .then((loaded) => setState({ phase: 'ready', loaded, problem: null }))
       .catch((error: unknown) => {
         console.error(error);
         const message = error instanceof Error ? error.message : String(error);
-        setState({ phase: 'failed', message });
+        setState((current) => afterFailedLoad(current, message));
       });
   }, []);
 
@@ -576,7 +574,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   /** Cambia un trozo de lo cargado sin ir a la base: lo que se acaba de tocar, ya. */
   const patch = useCallback((change: (loaded: Loaded) => Loaded) => {
     setState((current) =>
-      current.phase === 'ready' ? { phase: 'ready', loaded: change(current.loaded) } : current,
+      current.phase === 'ready' ? { ...current, loaded: change(current.loaded) } : current,
     );
   }, []);
 
@@ -930,6 +928,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           for (const row of rows) await deleteSet(db, row.id);
         }),
       exportData: () => exportToFile(),
+      retry: () => {
+        // Desde el panel de error tiene que verse que lo intenta otra vez; con la app
+        // abierta, lo que ya estaba en pantalla se queda mientras tanto.
+        setState((current) => (current.phase === 'failed' ? { phase: 'opening' } : current));
+        refresh();
+      },
       importData: async () => {
         const result = await importFromFile();
         if (result !== null) refresh();

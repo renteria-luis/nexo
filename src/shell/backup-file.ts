@@ -21,6 +21,12 @@ function fileName(at: number): string {
 
 export type ExportOutcome = { uri: string; bytes: number; shared: boolean };
 
+/** Lo que se le dice al terminar, en Ajustes y en el panel de error, que exportan igual. */
+export function exportNote(outcome: ExportOutcome): string {
+  const size = `${Math.round(outcome.bytes / 1024)} KB`;
+  return outcome.shared ? `Listo, ${size}.` : `Guardado en el teléfono, ${size}: ${outcome.uri}`;
+}
+
 /**
  * Escribe el volcado completo y abre la hoja de compartir para que quede fuera del
  * telefono. Si el sistema no ofrece compartir, el archivo igual queda escrito y la

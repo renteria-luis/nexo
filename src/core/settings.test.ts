@@ -74,24 +74,24 @@ test('a written setting survives and overrides the default', async () => {
 test('a setting holding nonsense fails loudly instead of falling back', () => {
   assert.throws(() => paletteFrom(settings({ palette: 'morado' })), /not one of the three/);
   assert.throws(
-    () => profileFrom(settings({ height_cm: 'alto', birth_date: '1996-08-30' })),
+    () => profileFrom(settings({ height_cm: 'alto', birth_date: '1990-01-15' })),
     /not a number/,
   );
   assert.throws(
-    () => profileFrom(settings({ height_cm: '170', birth_date: '1996-08-30', phase: 'volumen' })),
+    () => profileFrom(settings({ height_cm: '180', birth_date: '1990-01-15', phase: 'volumen' })),
     /not a phase/,
   );
 });
 
 test('there is no profile until height and birth date are entered', () => {
   assert.equal(profileFrom(settings()), null);
-  assert.equal(profileFrom(settings({ height_cm: '170' })), null);
-  assert.equal(profileFrom(settings({ birth_date: '1996-08-30' })), null);
+  assert.equal(profileFrom(settings({ height_cm: '180' })), null);
+  assert.equal(profileFrom(settings({ birth_date: '1990-01-15' })), null);
 
-  const profile = profileFrom(settings({ height_cm: '170', birth_date: '1996-08-30' }));
+  const profile = profileFrom(settings({ height_cm: '180', birth_date: '1990-01-15' }));
   assert.deepEqual(profile, {
-    heightCm: 170,
-    birthDate: '1996-08-30',
+    heightCm: 180,
+    birthDate: '1990-01-15',
     activityFactor: 1.58,
     phase: 'recomp',
     sleepMinutes: 420,
@@ -102,8 +102,8 @@ test('there is no profile until height and birth date are entered', () => {
 test('the editable parts of the profile are editable', () => {
   const profile = profileFrom(
     settings({
-      height_cm: '170',
-      birth_date: '1996-08-30',
+      height_cm: '180',
+      birth_date: '1990-01-15',
       activity_factor: '1.6',
       phase: 'cut',
       steps_target: '8500',
@@ -164,15 +164,21 @@ test('an adjustable window is actually adjustable', () => {
 });
 
 test('una fecha con forma correcta pero imposible se rechaza antes de guardarse', () => {
-  assert.match(settingProblem('birth_date', '1996-30-08') ?? '', /no existe/);
+  assert.match(settingProblem('birth_date', '1990-15-01') ?? '', /no existe/);
   assert.match(settingProblem('birth_date', '2026-02-31') ?? '', /no existe/);
-  assert.equal(settingProblem('birth_date', '1996-08-30'), null);
+  assert.equal(settingProblem('birth_date', '1990-01-15'), null);
+});
+
+test('una fecha de nacimiento que todavia no llega se rechaza antes de guardarse', () => {
+  assert.match(settingProblem('birth_date', '2029-04-27', '2026-10-01') ?? '', /todavía no llega/);
+  assert.equal(settingProblem('birth_date', '2026-10-01', '2026-10-01'), null);
+  assert.equal(settingProblem('birth_date', '1990-01-15', '2026-10-01'), null);
 });
 
 test('una fecha imposible ya guardada deja sin perfil, no tumba la app', () => {
   const settings = new Map([
-    ['height_cm', '170'],
-    ['birth_date', '1996-30-08'],
+    ['height_cm', '180'],
+    ['birth_date', '1990-15-01'],
     ['phase', 'recomp'],
     ['activity_factor', '1.55'],
     ['sleep_target_minutes', '420'],

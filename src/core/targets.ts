@@ -100,15 +100,14 @@ export function computeTargets(
   };
 }
 
-// Spec 3.2 quotes 2,250 to 2,550 against a 2,400 target, which is the target plus or
-// minus 150. Expressed as an offset so the band follows the target when spec 3.6
-// recomputes it. Los puntos ya no salen de aqui sino de la curva de spec 4.1: esto es
+// Spec 3.2's band is the target plus or minus 150. Expressed as an offset so the band
+// follows the target when spec 3.6 recomputes it. Los puntos ya no salen de aqui sino de la curva de spec 4.1: esto es
 // lo que se le muestra como meta.
 const KCAL_FULL_MARGIN = 150;
 
 /**
- * Y por arriba, cuatrocientas mas (decision del dueno, 2026-09-30). Es ectomorfo: el
- * problema que tiene es quedarse corto, no pasarse, y una banda que se cierra 150 por
+ * Y por arriba, cuatrocientas mas (decision del dueno, 2026-09-30). El problema que
+ * tiene es quedarse corto, no pasarse, y una banda que se cierra 150 por
  * encima pinta de gris los dias que mas le sirven. Lo que si engorda lo cobra la regla
  * de las mil calorias libres de spec 4.1, que empieza mucho mas arriba.
  */
@@ -122,8 +121,8 @@ export function kcalBand(targets: TargetValues): { from: number; to: number } {
 }
 
 /**
- * Spec 3.6: weight times 1.8 to weight times 2.2. Bounds are floored, which is
- * what produces the 133 to 163 in the spec 3.6 worked example at 74.2 kg.
+ * Spec 3.6: weight times 1.8 to weight times 2.2. Bounds are floored, which is what
+ * the spec's worked example does.
  */
 export function proteinBand(targets: TargetValues): { from: number; to: number } {
   return {

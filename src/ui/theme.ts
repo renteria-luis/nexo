@@ -9,8 +9,8 @@
 // se esta terminando. Volveria como una segunda Palette y un cambio dentro de este
 // archivo, sin tocar ninguna pantalla.
 //
-// Las paletas del daltonismo (spec 4.5) no viven aqui: son solo para los cuadritos de
-// la cuadricula y estan en core/palettes.ts.
+// Las paletas de spec 4.5 no viven aqui: son solo para los cuadritos de la cuadricula
+// y estan en core/palettes.ts.
 
 import { StyleSheet } from 'react-native';
 

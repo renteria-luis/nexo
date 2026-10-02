@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { migrations } from '../db/migrations/index.ts';
+import { listFoods, listOpenBatches } from '../nutrition/queries.ts';
 
 import { potOf } from './cook.ts';
 import { cookableNow, missingFor, type PantryItem, type Recipe } from './pantry.ts';
@@ -185,6 +186,40 @@ test('cocinar descuenta lo que se midio y deja la olla como lote', async () => {
   assert.equal(batch?.portions_count, 4);
   // Tres hamburguesas de 142 g.
   assert.equal(Math.round(batch?.raw_weight_g ?? 0), 426);
+});
+
+test('la olla cocinada sale entre las tandas abiertas, con su alimento', async () => {
+  const db = fresh();
+  const pollo = await savePantryItem(db, {
+    name: 'Pechuga',
+    kind: 'weighed',
+    quantity: 800,
+    unit: 'g',
+    state: null,
+    hasIt: null,
+    foodId: 'chicken-burger',
+  });
+  const recipe = await saveRecipe(db, {
+    name: 'Pollo con arroz',
+    steps: '',
+    portions: 4,
+    ingredients: [{ itemId: pollo, amount: 3 }],
+  });
+
+  const cooked = await cookRecipe(db, recipe, '2026-09-30');
+
+  // El alimento de la olla no sale en el buscador, a proposito, y la tanda igual lo encuentra.
+  assert.equal(
+    (await listFoods(db)).some((food) => food.from_recipe === 1),
+    false,
+  );
+  const open = await listOpenBatches(db);
+  assert.deepEqual(
+    open.map((entry) => entry.batch.id),
+    [cooked.batchId],
+  );
+  assert.equal(open[0].food.name, 'Pollo con arroz');
+  assert.equal(open[0].food.from_recipe, 1);
 });
 
 test('una receta editada no deja los ingredientes de antes', async () => {

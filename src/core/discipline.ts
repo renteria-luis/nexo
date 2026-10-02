@@ -112,9 +112,8 @@ const OVEREAT_KCAL_PER_POINT = 200;
  * del dueno, 2026-09-27). Quedarse corto compromete las metas 1 a 3 ese mismo dia, asi
  * que sigue la curva de arriba. Pasarse solo engorda, y engordar es cosa de semanas y
  * no de una cena: hay mil calorias de margen por encima del piso de la banda que no
- * cuestan nada, y despues un punto de los diez por cada doscientas. Con la banda de
- * 2 275 a 2 575 eso pone el primer punto perdido en 3 275, y hacen falta 5 275 para
- * quedarse sin ninguno.
+ * cuestan nada, y despues un punto de los diez por cada doscientas: a tres mil por
+ * encima del piso ya no queda ninguno.
  */
 function kcalFraction(kcal: number, targets: TargetValues): number {
   const free = kcalBand(targets).from + OVEREAT_FREE_KCAL;

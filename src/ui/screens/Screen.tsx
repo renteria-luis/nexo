@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 
 import { useAppData } from '../../shell/AppData.tsx';
+import { exportNote } from '../../shell/backup-file.ts';
 import { Button } from '../Button.tsx';
 import { FloatingBarSpace } from '../TabBar.tsx';
 import { font, sheet } from '../theme.ts';
@@ -93,11 +94,13 @@ export function Screen({
    */
   scrollEnabled?: boolean;
 }) {
-  const { state, resetDatabase } = useAppData();
+  const { state, resetDatabase, retry, exportData } = useAppData();
   // En las pestanas la barra de abajo flota encima del contenido: lo ultimo de la
   // pantalla necesita ese hueco para poder subir por encima de ella.
   const barSpace = useContext(FloatingBarSpace);
   const [confirming, setConfirming] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exported, setExported] = useState<string | null>(null);
   const list = useRef<ScrollView>(null);
   const frame = useRef<View>(null);
   const offset = useRef(0);
@@ -243,35 +246,76 @@ export function Screen({
 
       {state.phase === 'failed' && (
         <View style={styles.failure}>
-          <Text style={styles.error}>No abrió la base de datos: {state.message}</Text>
-          {/* Con la base rota no se llega ni a Ajustes, asi que la unica salida vive
-              aqui. Borra y reconstruye: se pierde lo registrado, por eso pregunta. */}
-          {confirming ? (
-            <View style={styles.failureButtons}>
-              <Button
-                label="Sí, borrar y empezar de cero"
-                accessibilityLabel="Confirmar borrado"
-                variant="danger"
-                block
-                onPress={() => {
-                  setConfirming(false);
-                  resetDatabase();
-                }}
-              />
-              <Button
-                label="Cancelar"
-                accessibilityLabel="Cancelar borrado"
-                block
-                onPress={() => setConfirming(false)}
-              />
-            </View>
-          ) : (
+          <Text style={styles.error}>No se pudo cargar: {state.message}</Text>
+          {/* Sin una carga buena no se llega ni a Ajustes, asi que el respaldo tambien
+              vive aqui: primero reintentar y sacar los datos. Borrar va al final y
+              pregunta, porque se pierde lo registrado. */}
+          <View style={styles.failureButtons}>
             <Button
-              label="Borrar la base de datos"
-              accessibilityLabel="Borrar la base de datos"
-              onPress={() => setConfirming(true)}
+              label="Reintentar"
+              accessibilityLabel="Reintentar la carga"
+              variant="primary"
+              block
+              onPress={retry}
             />
-          )}
+            <Button
+              label="Exportar"
+              accessibilityLabel="Exportar todo a un archivo"
+              loading={exporting}
+              disabled={exporting}
+              block
+              onPress={() => {
+                setExporting(true);
+                setExported('Escribiendo…');
+                exportData()
+                  .then((outcome) => setExported(exportNote(outcome)))
+                  .catch((error: unknown) =>
+                    setExported(error instanceof Error ? error.message : String(error)),
+                  )
+                  .finally(() => setExporting(false));
+              }}
+            />
+            {exported !== null && <Text style={styles.note}>{exported}</Text>}
+            {confirming ? (
+              <>
+                <Button
+                  label="Sí, borrar y empezar de cero"
+                  accessibilityLabel="Confirmar borrado"
+                  variant="danger"
+                  block
+                  onPress={() => {
+                    setConfirming(false);
+                    resetDatabase();
+                  }}
+                />
+                <Button
+                  label="Cancelar"
+                  accessibilityLabel="Cancelar borrado"
+                  block
+                  onPress={() => setConfirming(false)}
+                />
+              </>
+            ) : (
+              <Button
+                label="Borrar la base de datos"
+                accessibilityLabel="Borrar la base de datos"
+                block
+                onPress={() => setConfirming(true)}
+              />
+            )}
+          </View>
+        </View>
+      )}
+
+      {state.phase === 'ready' && state.problem !== null && (
+        <View style={styles.problem}>
+          <Text style={styles.error}>No se pudo recargar: {state.problem}</Text>
+          <Button
+            label="Reintentar"
+            accessibilityLabel="Reintentar la carga"
+            block
+            onPress={retry}
+          />
         </View>
       )}
 
@@ -380,6 +424,15 @@ const styles = sheet((theme) => ({
   failureButtons: {
     gap: 8,
     alignSelf: 'stretch',
+  },
+  problem: {
+    gap: 8,
+  },
+  note: {
+    fontSize: 12,
+    color: theme.textFaint,
+    fontFamily: font.regular,
+    textAlign: 'center',
   },
   error: {
     fontSize: 14,

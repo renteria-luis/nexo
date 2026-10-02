@@ -7,7 +7,7 @@
 
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { isRealDate, type IsoDate } from './dates.ts';
+import { isRealDate, todayIso, type IsoDate } from './dates.ts';
 import type { PaletteId } from './palettes.ts';
 import type { WeightUnit } from './units.ts';
 import type { Phase, TargetProfile } from './targets.ts';
@@ -201,7 +201,11 @@ function dateProblem(value: string): string | null {
  * Checks a value before it is stored, so a typo is refused at the form rather than
  * discovered later by a reader that throws. Null means the value is fine.
  */
-export function settingProblem(key: SettingKey, value: string): string | null {
+export function settingProblem(
+  key: SettingKey,
+  value: string,
+  today: IsoDate = todayIso(),
+): string | null {
   const trimmed = value.trim();
   if (trimmed === '') return 'no puede quedar vacío';
 
@@ -213,6 +217,9 @@ export function settingProblem(key: SettingKey, value: string): string | null {
     case 'phase':
       return PHASES.has(trimmed) ? null : 'no es una fase válida';
     case 'birth_date':
+      // Las metas se calculan con la edad de hoy, y una edad de antes de nacer hacia
+      // fallar cada carga de la app en cuanto el peso movia las metas.
+      return dateProblem(trimmed) ?? (trimmed > today ? 'esa fecha todavía no llega' : null);
     case 're_entry_started_on':
     case 'targets_change_seen':
       return dateProblem(trimmed);

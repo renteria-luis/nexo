@@ -12,11 +12,11 @@ import {
   type TargetProfile,
 } from './targets.ts';
 
-// The figures spec 3.1 works through, kept here rather than in source because the
-// repository is public.
+// A made-up profile. The repository is public, so the owner's own figures stay in the
+// spec, which is not.
 const profile: TargetProfile = {
-  heightCm: 170,
-  birthDate: '1996-08-30',
+  heightCm: 180,
+  birthDate: '1990-01-15',
   activityFactor: 1.55,
   phase: 'recomp',
   sleepMinutes: 420,
@@ -31,10 +31,10 @@ function close(actual: number, expected: number, tolerance = 0.5): void {
 }
 
 test('age rolls over on the birthday and not before', () => {
-  assert.equal(ageOn('1996-08-30', '2026-08-29'), 29);
-  assert.equal(ageOn('1996-08-30', '2026-08-30'), 30);
-  assert.equal(ageOn('1996-08-30', '2026-09-13'), 30);
-  assert.equal(ageOn('1996-08-30', '2027-08-29'), 30);
+  assert.equal(ageOn('1990-01-15', '2026-01-14'), 35);
+  assert.equal(ageOn('1990-01-15', '2026-01-15'), 36);
+  assert.equal(ageOn('1990-01-15', '2026-09-13'), 36);
+  assert.equal(ageOn('1990-01-15', '2027-01-14'), 36);
 });
 
 test('age handles a birthday on the 29th of February', () => {
@@ -44,31 +44,31 @@ test('age handles a birthday on the 29th of February', () => {
 });
 
 test('a date before the birth date is a mistake', () => {
-  assert.throws(() => ageOn('1996-08-30', '1990-01-01'), /before the birth date/);
+  assert.throws(() => ageOn('1990-01-15', '1989-12-31'), /before the birth date/);
 });
 
-test('BMR matches the Mifflin-St Jeor figure in spec 3.1', () => {
-  const targets = computeTargets(73, profile, '2026-09-13');
-  // 730 + 1062.5 - 150 + 5
-  close(targets.bmr, 1647.5, 0.01);
+test('BMR follows the Mifflin-St Jeor formula of spec 3.1', () => {
+  const targets = computeTargets(80, profile, '2026-09-13');
+  // 800 + 1125 - 180 + 5
+  close(targets.bmr, 1750, 0.01);
 });
 
-test('maintenance lands in the range spec 3.1 gives', () => {
-  const low = computeTargets(73, { ...profile, activityFactor: 1.55 }, '2026-09-13');
-  const high = computeTargets(73, { ...profile, activityFactor: 1.6 }, '2026-09-13');
-  close(low.tdee, 2550, 30);
-  close(high.tdee, 2640, 30);
+test('maintenance is BMR times the activity factor', () => {
+  const low = computeTargets(80, { ...profile, activityFactor: 1.55 }, '2026-09-13');
+  const high = computeTargets(80, { ...profile, activityFactor: 1.6 }, '2026-09-13');
+  close(low.tdee, 2712.5, 0.01);
+  close(high.tdee, 2800, 0.01);
 });
 
 test('the recomposition target is about 8 percent under maintenance', () => {
-  const targets = computeTargets(73, profile, '2026-09-13');
-  close(targets.kcal, 2400, 55);
+  const targets = computeTargets(80, profile, '2026-09-13');
+  close(targets.kcal, 2496, 0.01);
   close(targets.kcal / targets.tdee, 0.92, 0.001);
 });
 
 test('each phase applies its own multiplier', () => {
   const at = (phase: TargetProfile['phase']) =>
-    computeTargets(73, { ...profile, phase }, '2026-09-13').kcal;
+    computeTargets(80, { ...profile, phase }, '2026-09-13').kcal;
 
   assert.ok(at('cut') < at('recomp'));
   assert.ok(at('recomp') < at('maintain'));
@@ -76,49 +76,49 @@ test('each phase applies its own multiplier', () => {
 });
 
 test('the macros add back up to the calorie target', () => {
-  const targets = computeTargets(73, profile, '2026-09-13');
+  const targets = computeTargets(80, profile, '2026-09-13');
   const fromMacros = targets.proteinG * 4 + targets.fatG * 9 + targets.carbsG * 4;
   close(fromMacros, targets.kcal, 6);
 });
 
-test('the protein band reproduces the worked example in spec 3.6', () => {
-  // "peso promedio 74.2 kg -> proteina 133-163 g"
-  const targets = computeTargets(74.2, profile, '2026-09-13');
-  assert.deepEqual(proteinBand(targets), { from: 133, to: 163 });
+test('the protein band runs from 1.8 to 2.2 g per kg, floored as in spec 3.6', () => {
+  // 146.16 to 178.64: rounding would make the top 179.
+  const targets = computeTargets(81.2, profile, '2026-09-13');
+  assert.deepEqual(proteinBand(targets), { from: 146, to: 178 });
 });
 
-test('the calorie band follows the target instead of staying at 2400', () => {
-  const targets = computeTargets(73, profile, '2026-09-13');
+test('the calorie band follows the target instead of staying fixed', () => {
+  const targets = computeTargets(80, profile, '2026-09-13');
   const band = kcalBand(targets);
 
   assert.equal(band.from, targets.kcal - 150);
-  // Decision del dueno (2026-09-30): 400 mas por arriba. Es ectomorfo y lo que le pasa
-  // es quedarse corto, asi que comer de mas no puede pintarse como un dia fuera de sitio.
+  // Decision del dueno (2026-09-30): 400 mas por arriba. Lo que le pasa es quedarse
+  // corto, asi que comer de mas no puede pintarse como un dia fuera de sitio.
   assert.equal(band.to, targets.kcal + 550);
 
   const heavier = computeTargets(85, profile, '2026-09-13');
   assert.ok(kcalBand(heavier).from > band.from);
 });
 
-test('con su peso de la spec, la banda de calorias es la que el pidio ver', () => {
-  // 2 425 de meta: de 2 275 a 2 975, y no a 2 575.
-  const targets = computeTargets(74.2, profile, '2026-09-13');
+test('la banda de calorias es la que el pidio ver: 150 por debajo y 550 por encima', () => {
+  // 2 513 de meta: de 2 363 a 3 063, y no a 2 663.
+  const targets = computeTargets(81.2, profile, '2026-09-13');
   assert.equal(kcalBand(targets).from, targets.kcal - 150);
   assert.equal(kcalBand(targets).to, targets.kcal + 550);
   assert.equal(kcalBand(targets).to - kcalBand(targets).from, 700);
 });
 
 test('the fat floor wins when energy alone would put it lower', () => {
-  const targets = computeTargets(73, profile, '2026-09-13');
+  const targets = computeTargets(80, profile, '2026-09-13');
   const band = fatBand(targets);
 
-  assert.equal(band.hardFloor, 58);
+  assert.equal(band.hardFloor, 64);
   assert.ok(band.from >= band.hardFloor);
   assert.ok(band.to > band.from);
 
   // On a deep cut, 25% of energy falls under 0.8 g per kg and the floor takes over.
   const cutting = computeTargets(
-    73,
+    80,
     { ...profile, phase: 'cut', activityFactor: 1.2 },
     '2026-09-13',
   );
@@ -126,7 +126,7 @@ test('the fat floor wins when energy alone would put it lower', () => {
 });
 
 test('water is 2.8 L on a rest day and 3.5 L on a training day', () => {
-  const targets = computeTargets(73, profile, '2026-09-13');
+  const targets = computeTargets(80, profile, '2026-09-13');
   assert.equal(targets.waterMlRest, 2800);
   assert.equal(targets.waterMlTraining, 3500);
 });

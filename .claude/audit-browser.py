@@ -92,12 +92,12 @@ with sync_playwright() as p:
 
     fill(page, "Estatura (cm)", "alto")
     check("rechaza estatura inválida", has(page, "se esperaba una estatura"))
-    fill(page, "Estatura (cm)", "170")
-    fill(page, "Fecha de nacimiento", "13-09-1996")
+    fill(page, "Estatura (cm)", "180")
+    fill(page, "Fecha de nacimiento", "15-01-1990")
     check("rechaza fecha mal formada", has(page, "AAAA-MM-DD"))
-    fill(page, "Fecha de nacimiento", "1996-08-30")
+    fill(page, "Fecha de nacimiento", "1990-01-15")
     fill(page, "Readaptación desde", "2026-09-05")
-    fill(page, "Peso de hoy", "73")
+    fill(page, "Peso de hoy", "80")
     page.wait_for_timeout(800)
 
     tap(page, "Déficit")

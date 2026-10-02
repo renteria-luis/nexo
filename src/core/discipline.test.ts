@@ -21,8 +21,8 @@ import { MINIMUM_CRITERIA_WITH_DATA } from './scoring.ts';
 import { computeTargets, kcalBand, proteinBand, type TargetProfile } from './targets.ts';
 
 const profile: TargetProfile = {
-  heightCm: 170,
-  birthDate: '1996-08-30',
+  heightCm: 180,
+  birthDate: '1990-01-15',
   activityFactor: 1.55,
   phase: 'recomp',
   sleepMinutes: 420,
@@ -199,7 +199,7 @@ test('la proteina sigue la meseta de Morton y no una banda de todo o nada', () =
   // Ocho gramos cortos ya no cuestan los dieciseis puntos.
   assert.ok(points(123) > 12);
 
-  // Pasarse no cuesta nada: 204 g en un dia son 2.8 g/kg y valen los dieciseis.
+  // Pasarse no cuesta nada: muy por encima de la meseta sigue valiendo los dieciseis.
   close(points(204), 16);
   close(points(perKilo(3)), 16);
   close(points(perKilo(5)), 16);

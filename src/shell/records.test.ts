@@ -214,8 +214,8 @@ test('a day logged before there were targets gets its score back', async () => {
     computeTargets(
       74,
       {
-        heightCm: 170,
-        birthDate: '1996-08-30',
+        heightCm: 180,
+        birthDate: '1990-01-15',
         activityFactor: 1.55,
         phase: 'recomp',
         sleepMinutes: 420,
@@ -242,8 +242,8 @@ test('el descanso del jueves recibe sus puntos cuando la semana cierra', async (
     db,
     73,
     {
-      heightCm: 170,
-      birthDate: '1996-08-30',
+      heightCm: 180,
+      birthDate: '1990-01-15',
       activityFactor: 1.55,
       phase: 'recomp',
       sleepMinutes: 420,
@@ -342,8 +342,8 @@ test('un dia de puro entreno y comida tambien recibe su nota', async () => {
     db,
     73,
     {
-      heightCm: 170,
-      birthDate: '1996-08-30',
+      heightCm: 180,
+      birthDate: '1990-01-15',
       activityFactor: 1.55,
       phase: 'recomp',
       sleepMinutes: 420,
@@ -395,8 +395,8 @@ test('volver a puntuar lo que ya tiene nota no cuesta una consulta por dia', asy
     db,
     73,
     {
-      heightCm: 170,
-      birthDate: '1996-08-30',
+      heightCm: 180,
+      birthDate: '1990-01-15',
       activityFactor: 1.55,
       phase: 'recomp',
       sleepMinutes: 420,

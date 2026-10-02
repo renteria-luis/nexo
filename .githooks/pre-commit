@@ -1,0 +1,18 @@
+#!/bin/sh
+# Refuse a commit that would publish a personal email address.
+#
+# The repository is public, and every commit carries its author's and committer's
+# address in plain sight. Only GitHub's noreply address may go out from here; a clone
+# without the repo-level user.email falls back to the global one, which is personal.
+
+for ident in "$(git var GIT_AUTHOR_IDENT)" "$(git var GIT_COMMITTER_IDENT)"; do
+  email=$(printf '%s\n' "$ident" | sed -n 's/.*<\(.*\)>.*/\1/p')
+  case "$email" in
+    *@users.noreply.github.com) ;;
+    *)
+      echo "pre-commit: this commit would publish $email in a public repository." >&2
+      echo "pre-commit: git config user.email 49001782+renteria-luis@users.noreply.github.com" >&2
+      exit 1
+      ;;
+  esac
+done

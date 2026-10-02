@@ -14,8 +14,8 @@ import { scoreDay, type DisciplineDay } from './discipline.ts';
 import { computeTargets, type TargetProfile } from './targets.ts';
 
 const profile: TargetProfile = {
-  heightCm: 170,
-  birthDate: '1996-08-30',
+  heightCm: 180,
+  birthDate: '1990-01-15',
   activityFactor: 1.55,
   phase: 'recomp',
   sleepMinutes: 420,
