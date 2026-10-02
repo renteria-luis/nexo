@@ -505,3 +505,125 @@ lectura conservadora.
 Rejected: Pintar solo si la tomo o no (es lo que ya hace la cuadricula y no dice nada del
 efecto) y suponer que los dias sin anotar si la tomo, que es prometerle un efecto con
 dias que nadie registro.
+
+## 2026-10-02 — Un descanso y el fin de la readaptacion reinician la racha de faltas
+Context: La auditoria del 1 de octubre encontro dos casos que spec 4.3 no resolvia. Un
+descanso marcado con sesiones pendientes contaba como una falta mas, asi que la falta del
+dia siguiente salia como la segunda (-18) y no como la primera (-8). Y las faltas durante
+la readaptacion no restaban, pero seguian sumando a la racha, que al terminar volvia ya
+escalada.
+Decision: Un descanso marcado corta la racha igual que una sesion, gane o no sus 22
+puntos: la falta siguiente es la primera. Las faltas dentro de la readaptacion no cuentan
+para la racha, asi que al terminar empieza de cero.
+Rejected: Contar el descanso como una falta mas y arrastrar la racha a traves de la
+readaptacion, que es lo que hacia el codigo.
+
+## 2026-10-02 — La nota se corta en un decimal, y un dia pasado sin nada queda en blanco
+Context: Dos sitios donde el numero del dia decia otra cosa que la cuadricula. La nota se
+redondeaba a un decimal, asi que un 99.96 salia como 100. Y un dia pasado sin nada anotado
+salia gris en la cuadricula pero con un 0 en su globito y en su pantalla, porque cuando el
+dia ya paso, no haber entrenado cuenta como dato.
+Decision: La nota se corta en un decimal y nunca se redondea: 100 es solo un dia perfecto.
+Se guarda con ese decimal, para que la cuadricula, la racha, Registros y las graficas lean
+el mismo numero que la pantalla del dia. Un dia pasado sin sesion y sin nada anotado no
+tiene nota y sale en blanco en todas partes; la falta sigue contando para la racha de spec
+4.3. Precisa el "un decimal, sin redondear" del 2026-09-25.
+Rejected: Redondear a un decimal, que es lo que hacia el codigo, y mostrar el 0, que
+contradice el gris de la cuadricula.
+
+## 2026-10-02 — La banda semanal de series cuenta solo las directas
+Context: El resumen semanal marca cada musculo como bajo, en o sobre la banda de 10 a 20
+series. El codigo la mide con las series directas, y el punto 3 del 2026-09-13 dice que las
+cuentas de spec 13.2 solo cuadran con el trabajo indirecto a mitad.
+Decision: La etiqueta de la banda cuenta solo series directas. Las ponderadas (un musculo
+secundario vale media serie) se siguen mostrando al lado y siguen pesando en los 22 puntos
+del entreno (2026-09-26), pero no mueven la etiqueta. Para la banda deja de valer lo que
+decia el punto 3 del 2026-09-13; la tabla de contribuciones se queda como esta.
+Rejected: Contar el trabajo indirecto a mitad en la banda.
+
+## 2026-10-02 — Creatina: el deposito en Graficas y "resaturando" en Hoy
+Context: Spec 1.3 pedia una nota de "resaturando" junto al criterio de la creatina, y el
+2026-10-01 trajo la grafica del deposito; la auditoria pregunto si una reemplazaba a la
+otra. Ademas el deposito contaba hoy como no tomada mientras no la anotara, asi que antes
+de anotarla la ultima barra bajaba unos tres puntos y la tarjeta podia decir "1 dia sin
+tomarla".
+Decision: Se quedan las dos: el deposito en Graficas y "resaturando" en Hoy, junto al
+criterio, mientras el deposito sube y Graficas todavia no lo da por lleno. La serie llega
+hasta ayer y hoy entra solo cuando la anota. Los dias pasados sin anotar siguen contando
+como no tomada, como dice el 2026-10-01.
+Rejected: Que la grafica reemplace la nota, y contar hoy como no tomada antes de que la
+anote.
+
+## 2026-10-02 — La linea del peso sale con dos pesadas, tenue hasta tener cuatro
+Context: Spec 1.1 pide cuatro pesadas en siete dias antes de dibujar la tendencia. La
+grafica la dibuja con dos desde 27d04e4, para que no tarde un mes en aparecer, y eso nunca
+se anoto aqui. Una media de dos pesadas se mueve mucho mas que una de cuatro, y en la
+grafica se veia igual de fiable.
+Decision: La grafica dibuja la media con dos pesadas, tenue y punteada hasta que la
+ventana tiene cuatro. Lo que actua sobre la media sigue pidiendo cuatro: el recalculo de
+metas (spec 3.6) y el resumen semanal.
+Rejected: Esperar a cuatro (la linea no aparece hasta el segundo mes) y pintar la de dos
+igual que una media de verdad.
+
+## 2026-10-02 — Cada olla es su propio alimento
+Context: El 2026-09-30 cocinar creaba o actualizaba un alimento por receta (`recipe-<id>`).
+Las porciones se guardan como gramos de ese alimento, asi que volver a cocinar la receta
+con otras cantidades reescribia los dias en que comio la olla anterior y las porciones que
+le quedaban en la nevera, contra el 2026-09-25 ("un dia que ya paso no se toca").
+Decision: Un alimento oculto por olla, no por receta. Sigue invisible en el catalogo y en
+el buscador, se anota de un toque, y sus cifras salen de los ingredientes de esa olla.
+Cocinar otra vez crea otro, y cada olla conserva sus numeros. Reemplaza el "crea o
+actualiza" del 2026-09-30; el resto de esa entrada sigue igual.
+Rejected: Un alimento por receta que se reescribe en cada coccion.
+
+## 2026-10-02 — Una tanda drenada cuenta la mitad del rango
+Context: Spec 7.3 pinta las calorias de una tanda drenada como un rango, de toda la grasa
+ida a nada ida, pero el dia sumaba la etiqueta entera, de calorias y de grasa.
+Decision: El dia cuenta lo que se comio, ajustado por lo drenado. Cuanto se drena no se
+mide, asi que se toma la mitad de la grasa de la etiqueta: el dia suma la mitad de esa
+grasa y las calorias del medio del rango, y con eso puntua. La proteina no cambia.
+Rejected: La etiqueta entera, que cuenta grasa que se fue con el drenado, y pintar las
+calorias del dia como rango, porque la nota necesita un numero.
+
+## 2026-10-02 — Repetir desaparece cuando esa comida ya esta en el dia
+Context: "Repetir" ofrece la ultima comida de ese espacio antes de hoy, y a proposito no
+mira hoy, asi que el boton seguia ahi despues de usarlo: un segundo toque anotaba otra vez
+la comida entera.
+Decision: Cuando esa comida ya esta en el espacio de hoy, por el boton o a mano, el boton
+se va hasta el dia siguiente. Hoy sigue sin repetirse a si mismo.
+Rejected: Dejarlo para los dias en que se desayuna dos veces.
+
+## 2026-10-02 — Lo que queda de una olla se puede tirar
+Context: Una tanda solo salia del panel comiendose todas sus porciones, y el aviso de que
+se esta pasando no tenia fin. Una olla que se echa a perder pasa cualquier semana.
+Decision: "Tirar lo que queda" en la tarjeta de la tanda: las porciones que quedan pasan a
+cero, no se anota nada como comido y el aviso se calla. Pregunta antes, como todo lo que
+borra.
+Rejected: Seguir sin forma de cerrarla, que obliga a anotar como comidas porciones que
+fueron a la basura.
+
+## 2026-10-02 — Quitar algo de la despensa no lo saca de las recetas
+Context: Borrar un articulo de la despensa lo borraba tambien de todas las recetas que lo
+usaban, y la receta pasaba a decir "se puede" y a cocinar una olla sin el.
+Decision: La receta conserva el ingrediente y lo marca como faltante, por su nombre, hasta
+que lo vuelva a tener. Solo editar la receta le quita un ingrediente.
+Rejected: Que desaparezca de la receta, que es lo que pasaba.
+
+## 2026-10-02 — El aviso de la olla sin lote lleva a la ficha del alimento
+Context: El 2026-09-30 decidio que si un ingrediente medido no tiene ficha con peso, la
+despensa se descuenta igual, no hay lote y la pantalla dice cual lo impidio. Pero ninguna
+pantalla deja ponerle a un alimento lo que pesa una unidad, asi que el aviso pedia algo
+imposible.
+Decision: Lo del 2026-09-30 se queda, y el aviso abre la ficha de ese alimento, que pasa a
+aceptar lo que pesa una unidad.
+Rejected: Un aviso que nombra el arreglo y no lleva a ningun sitio.
+
+## 2026-10-02 — El peso corporal va siempre en kilos
+Context: El 2026-09-28 dice que el asistente convierte el peso segun la unidad de Ajustes.
+El 2026-09-30 el codigo paso a guardarlo siempre en kilos (0f1e01d, con el comentario
+"decision suya"), y eso nunca se anoto aqui, asi que este archivo y spec 20.2 decian lo
+contrario del codigo.
+Decision: El peso corporal va siempre en kilos, se escriba donde se escriba. La unidad de
+Ajustes es para los pesos del gimnasio: las series si se convierten con ella. Reemplaza la
+entrada del 2026-09-28.
+Rejected: Convertir el peso corporal con la unidad de Ajustes.
