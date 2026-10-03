@@ -13,6 +13,7 @@ import {
   averageRestSeconds,
   estimatedRestSeconds,
   repDropOffs,
+  restingSince,
   type ExerciseMuscles,
   type LoggedSet,
 } from './calculations.ts';
@@ -232,4 +233,18 @@ test('the rest estimate takes the set out of the gap between two sets', () => {
 
 test('a gap shorter than the set it contains is zero rest, not negative', () => {
   assert.equal(estimatedRestSeconds(10, 12), 0);
+});
+
+test('el descanso cuenta desde la ultima serie de la sesion, aunque sea de otro ejercicio', () => {
+  const at = (clock: string) => new Date(`2026-10-01T${clock}:00`).getTime();
+  const press = [
+    set({ weightKg: 30, reps: 10, setIndex: 1, timestamp: at('18:10') }),
+    set({ weightKg: 30, reps: 10, setIndex: 2, timestamp: at('18:14') }),
+    set({ weightKg: 30, reps: 9, setIndex: 3, timestamp: at('18:18') }),
+  ];
+
+  // El plan acaba de abrir el pec deck, que no tiene ninguna serie: antes el reloj volvia
+  // a la hora de empezar la sesion y decia diecinueve minutos.
+  assert.equal(restingSince(press), at('18:18'));
+  assert.equal(restingSince([]), null);
 });

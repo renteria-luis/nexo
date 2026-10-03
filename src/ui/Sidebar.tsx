@@ -38,6 +38,7 @@ import {
   type LucideIcon,
 } from './icons.ts';
 import { font, hardShadow, sheet, shape, theme } from './theme.ts';
+import { goTo, type Navigate } from './navigation.ts';
 
 /**
  * El menu lateral: todo lo que la app sabe hacer, ordenado, sin gastar sitio abajo.
@@ -224,11 +225,9 @@ export function SidebarProvider({
 
   const go = (entry: Entry) => {
     close();
-    // Una pestana no es una pantalla del navegador de arriba: hay que pedirsela al de
-    // abajo por su nombre. El tipado del ref es generico y no conoce esos nombres.
-    const navigate = navigation.navigate as (name: string, params?: object) => void;
-    if (entry.tab) navigate('nexo', { screen: entry.route });
-    else navigate(entry.route);
+    // El tipado del ref es generico y no conoce los nombres de las pantallas.
+    const navigate = navigation.navigate as (...args: Navigate) => void;
+    navigate(...goTo(entry.route, entry.tab === true));
   };
 
   const fold = (label: string) => {

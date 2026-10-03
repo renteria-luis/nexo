@@ -1,6 +1,6 @@
 import { ScrollView, Text, View } from 'react-native';
 
-import { unitPrice, type WatchedDeal } from '../deals/index.ts';
+import { liveDeals, unitPrice, type WatchedDeal } from '../deals/index.ts';
 
 import { Button } from './Button.tsx';
 import { X } from './icons.ts';
@@ -16,28 +16,43 @@ import { font, hardShadow, sheet, shape } from './theme.ts';
  */
 export function DealAlert({
   found,
+  silent,
   onOpenAll,
   onClose,
 }: {
   found: WatchedDeal[];
+  /** Lo que se dice de las fuentes que se callaron: va arriba, antes que las ofertas. */
+  silent: string[];
   onOpenAll: () => void;
   onClose: () => void;
 }) {
+  const live = liveDeals(found).length;
+  const expired = found.length - live;
   return (
     <View style={styles.sheet}>
       <View style={styles.head}>
         <Text style={styles.title}>
-          {found.length} {found.length === 1 ? 'oferta tuya' : 'ofertas tuyas'}
+          {live} {live === 1 ? 'oferta tuya' : 'ofertas tuyas'}
+          {expired > 0 ? ` y ${expired} ${expired === 1 ? 'vencida' : 'vencidas'}` : ''}
         </Text>
         <IconButton icon={X} accessibilityLabel="Cerrar las ofertas" onPress={onClose} />
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.list}>
+        {silent.map((line) => (
+          <Text key={line} style={styles.markWarn}>
+            {line}
+          </Text>
+        ))}
         {found.map(({ item, word }, index) => {
           const price = unitPrice(item.deal);
           return (
-            <View key={item.deal.id} style={[styles.deal, index > 0 && styles.ruled]}>
+            <View
+              key={item.deal.id}
+              style={[styles.deal, index > 0 && styles.ruled, item.stale && styles.stale]}
+            >
               <Text style={styles.word}>{word}</Text>
+              {item.stale && <Text style={styles.markWarn}>posiblemente vencido</Text>}
               <Text style={styles.name}>
                 {item.deal.title}
                 {price === null ? '' : ` · ${price.size}`}
@@ -117,6 +132,18 @@ const styles = sheet((theme) => ({
     borderTopWidth: shape.border,
     borderTopColor: theme.line,
     paddingTop: 10,
+  },
+  stale: {
+    opacity: 0.55,
+  },
+  markWarn: {
+    alignSelf: 'flex-start',
+    fontSize: 11,
+    fontFamily: font.black,
+    color: theme.text,
+    backgroundColor: theme.warnBg,
+    paddingHorizontal: 5,
+    borderRadius: 4,
   },
   word: {
     alignSelf: 'flex-start',

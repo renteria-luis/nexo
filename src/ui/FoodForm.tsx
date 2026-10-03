@@ -3,6 +3,8 @@ import { ScrollView, Text, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../db/types.ts';
 import {
+  labelProblem,
+  labelServing,
   parseQuickAmounts,
   referenceAmount,
   roundAmount,
@@ -15,6 +17,7 @@ import { Chip } from './Chip.tsx';
 import { Trash } from './icons.ts';
 import { NumericField } from './NumericField.tsx';
 import { TextField } from './TextField.tsx';
+import { Toggle } from './Toggle.tsx';
 import { font, hardShadow, sheet, shape } from './theme.ts';
 
 /**
@@ -27,8 +30,8 @@ import { font, hardShadow, sheet, shape } from './theme.ts';
  */
 const MEASURES = [
   { id: 'unidad', label: '1 unidad', amount: 1, unit: 'unidad', kind: 'count' },
-  { id: 'gramos', label: '100 g', amount: 100, unit: 'g', kind: 'mass' },
-  { id: 'mililitros', label: '100 ml', amount: 100, unit: 'ml', kind: 'volume' },
+  { id: 'gramos', label: 'gramos', amount: 100, unit: 'g', kind: 'mass' },
+  { id: 'mililitros', label: 'mililitros', amount: 100, unit: 'ml', kind: 'volume' },
 ] as const;
 
 type MeasureId = (typeof MEASURES)[number]['id'];
@@ -37,10 +40,11 @@ export type FoodFormProps = {
   /** La ficha que corrige, o null cuando es uno nuevo. */
   food: NutritionFoodRow | null;
   onCancel: () => void;
-  onCreate: (food: NewFood) => void;
-  onEdit: (id: string, food: FoodEdit) => void;
+  /** Rechaza con el motivo; la ficha se queda abierta y lo dice. */
+  onCreate: (food: NewFood) => Promise<void>;
+  onEdit: (id: string, food: FoodEdit) => Promise<void>;
   /** Saca el alimento del catalogo. Solo se ofrece al corregir uno que ya existe. */
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => Promise<void>;
 };
 
 function measureOf(food: NutritionFoodRow): MeasureId {
@@ -58,16 +62,35 @@ export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFor
   const [step, setStep] = useState<'datos' | 'resumen' | 'borrar'>('datos');
   const [name, setName] = useState(food?.name ?? '');
   const [measureId, setMeasureId] = useState<MeasureId>(food ? measureOf(food) : 'unidad');
+  // De cuanto habla la etiqueta, en gramos o mililitros: 40 si dice "por 40 g".
+  const [serving, setServing] = useState('100');
   const [kcal, setKcal] = useState(food ? shown(food.kcal, per) : '');
   const [protein, setProtein] = useState(food ? shown(food.protein_g, per) : '');
   const [fat, setFat] = useState(food ? shown(food.fat_g, per) : '');
   const [carbs, setCarbs] = useState(food ? shown(food.carbs_g, per) : '');
   const [sugar, setSugar] = useState(food ? shown(food.sugar_g, per) : '');
   const [sodium, setSodium] = useState(food ? shown(food.sodium_mg, per) : '');
+  const [fibre, setFibre] = useState(food ? shown(food.fibre_g, per) : '');
+  // Spec 7.5: sin indice glucemico la carga glucemica del dia no aparece nunca, y sin
+  // la marca de lacteo el yogur no cuenta en el total de lacteos.
+  const [index, setIndex] = useState(
+    food?.glycemic_index == null ? '' : String(food.glycemic_index),
+  );
+  const [dairy, setDairy] = useState(food?.is_dairy === 1);
+  // Lo que pesa una unidad o un mililitro: sin eso, lo contado no puede entrar en una olla.
+  const [unitWeight, setUnitWeight] = useState(
+    food?.base_unit_g == null || food.unit_kind === 'mass' ? '' : String(food.base_unit_g),
+  );
   const [keywords, setKeywords] = useState(food?.keywords ?? '');
   const [amounts, setAmounts] = useState(food?.quick_amounts ?? '');
 
   const measure = MEASURES.find((option) => option.id === measureId) ?? MEASURES[0];
+  // Lo contado es por unidad; lo pesado o medido, por la porcion de la etiqueta.
+  const amount = food || measure.kind === 'count' ? measure.amount : labelServing(serving);
+  const describes =
+    food || measure.kind === 'count'
+      ? `por ${measure.amount} ${measure.unit}`
+      : `por ${serving.trim()} ${measure.unit} (la etiqueta)`;
   const figure = (value: string): number | null => {
     const parsed = Number(value);
     return value.trim() !== '' && Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
@@ -76,39 +99,77 @@ export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFor
   const kcalValue = figure(kcal);
   const proteinValue = figure(protein);
   const fatValue = figure(fat);
+  const problem = labelProblem({
+    carbsG: figure(carbs),
+    sugarG: figure(sugar),
+    glycemicIndex: figure(index),
+  });
+  const weighs = measure.kind !== 'mass';
+  const extra = {
+    fibreG: figure(fibre),
+    glycemicIndex: figure(index),
+    isDairy: dairy,
+    gramsPerUnit: weighs ? labelServing(unitWeight) : null,
+  };
   const ready =
-    name.trim() !== '' && kcalValue !== null && proteinValue !== null && fatValue !== null;
+    name.trim() !== '' &&
+    amount !== null &&
+    kcalValue !== null &&
+    proteinValue !== null &&
+    fatValue !== null &&
+    problem === null;
+  // Lo que la base rechazo, si lo rechazo: la ficha se queda abierta con lo escrito.
+  const [refused, setRefused] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const attempt = (work: Promise<void>) => {
+    setBusy(true);
+    setRefused(null);
+    work
+      .catch((error: unknown) => {
+        console.error(error);
+        setRefused(`No se guardó: ${error instanceof Error ? error.message : String(error)}`);
+      })
+      .finally(() => setBusy(false));
+  };
 
   const save = () => {
     if (!ready) return;
     if (food) {
-      onEdit(food.id, {
+      attempt(
+        onEdit(food.id, {
+          name: name.trim(),
+          kcal: kcalValue,
+          proteinG: proteinValue,
+          fatG: fatValue,
+          carbsG: figure(carbs),
+          sugarG: figure(sugar),
+          sodiumMg: figure(sodium),
+          ...extra,
+          keywords: keywords.trim() === '' ? null : keywords,
+          quickAmounts: amounts.trim() === '' ? null : amounts,
+        }),
+      );
+      return;
+    }
+    if (amount === null) return;
+    attempt(
+      onCreate({
         name: name.trim(),
+        amount,
+        unit: measure.unit,
+        kind: measure.kind,
         kcal: kcalValue,
         proteinG: proteinValue,
         fatG: fatValue,
         carbsG: figure(carbs),
         sugarG: figure(sugar),
         sodiumMg: figure(sodium),
+        ...extra,
         keywords: keywords.trim() === '' ? null : keywords,
         quickAmounts: amounts.trim() === '' ? null : amounts,
-      });
-      return;
-    }
-    onCreate({
-      name: name.trim(),
-      amount: measure.amount,
-      unit: measure.unit,
-      kind: measure.kind,
-      kcal: kcalValue,
-      proteinG: proteinValue,
-      fatG: fatValue,
-      carbsG: figure(carbs),
-      sugarG: figure(sugar),
-      sodiumMg: figure(sodium),
-      keywords: keywords.trim() === '' ? null : keywords,
-      quickAmounts: amounts.trim() === '' ? null : amounts,
-    });
+      }),
+    );
   };
 
   const line = (label: string, value: string, unit: string) => (
@@ -141,9 +202,9 @@ export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFor
           <>
             <Text style={styles.summaryName}>{food?.name}</Text>
             <Text style={styles.hint}>
-              Si nunca lo comiste, se borra. Si ya lo comiste alguna vez se archiva: desaparece de
-              donde eliges y de esta lista, y los días en que lo comiste siguen diciendo lo mismo.
-              Lo puedes recuperar desde &quot;archivados&quot;.
+              Si nunca lo comiste y la despensa no lo usa, se borra. Si no, se archiva: desaparece
+              de donde eliges y de esta lista, y los días en que lo comiste siguen diciendo lo
+              mismo. Lo puedes recuperar desde &quot;archivados&quot;.
             </Text>
           </>
         ) : step === 'datos' ? (
@@ -158,7 +219,9 @@ export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFor
             />
 
             {food ? (
-              <Text style={styles.hint}>Por {measure.label}. La medida ya no se cambia.</Text>
+              <Text style={styles.hint}>
+                Por {measure.amount} {measure.unit}. La medida ya no se cambia.
+              </Text>
             ) : (
               <>
                 <View style={styles.chips}>
@@ -166,13 +229,28 @@ export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFor
                     <Chip
                       key={option.id}
                       label={option.label}
-                      accessibilityLabel={`Los datos son de ${option.label}`}
+                      accessibilityLabel={`Se mide en ${option.label}`}
                       selected={option.id === measureId}
                       onPress={() => setMeasureId(option.id)}
                     />
                   ))}
                 </View>
-                <Text style={styles.hint}>Lo que dice la etiqueta por {measure.label}.</Text>
+                {measure.kind === 'count' ? (
+                  <Text style={styles.hint}>Lo que dice la etiqueta por unidad.</Text>
+                ) : (
+                  <View style={styles.serving}>
+                    <Text style={styles.hint}>La etiqueta habla de</Text>
+                    <NumericField
+                      value={serving}
+                      onChange={setServing}
+                      allowDecimal
+                      accessibilityLabel={`De cuantos ${measure.unit} habla la etiqueta`}
+                      style={[styles.input, styles.servingInput]}
+                      focusedStyle={styles.inputWriting}
+                    />
+                    <Text style={styles.hint}>{measure.unit}</Text>
+                  </View>
+                )}
               </>
             )}
 
@@ -183,7 +261,31 @@ export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFor
               <Field label="carbos g" value={carbs} onChange={setCarbs} />
               <Field label="azúcar g" value={sugar} onChange={setSugar} />
               <Field label="sodio mg" value={sodium} onChange={setSodium} />
+              <Field label="fibra g" value={fibre} onChange={setFibre} />
+              <Field label="índice glucémico" value={index} onChange={setIndex} />
             </View>
+            <Text style={styles.hint}>
+              El índice glucémico no viene en la etiqueta: sale de una tabla de índice glucémico.
+            </Text>
+            {weighs && (
+              <View style={styles.serving}>
+                <Text style={styles.hint}>1 {measure.unit} pesa</Text>
+                <NumericField
+                  value={unitWeight}
+                  onChange={setUnitWeight}
+                  allowDecimal
+                  accessibilityLabel={`Cuántos gramos pesa 1 ${measure.unit}`}
+                  style={[styles.input, styles.servingInput]}
+                  focusedStyle={styles.inputWriting}
+                />
+                <Text style={styles.hint}>g</Text>
+              </View>
+            )}
+            <View style={styles.serving}>
+              <Text style={styles.toggleLabel}>Es un lácteo</Text>
+              <Toggle value={dairy} onChange={setDairy} accessibilityLabel="Es un lácteo" />
+            </View>
+            {problem && <Text style={styles.problem}>{problem}</Text>}
 
             <TextField
               value={keywords}
@@ -208,13 +310,20 @@ export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFor
         ) : (
           <>
             <Text style={styles.summaryName}>{name.trim()}</Text>
-            <Text style={styles.hint}>por {measure.label}</Text>
+            <Text style={styles.hint}>{describes}</Text>
             {line('kcal', kcal, '')}
             {line('proteína', protein, 'g')}
             {line('grasa', fat, 'g')}
             {line('carbos', carbs, 'g')}
             {line('azúcar', sugar, 'g')}
             {line('sodio', sodium, 'mg')}
+            {line('fibra', fibre, 'g')}
+            {line('índice glucémico', index, '')}
+            {weighs && line(`1 ${measure.unit} pesa`, unitWeight, 'g')}
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>lácteo</Text>
+              <Text style={styles.summaryValue}>{dairy ? 'sí' : 'no'}</Text>
+            </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>palabras</Text>
               <Text style={keywords.trim() === '' ? styles.summaryMissing : styles.summaryValue}>
@@ -233,6 +342,7 @@ export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFor
             )}
           </>
         )}
+        {refused && <Text style={styles.problem}>{refused}</Text>}
       </ScrollView>
 
       <View style={styles.buttons}>
@@ -257,9 +367,11 @@ export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFor
           accessibilityLabel={step === 'datos' ? 'Guardar' : 'Confirmar'}
           variant={step === 'borrar' ? 'danger' : 'primary'}
           disabled={!ready && step !== 'borrar'}
+          loading={busy}
           onPress={() => {
+            if (busy) return;
             if (step === 'borrar') {
-              if (food) onDelete(food.id);
+              if (food) attempt(onDelete(food.id));
               return;
             }
             if (step === 'resumen') {
@@ -345,6 +457,11 @@ const styles = sheet((theme) => ({
     fontFamily: font.regular,
     color: theme.textFaint,
   },
+  problem: {
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.danger,
+  },
   warn: {
     fontSize: 13,
     fontFamily: font.bold,
@@ -372,6 +489,20 @@ const styles = sheet((theme) => ({
     letterSpacing: 0.6,
     color: theme.textFaint,
     textTransform: 'uppercase',
+  },
+  serving: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  servingInput: {
+    minWidth: 80,
+  },
+  toggleLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: font.bold,
+    color: theme.text,
   },
   input: {
     borderWidth: shape.border,

@@ -1,8 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 
-import { newestFetch, watchedDeals, watchWords } from '../../deals/index.ts';
-import { useAppData, WEEKS_SHOWN } from '../../shell/AppData.tsx';
+import { liveDeals, newestFetch, watchedDeals, watchWords } from '../../deals/index.ts';
+import { useAppData } from '../../shell/AppData.tsx';
+import { sourceStatus } from '../../shell/deals.ts';
+import { WEEKS_SHOWN } from '../../shell/load.ts';
+import { parseWaterTaps } from '../../core/water-taps.ts';
 import { addDays, todayIso, weekStart } from '../../core/dates.ts';
 import { scoreText } from '../../core/day-report.ts';
 import { currentStreak, longestStreak } from '../../core/discipline.ts';
@@ -18,6 +21,7 @@ import { DealAlert } from '../DealAlert.tsx';
 import { DayDialog } from '../DayDialog.tsx';
 import { DisciplineGrid } from '../DisciplineGrid.tsx';
 import { useInfo } from '../InfoBubble.tsx';
+import { useNow } from '../useNow.ts';
 import { ChevronRight, Dumbbell, Tag, Utensils, Wallet, type LucideIcon } from '../icons.ts';
 import { Star } from '../Star.tsx';
 import { TodayLog } from '../TodayLog.tsx';
@@ -119,6 +123,9 @@ export function TodayScreen({
   const {
     state,
     logDay,
+    addToDay,
+    tapWater,
+    undoWater,
     loadDay,
     dismissTargetChange,
     raiseStepsTarget,
@@ -126,6 +133,7 @@ export function TodayScreen({
     saveSetting,
   } = useAppData();
   const info = useInfo();
+  const now = useNow();
   // El aviso de ofertas: se abre solo la primera vez que hay recoleccion nueva, y
   // despues queda a un toque en su cartilla.
   const [deals, setDeals] = useState<'closed' | 'open'>('closed');
@@ -146,33 +154,55 @@ export function TodayScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature, palette]);
 
+  // La cuadricula memoizada solo se salta su redibujo si el gesto es siempre la misma
+  // funcion. Una nueva en cada render la rearmaba entera, los ochenta y cuatro cuadritos
+  // dos veces por cada botella; lo que cambia lo lee de aqui al tocar.
+  const unit = state.phase === 'ready' ? state.loaded.unit : null;
+  const latest = useRef({ info, unit, loadDay, onOpenDay });
+  useEffect(() => {
+    latest.current = { info, unit, loadDay, onOpenDay };
+  });
+
+  /** Un cuadrito abre su globito ahi mismo, pegado al dedo, y no un modal encima de todo. */
+  const peek = useCallback(
+    (date: string, at: { x: number; y: number; width: number; height: number }) => {
+      const { info, unit, loadDay, onOpenDay } = latest.current;
+      if (unit === null) return;
+      info.show(
+        <DayDialog
+          date={date}
+          unit={unit}
+          load={loadDay}
+          onOpenDetail={() => {
+            info.hide();
+            onOpenDay(date);
+          }}
+        />,
+        at,
+      );
+    },
+    [],
+  );
+
   if (state.phase !== 'ready') return <Screen title="Hoy">{null}</Screen>;
 
   const { loaded } = state;
-
-  /** Un cuadrito abre su globito ahi mismo, pegado al dedo, y no un modal encima de todo. */
-  const peek = (date: string, at: { x: number; y: number; width: number; height: number }) =>
-    info.show(
-      <DayDialog
-        date={date}
-        unit={loaded.unit}
-        load={loadDay}
-        onOpenDetail={() => {
-          info.hide();
-          onOpenDay(date);
-        }}
-      />,
-      at,
-    );
   // Con el valor de fabrica si nunca lo toco: la lista guardada solo trae lo escrito.
   const watching = loaded.settings.get('deal_watchlist') ?? settingDefault('deal_watchlist');
   const blocked = loaded.settings.get('deal_blocklist') ?? settingDefault('deal_blocklist');
   const watched = watchedDeals(loaded.deals, watchWords(watching), watchWords(blocked));
+  // Lo vencido se sigue viendo en el aviso, pero ni cuenta en la cartilla ni lo abre solo.
+  const live = liveDeals(watched).length;
+  // Spec 16.7: una fuente que se callo lo dice aqui tambien, no solo en Ofertas.
+  const silent = loaded.dealSources
+    .map((source) => sourceStatus(source, now))
+    .filter((status) => status.silent)
+    .map((status) => status.line);
   const collected = newestFetch(loaded.deals);
   const seen = Number(loaded.settings.get('deals_seen_at') ?? '0');
   // Una sola vez por recoleccion: si ya lo vio, la cartilla sigue ahi pero no se abre
   // encima de lo que estaba haciendo.
-  if (!announced && watched.length > 0 && collected !== null && collected > seen) {
+  if (!announced && live > 0 && collected !== null && collected > seen) {
     setAnnounced(true);
     setDeals('open');
   }
@@ -198,6 +228,7 @@ export function TodayScreen({
         deals === 'open' ? (
           <DealAlert
             found={watched}
+            silent={silent}
             onOpenAll={() => {
               closeDeals();
               onOpen('Ofertas');
@@ -334,9 +365,15 @@ export function TodayScreen({
           label="OFERTAS"
           tone="danger"
           icon={Tag}
-          value={watched.length === 0 ? 'Ninguna' : String(watched.length)}
-          detail={watched.length === 0 ? 'de tus palabras' : 'de lo que vigilas'}
-          onOpen={watched.length === 0 ? () => onOpen('Ofertas') : () => setDeals('open')}
+          value={live === 0 ? 'Ninguna' : String(live)}
+          detail={
+            silent.length > 0
+              ? 'sin datos nuevos'
+              : live === 0
+                ? 'de tus palabras'
+                : 'de lo que vigilas'
+          }
+          onOpen={live === 0 ? () => onOpen('Ofertas') : () => setDeals('open')}
         />
         <ModuleCard
           label="FINANZAS"
@@ -364,6 +401,12 @@ export function TodayScreen({
               : null
           }
           onLog={logDay}
+          onAdd={addToDay}
+          onTapWater={tapWater}
+          onUndoWater={undoWater}
+          canUndoWater={
+            parseWaterTaps(loaded.settings.get('water_taps'), loaded.today.date).length > 0
+          }
         />
       </Card>
 

@@ -18,13 +18,11 @@ import {
 import { AppState as Lifecycle } from 'react-native';
 
 import {
-  listDailyLogs,
-  readLastWeight,
-  storeScore,
-  toWeighIns,
+  addToDailyLog,
   upsertDailyLog,
+  withIncrement,
   type DailyLogEntry,
-  type LastWeight,
+  type DailyLogIncrement,
 } from '../core/daily-log.ts';
 import {
   appendMessage,
@@ -35,24 +33,15 @@ import {
   type ChatMessage,
   type ChatSummary,
 } from '../core/assistant.ts';
-import { addDays, todayIso, trailingDays, weekStart, type IsoDate } from '../core/dates.ts';
-import type { ScoredDay } from '../core/heatmap.ts';
-import type { PaletteId } from '../core/palettes.ts';
-import { reEntryBanner, type ReEntryBanner } from '../core/re-entry.ts';
+import { addDays, todayIso, type IsoDate } from '../core/dates.ts';
 import {
   clearSetting,
   dealBlocklistFrom,
   paletteFrom,
-  stepsAdviceDeclinedFrom,
-  stepsTargetFrom,
-  profileFrom,
   readSettings,
-  reEntryFrom,
-  targetsChangeSeenFrom,
   weightUnitFrom,
   writeSetting,
   type SettingKey,
-  type Settings,
 } from '../core/settings.ts';
 import {
   addReading,
@@ -62,14 +51,7 @@ import {
   type ExperimentWithReadings,
   type NewExperiment,
 } from '../core/experiments.ts';
-import type { GymLocation } from '../core/geo.ts';
-import {
-  listDeals,
-  listDiscounts,
-  listSources,
-  watchWords,
-  type DealWithContext,
-} from '../deals/index.ts';
+import { listDeals, listSources, watchWords } from '../deals/index.ts';
 import {
   cookRecipe,
   listPantry,
@@ -82,60 +64,37 @@ import {
   type NewPantryItem,
   type NewRecipe,
   type PantryItem,
+  type PantryRemoval,
   type Recipe,
 } from '../pantry/index.ts';
-import { stepsAdvice, type StepsAdvice } from '../core/steps.ts';
 import { listStudies } from '../core/studies.ts';
-import {
-  backdateFirstSnapshot,
-  latestTargetChange,
-  recalculateTargets,
-  setInitialTargets,
-  type TargetChange,
-} from '../core/snapshots.ts';
 import type { ImportResult } from '../core/backup.ts';
-import { parseDraft, serializeDraft, type SessionDraft } from '../core/session-draft.ts';
-import type { WeightUnit } from '../core/units.ts';
+import { implementFromDraft, serializeDraft, type SessionDraft } from '../core/session-draft.ts';
+import { parseWaterTaps, serializeWaterTaps, undoLastTap } from '../core/water-taps.ts';
 import { openDatabase, resetDatabase } from '../db/index.ts';
 import { inTransaction, whenIdle } from '../db/transaction.ts';
-import type {
-  Company,
-  CoreStudyRow,
-  DealsDiscountRow,
-  DealsSourceRow,
-  TrainingRoutineRow,
-  NutritionBatchRow,
-  NutritionContainerRow,
-  NutritionFoodRow,
-} from '../db/types.ts';
+import type { Company, CoreStudyRow, NutritionFoodRow } from '../db/types.ts';
 import {
   addFoodEntry,
   addFood as addFoodToCatalog,
   addFoodFromLabel,
   datesWithFood,
-  loadFoodHistory,
   removeFood as removeFoodFromCatalogue,
   restoreFood as restoreFoodInCatalogue,
   updateFood,
   consumeBatchPortion,
   createBatch,
+  repeatMealOn,
   deleteFoodEntry,
   discardBatch,
-  listContainers,
   listFoods,
-  listOpenBatches,
-  portionMacros,
-  spoilageWarning,
   withPortionTaken,
   type LabelFood,
   type FoodEdit,
-  type FoodHistory,
   type FoodRemoval,
   type LastMeal,
   type NewFood,
   type NewFoodEntry,
-  type PortionMacros,
-  type SpoilageWarning,
 } from '../nutrition/index.ts';
 import {
   listCatalog,
@@ -155,11 +114,10 @@ import {
   deleteSet,
   finishSession,
   reopenSession as reopenSessionInDb,
-  listGyms,
   listRoutines,
-  listSessionDates,
+  listRoutinesDone,
   loadRoutinePlan,
-  loadSessionPlan,
+  owedRoutine,
   saveSessionPlan,
   getSessionOn,
   sessionDate,
@@ -170,10 +128,10 @@ import {
   setSessionRoutine,
   startSession,
   usualMinutes,
+  type Implement,
   type SessionDetails,
   type SessionKind,
   type PlannedExercise,
-  type PlannedSet,
   type RoutinePlan,
   type TimeBudget,
 } from '../training/index.ts';
@@ -183,32 +141,32 @@ import type { NudgeKind } from '../core/nudges.ts';
 import { flushNudges, listenToNudges, syncNudges } from './notifications.ts';
 import { applyNudgeAction } from './nudges.ts';
 import { loadCharts as loadChartsData, type ChartsData } from './charts.ts';
-import { afterFailedLoad, showsAnotherDay, type LoadState } from './load-state.ts';
+import { afterFailedLoad, reloadQueue, showsAnotherDay, type LoadState } from './load-state.ts';
 import {
   listDayRows,
   loadDayDetail,
   rescoreDays,
-  rescoreMissing,
-  rescoreSettling,
   windowRange,
   writeAndRescore,
   type DayDetail,
   type DayRow,
   type RecordWindow,
 } from './records.ts';
-import { assembleDay, exerciseContext, type AssembledDay, type ExerciseContext } from './day.ts';
+import { exerciseContext, withTappedSet } from './day.ts';
+import {
+  load,
+  REREAD_ALL,
+  REREAD_DEALS,
+  REREAD_FOODS,
+  REREAD_NOTHING,
+  withFresh,
+  type Fresh,
+  type Loaded,
+  type Reread,
+} from './load.ts';
 import { dealsDue, syncDeals, type SyncOutcome } from './deals.ts';
 import { locateGym, type LocationOutcome } from './location.ts';
 import { loadWeekSummary, type WeekSummary } from './week.ts';
-
-export const WEEKS_SHOWN = 12;
-
-export type OpenBatch = {
-  batch: NutritionBatchRow;
-  food: NutritionFoodRow;
-  macros: PortionMacros;
-  spoilage: SpoilageWarning | null;
-};
 
 export type BatchStart = {
   /** A food already in the catalogue, or one typed in from its package label. */
@@ -218,176 +176,25 @@ export type BatchStart = {
   fatDrained: boolean;
 };
 
-export type Loaded = {
-  days: ScoredDay[];
-  settings: Settings;
-  palette: PaletteId;
-  unit: WeightUnit;
-  readapting: ReEntryBanner | null;
-  today: AssembledDay;
-  containers: NutritionContainerRow[];
-  foods: NutritionFoodRow[];
-  /** Lo que ya anoto, que es lo que ordena la lista de alimentos. */
-  foodHistory: FoodHistory;
-  exercise: ExerciseContext;
-  /** Spec 3.6: a recalculation he has not dismissed yet. */
-  targetChange: TargetChange | null;
-  batches: OpenBatch[];
-  /** Spec 14.2: the next step stage, once three weeks have earned it. */
-  steps: StepsAdvice | null;
-  routines: TrainingRoutineRow[];
-  gyms: GymLocation[];
-  /** Spec 16.2: read from what is stored, so the tab works with no signal. */
-  deals: DealWithContext[];
-  discounts: DealsDiscountRow[];
-  /** Spec 16.7: el estado se ve aunque no haya una sola oferta. */
-  dealSources: DealsSourceRow[];
-  /** Spec 8.3 rule 8: what today's session was approved to be, empty before it starts. */
-  plan: PlannedSet[];
-  /** El ultimo peso anotado, de cuando sea: no se pesa todos los dias. */
-  lastWeight: LastWeight | null;
-  /** Lo que quedo a medio escribir en el entreno de hoy, si la app se cerro. */
-  sessionDraft: SessionDraft | null;
-};
-
 export type AppState = LoadState<Loaded>;
 
-/**
- * Todo lo que la app necesita para pintarse, leido de una vez.
- *
- * `settle` es el trabajo de fondo que rehace notas de dias que no son hoy: cuesta
- * cientos de consultas y solo cambia algo cuando cambia una sesion, un descanso
- * marcado, el perfil o un dia pasado. Anotar una serie o un vaso de agua no lo
- * necesita, y pagarlo en cada tecla es lo que hacia que el numero tardara en salir.
- */
-async function load(exerciseId: string | null, settle: boolean): Promise<Loaded> {
-  const db = await openDatabase();
-  await whenIdle(db);
-  const today = todayIso();
-  const from = weekStart(addDays(today, -(WEEKS_SHOWN - 1) * 7));
-
-  const settings = await readSettings(db);
-  const profile = profileFrom(settings);
-
-  // Targets are settled before the day is scored, so today is judged against any
-  // snapshot this load has just written rather than the one before it.
-  if (profile) {
-    const recent = await listDailyLogs(db, trailingDays(today, 7));
-    const todayWeight = recent.find((log) => log.date === today)?.weight_kg;
-    // Spec 3.1: the opening targets come from a weight he typed in.
-    if (todayWeight) await setInitialTargets(db, todayWeight, profile, today);
-    // Spec 3.6: after that, a kilo of drift in the rolling average moves them.
-    await recalculateTargets(db, toWeighIns(recent), profile, today);
-  }
-
-  // Las metas tienen que cubrir tambien lo que ya estaba anotado cuando se lleno el
-  // perfil, o esos dias no se pueden puntuar nunca.
-  await backdateFirstSnapshot(db);
-
-  const assembled = await assembleDay(db, today, today);
-
-  // Spec 6.6: the score is stored beside the day, so the grid reads it back rather
-  // than recomputing every cell on every render.
-  // Spec 4.1 da 22 de los 100 puntos a entrenar, asi que un dia que entreno es un
-  // dia con datos aunque no haya registrado nada mas. Sin esto el cuadrito quedaba
-  // vacio despues de una sesion de verdad, que es justo lo que le paso.
-  if (assembled.trained === true && !assembled.log) {
-    await upsertDailyLog(db, { date: today });
-  }
-  if (assembled.log || assembled.trained === true) {
-    await storeScore(db, today, assembled.result?.score ?? null);
-  }
-
-  if (settle) {
-    // Rellenar el perfil hoy tiene que arreglar los dias de antes tambien: hasta que
-    // hubo metas, todo lo anotado se guardo sin nota y la cuadricula los pintaba grises.
-    await rescoreMissing(db, { from, to: today }, today);
-    // Y los ultimos siete se rehacen aunque ya tengan nota: un descanso marcado gana los
-    // puntos del entreno cuando la semana que lo rodea llega a las cinco sesiones, y eso
-    // pasa dias despues de ese dia.
-    await rescoreSettling(db, today);
-  }
-
-  const [logs, containers, foods, foodHistory, exercise, change, openBatches, routines, plan] =
-    await Promise.all([
-      listDailyLogs(db, { from, to: today }),
-      listContainers(db),
-      listFoods(db),
-      loadFoodHistory(db, today),
-      exerciseContext(db, assembled, exerciseId),
-      latestTargetChange(db),
-      listOpenBatches(db),
-      listRoutines(db),
-      assembled.session ? loadSessionPlan(db, assembled.session.id) : Promise.resolve([]),
-    ]);
-
-  // Los avisos de los proximos dias se rehacen con lo que acaba de anotar. No se
-  // espera: programar en iOS no tiene por que retrasar lo que ya se puede pintar.
-  syncNudges(db, today);
-
-  const gyms = await listGyms(db);
-  const lastWeight = await readLastWeight(db);
-  const trainedDates = new Set(await listSessionDates(db, { from, to: today }));
-  const [deals, discounts, dealSources] = await Promise.all([
-    listDeals(db, today, watchWords(dealBlocklistFrom(settings))),
-    listDiscounts(db),
-    listSources(db),
-  ]);
-
-  const batches: OpenBatch[] = openBatches.map(({ batch, food }) => ({
-    batch,
-    food,
-    macros: portionMacros(batch, food),
-    spoilage: spoilageWarning(batch, today),
-  }));
-
-  return {
-    days: (() => {
-      const byDate = new Map(logs.map((log) => [log.date, log]));
-      const dates = [...new Set([...byDate.keys(), ...trainedDates])].sort();
-      return dates.map((date) => {
-        const log = byDate.get(date);
-        return {
-          date,
-          score: log?.score ?? null,
-          hasData: log?.has_data === 1 || trainedDates.has(date),
-        };
-      });
-    })(),
-    settings,
-    palette: paletteFrom(settings),
-    unit: weightUnitFrom(settings),
-    readapting: reEntryBanner(reEntryFrom(settings), today),
-    today: assembled,
-    containers,
-    foods,
-    foodHistory,
-    exercise,
-    targetChange:
-      change && change.effectiveFrom !== targetsChangeSeenFrom(settings) ? change : null,
-    steps: (() => {
-      const advice = stepsAdvice(logs, stepsTargetFrom(settings), today);
-      return advice && advice.next !== stepsAdviceDeclinedFrom(settings) ? advice : null;
-    })(),
-    batches,
-    routines,
-    gyms,
-    deals,
-    discounts,
-    dealSources,
-    plan,
-    lastWeight,
-    sessionDraft: parseDraft(settings.get('session_draft'), assembled.session?.id ?? null),
-  };
-}
+/** Una recarga pedida: con o sin el trabajo de fondo, y que mas releer ademas del dia. */
+type Reload = Reread & { settle: boolean };
 
 /**
- * Ajustes que solo cambian como se ve la app, no lo que vale un dia.
+ * Ajustes que solo cambian lo que se pinta, no lo que vale un dia.
  *
  * Pintarlos ya es todo el trabajo: nada de lo que se lee de la base depende de ellos,
- * asi que la escritura va sola y no hay segunda pasada de la pantalla entera.
+ * asi que la escritura va sola y no hay segunda pasada de la pantalla entera. Las
+ * palabras que vigila se guardan en cada tecla, y una recarga por tecla le devolvia al
+ * campo el texto de antes mientras seguia escribiendo; Hoy elige las ofertas al pintar.
  */
-const LOOK_ONLY: ReadonlySet<SettingKey> = new Set(['palette', 'weight_unit']);
+const LOOK_ONLY: ReadonlySet<SettingKey> = new Set([
+  'palette',
+  'weight_unit',
+  'deal_watchlist',
+  'deals_seen_at',
+]);
 
 /**
  * Los ajustes con una clave cambiada, y lo que se deriva de ellos al dia.
@@ -414,11 +221,17 @@ export type AppData = {
   saveSetting: (key: SettingKey, value: string) => void;
   removeSetting: (key: SettingKey) => void;
   logDay: (entry: Omit<DailyLogEntry, 'date'>) => void;
+  /** Una botella o un trago de hoy, sumado a lo guardado y pintado ya. */
+  addToDay: (increment: DailyLogIncrement) => void;
+  /** Un toque a un boton de agua, que "Deshacer" puede quitar despues. */
+  tapWater: (ml: number) => void;
+  /** Quita el ultimo toque de agua de hoy que quede. */
+  undoWater: () => void;
   addFood: (entry: Omit<NewFoodEntry, 'date'>) => void;
   /** Un alimento nuevo copiado de su envase, que queda en su catalogo y en su respaldo. */
-  createFood: (food: NewFood) => void;
+  createFood: (food: NewFood) => Promise<void>;
   /** Corrige la ficha de un alimento y rehace la nota de los dias que lo comieron. */
-  editFood: (id: string, food: FoodEdit) => void;
+  editFood: (id: string, food: FoodEdit) => Promise<void>;
   /** Lo saca del catalogo: borrado si nunca lo comio, archivado si si. */
   deleteFood: (id: string) => Promise<FoodRemoval>;
   restoreFood: (id: string) => void;
@@ -427,8 +240,12 @@ export type AppData = {
   /** El aviso que acaba de abrir la app, para llevarlo a la pantalla que le toca. */
   nudgeTarget: NudgeKind | null;
   clearNudgeTarget: () => void;
-  /** Vuelve a anotar una comida entera de otro dia, en el espacio que se elija. */
-  repeatMeal: (meal: LastMeal, mealSlot: string) => void;
+  /**
+   * Vuelve a anotar una comida entera de otro dia, en el espacio que se elija. Lo que fue
+   * una porcion de olla sale otra vez de su olla; devuelve cuantas no se anotaron porque
+   * esa olla ya se acabo.
+   */
+  repeatMeal: (meal: LastMeal, mealSlot: string) => Promise<number>;
   removeFood: (entryId: string) => Promise<void>;
   beginSession: (
     routineId: string,
@@ -439,13 +256,16 @@ export type AppData = {
   ) => void;
   /** Spec 5.2: asked for once, by him, never watched. */
   whereAmI: () => Promise<LocationOutcome>;
+  /** La rutina que le toca hoy por el patron de la semana (spec 8.5), para traerla puesta. */
+  loadOwedRoutine: () => Promise<string | null>;
   /** The trimmed plan for a routine at a budget, for the screen that asks approval. */
   loadPlan: (routineId: string, budget: TimeBudget, gymId?: string | null) => Promise<RoutinePlan>;
+  /** Se pinta ya y se puede esperar; rechaza si la base no la acepto. */
   logSet: (
     weightKg: number,
     reps: number,
-    extra?: { isWarmup?: boolean; rpe?: number | null },
-  ) => void;
+    extra?: { isWarmup?: boolean; rpe?: number | null; implement?: Implement | null },
+  ) => Promise<void>;
   describeSession: (details: SessionDetails) => void;
   /** Writes the end time. Spec 6: the session is over when he says it is. */
   endSession: () => void;
@@ -509,6 +329,7 @@ export type AppData = {
   editRoutineTier: (routineId: string, exerciseId: string, tier: number) => Promise<void>;
   /** Escribe el registro de cualquier dia, no solo el de hoy. */
   editDay: (date: IsoDate, entry: Omit<DailyLogEntry, 'date'>) => Promise<void>;
+  addToDayOn: (date: IsoDate, increment: DailyLogIncrement) => Promise<void>;
   addFoodOn: (date: IsoDate, entry: Omit<NewFoodEntry, 'date'>) => Promise<void>;
   /**
    * El id de la sesion de ese dia, creandola si no existe. Spec 5.4: una sesion
@@ -531,7 +352,8 @@ export type AppData = {
   /** Lo que hay en la nevera, spec 21. No puntua nada, asi que no recarga el resto. */
   loadPantry: () => Promise<PantryItem[]>;
   savePantryItem: (item: NewPantryItem) => Promise<void>;
-  removePantryItem: (id: string) => Promise<void>;
+  /** Rechaza con el motivo; si una receta lo usa, lo deja vacio y dice cuales. */
+  removePantryItem: (id: string) => Promise<PantryRemoval>;
   loadRecipes: () => Promise<Recipe[]>;
   saveRecipe: (recipe: NewRecipe) => Promise<void>;
   removeRecipe: (id: string) => Promise<void>;
@@ -541,7 +363,8 @@ export type AppData = {
   loadChats: () => Promise<ChatSummary[]>;
   /** El ultimo chat, que es el que se abre al tocar la bola. Null si no hay ninguno. */
   lastChatId: () => Promise<string | null>;
-  loadChat: (chatId: string) => Promise<ChatMessage[]>;
+  /** Las ultimas `limit` lineas, o todas. */
+  loadChat: (chatId: string, limit?: number) => Promise<ChatMessage[]>;
   /** Un chat nuevo. Solo se crea cuando hay algo que escribir en el. */
   openChat: () => Promise<string>;
   /** Una linea del chat. No recarga nada: lo que se habla no puntua ningun dia. */
@@ -578,18 +401,58 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   // entreno no existia hasta hoy.
   const settledOn = useRef<IsoDate | null>(null);
 
-  const refresh = useCallback((settle = true) => {
-    const deep = settle || settledOn.current !== todayIso();
-    load(openExercise.current, deep)
-      .then((loaded) => {
-        if (deep) settledOn.current = loaded.today.date;
-        setState({ phase: 'ready', loaded, problem: null });
-      })
-      .catch((error: unknown) => {
+  const loaded = state.phase === 'ready' ? state.loaded : null;
+
+  // Lo cargado, tambien en una referencia. Las acciones lo leen de aqui y por eso se
+  // pueden armar una sola vez: si cambiaran de identidad en cada render, ninguna
+  // pantalla podria saltarse su propio redibujo, porque recibiria funciones nuevas
+  // aunque no haya cambiado nada de lo que muestra.
+  const openLoaded = useRef(loaded);
+  useEffect(() => {
+    openLoaded.current = loaded;
+  }, [loaded]);
+
+  const reloads = useRef<((request: Reload) => void) | null>(null);
+  const refresh = useCallback((settle = true, reread: Reread = REREAD_NOTHING) => {
+    reloads.current ??= reloadQueue<Reload, Fresh>(
+      async (request) => {
+        const db = await openDatabase();
+        await whenIdle(db);
+        const deep = request.settle || settledOn.current !== todayIso();
+        const fresh = await load(
+          db,
+          openExercise.current,
+          deep,
+          request,
+          openLoaded.current?.today.date ?? null,
+        );
+        // Aunque esta carga se tire por vieja, el trabajo de fondo ya quedo escrito.
+        if (deep) settledOn.current = fresh.today.date;
+        // Los avisos de los proximos dias se rehacen con lo que acaba de anotar. No se
+        // espera: programar en iOS no tiene por que retrasar lo que ya se puede pintar.
+        syncNudges(db, fresh.today.date);
+        return fresh;
+      },
+      (fresh) =>
+        setState((current) => ({
+          phase: 'ready',
+          loaded: withFresh(current.phase === 'ready' ? current.loaded : null, fresh),
+          problem: null,
+        })),
+      (error) => {
         console.error(error);
         const message = error instanceof Error ? error.message : String(error);
         setState((current) => afterFailedLoad(current, message));
-      });
+      },
+      (a, b) => ({
+        settle: a.settle || b.settle,
+        deals: a.deals || b.deals,
+        foods: a.foods || b.foods,
+      }),
+      // Las notas que rehizo ya estan guardadas; lo que leyo para la pantalla, no.
+      (request) => ({ ...request, settle: false }),
+    );
+    reloads.current({ settle, ...reread });
   }, []);
 
   useEffect(() => {
@@ -652,14 +515,18 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   );
 
   const run = useCallback(
-    (work: (db: Awaited<ReturnType<typeof openDatabase>>) => Promise<unknown>, settle = true) => {
+    (
+      work: (db: Awaited<ReturnType<typeof openDatabase>>) => Promise<unknown>,
+      settle = true,
+      reread = REREAD_NOTHING,
+    ) => {
       openDatabase()
         .then(work)
-        .then(() => refresh(settle))
+        .then(() => refresh(settle, reread))
         .catch((error: unknown) => {
           console.error(error);
           // Lo que se pinto por adelantado tiene que volver a lo que dice la base.
-          refresh(settle);
+          refresh(settle, reread);
         });
     },
     [refresh],
@@ -686,10 +553,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     async (
       work: (db: Awaited<ReturnType<typeof openDatabase>>) => Promise<unknown>,
       settle = true,
+      reread = REREAD_NOTHING,
     ) => {
       const db = await openDatabase();
       await work(db);
-      refresh(settle);
+      refresh(settle, reread);
     },
     [refresh],
   );
@@ -716,7 +584,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const loadChats = useCallback(() => openDatabase().then((db) => listChats(db)), []);
   const lastChatId = useCallback(() => openDatabase().then(lastChat), []);
   const loadChat = useCallback(
-    (chatId: string) => openDatabase().then((db) => readChat(db, chatId)),
+    (chatId: string, limit?: number) => openDatabase().then((db) => readChat(db, chatId, limit)),
     [],
   );
   const openChat = useCallback(() => openDatabase().then((db) => startChat(db)), []);
@@ -762,23 +630,22 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const loadOwedRoutine = useCallback(async () => {
+    const db = await openDatabase();
+    const today = todayIso();
+    const [routines, done] = await Promise.all([
+      listRoutines(db),
+      listRoutinesDone(db, { from: addDays(today, -60), to: today }),
+    ]);
+    return owedRoutine(routines, done, today);
+  }, []);
+
   const loadCatalog = useCallback(() => openDatabase().then(listCatalog), []);
 
   const loadExercise = useCallback(
     (exerciseId: string) => openDatabase().then((db) => loadExerciseCard(db, exerciseId)),
     [],
   );
-
-  const loaded = state.phase === 'ready' ? state.loaded : null;
-
-  // Lo cargado, tambien en una referencia. Las acciones lo leen de aqui y por eso se
-  // pueden armar una sola vez: si cambiaran de identidad en cada render, ninguna
-  // pantalla podria saltarse su propio redibujo, porque recibiria funciones nuevas
-  // aunque no haya cambiado nada de lo que muestra.
-  const openLoaded = useRef(loaded);
-  useEffect(() => {
-    openLoaded.current = loaded;
-  }, [loaded]);
 
   // La recoleccion de ofertas del dia, bajada sola al abrir y al volver a la app. Solo se
   // releen las ofertas: nada mas de lo cargado depende de ellas.
@@ -824,13 +691,59 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     return () => subscription.remove();
   }, [refresh, fetchDeals]);
 
-  const actions = useMemo<Omit<AppData, 'state' | 'exerciseId' | 'nudgeTarget'>>(
-    () => ({
+  // Los toques de agua de hoy, del primero al ultimo. Viven aqui para que dos toques en el
+  // mismo cuadro no lean la misma lista, y en un ajuste para que sobrevivan si iOS cierra
+  // la app.
+  const waterTaps = useRef<{ date: IsoDate; taps: number[] } | null>(null);
+
+  const actions = useMemo<Omit<AppData, 'state' | 'exerciseId' | 'nudgeTarget'>>(() => {
+    const tapsToday = () => {
+      const date = todayIso();
+      if (waterTaps.current?.date !== date) {
+        waterTaps.current = {
+          date,
+          taps: parseWaterTaps(openLoaded.current?.settings.get('water_taps'), date),
+        };
+      }
+      return waterTaps.current;
+    };
+
+    // El agua y los tragos solo cambian hoy, que se puntua en cada carga. `taps` es la
+    // lista de toques de agua nueva, cuando el toque viene de esos botones.
+    const addToday = (increment: DailyLogIncrement, taps?: string) => {
+      const date = todayIso();
+      patch((current) => {
+        if (current.today.date !== date) return current;
+        const next = taps === undefined ? current : withSetting(current, 'water_taps', taps);
+        return {
+          ...next,
+          today: { ...next.today, log: withIncrement(next.today.log, date, increment) },
+        };
+      });
+      run(async (db) => {
+        await addToDailyLog(db, date, increment);
+        if (taps !== undefined) await writeSetting(db, 'water_taps', taps);
+      }, false);
+    };
+
+    return {
       selectExercise,
       saveSetting: (key, val) => {
         patch((loaded) => withSetting(loaded, key, val));
         if (LOOK_ONLY.has(key)) {
           store((db) => writeSetting(db, key, val));
+          return;
+        }
+        // Las palabras excluidas deciden que oferta lleva proteina por dolar: se releen
+        // solo las ofertas, y solo se pintan si el campo sigue diciendo lo mismo.
+        if (key === 'deal_blocklist') {
+          store(async (db) => {
+            await writeSetting(db, key, val);
+            const deals = await listDeals(db, todayIso(), watchWords(val));
+            patch((current) =>
+              current.settings.get('deal_blocklist') === val ? { ...current, deals } : current,
+            );
+          });
           return;
         }
         run((db) => writeSetting(db, key, val));
@@ -843,39 +756,68 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           (db) => upsertDailyLog(db, { date: todayIso(), ...entry }),
           entry.restDay !== undefined,
         ),
-      addFood: (entry) => run((db) => addFoodEntry(db, { ...entry, date: todayIso() }), false),
-      createFood: (food) => run((db) => addFoodToCatalog(db, food)),
+      addToDay: (increment) => addToday(increment),
+      tapWater: (ml) => {
+        const today = tapsToday();
+        today.taps = [...today.taps, ml];
+        addToday({ waterMl: ml }, serializeWaterTaps(today.date, today.taps));
+      },
+      undoWater: () => {
+        const today = tapsToday();
+        const undone = undoLastTap(today.taps);
+        if (undone === null) return;
+        today.taps = undone.taps;
+        addToday({ waterMl: -undone.ml }, serializeWaterTaps(today.date, today.taps));
+      },
+      addFood: (entry) =>
+        run((db) => addFoodEntry(db, { ...entry, date: todayIso() }), false, REREAD_FOODS),
+      // Se pueden esperar: la ficha no se cierra hasta que la base la acepto, y si no la
+      // acepta dice por que. Antes se cerraba primero y el error solo iba a la consola.
+      createFood: (food) => write((db) => addFoodToCatalog(db, food), true, REREAD_FOODS),
       deleteFood: async (id) => {
         const db = await openDatabase();
         const outcome = await removeFoodFromCatalogue(db, id);
-        refresh();
+        refresh(true, REREAD_FOODS);
         return outcome;
       },
-      restoreFood: (id) => run((db) => restoreFoodInCatalogue(db, id)),
+      restoreFood: (id) => run((db) => restoreFoodInCatalogue(db, id), true, REREAD_FOODS),
       loadArchivedFoods,
       clearNudgeTarget,
       editFood: (id, food) =>
-        run(async (db) => {
-          await updateFood(db, id, food);
-          // Corregir una ficha corrige todos los dias en que la comio, asi que sus
-          // notas guardadas dejan de coincidir con lo que ahora dicen los totales.
-          await rescoreDays(db, await datesWithFood(db, id), todayIso());
-        }),
-      repeatMeal: (meal, mealSlot) =>
-        run(async (db) => {
-          for (const portion of meal.entries) {
-            await addFoodEntry(db, { ...portion, date: todayIso(), mealSlot });
-          }
-        }, false),
+        write(
+          async (db) => {
+            await updateFood(db, id, food);
+            // Corregir una ficha corrige todos los dias en que la comio, asi que sus
+            // notas guardadas dejan de coincidir con lo que ahora dicen los totales.
+            await rescoreDays(db, await datesWithFood(db, id), todayIso());
+          },
+          true,
+          REREAD_FOODS,
+        ),
+      repeatMeal: async (meal, mealSlot) => {
+        let skipped = 0;
+        await write(
+          async (db) => {
+            skipped = await repeatMealOn(db, meal, todayIso(), mealSlot);
+          },
+          false,
+          REREAD_FOODS,
+        );
+        return skipped;
+      },
       // Se puede esperar: la pantalla de un dia pasado tiene que volver a leerlo en
       // cuanto el borrado esta escrito, y antes lo adivinaba con un temporizador.
       // Sin el trabajo de fondo, pero rehaciendo el dia de esa porcion: si era de un dia
       // pasado, su nota guardada seguia contando lo que se borro.
       removeFood: (entryId) =>
-        write(async (db) => {
-          const date = await deleteFoodEntry(db, entryId);
-          if (date !== null) await rescoreDays(db, [date], todayIso());
-        }, false),
+        write(
+          async (db) => {
+            const date = await deleteFoodEntry(db, entryId);
+            if (date !== null) await rescoreDays(db, [date], todayIso());
+          },
+          false,
+          REREAD_FOODS,
+        ),
       beginSession: (routineId, budget, plan, company, gymId) =>
         run(async (db) => {
           const sessionId = await startSession(db, {
@@ -891,14 +833,44 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         }),
       whereAmI: () => locateGym(openLoaded.current?.gyms ?? []),
       loadPlan,
-      logSet: (weightKg, reps, extra) => {
-        const sessionId = openLoaded.current?.today.session?.id;
-        const exercise = openExercise.current;
-        if (!sessionId || !exercise) return;
-        run(
-          (db) => addSet(db, { sessionId, exerciseId: exercise, weightKg, reps, ...extra }),
-          false,
+      loadOwedRoutine,
+      logSet: async (weightKg, reps, extra) => {
+        const session = openLoaded.current?.today.session;
+        const exerciseId = openExercise.current;
+        if (!session || !exerciseId) throw new Error('there is no open exercise to log a set into');
+        const sessionId = session.id;
+        // Una serie despues de medianoche en la sesion de anoche cambia la nota de anoche,
+        // y eso solo lo rehace el trabajo de fondo.
+        const settle = session.date !== todayIso();
+        patch((current) =>
+          withTappedSet(current, {
+            sessionId,
+            exerciseId,
+            weightKg,
+            reps,
+            rpe: extra?.rpe ?? null,
+            timestamp: Date.now(),
+          }),
         );
+        try {
+          await write(async (db) => {
+            // La serie del asistente no trae implemento: va el que dice el borrador de la
+            // tarjeta, como si la hubiera anotado ahi.
+            const implement =
+              extra?.implement !== undefined
+                ? extra.implement
+                : (implementFromDraft(
+                    (await readSettings(db)).get('session_draft'),
+                    sessionId,
+                    exerciseId,
+                  ) as Implement | null);
+            await addSet(db, { sessionId, exerciseId, weightKg, reps, ...extra, implement });
+          }, settle);
+        } catch (error) {
+          // Lo que se pinto por adelantado tiene que volver a lo que dice la base.
+          refresh(settle);
+          throw error;
+        }
       },
       describeSession: (details) => {
         const sessionId = openLoaded.current?.today.session?.id;
@@ -973,9 +945,15 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
             restDay: entry.restDay !== undefined,
           }),
         ),
-      addFoodOn: (date, entry) =>
+      addToDayOn: (date, increment) =>
         write((db) =>
-          writeAndRescore(db, date, todayIso(), () => addFoodEntry(db, { ...entry, date })),
+          writeAndRescore(db, date, todayIso(), () => addToDailyLog(db, date, increment)),
+        ),
+      addFoodOn: (date, entry) =>
+        write(
+          (db) => writeAndRescore(db, date, todayIso(), () => addFoodEntry(db, { ...entry, date })),
+          true,
+          REREAD_FOODS,
         ),
       openSessionOn: async (date, routineId) => {
         const db = await openDatabase();
@@ -1013,17 +991,17 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         // Desde el panel de error tiene que verse que lo intenta otra vez; con la app
         // abierta, lo que ya estaba en pantalla se queda mientras tanto.
         setState((current) => (current.phase === 'failed' ? { phase: 'opening' } : current));
-        refresh();
+        refresh(true, REREAD_ALL);
       },
       importData: async () => {
         const result = await importFromFile();
-        if (result !== null) refresh();
+        if (result !== null) refresh(true, REREAD_ALL);
         return result;
       },
       resetDatabase: () => {
         setState({ phase: 'opening' });
         resetDatabase()
-          .then(() => refresh())
+          .then(() => refresh(true, REREAD_ALL))
           .catch((error: unknown) => {
             console.error(error);
             const message = error instanceof Error ? error.message : String(error);
@@ -1042,7 +1020,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
             [target.sessionId, target.exerciseId, setIndex],
           );
           for (const row of rows) await deleteSet(db, row.id);
-        }, false);
+        }, target.date !== todayIso());
       },
       dismissTargetChange: (effectiveFrom) =>
         run((db) => writeSetting(db, 'targets_change_seen', effectiveFrom)),
@@ -1062,15 +1040,19 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
             fatDrained,
           });
         });
-        refresh();
+        refresh(true, REREAD_FOODS);
       },
       eatBatchPortion: async (batchId, mealSlot) => {
         patch((current) => ({ ...current, batches: withPortionTaken(current.batches, batchId) }));
         try {
-          await write((db) => consumeBatchPortion(db, batchId, todayIso(), mealSlot), false);
+          await write(
+            (db) => consumeBatchPortion(db, batchId, todayIso(), mealSlot),
+            false,
+            REREAD_FOODS,
+          );
         } catch (error) {
           // Lo que se pinto por adelantado tiene que volver a lo que dice la base.
-          refresh(false);
+          refresh(false, REREAD_FOODS);
           throw error;
         }
       },
@@ -1093,7 +1075,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       loadPantry,
       loadRecipes,
       savePantryItem: (item) => write((db) => savePantryItem(db, item), false),
-      removePantryItem: (id) => write((db) => removePantryItem(db, id), false),
+      removePantryItem: async (id) => {
+        const db = await openDatabase();
+        const removal = await removePantryItem(db, id);
+        refresh(false);
+        return removal;
+      },
       saveRecipe: (recipe) => write((db) => saveRecipe(db, recipe), false),
       removeRecipe: (id) => write((db) => removeRecipe(db, id), false),
       // Esta si recarga: la olla aparece como lote en Comida.
@@ -1127,38 +1114,39 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       refreshDeals: async () => {
         const db = await openDatabase();
         const outcome = await syncDeals(db);
-        refresh();
+        // Lo bajado no cambia la nota de ningun dia: solo se releen las ofertas.
+        refresh(false, REREAD_DEALS);
         return outcome;
       },
-    }),
-    [
-      clearNudgeTarget,
-      loadArchivedFoods,
-      loadCharts,
-      loadDay,
-      loadExperiments,
-      loadCatalog,
-      loadExercise,
-      loadPlan,
-      loadRecords,
-      loadStudies,
-      loadPace,
-      loadPantry,
-      loadRecipes,
-      loadChats,
-      lastChatId,
-      loadChat,
-      openChat,
-      sayInChat,
-      loadWeek,
-      patch,
-      refresh,
-      run,
-      selectExercise,
-      store,
-      write,
-    ],
-  );
+    };
+  }, [
+    clearNudgeTarget,
+    loadArchivedFoods,
+    loadCharts,
+    loadDay,
+    loadExperiments,
+    loadCatalog,
+    loadExercise,
+    loadPlan,
+    loadOwedRoutine,
+    loadRecords,
+    loadStudies,
+    loadPace,
+    loadPantry,
+    loadRecipes,
+    loadChats,
+    lastChatId,
+    loadChat,
+    openChat,
+    sayInChat,
+    loadWeek,
+    patch,
+    refresh,
+    run,
+    selectExercise,
+    store,
+    write,
+  ]);
 
   const value: AppData = useMemo(
     () => ({ state, exerciseId, nudgeTarget, ...actions }),

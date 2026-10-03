@@ -87,3 +87,14 @@ export function mealSlotAtHour(hour: number, minute = 0): string {
   if (time < 17) return MEAL_SLOTS[3];
   return MEAL_SLOTS[4];
 }
+
+/**
+ * El espacio en el que se anota ahora: el que eligio a mano, o el del reloj.
+ *
+ * Se elegia una vez, al montar la pantalla, y la pestana de Comida se queda montada
+ * mientras la app vive: abierta antes de las nueve, el almuerzo y la cena salian en
+ * "desayuno". Se mira el reloj cada vez, y lo elegido a mano dura hasta que anota algo.
+ */
+export function currentSlot(chosen: string | null, now: Date): string {
+  return chosen ?? mealSlotAtHour(now.getHours(), now.getMinutes());
+}

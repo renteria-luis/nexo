@@ -2,9 +2,10 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 
+import { undoLastTap } from '../../core/water-taps.ts';
 import { addDays, shortDate, todayIso } from '../../core/dates.ts';
 import { scoreText } from '../../core/day-report.ts';
-import { proteinBand } from '../../core/targets.ts';
+import { fatBand, kcalBand, proteinBand } from '../../core/targets.ts';
 import { WEEKLY_SESSION_TARGET } from '../../core/discipline.ts';
 import type { DayDetail } from '../../shell/records.ts';
 import { useAppData } from '../../shell/AppData.tsx';
@@ -65,6 +66,7 @@ export function DayScreen() {
     state,
     loadDay,
     editDay,
+    addToDayOn,
     addFoodOn,
     removeFood,
     openSessionOn,
@@ -80,6 +82,12 @@ export function DayScreen() {
   const [detail, setDetail] = useState<DayDetail | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [writing, setWriting] = useState(false);
+  // Los toques de agua de esta visita al dia, para que "Deshacer" sepa que quitar.
+  const [waterTaps, setWaterTaps] = useState<{ date: string; taps: number[] }>({
+    date,
+    taps: [],
+  });
+  const tapsHere = waterTaps.date === date ? waterTaps.taps : [];
 
   const reload = useCallback(() => {
     loadDay(date)
@@ -251,7 +259,8 @@ export function DayScreen() {
         portions={day.portions}
         totals={day.nutrition}
         proteinBand={band}
-        kcalTarget={day.targets?.kcal ?? null}
+        kcalBand={day.targets ? kcalBand(day.targets) : null}
+        fatBand={day.targets ? fatBand(day.targets) : null}
         onAdd={(entry) => after(addFoodOn(date, entry))}
         onOpenCatalogue={() => navigation.navigate('Alimentos')}
         history={loaded.foodHistory}
@@ -282,6 +291,18 @@ export function DayScreen() {
               : null
           }
           onLog={(entry) => after(editDay(date, entry))}
+          onAdd={(increment) => after(addToDayOn(date, increment))}
+          onTapWater={(ml) => {
+            setWaterTaps({ date, taps: [...tapsHere, ml] });
+            after(addToDayOn(date, { waterMl: ml }));
+          }}
+          onUndoWater={() => {
+            const undone = undoLastTap(tapsHere);
+            if (undone === null) return;
+            setWaterTaps({ date, taps: undone.taps });
+            after(addToDayOn(date, { waterMl: -undone.ml }));
+          }}
+          canUndoWater={tapsHere.length > 0}
         />
       </Card>
 

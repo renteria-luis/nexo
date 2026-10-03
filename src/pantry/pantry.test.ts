@@ -7,15 +7,25 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { migrations } from '../db/migrations/index.ts';
 import { dailyTotals } from '../nutrition/totals.ts';
 import {
+  addFood,
   consumeBatchPortion,
+  getFood,
   listFoods,
   listOpenBatches,
   listPortions,
+  updateFood,
 } from '../nutrition/queries.ts';
 
 import { potOf } from './cook.ts';
 import { cookableNow, missingFor, type PantryItem, type Recipe } from './pantry.ts';
-import { cookRecipe, listPantry, listRecipes, savePantryItem, saveRecipe } from './queries.ts';
+import {
+  cookRecipe,
+  listPantry,
+  listRecipes,
+  removePantryItem,
+  savePantryItem,
+  saveRecipe,
+} from './queries.ts';
 
 type SqlValue = string | number | null;
 
@@ -378,4 +388,118 @@ test('una receta editada no deja los ingredientes de antes', async () => {
 
   const [only] = await listRecipes(db);
   assert.deepEqual(only.ingredients, [{ itemId: dos, amount: 2 }]);
+});
+
+test('quitar de la despensa algo que usa una receta la deja diciendo que falta', async () => {
+  const db = fresh();
+  const pollo = await savePantryItem(db, {
+    name: 'Hamburguesas',
+    kind: 'counted',
+    quantity: 8,
+    unit: 'unidad',
+    state: null,
+    hasIt: null,
+    foodId: 'chicken-burger',
+  });
+  const aceite = await savePantryItem(db, {
+    name: 'Aceite',
+    kind: 'durable',
+    quantity: null,
+    unit: null,
+    state: 'hay',
+    hasIt: null,
+    foodId: null,
+  });
+  const sal = await savePantryItem(db, {
+    name: 'Sal',
+    kind: 'spice',
+    quantity: null,
+    unit: null,
+    state: null,
+    hasIt: true,
+    foodId: null,
+  });
+  await saveRecipe(db, {
+    name: 'Hamburguesas al sarten',
+    steps: '',
+    portions: 4,
+    ingredients: [
+      { itemId: pollo, amount: 4 },
+      { itemId: aceite, amount: null },
+    ],
+  });
+
+  assert.deepEqual(await removePantryItem(db, pollo), {
+    outcome: 'vaciado',
+    recipes: ['Hamburguesas al sarten'],
+  });
+  assert.equal((await removePantryItem(db, aceite)).outcome, 'vaciado');
+  // Lo que ninguna receta usa si se borra.
+  assert.deepEqual(await removePantryItem(db, sal), { outcome: 'borrado' });
+
+  const [recipe] = await listRecipes(db);
+  const [cookable] = cookableNow([recipe], await listPantry(db));
+  // Antes la receta perdia el ingrediente y pasaba a decir "se puede".
+  assert.equal(recipe.ingredients.length, 2);
+  assert.deepEqual(
+    cookable.short.map((missing) => missing.name),
+    ['Hamburguesas', 'Aceite'],
+  );
+  assert.deepEqual((await listPantry(db)).map((item) => item.name).sort(), [
+    'Aceite',
+    'Hamburguesas',
+  ]);
+});
+
+test('la olla sin lote dice que ficha necesita peso, y con el peso puesto ya deja el lote', async () => {
+  const db = fresh();
+  // Tortillas creadas en la app: contadas, sin lo que pesa una.
+  const tortillas = await addFood(db, {
+    name: 'Tortillas',
+    amount: 1,
+    unit: 'unidad',
+    kind: 'count',
+    kcal: 90,
+    proteinG: 2.5,
+    fatG: 2,
+    carbsG: 15,
+  });
+  const item = await savePantryItem(db, {
+    name: 'Tortillas',
+    kind: 'counted',
+    quantity: 10,
+    unit: 'unidad',
+    state: null,
+    hasIt: null,
+    foodId: tortillas,
+  });
+  const recipe = await saveRecipe(db, {
+    name: 'Quesadillas',
+    steps: '',
+    portions: 2,
+    ingredients: [{ itemId: item, amount: 2 }],
+  });
+
+  const first = await cookRecipe(db, recipe, '2026-10-01');
+  assert.equal(first.batchId, null);
+  assert.deepEqual(first.needsWeight, [{ foodId: tortillas, name: 'Tortillas' }]);
+
+  // La ficha ahora acepta lo que pesa una unidad, que es a donde lleva el aviso.
+  const food = await getFood(db, tortillas);
+  await updateFood(db, tortillas, {
+    name: food.name,
+    kcal: food.kcal,
+    proteinG: food.protein_g,
+    fatG: food.fat_g,
+    carbsG: food.carbs_g,
+    sugarG: food.sugar_g,
+    sodiumMg: food.sodium_mg,
+    gramsPerUnit: 40,
+    keywords: null,
+    quickAmounts: null,
+  });
+
+  const second = await cookRecipe(db, recipe, '2026-10-02');
+  assert.ok(second.batchId !== null);
+  assert.deepEqual(second.needsWeight, []);
 });

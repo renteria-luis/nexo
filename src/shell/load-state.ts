@@ -35,3 +35,64 @@ export function showsAnotherDay(
 ): boolean {
   return loaded !== null && loaded.today.date !== today;
 }
+
+/**
+ * Una recarga a la vez, y en pantalla solo la que empezo despues de la ultima escritura.
+ *
+ * Las recargas terminaban en cualquier orden: una larga, con el trabajo de fondo, leia el
+ * agua al empezar y llegaba despues de una corta que ya tenia la botella nueva, y dejaba
+ * en pantalla el total de antes. La siguiente botella se sumaba a ese. Ahora lo que se
+ * pide mientras una corre espera a que acabe, todo junto en una sola recarga mas, y lo que
+ * traia la que corria se tira porque ya es viejo.
+ *
+ * `join` junta dos pedidos en uno. `unfinished` es lo que una carga tirada o fallida deja
+ * por hacer: lo que escribio en la base ya esta, pero lo que leyo para la pantalla se
+ * perdio con ella, y la siguiente tiene que volver a leerlo.
+ */
+export function reloadQueue<R, T>(
+  load: (request: R) => Promise<T>,
+  apply: (result: T) => void,
+  fail: (error: unknown) => void,
+  join: (a: R, b: R) => R,
+  unfinished: (request: R) => R,
+): (request: R) => void {
+  let running = false;
+  let pending: R | null = null;
+  let owed: R | null = null;
+
+  const next = () => {
+    running = false;
+    if (pending === null) return false;
+    const request = pending;
+    pending = null;
+    start(request);
+    return true;
+  };
+
+  const start = (request: R) => {
+    running = true;
+    const asked = owed === null ? request : join(owed, request);
+    owed = null;
+    load(asked).then(
+      (result) => {
+        if (pending === null) {
+          running = false;
+          apply(result);
+          return;
+        }
+        owed = unfinished(asked);
+        next();
+      },
+      (error: unknown) => {
+        owed = unfinished(asked);
+        fail(error);
+        next();
+      },
+    );
+  };
+
+  return (request) => {
+    if (running) pending = pending === null ? request : join(pending, request);
+    else start(request);
+  };
+}

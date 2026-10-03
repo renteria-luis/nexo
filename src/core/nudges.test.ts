@@ -288,3 +288,21 @@ test('lo que no se sabe si salio no cuenta como ignorado', () => {
   }));
   assert.deepEqual(silencedKinds(unknown, '2026-09-23'), []);
 });
+
+test('cada comida que falta lleva su propio aviso, y iOS no cambia uno por otro', () => {
+  const nudges = nudgesFor(
+    { ...FULL_DAY, filledSlots: [MEAL_SLOTS[3], MEAL_SLOTS[4]] },
+    DEFAULT_HOURS,
+    DEFAULT_NUDGE_RULES,
+  ).filter((nudge) => nudge.kind === 'comida');
+
+  // Antes los tres se llamaban comida-2026-09-24 y solo sobrevivia el de mediodia.
+  const ids = nudges.map((nudge) => nudge.id);
+  assert.equal(ids.length, 3);
+  assert.equal(new Set(ids).size, 3);
+  assert.deepEqual(ids, [
+    `comida-${MEAL_SLOTS[0]}-2026-09-24`,
+    `comida-${MEAL_SLOTS[1]}-2026-09-24`,
+    `comida-${MEAL_SLOTS[2]}-2026-09-24`,
+  ]);
+});

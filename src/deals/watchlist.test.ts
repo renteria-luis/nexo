@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import type { DealsDealRow } from '../db/types.ts';
 
 import type { DealWithContext } from './queries.ts';
-import { newestFetch, watchedDeals, watchWords } from './watchlist.ts';
+import { liveDeals, newestFetch, watchedDeals, watchWords } from './watchlist.ts';
 
 function deal(
   title: string,
@@ -108,4 +108,20 @@ test('el aviso llega ordenado: sus palabras, su lista y lo mas barato', () => {
     // Las dos leches primero, y entre ellas la de menos por litro.
     ['MILK 4 L', 'MILK 2 L', 'EGGS 12'],
   );
+});
+
+test('lo vencido sigue en el aviso, pero despues de lo vigente y sin contar', () => {
+  const expired = { ...deal('Chicken thighs, last week'), stale: true };
+  const found = watchedDeals(
+    [expired, deal('Chicken breast'), deal('Large eggs')],
+    ['chicken', 'eggs'],
+  );
+
+  // Antes iba primero por ser de la primera palabra, pintado igual que uno vivo.
+  assert.deepEqual(
+    found.map(({ item }) => item.deal.title),
+    ['Chicken breast', 'Large eggs', 'Chicken thighs, last week'],
+  );
+  assert.equal(found.length, 3, 'spec 16.3 rule 7: never hidden');
+  assert.equal(liveDeals(found).length, 2);
 });

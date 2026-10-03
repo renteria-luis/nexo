@@ -31,7 +31,8 @@ export type SettingKey =
   | 'nudges_off'
   | 'deal_watchlist'
   | 'deal_blocklist'
-  | 'deals_seen_at';
+  | 'deals_seen_at'
+  | 'water_taps';
 
 export type Settings = ReadonlyMap<string, string>;
 
@@ -239,6 +240,8 @@ export function settingProblem(
     case 'deal_blocklist':
     // Lo escribe la app al cerrar el aviso de ofertas.
     case 'deals_seen_at':
+    // Y este en cada toque de agua, para poder deshacerlo.
+    case 'water_taps':
       return null;
     case 'height_cm':
       return inRange(trimmed, 100, 250, 'una estatura en centímetros');

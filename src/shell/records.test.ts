@@ -490,8 +490,7 @@ async function trainedWeekBefore(db: SQLiteDatabase): Promise<void> {
 }
 
 async function live(db: SQLiteDatabase, date: string): Promise<number | null> {
-  const score = (await assembleDay(db, date, TODAY)).result?.score ?? null;
-  return score === null ? null : Math.round(score);
+  return (await assembleDay(db, date, TODAY)).result?.score ?? null;
 }
 
 test('completar un dia de hace dos semanas que ya tenia nota cambia su cuadrito', async () => {
@@ -598,4 +597,27 @@ test('la tarjeta de creatina cuenta los dias que la tomo, no adivina por las bar
   // Y un dia sin tomarla de verdad si lo dice.
   await upsertDailyLog(db, { date: TODAY, creatineTaken: false });
   assert.equal((await loadCharts(db, TODAY, 30)).creatineReading?.streak, -1);
+});
+
+test('una nota con decimal se guarda igual, y volver a puntuar no la reescribe', async () => {
+  const { db, stored } = scored();
+  await writeTargetSnapshot(db, computeTargets(73, PROFILE, '2026-09-01'), '2026-09-01');
+  await trainedWeekBefore(db);
+  await upsertDailyLog(db, {
+    date: '2026-09-08',
+    waterMl: 1200,
+    sleepMinutes: 450,
+    sleepSource: 'manual',
+  });
+  await rescoreMissing(db, { from: '2026-09-01', to: TODAY }, TODAY);
+
+  const score = await live(db, '2026-09-08');
+  assert.ok(score !== null && !Number.isInteger(score), `this day scores ${score}`);
+  // La cuadricula, la racha y Registros leen lo guardado: tiene que ser lo mismo que el dia.
+  assert.equal(stored('2026-09-08'), score);
+  assert.equal(
+    await rescoreDays(db, ['2026-09-08'], TODAY),
+    0,
+    'nothing changed, nothing rewritten',
+  );
 });

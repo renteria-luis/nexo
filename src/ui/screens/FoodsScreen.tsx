@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../../db/types.ts';
@@ -42,6 +43,25 @@ export function FoodsScreen() {
   const [archived, setArchived] = useState<NutritionFoodRow[] | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // Desde una olla que no pudo dejar lote: abre la ficha a la que le falta el peso.
+  const route = useRoute<{ key: string; name: string; params?: { edit?: string } }>();
+  const navigation = useNavigation<{ setParams: (params: { edit?: string }) => void }>();
+  const asked = route.params?.edit;
+  const catalogue = state.phase === 'ready' ? state.loaded.foods : null;
+  const [handled, setHandled] = useState<string | undefined>(undefined);
+  if (asked !== handled && catalogue !== null) {
+    setHandled(asked);
+    if (asked !== undefined) {
+      const food = catalogue.find((one) => one.id === asked);
+      if (food) setEditing(food);
+      else setNotice('Ese alimento ya no está en el catálogo: búscalo en archivados.');
+    }
+  }
+  // Atendido, se borra: volver a pedir la misma ficha despues tiene que abrirla otra vez.
+  useEffect(() => {
+    if (asked !== undefined) navigation.setParams({ edit: undefined });
+  }, [asked, navigation]);
+
   const readArchived = useCallback(() => {
     loadArchivedFoods()
       .then(setArchived)
@@ -74,27 +94,21 @@ export function FoodsScreen() {
               setCreating(false);
               setEditing(null);
             }}
-            onCreate={(food) => {
-              createFood(food);
-              setCreating(false);
-            }}
-            onEdit={(id, food) => {
-              editFood(id, food);
-              setEditing(null);
-            }}
+            // La ficha se cierra cuando la base acepto lo escrito; si no, se queda abierta
+            // y dice por que.
+            onCreate={(food) => createFood(food).then(() => setCreating(false))}
+            onEdit={(id, food) => editFood(id, food).then(() => setEditing(null))}
             onDelete={(id) => {
               const name = editing?.name ?? '';
-              setEditing(null);
-              deleteFood(id)
-                .then((outcome) => {
-                  setNotice(
-                    outcome === 'borrado'
-                      ? `${name} ya no está.`
-                      : `${name} quedó archivado: lo comiste alguna vez y esos días no se tocan.`,
-                  );
-                  if (archived !== null) readArchived();
-                })
-                .catch((error: unknown) => console.error(error));
+              return deleteFood(id).then((outcome) => {
+                setEditing(null);
+                setNotice(
+                  outcome === 'borrado'
+                    ? `${name} ya no está.`
+                    : `${name} quedó archivado: lo comiste alguna vez o la despensa lo usa, y esos días no se tocan.`,
+                );
+                if (archived !== null) readArchived();
+              });
             }}
           />
         ) : null

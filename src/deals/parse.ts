@@ -40,12 +40,33 @@ export function normaliseUnit(text: string | null | undefined): string | null {
  */
 export type Pack = { grams: number } | { millilitres: number } | { count: number } | null;
 
+/**
+ * Un tamano escrito como rango ("450-800 g", "1-2 L"): no dice cuanto trae el paquete, y
+ * quedarse con un extremo era adivinar (spec 16.3 regla 5). El de arriba ponia la pechuga
+ * a $9.96/kg, segunda de la lista, cuando la bandeja de 450 g sale a $17.71.
+ */
+const RANGE = /\d(?:[.,]\d+)?\s*[-–]\s*\d+(?:[.,]\d+)?\s*(?:kg|g|lb|lbs|oz|l|ml)\b/;
+
+/** Si lo que va justo antes es un signo de dolar: "$11 LB" es un precio, no un peso. */
+function isPrice(lower: string, index: number): boolean {
+  return /\$\s*$/.test(lower.slice(0, index));
+}
+
+/** La primera medida del texto que no es un precio. */
+function firstSize(lower: string, pattern: RegExp): RegExpExecArray | null {
+  for (const match of lower.matchAll(new RegExp(pattern.source, 'g'))) {
+    if (!isPrice(lower, match.index)) return match as RegExpExecArray;
+  }
+  return null;
+}
+
 export function packFromText(text: string | null | undefined): Pack {
   if (typeof text !== 'string' || text.trim() === '') return null;
+  const lower = text.toLowerCase();
+  if (RANGE.test(lower)) return null;
+
   const grams = gramsFromText(text);
   if (grams !== null) return { grams };
-
-  const lower = text.toLowerCase();
 
   // "4 L", "750 ml", "2x1.89l"
   const volumePack = lower.match(/(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(l|ml)\b/);
@@ -53,7 +74,7 @@ export function packFromText(text: string | null | undefined): Pack {
     const each = millilitres(Number(volumePack[2].replace(',', '.')), volumePack[3]);
     if (each !== null) return { millilitres: Math.round(each * Number(volumePack[1])) };
   }
-  const volume = lower.match(/(\d+(?:[.,]\d+)?)\s*(l|ml)\b/);
+  const volume = firstSize(lower, /(\d+(?:[.,]\d+)?)\s*(l|ml)\b/);
   if (volume) {
     const amount = millilitres(Number(volume[1].replace(',', '.')), volume[2]);
     if (amount !== null) return { millilitres: amount };
@@ -80,6 +101,7 @@ function millilitres(amount: number, unit: string): number | null {
 export function gramsFromText(text: string | null | undefined): number | null {
   if (typeof text !== 'string' || text.trim() === '') return null;
   const lower = text.toLowerCase();
+  if (RANGE.test(lower)) return null;
 
   // "12 x 355 g": lo que importa es el total, no el envase.
   const pack = lower.match(/(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(kg|g|lb|oz)\b/);
@@ -88,7 +110,7 @@ export function gramsFromText(text: string | null | undefined): number | null {
     return each === null ? null : Math.round(each * Number(pack[1]));
   }
 
-  const single = lower.match(/(\d+(?:[.,]\d+)?)\s*(kg|g|lb|lbs|oz)\b/);
+  const single = firstSize(lower, /(\d+(?:[.,]\d+)?)\s*(kg|g|lb|lbs|oz)\b/);
   if (single) return size(Number(single[1].replace(',', '.')), single[2]);
 
   return null;

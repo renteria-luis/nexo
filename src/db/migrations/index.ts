@@ -50,6 +50,8 @@ import { sql as pantry } from './049_pantry.ts';
 import { sql as sessionTimeTrusted } from './050_session_time_trusted.ts';
 import { sql as creatineLoadingStudy } from './051_creatine_loading_study.ts';
 import { sql as nudgeFiresAt } from './052_nudge_fires_at.ts';
+import { sql as waterGlasses } from './053_water_glasses.ts';
+import { sql as scoreDecimal } from './054_score_decimal.ts';
 
 export type Migration = {
   id: string;
@@ -111,4 +113,6 @@ export const migrations: Migration[] = [
   { id: '050_session_time_trusted', sql: sessionTimeTrusted },
   { id: '051_creatine_loading_study', sql: creatineLoadingStudy },
   { id: '052_nudge_fires_at', sql: nudgeFiresAt },
+  { id: '053_water_glasses', sql: waterGlasses },
+  { id: '054_score_decimal', sql: scoreDecimal },
 ];

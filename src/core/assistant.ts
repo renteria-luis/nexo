@@ -55,11 +55,31 @@ export async function appendMessage(
   return message;
 }
 
-export async function readChat(db: SQLiteDatabase, chatId: string): Promise<ChatMessage[]> {
-  const rows = await db.getAllAsync<CoreAssistantMessageRow>(
-    'SELECT * FROM core_assistant_message WHERE chat_id = ? ORDER BY created_at, rowid;',
-    [chatId],
-  );
+/**
+ * Las lineas de un chat, de la primera a la ultima. Con `limit`, solo las ultimas: la
+ * bola siempre abre el ultimo chat, y un chat de meses se leia y se dibujaba entero cada
+ * vez que se tocaba, entre serie y serie.
+ */
+export async function readChat(
+  db: SQLiteDatabase,
+  chatId: string,
+  limit?: number,
+): Promise<ChatMessage[]> {
+  const rows =
+    limit === undefined
+      ? await db.getAllAsync<CoreAssistantMessageRow>(
+          'SELECT * FROM core_assistant_message WHERE chat_id = ? ORDER BY created_at, rowid;',
+          [chatId],
+        )
+      : await db.getAllAsync<CoreAssistantMessageRow>(
+          `SELECT * FROM (
+             SELECT *, rowid AS position FROM core_assistant_message
+              WHERE chat_id = ?
+           ORDER BY created_at DESC, rowid DESC
+              LIMIT ?
+           ) ORDER BY created_at, position;`,
+          [chatId, limit],
+        );
   return rows.map((row) => ({
     id: row.id,
     role: row.role,

@@ -397,6 +397,12 @@ export type DealsDealRow = {
   staple: SqlBool;
 };
 
+/**
+ * Una oferta como se lista: sin la respuesta cruda de la fuente (spec 16.5), que solo
+ * sirve para revisar una lectura rara y era un tercio de lo que pesaba cada lectura.
+ */
+export type ListedDeal = Omit<DealsDealRow, 'raw_payload'>;
+
 export type DealsDiscountRow = {
   id: string;
   retailer_id: string | null;

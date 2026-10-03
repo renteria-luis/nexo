@@ -4,13 +4,20 @@ import { Animated, PanResponder, Pressable, Text, View } from 'react-native';
 import type { GymLocation } from '../core/geo.ts';
 import type { Company, TrainingRoutineRow } from '../db/types.ts';
 import type { LocationOutcome } from '../shell/location.ts';
-import type { PlannedExercise, RoutinePlan, TimeBudget } from '../training/index.ts';
+import {
+  overrideSets,
+  toStart,
+  type PlannedExercise,
+  type RoutinePlan,
+  type TimeBudget,
+} from '../training/index.ts';
 
 import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
 import { clockFace } from '../training/pace.ts';
 
 import { Chip } from './Chip.tsx';
+import { clock } from './Elapsed.tsx';
 import { ConfirmAction } from './InfoBubble.tsx';
 import { Dumbbell, GripLines, MapPin, Moon, Play, Timer, Users, type LucideIcon } from './icons.ts';
 import { font, hardShadow, sheet, shape, theme } from './theme.ts';
@@ -182,7 +189,7 @@ const OrderRow = memo(function OrderRow({
         </Text>
         <Text style={styles.detail} numberOfLines={1}>
           {exercise.sets} × {reps(exercise)} · {TIER_ES[exercise.tier]} ·{' '}
-          {Math.round(exercise.restSeconds / 60)} min
+          {clock(exercise.restSeconds)}
           {exercise.unilateral ? ' · por brazo' : ''}
         </Text>
       </View>
@@ -323,6 +330,8 @@ export type SessionPlannerProps = {
   /** One reading, taken only when he asks for it (spec 5.2). */
   onLocate: () => Promise<LocationOutcome>;
   onLoadPlan: (routineId: string, budget: TimeBudget, gymId: string | null) => Promise<RoutinePlan>;
+  /** La que le toca por el patron de la semana, que es la que viene puesta. */
+  onLoadOwedRoutine: () => Promise<string | null>;
   onStart: (
     routineId: string,
     budget: TimeBudget,
@@ -355,6 +364,7 @@ export function SessionPlanner({
   gyms,
   onLocate,
   onLoadPlan,
+  onLoadOwedRoutine,
   onStart,
   restDay,
   onRestDay,
@@ -370,7 +380,25 @@ export function SessionPlanner({
   const [exercises, setExercises] = useState<PlannedExercise[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
 
-  const selected = routineId ?? routines[0]?.id ?? null;
+  // La que toca por la semana. Hasta que llega no se elige ninguna, para no cargar el plan
+  // de empuje y cambiarlo enseguida.
+  const [owed, setOwed] = useState<{ id: string | null } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    onLoadOwedRoutine()
+      .then((id) => {
+        if (!cancelled) setOwed({ id });
+      })
+      .catch((error: unknown) => {
+        console.error(error);
+        if (!cancelled) setProblem(error instanceof Error ? error.message : String(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [onLoadOwedRoutine]);
+
+  const selected = routineId ?? (owed === null ? null : (owed.id ?? routines[0]?.id ?? null));
 
   useEffect(() => {
     if (!selected) return;
@@ -394,19 +422,14 @@ export function SessionPlanner({
   }, [selected, budget, gymId, onLoadPlan]);
 
   // Spec 8.3 rule 6: the estimate follows the overrides, not the untouched plan.
-  const seconds = exercises.reduce(
+  const starting = toStart(exercises);
+  const seconds = starting.reduce(
     (total, exercise) => total + exercise.sets * (45 + exercise.restSeconds) + 60,
-    exercises.length > 0 ? 300 : 0,
+    starting.length > 0 ? 300 : 0,
   );
 
   const override = (exerciseId: string, direction: 1 | -1) =>
-    setExercises((current) =>
-      current.map((exercise) =>
-        exercise.exerciseId === exerciseId
-          ? { ...exercise, sets: Math.max(1, exercise.sets + direction) }
-          : exercise,
-      ),
-    );
+    setExercises((current) => overrideSets(current, exerciseId, direction));
 
   const reorder = (from: number, to: number) =>
     setExercises((current) => {
@@ -526,7 +549,7 @@ export function SessionPlanner({
 
           {plan && (
             <Text style={styles.estimate}>
-              {exercises.length} ejercicios · {clockFace(seconds / 60)} de plan
+              {starting.length} ejercicios · {clockFace(seconds / 60)} de plan
               {/* Y lo que tarda de verdad, cuando hay con que decirlo: el plan suma
                   series y descansos, y el no es una suma de series y descansos. */}
               {plan.usualMinutes === null ? '' : ` · sueles tardar ${clockFace(plan.usualMinutes)}`}
@@ -541,11 +564,11 @@ export function SessionPlanner({
         variant="primary"
         size="large"
         block
-        disabled={!selected || gymId === null || exercises.length === 0}
+        disabled={!selected || gymId === null || starting.length === 0}
         accessibilityLabel="Empezar entreno"
         onPress={() => {
-          if (!selected || gymId === null || exercises.length === 0) return;
-          onStart(selected, budget, exercises, company ?? undefined, gymId);
+          if (!selected || gymId === null || starting.length === 0) return;
+          onStart(selected, budget, starting, company ?? undefined, gymId);
         }}
       />
 

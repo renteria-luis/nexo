@@ -23,17 +23,22 @@ import {
   deleteFoodEntry,
   discardBatch,
   getFood,
+  labelProblem,
+  labelServing,
   listFoods,
   listOpenBatches,
   listPortions,
   removeFood,
+  repeatMealOn,
   restoreFood,
   updateFood,
 } from './queries.ts';
+import { loadFoodHistory, repeatableMeal } from './picker.ts';
 import { SODIUM_FLAG_MG, dailyTotals, dairyPortions, type LoggedPortion } from './totals.ts';
 import {
   MAX_QUICK_AMOUNTS,
   MEAL_SLOTS,
+  currentSlot,
   mealSlotAtHour,
   parseQuickAmounts,
   portionLabel,
@@ -954,4 +959,192 @@ test('las cantidades de boton son las suyas cuando las escribe', async () => {
 
 test('no caben mas de diez cantidades', () => {
   assert.equal(parseQuickAmounts('1,2,3,4,5,6,7,8,9,10,11,12').length, MAX_QUICK_AMOUNTS);
+});
+
+test('repetir una comida que fue una porcion de olla la saca otra vez de la olla', async () => {
+  const { db, raw } = seeded();
+  const batch = await createBatch(db, {
+    foodId: await chickenBreast(db),
+    rawWeightG: 1600,
+    portionsCount: 6,
+    cookedDate: '2026-09-29',
+    fatDrained: false,
+  });
+  await consumeBatchPortion(db, batch, '2026-09-30', 'mediodía');
+
+  const yesterday = (await loadFoodHistory(db, '2026-10-01')).lastMealBySlot.get('mediodía');
+  assert.ok(yesterday);
+  assert.equal(await repeatMealOn(db, yesterday, '2026-10-01', 'mediodía'), 0);
+
+  // Antes entraba como gramos sueltos de pollo y la olla seguia diciendo 5 de 6.
+  assert.equal(remaining(raw, batch), 4);
+  const entry = raw
+    .prepare("SELECT batch_id FROM nutrition_food_entry WHERE date = '2026-10-01';")
+    .get() as { batch_id: string | null };
+  assert.equal(entry.batch_id, batch);
+});
+
+test('repetir una porcion de una olla que ya se acabo no la anota y lo dice', async () => {
+  const { db, raw } = seeded();
+  const batch = await createBatch(db, {
+    foodId: await chickenBreast(db),
+    rawWeightG: 600,
+    portionsCount: 1,
+    cookedDate: '2026-09-29',
+    fatDrained: false,
+  });
+  await consumeBatchPortion(db, batch, '2026-09-30', 'mediodía');
+  const yesterday = (await loadFoodHistory(db, '2026-10-01')).lastMealBySlot.get('mediodía');
+  assert.ok(yesterday);
+
+  assert.equal(await repeatMealOn(db, yesterday, '2026-10-01', 'mediodía'), 1);
+  assert.equal(remaining(raw, batch), 0);
+  assert.deepEqual(await listPortions(db, '2026-10-01'), []);
+});
+
+test('repetir desaparece cuando esa comida ya esta en el espacio de hoy', async () => {
+  const { db } = seeded();
+  const eggs = await chickenBreast(db);
+  await addFoodEntry(db, {
+    foodId: eggs,
+    quantity: 200,
+    unit: 'g',
+    date: '2026-09-30',
+    mealSlot: 'desayuno',
+  });
+
+  const before = await loadFoodHistory(db, '2026-10-01');
+  const offered = repeatableMeal(before, 'desayuno');
+  assert.ok(offered);
+
+  await repeatMealOn(db, offered, '2026-10-01', 'desayuno');
+  // Un segundo toque anotaba el desayuno entero otra vez: el boton ya no esta.
+  assert.equal(repeatableMeal(await loadFoodHistory(db, '2026-10-01'), 'desayuno'), null);
+});
+
+test('el espacio se mira con el reloj de cuando anota, no con el de cuando abrio la app', () => {
+  const at = (clock: string) => new Date(`2026-10-01T${clock}:00`);
+  // Abrio Comida a las 8:50 y volvio a la una y media sin cerrar la app.
+  assert.equal(currentSlot(null, at('08:50')), MEAL_SLOTS[0]);
+  assert.equal(currentSlot(null, at('13:30')), MEAL_SLOTS[3]);
+  // La porcion de la cena ya no cae en "mediodía" por defecto.
+  assert.equal(currentSlot(null, at('19:30')), MEAL_SLOTS[4]);
+  // Lo que elige a mano manda hasta que anota.
+  assert.equal(currentSlot(MEAL_SLOTS[1], at('19:30')), MEAL_SLOTS[1]);
+});
+
+test('la ficha dice antes de guardar que el azucar no puede pasar de los carbos', async () => {
+  // Un 20 donde iba un 2: la base lo rechaza, y antes la ficha ya se habia cerrado.
+  assert.match(labelProblem({ carbsG: 2, sugarG: 20 }) ?? '', /azúcar/);
+  assert.equal(labelProblem({ carbsG: 20, sugarG: 2 }), null);
+  assert.equal(labelProblem({ carbsG: null, sugarG: 3 }), null);
+
+  const { db } = seeded();
+  await assert.rejects(
+    () =>
+      addFood(db, {
+        name: 'Yogur',
+        amount: 100,
+        unit: 'g',
+        kind: 'mass',
+        kcal: 60,
+        proteinG: 10,
+        fatG: 0,
+        carbsG: 2,
+        sugarG: 20,
+      }),
+    /azúcar/,
+  );
+});
+
+test('un alimento que solo nombra la despensa se archiva, no choca con ella', async () => {
+  const { db, raw } = seeded();
+  const chicken = await chickenBreast(db);
+  raw
+    .prepare(
+      `INSERT INTO pantry_item (id, name, kind, quantity, unit, food_id, updated_at)
+       VALUES ('pollo', 'Pollo', 'weighed', 500, 'g', ?, '2026-10-01T00:00:00Z');`,
+    )
+    .run(chicken);
+
+  // Nunca lo comio: antes se intentaba borrar y la base lo rechazaba sin que se viera.
+  assert.equal(await removeFood(db, chicken), 'archivado');
+  assert.equal((await getFood(db, chicken)).archived, 1);
+});
+
+test('una etiqueta "por 40 g" se escribe tal cual y queda bien por gramo', async () => {
+  // La casilla de la porcion de la etiqueta: antes la ficha solo aceptaba 100 g.
+  assert.equal(labelServing('40'), 40);
+  assert.equal(labelServing('2,5'), 2.5);
+  assert.equal(labelServing(''), null);
+  assert.equal(labelServing('0'), null);
+
+  const { db } = seeded();
+  const id = await addFood(db, {
+    name: 'Barra de avena',
+    amount: labelServing('40') ?? 0,
+    unit: 'g',
+    kind: 'mass',
+    kcal: 150,
+    proteinG: 5,
+    fatG: 4,
+    carbsG: 24,
+    sugarG: 8,
+  });
+
+  const stored = await getFood(db, id);
+  assert.equal(stored.kcal * 100, 375);
+  assert.equal(stored.protein_g * 100, 12.5);
+});
+
+test('un alimento nuevo puede llevar fibra, indice glucemico y la marca de lacteo', async () => {
+  const { db } = seeded();
+  // Un yogur griego como lo manda la ficha, ahora con lo que la etiqueta no trae.
+  const yogurt = await addFood(db, {
+    name: 'Yogur griego',
+    amount: 175,
+    unit: 'g',
+    kind: 'mass',
+    kcal: 140,
+    proteinG: 16,
+    fatG: 3.5,
+    carbsG: 10,
+    sugarG: 7,
+    fibreG: 1.75,
+    glycemicIndex: 11,
+    isDairy: true,
+  });
+  await addFoodEntry(db, {
+    foodId: yogurt,
+    quantity: 350,
+    unit: 'g',
+    date: '2026-10-01',
+    mealSlot: 'merienda',
+  });
+
+  const totals = dailyTotals(await listPortions(db, '2026-10-01'));
+  // Antes salian siempre vacios: ninguna ficha podia escribir estos campos.
+  assert.ok(totals.glycemicLoad !== null && totals.glycemicLoad > 0);
+  assert.ok(Math.abs(totals.fibreG - 3.5) < 1e-9);
+  assert.equal(dairyPortions(await listPortions(db, '2026-10-01')), 350);
+
+  // Corregirlo tambien los puede cambiar, y lo que no se manda se queda.
+  await updateFood(db, yogurt, {
+    name: 'Yogur griego',
+    kcal: 140,
+    proteinG: 16,
+    fatG: 3.5,
+    carbsG: 10,
+    sugarG: 7,
+    sodiumMg: null,
+    glycemicIndex: 12,
+    keywords: null,
+    quickAmounts: null,
+  });
+  const stored = await getFood(db, yogurt);
+  assert.equal(stored.glycemic_index, 12);
+  assert.equal(stored.is_dairy, 1);
+  assert.ok(stored.fibre_g !== null && Math.abs(stored.fibre_g * 175 - 1.75) < 1e-9);
+
+  assert.match(labelProblem({ carbsG: 10, sugarG: 7, glycemicIndex: 55.5 }) ?? '', /entero/);
 });

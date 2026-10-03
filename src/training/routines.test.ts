@@ -18,9 +18,15 @@ import {
   loadSessionPlan,
   saveSessionPlan,
   nextPendingExercise,
+  overrideSets,
+  owedRoutine,
+  listRoutinesDone,
+  suggestedRest,
+  toStart,
   trimRoutine,
 } from './routines.ts';
-import { startSession } from './sessions.ts';
+import { setExerciseGym } from './catalog.ts';
+import { addSet, startSession } from './sessions.ts';
 
 type SqlValue = string | number | null;
 
@@ -264,4 +270,97 @@ test('el selector pasa al siguiente que le falta y recoge el que se salto', () =
 
   // Un ejercicio que no estaba en el plan no lleva a ningun lado.
   assert.equal(nextPendingExercise('remo', order, new Map(), planned), null);
+});
+
+test('con la mitad del tiempo, la sesion sugiere el descanso recortado que aprobo', async () => {
+  const db = fresh();
+  const plan = await loadRoutinePlan(db, 'push', 'minus_50', 'fanshawe');
+  const sessionId = await startSession(db, { date: '2026-10-03', timeBudget: 'minus_50' });
+  await saveSessionPlan(db, sessionId, plan.exercises);
+  const stored = await loadSessionPlan(db, sessionId);
+
+  const peckDeck = plan.exercises.find((exercise) => exercise.exerciseId === 'peck-deck');
+  assert.equal(peckDeck?.restSeconds, TRIMMED_REST_SECONDS);
+  // El catalogo dice 120; lo aprobado, 90. Antes la pantalla seguia diciendo 2:00.
+  assert.equal(suggestedRest(stored, 'peck-deck', 120), TRIMMED_REST_SECONDS);
+  // Lo que no estaba en el plan sigue con lo suyo.
+  assert.equal(suggestedRest(stored, 'not-in-the-plan', 150), 150);
+});
+
+test('con menos tiempo en Fit4Less la maquina de laterales se queda, porque es de dos brazos', async () => {
+  const db = fresh();
+  for (const budget of ['completo', 'minus_25', 'minus_50'] as const) {
+    const plan = await loadRoutinePlan(db, 'push', budget, 'fit4less-proudfoot');
+    const ids = plan.exercises.map((exercise) => exercise.exerciseId);
+    assert.ok(ids.includes('lateral-raise-machine'), `${budget}: ${ids.join(', ')}`);
+    assert.ok(!ids.includes('lateral-raise'), `${budget} fell back to the dumbbells`);
+  }
+});
+
+test('lo que el gimnasio no tiene sale del plan de ese gimnasio', async () => {
+  const db = fresh();
+  const before = await loadRoutinePlan(db, 'legs', 'completo', 'fit4less-proudfoot');
+  assert.ok(before.exercises.some((exercise) => exercise.exerciseId === 'hack-squat'));
+
+  // "En Fit4Less no hay hack squat": el interruptor de la ficha.
+  await setExerciseGym(db, 'hack-squat', 'fit4less-proudfoot', false);
+
+  const there = await loadRoutinePlan(db, 'legs', 'completo', 'fit4less-proudfoot');
+  assert.ok(!there.exercises.some((exercise) => exercise.exerciseId === 'hack-squat'));
+  assert.equal(there.exercises.length, before.exercises.length - 1);
+  // En Fanshawe sigue, y un gimnasio sin nada marcado se queda con la rutina entera.
+  const fanshawe = await loadRoutinePlan(db, 'legs', 'completo', 'fanshawe');
+  assert.ok(fanshawe.exercises.some((exercise) => exercise.exerciseId === 'hack-squat'));
+  const other = await loadRoutinePlan(db, 'legs', 'completo', 'otro');
+  assert.equal(other.exercises.length, before.exercises.length);
+});
+
+test('en el plan una maquina rota se baja a cero series y no entra en la sesion', async () => {
+  const db = fresh();
+  const plan = await loadRoutinePlan(db, 'legs', 'completo', 'fanshawe');
+  let exercises = plan.exercises;
+  for (let tap = 0; tap < 5; tap += 1) exercises = overrideSets(exercises, 'hack-squat', -1);
+
+  assert.equal(exercises.find((exercise) => exercise.exerciseId === 'hack-squat')?.sets, 0);
+  const started = toStart(exercises);
+  assert.equal(started.length, plan.exercises.length - 1);
+  assert.ok(!started.some((exercise) => exercise.exerciseId === 'hack-squat'));
+});
+
+test('el plan trae puesta la rutina que la semana todavia debe', async () => {
+  const routines = await listRoutines(fresh());
+  const TODAY = '2026-10-10';
+
+  // Sin nada hecho deben empuje y tiron dos cada una: empata y va la primera.
+  assert.equal(owedRoutine(routines, [], TODAY), 'push');
+
+  // Empujo ayer: ahora el tiron debe dos y el empuje una.
+  assert.equal(owedRoutine(routines, [{ routineId: 'push', date: '2026-10-09' }], TODAY), 'pull');
+
+  // Dos de empuje y una de tiron en la semana: tiron y pierna deben una. La pierna fue el
+  // 30, fuera de la semana y hace mas que el tiron del 6, asi que toca pierna.
+  const week = [
+    { routineId: 'legs', date: '2026-09-30' },
+    { routineId: 'push', date: '2026-10-05' },
+    { routineId: 'pull', date: '2026-10-06' },
+    { routineId: 'push', date: '2026-10-07' },
+  ];
+  assert.equal(owedRoutine(routines, week, TODAY), 'legs');
+});
+
+test('una sesion abierta sin ninguna serie no cuenta como esa rutina hecha', async () => {
+  const db = fresh();
+  await startSession(db, { date: '2026-10-08', timeBudget: 'completo', routineId: 'pull' });
+  const done = await startSession(db, {
+    date: '2026-10-09',
+    timeBudget: 'completo',
+    routineId: 'push',
+  });
+  await addSet(db, { sessionId: done, exerciseId: 'peck-deck', weightKg: 40, reps: 12 });
+
+  const listed = await listRoutinesDone(db, { from: '2026-10-01', to: '2026-10-10' });
+  assert.deepEqual(
+    listed.map((one) => ({ ...one })),
+    [{ routineId: 'push', date: '2026-10-09' }],
+  );
 });

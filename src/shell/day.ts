@@ -179,3 +179,48 @@ export async function exerciseContext(
     marks: bestAndWorstE1rm(windowSets),
   };
 }
+
+/** Lo que se sabe de una serie en el momento de tocar "Serie", antes de que la base conteste. */
+export type TappedSet = Pick<LoggedSet, 'sessionId' | 'exerciseId' | 'weightKg' | 'reps'> & {
+  rpe: number | null;
+  timestamp: number;
+};
+
+/**
+ * La serie recien tocada, puesta ya en lo cargado.
+ *
+ * Hasta que llegaba la recarga, la lista seguia sin ella: los campos volvian a proponer la
+ * serie de antes, el boton seguia encendido, y un segundo toque anotaba una serie que no
+ * hizo, con los numeros de la anterior. Con la serie puesta, la cuenta, la lista y lo que
+ * proponen los campos para la siguiente salen de aqui; la recarga trae despues lo que la
+ * base calculo (el descanso, el volumen con las dos mancuernas).
+ */
+export function withTappedSet<T extends { today: AssembledDay; exercise: ExerciseContext }>(
+  loaded: T,
+  set: TappedSet,
+): T {
+  const sameExercise = loaded.today.sessionSets.filter(
+    (logged) => logged.sessionId === set.sessionId && logged.exerciseId === set.exerciseId,
+  );
+  const logged: LoggedSet = {
+    sessionId: set.sessionId,
+    // La de anoche, si es la sesion que sigue abierta despues de medianoche.
+    date: loaded.today.session?.date ?? loaded.today.date,
+    exerciseId: set.exerciseId,
+    setIndex: Math.max(0, ...sameExercise.map((one) => one.setIndex)) + 1,
+    weightKg: set.weightKg,
+    reps: set.reps,
+    rpe: set.rpe,
+    timestamp: set.timestamp,
+    restBeforeSeconds: null,
+  };
+  // Las series de hoy del ejercicio abierto: si las que hay son de otro, este no es el abierto.
+  const open = loaded.exercise.todaySets.every((one) => one.exerciseId === set.exerciseId);
+  return {
+    ...loaded,
+    today: { ...loaded.today, sessionSets: [...loaded.today.sessionSets, logged] },
+    exercise: open
+      ? { ...loaded.exercise, todaySets: [...loaded.exercise.todaySets, logged] }
+      : loaded.exercise,
+  };
+}

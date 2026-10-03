@@ -59,3 +59,11 @@ test('las instrucciones dicen el dia y la unidad, que es lo que el no escribe', 
   assert.match(said, /en kg/);
   assert.match(said, /agua 710/);
 });
+
+test('con libras en Ajustes, al modelo no se le dice que el peso corporal va en libras', () => {
+  const said = instructions('2026-10-01', 'lb');
+  // Antes decia "El peso va en lb" junto a "tu peso de hoy en kilos".
+  assert.doesNotMatch(said, /El peso va en lb/);
+  assert.match(said, /peso corporal va siempre en kg/);
+  assert.match(said, /series, en lb/);
+});

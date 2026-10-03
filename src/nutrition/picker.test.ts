@@ -23,7 +23,7 @@ function entry(
   quantity = 1,
   date = '2026-09-20',
 ): FoodEntryTrace {
-  return { foodId, mealSlot, quantity, unit: 'unidad', date, timestamp };
+  return { foodId, mealSlot, quantity, unit: 'unidad', date, timestamp, batchId: null };
 }
 
 test('el historial sale de la base tal cual lo anoto', async () => {
@@ -146,7 +146,9 @@ test('la ultima vez que lleno un espacio de comida se puede repetir entera', () 
 
   const breakfast = history.lastMealBySlot.get('desayuno');
   assert.equal(breakfast?.date, '2026-09-22');
-  assert.deepEqual(breakfast?.entries, [{ foodId: 'barra', quantity: 1, unit: 'unidad' }]);
+  assert.deepEqual(breakfast?.entries, [
+    { foodId: 'barra', quantity: 1, unit: 'unidad', batchId: null },
+  ]);
 
   const lunch = history.lastMealBySlot.get('mediodía');
   assert.equal(lunch?.date, '2026-09-22');

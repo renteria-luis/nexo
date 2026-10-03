@@ -105,7 +105,10 @@ export function instructions(today: IsoDate, unit: string): string {
     'Comandos:',
     ...COMMAND_HELP.map((row) => `  ${row}`),
     '',
-    `El peso va en ${unit}. Hoy es ${today}.`,
+    // El peso corporal va siempre en kilos (decision 2026-10-02); la unidad de Ajustes es
+    // solo para las series. Decirle "el peso va en lb" al lado de "peso en kilos" le dejaba
+    // escoger, y un "me pese 74" podia salir como 163 kg.
+    `El peso corporal va siempre en kg; el de las series, en ${unit}. Hoy es ${today}.`,
     'Si el dia no es hoy, la fecha va delante del comando: "ayer", "anteayer", "25 set", "25/09".',
     '',
     'Ejemplos, cada uno independiente del anterior:',

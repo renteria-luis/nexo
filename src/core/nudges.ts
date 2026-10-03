@@ -253,26 +253,33 @@ function clockOf(minute: number): string {
  */
 export function nudgesFor(day: NudgeDay, hours: NudgeHours, rules: NudgeRules): Nudge[] {
   const candidates: Nudge[] = [];
-  const add = (nudge: Omit<Nudge, 'id' | 'date'>) => {
-    candidates.push({ ...nudge, id: `${nudge.kind}-${day.date}`, date: day.date });
+  // Un aviso por tipo y dia, salvo la comida, que lleva uno por espacio (spec 18.1). Con
+  // el mismo id para los tres, iOS cambiaba uno por otro y solo salia el ultimo, horas
+  // despues del primer hueco.
+  const add = (nudge: Omit<Nudge, 'id' | 'date'>, key?: string) => {
+    const id = key === undefined ? `${nudge.kind}-${day.date}` : `${nudge.kind}-${key}-${day.date}`;
+    candidates.push({ ...nudge, id, date: day.date });
   };
 
   for (const slot of MEAL_SLOTS) {
     if (day.filledSlots.includes(slot)) continue;
     const usual = hours.meals.get(slot);
     if (usual === undefined) continue;
-    add({
-      kind: 'comida',
-      atMinute: usual + MEAL_GRACE_MINUTES,
-      // El titulo dice de que va el aviso y el cuerpo que falta. "Falta tarde" a
-      // secas no decia si hablaba de comida, de entreno o de la hora.
-      title: 'Comida sin anotar',
-      body: `Falta ${named(slot)}, que sueles anotar cerca de las ${clockOf(usual)}.`,
-      actions: [{ id: 'abrir', label: 'Anotar' }],
-      // Los puntos de la comida son del dia entero, no de cada espacio: repartidos,
-      // una comida suelta no le gana al entreno ni al sueño.
-      weight: (CRITERION_WEIGHTS.protein + CRITERION_WEIGHTS.calories) / MEAL_SLOTS.length,
-    });
+    add(
+      {
+        kind: 'comida',
+        atMinute: usual + MEAL_GRACE_MINUTES,
+        // El titulo dice de que va el aviso y el cuerpo que falta. "Falta tarde" a
+        // secas no decia si hablaba de comida, de entreno o de la hora.
+        title: 'Comida sin anotar',
+        body: `Falta ${named(slot)}, que sueles anotar cerca de las ${clockOf(usual)}.`,
+        actions: [{ id: 'abrir', label: 'Anotar' }],
+        // Los puntos de la comida son del dia entero, no de cada espacio: repartidos,
+        // una comida suelta no le gana al entreno ni al sueño.
+        weight: (CRITERION_WEIGHTS.protein + CRITERION_WEIGHTS.calories) / MEAL_SLOTS.length,
+      },
+      slot,
+    );
   }
 
   if (!day.trained && !day.restDay && day.trainingDebt > 0) {

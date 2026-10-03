@@ -110,8 +110,14 @@ test('applying a snapshot stores the deal with its shop and its source', async (
   assert.equal(stored.retailer?.name, 'Food Basics');
   assert.equal(stored.stale, false);
 
-  // Spec 16.5: the untouched response is kept so a wrong parse can be checked.
-  assert.match(stored.deal.raw_payload ?? '', /current_price/);
+  // Spec 16.5: the untouched response is kept so a wrong parse can be checked, but the
+  // list does not carry it: no screen reads it, and it was a third of every read.
+  assert.equal('raw_payload' in stored.deal, false);
+  const raw = await db.getFirstAsync<{ raw_payload: string }>(
+    'SELECT raw_payload FROM deals_deal WHERE id = ?;',
+    [stored.deal.id],
+  );
+  assert.match(raw?.raw_payload ?? '', /current_price/);
 
   const [source] = await listSources(db);
   assert.equal(source.health, 'ok');

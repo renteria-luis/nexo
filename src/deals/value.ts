@@ -10,7 +10,7 @@
 // rule 5).
 
 import type { IsoDate } from '../core/dates.ts';
-import type { DealsDealRow, DealsDiscountRow, NutritionFoodRow } from '../db/types.ts';
+import type { DealsDiscountRow, ListedDeal, NutritionFoodRow } from '../db/types.ts';
 
 const GRAMS_PER_LB = 453.59237;
 const GRAMS_PER_KG = 1000;
@@ -50,7 +50,7 @@ export function applicableDiscount(
 }
 
 export function finalPriceCents(
-  deal: DealsDealRow,
+  deal: ListedDeal,
   discount: DealsDiscountRow | null,
 ): number | null {
   if (deal.price_cents === null) return null;
@@ -66,7 +66,7 @@ export function finalPriceCents(
  * no en la unidad. Si no hay peso, la unidad, y si la unidad es 'ea' no se puede decir
  * nada, porque un paquete no dice cuanta comida es.
  */
-function gramsOfDeal(deal: DealsDealRow): number | null {
+function gramsOfDeal(deal: ListedDeal): number | null {
   if (deal.grams !== null && deal.grams > 0) return deal.grams;
   if (deal.unit === null) return null;
   const normalised = deal.unit.trim().toLowerCase();
@@ -84,7 +84,7 @@ function gramsOfDeal(deal: DealsDealRow): number | null {
  * dieciocho huevos no pesan nada que el folleto diga, pero son dieciocho huevos, y su
  * ficha ya sabe lo que trae cada uno.
  */
-function baseUnitsOfDeal(deal: DealsDealRow, food: NutritionFoodRow): number | null {
+function baseUnitsOfDeal(deal: ListedDeal, food: NutritionFoodRow): number | null {
   if (food.unit_kind === 'count') return deal.pack_count;
   if (food.unit_kind === 'volume') return deal.pack_ml;
   const grams = gramsOfDeal(deal);
@@ -96,7 +96,7 @@ function baseUnitsOfDeal(deal: DealsDealRow, food: NutritionFoodRow): number | n
  * Lo que cuesta un kilo de esa oferta, en centavos. Null cuando no se sabe lo que
  * pesa, que es la mitad de las ofertas: un "2 x $7" sin gramos no dice nada del kilo.
  */
-export function dealCentsPerKg(deal: DealsDealRow): number | null {
+export function dealCentsPerKg(deal: ListedDeal): number | null {
   const grams = gramsOfDeal(deal);
   if (grams === null || grams <= 0 || deal.price_cents === null) return null;
   return Math.round((deal.price_cents / grams) * GRAMS_PER_KG);
@@ -116,7 +116,7 @@ export type UnitPrice = {
  * Es lo que el folleto nunca pone junto: dice "$4.44" y, en letra chica, "18'S". El
  * precio por huevo no esta en ningun sitio y es el que decide.
  */
-export function unitPrice(deal: DealsDealRow): UnitPrice | null {
+export function unitPrice(deal: ListedDeal): UnitPrice | null {
   if (deal.price_cents === null || deal.price_cents <= 0) return null;
 
   const grams = gramsOfDeal(deal);
@@ -165,7 +165,7 @@ export type ProteinValue = {
  * because it is exactly the number he would decide on.
  */
 export function proteinPerDollar(
-  deal: DealsDealRow,
+  deal: ListedDeal,
   food: NutritionFoodRow,
   discounts: readonly DealsDiscountRow[],
   chain: string | null,
@@ -188,7 +188,7 @@ export function proteinPerDollar(
 }
 
 export type RankedDeal = {
-  deal: DealsDealRow;
+  deal: ListedDeal;
   food: NutritionFoodRow;
   value: ProteinValue;
 };
@@ -227,7 +227,7 @@ export function usualCentsPerKg(food: NutritionFoodRow): number | null {
  * kilos, which is most deals: 'ea' does not say how much food it is.
  */
 export function comparedToUsual(
-  deal: DealsDealRow,
+  deal: ListedDeal,
   food: NutritionFoodRow,
   discounts: readonly DealsDiscountRow[],
   chain: string | null,

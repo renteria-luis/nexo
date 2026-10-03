@@ -81,3 +81,22 @@ test('una oferta acaba el dia que acaba en sus tiendas, no el dia de UTC', () =>
   assert.equal(localDate(null), null);
   assert.equal(localDate('mañana'), null);
 });
+
+test('un tamano en rango o un precio por libra no se leen como un peso', () => {
+  // Antes: 800 g para una bandeja de 450 a 800, y 4990 g para "$11 LB".
+  assert.equal(gramsFromText('450-800 g'), null);
+  assert.equal(gramsFromText('827-876 G'), null);
+  assert.equal(gramsFromText('FRESH STEELHEAD TROUT FILLETS, $11 LB'), null);
+  assert.equal(gramsFromText('Pork loin $3.99 lb'), null);
+  assert.equal(packFromText('1-2 L'), null);
+  assert.equal(packFromText('Maple Leaf Prime chicken breast, 450-800 g'), null);
+  assert.equal(
+    dealPack('Maple Leaf Prime boneless skinless chicken breast', '450-800 g', null),
+    null,
+  );
+
+  // Lo que si es una medida sigue entrando, aunque haya un precio delante.
+  assert.equal(gramsFromText('$5.99 500 g'), 500);
+  assert.equal(gramsFromText('pechuga 1.36 kg'), 1360);
+  assert.deepEqual(packFromText('$4.49 2 L'), { millilitres: 2000 });
+});

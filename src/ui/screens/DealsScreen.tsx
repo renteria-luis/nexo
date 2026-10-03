@@ -11,12 +11,15 @@ import {
 } from '../../deals/index.ts';
 import type { DealsDiscountRow } from '../../db/types.ts';
 import { useAppData } from '../../shell/AppData.tsx';
+import { ago, sourceStatus } from '../../shell/deals.ts';
 
 import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
 import { Chip } from '../Chip.tsx';
 import { ChevronDown, ChevronUp, RotateCcw } from '../icons.ts';
 import { font, sheet, shape, theme } from '../theme.ts';
+
+import { useNow } from '../useNow.ts';
 
 import { Screen } from './Screen.tsx';
 
@@ -55,14 +58,6 @@ const TERM_ES: Record<string, string> = {
 
 function money(cents: number | null): string {
   return cents === null ? MISSING : `$${(cents / 100).toFixed(2)}`;
-}
-
-function ago(fetchedAt: number | null): string {
-  if (fetchedAt === null) return 'nunca';
-  const hours = Math.floor((Date.now() - fetchedAt) / 3_600_000);
-  if (hours < 1) return 'hace menos de una hora';
-  if (hours < 24) return `hace ${hours} h`;
-  return `hace ${Math.floor(hours / 24)} días`;
 }
 
 /**
@@ -142,6 +137,11 @@ function DealRow({
   );
 }
 
+/** Una fuente y su estado; callada, en el estilo de aviso y no en gris. */
+function SourceLine({ status }: { status: { line: string; silent: boolean } }) {
+  return <Text style={status.silent ? styles.healthWarn : styles.health}>{status.line}</Text>;
+}
+
 /**
  * Spec 16. Cards are never merged across sources and nothing is hidden: an expired
  * offer is greyed rather than dropped, because a screen that only shows fresh things
@@ -149,6 +149,7 @@ function DealRow({
  */
 export function DealsScreen() {
   const { state, refreshDeals } = useAppData();
+  const now = useNow();
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [group, setGroup] = useState<Group>('product');
@@ -258,7 +259,7 @@ export function DealsScreen() {
             .then((outcome) => {
               setNote(
                 outcome.kind === 'ok'
-                  ? `${outcome.count} ofertas, ${ago(outcome.fetchedAt)}`
+                  ? `${outcome.count} ofertas, ${ago(outcome.fetchedAt, Date.now())}`
                   : outcome.reason,
               );
             })
@@ -270,10 +271,7 @@ export function DealsScreen() {
       <Card>
         {note && <Text style={styles.note}>{note}</Text>}
         {dealSources.map((source) => (
-          <Text key={source.id} style={styles.health}>
-            {source.name}: {source.health === 'ok' ? 'al día' : 'sin datos'}, última vez{' '}
-            {ago(source.last_success_at)}
-          </Text>
+          <SourceLine key={source.id} status={sourceStatus(source, now)} />
         ))}
       </Card>
 
@@ -357,6 +355,15 @@ const styles = sheet((theme) => ({
     fontSize: 12,
     fontFamily: font.regular,
     color: theme.textFaint,
+  },
+  healthWarn: {
+    alignSelf: 'flex-start',
+    fontSize: 12,
+    fontFamily: font.black,
+    color: theme.text,
+    backgroundColor: theme.warnBg,
+    paddingHorizontal: 5,
+    borderRadius: 4,
   },
   empty: {
     fontSize: 13,

@@ -13,8 +13,9 @@ import {
 import { fold } from '../nutrition/picker.ts';
 import { finishingAt } from '../training/pace.ts';
 import { isPerSide, type CatalogExercise, type Swappable } from '../training/queries.ts';
+import { suggestedRest, type PlannedSet } from '../training/routines.ts';
 import { draftFieldsFor, fieldsAfterSelect, type SessionDraft } from '../core/session-draft.ts';
-import type { Implement } from '../training/sessions.ts';
+import { clampRpe, stepRpe as steppedRpe, type Implement } from '../training/sessions.ts';
 
 import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
@@ -40,7 +41,6 @@ const IMPLEMENTS: { id: Swappable; short: string; long: string }[] = [
 
 /** Donde cae casi siempre una serie efectiva, asi que el primer toque arranca ahi. */
 const RPE_START = 8;
-const RPE_MAX = 10;
 
 function setLine(set: LoggedSet, unit: WeightUnit): string {
   // "c/u" porque el numero es el de una mancuerna, no el de las dos.
@@ -89,6 +89,10 @@ export type SessionLogProps = {
   todaySets: LoggedSet[];
   /** Spec 6.4: what he did last time, which is what he copies. */
   lastSets: LoggedSet[];
+  /** La ultima serie de la sesion, de cualquier ejercicio: desde ahi descansa. */
+  restingSince: number | null;
+  /** Lo aprobado para hoy, que trae el descanso recortado de cada ejercicio. */
+  plan: PlannedSet[];
   marks: { best: E1rmMark; worst: E1rmMark } | null;
   sessionVolume: number;
   unit: WeightUnit;
@@ -102,11 +106,12 @@ export type SessionLogProps = {
   setsDoneByExercise: Map<string, number>;
   /** Cuantas aprobo para cada uno. */
   plannedByExercise: Map<string, number>;
+  /** Se puede esperar: el boton se queda ocupado hasta que la serie quedo guardada. */
   onAddSet: (
     weightKg: number,
     reps: number,
     extra: { rpe: number | null; implement: Implement | null },
-  ) => void;
+  ) => Promise<void>;
   onRemoveSet: (setIndex: number) => void;
   /** Cuando toco empezar, para el reloj de la sesion. */
   startedAt: number | null;
@@ -199,6 +204,8 @@ export const SessionLog = memo(function SessionLog({
   onSelectExercise,
   todaySets,
   lastSets,
+  restingSince,
+  plan,
   marks,
   sessionVolume,
   unit,
@@ -290,6 +297,13 @@ export const SessionLog = memo(function SessionLog({
   // cambia, y cuando cambia son dos toques.
   const rpe = rpeDraft ?? (previous?.rpe == null ? '' : String(previous.rpe));
 
+  // Mientras la serie se guarda el boton no acepta otro toque: el segundo de un doble
+  // toque anotaba una serie que no hizo.
+  const [saving, setSaving] = useState(false);
+  // Una serie que la base no acepto. Los campos se quedan con lo escrito: antes se
+  // vaciaban al tocar, y si no se guardaba no quedaba ni la serie ni los numeros.
+  const [refused, setRefused] = useState(false);
+
   const clearDrafts = () => {
     setWeightDraft(null);
     setRepsDraft(null);
@@ -339,8 +353,9 @@ export const SessionLog = memo(function SessionLog({
     doneWith === null
       ? false
       : isPerSide(doneWith, implement === null ? (exercise?.equipment?.kind ?? null) : null);
-  const lastSet = todaySets.at(-1) ?? null;
-  const dropOffs = exercise ? repDropOffs(todaySets, exercise.default_rest_seconds) : [];
+  const restSeconds =
+    exercise === null ? null : suggestedRest(plan, exercise.id, exercise.default_rest_seconds);
+  const dropOffs = restSeconds === null ? [] : repDropOffs(todaySets, restSeconds);
   const parsedWeight = Number(weight);
   const parsedReps = Number(reps);
   const parsedRpe = rpe.trim() === '' ? null : Number(rpe);
@@ -368,15 +383,8 @@ export const SessionLog = memo(function SessionLog({
     setRepsDraft(String(Math.max(1, base + direction)));
   };
 
-  const stepRpe = (direction: 1 | -1) => {
-    if (parsedRpe === null || !Number.isFinite(parsedRpe)) {
-      setRpeDraft(String(RPE_START));
-      return;
-    }
-    const next = parsedRpe + direction;
-    if (next < 0 || next > RPE_MAX) return;
-    setRpeDraft(String(next));
-  };
+  const stepRpe = (direction: 1 | -1) =>
+    setRpeDraft(String(steppedRpe(parsedRpe, direction, RPE_START)));
 
   const nudge = (direction: 1 | -1) => setWeightDraft(stepWeight(parsedWeight, direction, unit));
 
@@ -494,13 +502,9 @@ export const SessionLog = memo(function SessionLog({
                 hueco entre dos series ya anotadas, que si lleva una serie dentro: aqui
                 dejaba el reloj clavado en cero durante medio minuto. */}
               <Text style={styles.rest}>
-                Descanso sugerido {clock(exercise.default_rest_seconds)}
-                {lastSet?.timestamp ? (
-                  <Elapsed
-                    key={lastSet.timestamp}
-                    since={lastSet.timestamp}
-                    prefix=" · descansando "
-                  />
+                Descanso sugerido {clock(restSeconds ?? exercise.default_rest_seconds)}
+                {restingSince !== null ? (
+                  <Elapsed key={restingSince} since={restingSince} prefix=" · descansando " />
                 ) : null}
               </Text>
 
@@ -698,15 +702,23 @@ export const SessionLog = memo(function SessionLog({
                       size="large"
                       block
                       disabled={!canAdd}
+                      loading={saving}
                       accessibilityLabel="Agregar serie"
                       onPress={() => {
-                        if (!canAdd) return;
+                        if (!canAdd || saving) return;
                         const rpe =
                           parsedRpe !== null && Number.isFinite(parsedRpe)
-                            ? Math.min(RPE_MAX, Math.max(0, parsedRpe))
+                            ? clampRpe(parsedRpe)
                             : null;
-                        onAddSet(toKg(parsedWeight, unit), parsedReps, { rpe, implement });
-                        clearDrafts();
+                        setSaving(true);
+                        setRefused(false);
+                        onAddSet(toKg(parsedWeight, unit), parsedReps, { rpe, implement })
+                          .then(clearDrafts)
+                          .catch((error: unknown) => {
+                            console.error(error);
+                            setRefused(true);
+                          })
+                          .finally(() => setSaving(false));
                       }}
                       style={styles.serie}
                     />
@@ -714,6 +726,11 @@ export const SessionLog = memo(function SessionLog({
                 </View>
               </View>
 
+              {refused && (
+                <Text style={styles.refused}>
+                  No se guardó la serie. Revisa los números y vuelve a tocar Serie.
+                </Text>
+              )}
               {perSide && (
                 <Text style={styles.perSide}>
                   El peso es el de una mancuerna; el volumen cuenta las dos.
@@ -1078,6 +1095,11 @@ const styles = sheet((theme) => ({
     fontSize: 12,
     fontFamily: font.regular,
     color: theme.textFaint,
+  },
+  refused: {
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.danger,
   },
 
   finish: {

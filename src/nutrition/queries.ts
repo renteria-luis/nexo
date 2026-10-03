@@ -9,6 +9,7 @@ import type {
 } from '../db/types.ts';
 import { inTransaction } from '../db/transaction.ts';
 
+import type { LastMeal } from './picker.ts';
 import type { LoggedPortion } from './totals.ts';
 import { MEAL_SLOTS, parseQuickAmounts } from './units.ts';
 
@@ -127,7 +128,8 @@ export async function getFood(db: SQLiteDatabase, foodId: string): Promise<Nutri
 /** Spec 1.7: one tap is one container, and the 710 ml bottle is most of them. */
 export async function listContainers(db: SQLiteDatabase): Promise<NutritionContainerRow[]> {
   return db.getAllAsync<NutritionContainerRow>(
-    'SELECT * FROM nutrition_container ORDER BY volume_ml DESC;',
+    // De menor a mayor, que es como se leen los botones de agua: 150, 300, 710.
+    'SELECT * FROM nutrition_container ORDER BY volume_ml;',
   );
 }
 
@@ -222,6 +224,25 @@ export type LabelFood = {
   carbsG: number | null;
 };
 
+/**
+ * Lo que la base no va a aceptar de una etiqueta, dicho antes de intentarlo. Null es que
+ * esta bien. Un 20 donde iba un 2 de azucar se rechazaba despues de cerrar la ficha.
+ */
+export function labelProblem(label: {
+  carbsG: number | null;
+  sugarG: number | null;
+  glycemicIndex?: number | null;
+}): string | null {
+  if (label.carbsG !== null && label.sugarG !== null && label.sugarG > label.carbsG) {
+    return 'El azúcar no puede ser más que los carbos: el azúcar es parte de ellos.';
+  }
+  const index = label.glycemicIndex ?? null;
+  if (index !== null && !(Number.isInteger(index) && index >= 0 && index <= 110)) {
+    return 'El índice glucémico es un número entero de 0 a 110.';
+  }
+  return null;
+}
+
 export type NewFood = {
   name: string;
   store?: string | null;
@@ -230,7 +251,10 @@ export type NewFood = {
   /** La unidad en la que va a anotarlo despues: 'g', 'ml', 'unidad', 'huevo'. */
   unit: string;
   kind: UnitKind;
-  /** Lo que pesa una unidad contable, cuando la etiqueta lo dice. Null si no. */
+  /**
+   * Lo que pesa una unidad (un huevo, una tortilla) o un mililitro, en gramos. Null si no
+   * se sabe: sin esto un alimento contado no puede entrar en una olla.
+   */
   gramsPerUnit?: number | null;
   kcal: number;
   proteinG: number;
@@ -239,6 +263,11 @@ export type NewFood = {
   carbsG: number | null;
   sugarG?: number | null;
   sodiumMg?: number | null;
+  fibreG?: number | null;
+  /** Spec 7.5: de una tabla de indice glucemico, no de la etiqueta, que no lo trae. */
+  glycemicIndex?: number | null;
+  /** Spec 7.5 punto 2: cuenta para el total de lacteos del dia. */
+  isDairy?: boolean;
   /** Como lo va a buscar: "egg, costco", separadas por coma. */
   keywords?: string | null;
   /** Las cantidades de boton, separadas por coma. Vacio deja las de siempre. */
@@ -291,20 +320,22 @@ export async function addFood(db: SQLiteDatabase, food: NewFood): Promise<string
   const carbsG = optionalFigure('carbohydrate', food.carbsG);
   const sugarG = optionalFigure('sugar', food.sugarG);
   const sodiumMg = optionalFigure('sodium', food.sodiumMg);
+  const fibreG = optionalFigure('fibre', food.fibreG);
+  const problem = labelProblem({ carbsG, sugarG, glycemicIndex: food.glycemicIndex });
+  if (problem !== null) throw new Error(problem);
 
   const id = `food-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
   const per = food.amount;
-  // Un gramo pesa un gramo; una unidad pesa lo que diga la etiqueta, o nada.
-  const baseUnitG =
-    food.kind === 'mass' ? 1 : food.kind === 'count' ? (food.gramsPerUnit ?? null) : null;
+  // Un gramo pesa un gramo; una unidad o un mililitro pesan lo que el diga, o nada.
+  const baseUnitG = food.kind === 'mass' ? 1 : positiveOrNull(food.gramsPerUnit);
 
   await db.runAsync(
     `INSERT INTO nutrition_food
        (id, name, brand, store, base_unit, unit_kind, base_unit_g, kcal, protein_g, carbs_g,
         sugar_g, fat_g, fibre_g, sodium_mg, source, price_cad_cents, package_size,
         glycemic_index, is_dairy, keywords, quick_amounts)
-     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'label',
-             NULL, NULL, NULL, 0, ?, ?);`,
+     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'label',
+             NULL, NULL, ?, ?, ?, ?);`,
     [
       id,
       name,
@@ -317,13 +348,22 @@ export async function addFood(db: SQLiteDatabase, food: NewFood): Promise<string
       carbsG === null ? null : carbsG / per,
       sugarG === null ? null : sugarG / per,
       food.fatG / per,
+      fibreG === null ? null : fibreG / per,
       sodiumMg === null ? null : sodiumMg / per,
+      food.glycemicIndex ?? null,
+      food.isDairy ? 1 : 0,
       cleanKeywords(food.keywords),
       cleanQuickAmounts(food.quickAmounts),
     ],
   );
 
   return id;
+}
+
+function positiveOrNull(value: number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  if (!(Number.isFinite(value) && value > 0)) throw new Error(`a weight of ${value} g is not one`);
+  return value;
 }
 
 /**
@@ -356,9 +396,26 @@ export type FoodEdit = {
   carbsG: number | null;
   sugarG: number | null;
   sodiumMg: number | null;
+  // Los cuatro de abajo se quedan como estan cuando no vienen.
+  fibreG?: number | null;
+  glycemicIndex?: number | null;
+  isDairy?: boolean;
+  /** Lo que pesa una unidad o un mililitro; en lo pesado no se usa, un gramo pesa uno. */
+  gramsPerUnit?: number | null;
   keywords: string | null;
   quickAmounts: string | null;
 };
+
+/**
+ * Cuanto describe la etiqueta que esta copiando, leido de su casilla: los gramos o
+ * mililitros de la porcion de la etiqueta, o null si no es una cantidad. Las etiquetas
+ * hablan por porcion (40 g, 250 ml, dos huevos), no por cien, y la ficha solo aceptaba
+ * 100: habia que multiplicar seis cifras antes de escribirlas.
+ */
+export function labelServing(typed: string): number | null {
+  const amount = Number(typed.replace(',', '.'));
+  return typed.trim() !== '' && Number.isFinite(amount) && amount > 0 ? amount : null;
+}
 
 /** Lo que describen los macros de un alimento: una unidad, o cien gramos o mililitros. */
 export function referenceAmount(food: NutritionFoodRow): number {
@@ -386,13 +443,25 @@ export async function updateFood(db: SQLiteDatabase, id: string, food: FoodEdit)
   const carbsG = optionalFigure('carbohydrate', food.carbsG);
   const sugarG = optionalFigure('sugar', food.sugarG);
   const sodiumMg = optionalFigure('sodium', food.sodiumMg);
+  const fibreG = optionalFigure('fibre', food.fibreG);
+  const problem = labelProblem({ carbsG, sugarG, glycemicIndex: food.glycemicIndex });
+  if (problem !== null) throw new Error(problem);
 
   const per = referenceAmount(current);
+  const baseUnitG =
+    current.unit_kind === 'mass'
+      ? 1
+      : food.gramsPerUnit === undefined
+        ? current.base_unit_g
+        : positiveOrNull(food.gramsPerUnit);
+  const fibrePerUnit =
+    food.fibreG === undefined ? current.fibre_g : fibreG === null ? null : fibreG / per;
 
   await db.runAsync(
     `UPDATE nutrition_food
         SET name = ?, kcal = ?, protein_g = ?, carbs_g = ?, sugar_g = ?, fat_g = ?,
-            sodium_mg = ?, keywords = ?, quick_amounts = ?
+            sodium_mg = ?, fibre_g = ?, glycemic_index = ?, is_dairy = ?, base_unit_g = ?,
+            keywords = ?, quick_amounts = ?
       WHERE id = ?;`,
     [
       name,
@@ -402,6 +471,10 @@ export async function updateFood(db: SQLiteDatabase, id: string, food: FoodEdit)
       sugarG === null ? null : sugarG / per,
       food.fatG / per,
       sodiumMg === null ? null : sodiumMg / per,
+      fibrePerUnit,
+      food.glycemicIndex === undefined ? current.glycemic_index : food.glycemicIndex,
+      food.isDairy === undefined ? current.is_dairy : food.isDairy ? 1 : 0,
+      baseUnitG,
       cleanKeywords(food.keywords),
       cleanQuickAmounts(food.quickAmounts),
       id,
@@ -420,10 +493,13 @@ export type FoodRemoval = 'borrado' | 'archivado';
  * desaparece de donde elige y de donde corrige, y se puede recuperar.
  */
 export async function removeFood(db: SQLiteDatabase, id: string): Promise<FoodRemoval> {
+  // La despensa tambien cuenta: un alimento que nunca comio pero que algo de la despensa
+  // nombra no se puede borrar (la base lo rechaza), asi que se archiva.
   const used = await db.getFirstAsync<{ count: number }>(
     `SELECT (SELECT count(*) FROM nutrition_food_entry WHERE food_id = ?)
-          + (SELECT count(*) FROM nutrition_batch WHERE food_id = ?) AS count;`,
-    [id, id],
+          + (SELECT count(*) FROM nutrition_batch WHERE food_id = ?)
+          + (SELECT count(*) FROM pantry_item WHERE food_id = ?) AS count;`,
+    [id, id, id],
   );
 
   if ((used?.count ?? 0) > 0) {
@@ -501,6 +577,34 @@ export async function discardBatch(db: SQLiteDatabase, batchId: string): Promise
  * and the remaining count drops in the same transaction. An empty batch refuses
  * instead of going negative.
  */
+/**
+ * Vuelve a anotar una comida entera en ese dia y ese espacio. Lo que fue una porcion de
+ * olla sale otra vez de su olla: repetida como gramos sueltos no bajaba la olla, y la
+ * tarjeta seguia ofreciendo una porcion que ya se comio. Devuelve cuantas no se anotaron
+ * porque esa olla ya se acabo.
+ */
+export async function repeatMealOn(
+  db: SQLiteDatabase,
+  meal: LastMeal,
+  date: IsoDate,
+  mealSlot: string,
+): Promise<number> {
+  let skipped = 0;
+  for (const { batchId, ...portion } of meal.entries) {
+    if (batchId === null) {
+      await addFoodEntry(db, { ...portion, date, mealSlot });
+      continue;
+    }
+    const batch = await db.getFirstAsync<{ portions_remaining: number }>(
+      'SELECT portions_remaining FROM nutrition_batch WHERE id = ?;',
+      [batchId],
+    );
+    if (batch === null || batch.portions_remaining <= 0) skipped += 1;
+    else await consumeBatchPortion(db, batchId, date, mealSlot);
+  }
+  return skipped;
+}
+
 export async function consumeBatchPortion(
   db: SQLiteDatabase,
   batchId: string,

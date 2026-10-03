@@ -1,8 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Keyboard, Pressable, ScrollView, Text, View } from 'react-native';
 
 import type { ChatMessage, ChatSummary } from '../core/assistant.ts';
-import { COMMAND_HELP, dateFrom, parseCommand, type Command } from '../core/commands.ts';
+import {
+  COMMAND_HELP,
+  dateFrom,
+  parseCommand,
+  setLoggedReply,
+  type Command,
+} from '../core/commands.ts';
 import { scoreText } from '../core/day-report.ts';
 import { shortDate, todayIso, type IsoDate } from '../core/dates.ts';
 import { currentStreak } from '../core/discipline.ts';
@@ -44,13 +50,30 @@ function plain(text: string): string {
   return text.toLowerCase().trim();
 }
 
+/** Lo que se lee de un chat al abrirlo; lo de antes queda a un toque. */
+const CHAT_PAGE = 50;
+
+/**
+ * Una linea del chat. Memoizada: cada tecla del cuadro de abajo redibuja el chat, y sin
+ * esto redibujaba tambien todas las lineas.
+ */
+const Bubble = memo(function Bubble({ role, body }: { role: 'me' | 'app'; body: string }) {
+  return (
+    <View style={[styles.bubble, role === 'me' ? styles.mine : styles.theirs]}>
+      <Text style={role === 'me' ? styles.mineText : styles.theirsText}>{body}</Text>
+    </View>
+  );
+});
+
 export function Chat({ onClose }: { onClose: () => void }) {
   const {
     state,
     exerciseId,
     logDay,
+    addToDay,
     logSet,
     editDay,
+    addToDayOn,
     loadDay,
     loadCharts,
     loadRecords,
@@ -66,19 +89,33 @@ export function Chat({ onClose }: { onClose: () => void }) {
   const [pending, setPending] = useState<Pending | null>(null);
   const [history, setHistory] = useState<ChatSummary[] | null>(null);
   const [thinking, setThinking] = useState(false);
+  // Cuantas lineas del final se muestran, y si quedan mas arriba.
+  const [shown, setShown] = useState(CHAT_PAGE);
+  const [older, setOlder] = useState(false);
   const scroll = useRef<ScrollView>(null);
+
+  /** Las ultimas `count` lineas de ese chat; una de mas dice si quedan anteriores. */
+  const showPage = useCallback(
+    async (id: string, count: number) => {
+      const page = await loadChat(id, count + 1);
+      setOlder(page.length > count);
+      setSaid(page.slice(-count));
+      setShown(count);
+    },
+    [loadChat],
+  );
 
   useEffect(() => {
     let alive = true;
     lastChatId().then(async (id) => {
       if (!alive) return;
       setChatId(id);
-      if (id !== null) setSaid(await loadChat(id));
+      if (id !== null) await showPage(id, CHAT_PAGE);
     });
     return () => {
       alive = false;
     };
-  }, [lastChatId, loadChat]);
+  }, [lastChatId, showPage]);
 
   const say = useCallback(
     async (role: 'me' | 'app', body: string, into?: string) => {
@@ -110,8 +147,8 @@ export function Chat({ onClose }: { onClose: () => void }) {
           ? (loaded.today.log?.water_ml ?? 0)
           : ((await loadDay(date)).day.log?.water_ml ?? 0);
         const total = had + command.ml;
-        if (today) logDay({ waterMl: total });
-        else await editDay(date, { waterMl: total });
+        if (today) addToDay({ waterMl: command.ml });
+        else await addToDayOn(date, { waterMl: command.ml });
         return `Agua +${command.ml} ml ${when}, van ${(total / 1000).toFixed(2)} L`;
       }
 
@@ -148,14 +185,21 @@ export function Chat({ onClose }: { onClose: () => void }) {
         if (!today) return 'Las series de otro día se anotan en la pantalla de ese día.';
         if (loaded.today.session === null) return 'No hay entreno abierto, no anoté nada.';
         if (exerciseId === null) return 'Elige el ejercicio en Entreno y repite el comando.';
-        logSet(toKg(command.weight, loaded.unit), command.reps, { rpe: command.rpe });
-        return `Serie de ${command.weight} ${loaded.unit} por ${command.reps} anotada`;
+        await logSet(toKg(command.weight, loaded.unit), command.reps, { rpe: command.rpe });
+        return setLoggedReply(command.weight, loaded.unit, command.reps, openExerciseName());
       }
     }
   };
 
+  /** El ejercicio en el que cae una serie: el abierto en Entreno ahora mismo. */
+  const openExerciseName = () =>
+    loaded.exercise.exercises.find((item) => item.id === exerciseId)?.name_es ??
+    'el ejercicio abierto';
+
   /** Lo que ese dia ya tiene escrito, para que la pregunta diga que se va a pisar. */
   const already = async (command: Command, date: IsoDate): Promise<string> => {
+    // Una serie va al ejercicio abierto, que el plan pudo haber cambiado: se dice cual.
+    if (command.kind === 'set') return ` Va a ${openExerciseName()}.`;
     const log = (await loadDay(date)).day.log;
     if (log === null) return '';
     if (command.kind === 'steps' && log.steps !== null) return ` Ahora dice ${log.steps} pasos.`;
@@ -326,6 +370,7 @@ export function Chat({ onClose }: { onClose: () => void }) {
   const fresh = () => {
     setChatId(null);
     setSaid([]);
+    setOlder(false);
     setPending(null);
     setHistory(null);
   };
@@ -337,7 +382,7 @@ export function Chat({ onClose }: { onClose: () => void }) {
 
   const resume = async (id: string) => {
     setChatId(id);
-    setSaid(await loadChat(id));
+    await showPage(id, CHAT_PAGE);
     setPending(null);
     setHistory(null);
   };
@@ -389,15 +434,16 @@ export function Chat({ onClose }: { onClose: () => void }) {
               &quot;25 set pasos 5000&quot;. &quot;ayuda&quot; lista todo.
             </Text>
           )}
+          {older && chatId !== null && (
+            <Button
+              label="Ver anteriores"
+              variant="ghost"
+              accessibilityLabel="Ver los mensajes anteriores"
+              onPress={() => showPage(chatId, shown + CHAT_PAGE)}
+            />
+          )}
           {said.map((message) => (
-            <View
-              key={message.id}
-              style={[styles.bubble, message.role === 'me' ? styles.mine : styles.theirs]}
-            >
-              <Text style={message.role === 'me' ? styles.mineText : styles.theirsText}>
-                {message.body}
-              </Text>
-            </View>
+            <Bubble key={message.id} role={message.role} body={message.body} />
           ))}
           {thinking && (
             <View style={[styles.bubble, styles.theirs]}>

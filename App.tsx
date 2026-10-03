@@ -42,6 +42,7 @@ import {
 import { InfoProvider } from './src/ui/InfoBubble.tsx';
 import { KeyboardBar } from './src/ui/KeyboardBar.tsx';
 import { Assistant } from './src/ui/Assistant.tsx';
+import { nudgeDestination, type Navigate } from './src/ui/navigation.ts';
 import { SidebarProvider, useSidebar } from './src/ui/Sidebar.tsx';
 import { SwipeLockProvider, useSwipeLock } from './src/ui/SwipeLock.tsx';
 import { FloatingBarSpace, TabBar, tabBarSpace } from './src/ui/TabBar.tsx';
@@ -168,25 +169,15 @@ function SettingsRoute() {
  * deslizar a otra pantalla con el teclado abierto lo dejaba flotando sobre una
  * pantalla que ya no era la suya.
  */
-/** A donde lleva cada aviso al tocarlo: spec 18 pide que caiga donde se anota eso. */
-const NUDGE_ROUTES: Record<string, string> = {
-  comida: 'Comida',
-  entreno: 'Entreno',
-  agua: 'Hoy',
-  manana: 'Hoy',
-  cierre: 'Hoy',
-  creatina: 'Hoy',
-  semana: 'Resumen semanal',
-};
-
 function Navigation({ navigation }: { navigation: ReturnType<typeof useNavigationContainerRef> }) {
   const { nudgeTarget, clearNudgeTarget } = useAppData();
   const sidebar = useSidebar();
 
   useEffect(() => {
     if (nudgeTarget === null) return;
-    const route = NUDGE_ROUTES[nudgeTarget];
-    if (route && navigation.isReady()) navigation.navigate(route as never);
+    // El tipado del ref es generico y no conoce los nombres de las pantallas.
+    const navigate = navigation.navigate as (...args: Navigate) => void;
+    if (navigation.isReady()) navigate(...nudgeDestination(nudgeTarget));
     clearNudgeTarget();
   }, [nudgeTarget, clearNudgeTarget, navigation]);
 

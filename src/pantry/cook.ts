@@ -24,10 +24,16 @@ export type Pot = {
   sodiumMg: number | null;
 };
 
+/** Un alimento del catalogo al que le falta lo que pesa una unidad. */
+export type NeedsWeight = { foodId: string; name: string };
+
 export type PotOutcome =
   | { ok: true; pot: Pot }
-  /** Los que no se pueden pesar, por su nombre: sin ficha o sin peso por unidad. */
-  | { ok: false; blocked: string[] };
+  /**
+   * Los que no se pueden pesar, por su nombre: sin ficha o sin peso por unidad. Los que
+   * tienen ficha pero no peso van tambien aparte, para llevarlo a esa ficha a ponerselo.
+   */
+  | { ok: false; blocked: string[]; needsWeight: NeedsWeight[] };
 
 function add(left: number | null, right: number | null): number | null {
   return left === null || right === null ? null : left + right;
@@ -52,6 +58,7 @@ export function potOf(
     sodiumMg: 0,
   };
   const blocked: string[] = [];
+  const needsWeight: NeedsWeight[] = [];
 
   for (const ingredient of ingredients) {
     const item = byItem.get(ingredient.itemId);
@@ -65,6 +72,7 @@ export function potOf(
     const food = item.foodId === null ? undefined : byFood.get(item.foodId);
     if (food === undefined || food.base_unit_g === null) {
       blocked.push(`${item.name}, sin ficha con peso`);
+      if (food !== undefined) needsWeight.push({ foodId: food.id, name: food.name });
       continue;
     }
     // La receta y la despensa cuentan en la unidad del articulo y la olla en la del
@@ -84,8 +92,8 @@ export function potOf(
     pot.sodiumMg = add(pot.sodiumMg, food.sodium_mg === null ? null : amount * food.sodium_mg);
   }
 
-  if (blocked.length > 0) return { ok: false, blocked };
-  if (!(pot.grams > 0)) return { ok: false, blocked: ['nada que pesar'] };
+  if (blocked.length > 0) return { ok: false, blocked, needsWeight };
+  if (!(pot.grams > 0)) return { ok: false, blocked: ['nada que pesar'], needsWeight: [] };
   return { ok: true, pot };
 }
 

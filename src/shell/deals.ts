@@ -10,6 +10,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { applySnapshot, parseSnapshot, recordFailure } from '../deals/index.ts';
+import type { DealsSourceRow } from '../db/types.ts';
 
 const SNAPSHOT_URL = 'https://raw.githubusercontent.com/renteria-luis/nexo/main/deals/flipp.json';
 
@@ -93,4 +94,47 @@ export async function syncDeals(db: SQLiteDatabase): Promise<SyncOutcome> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Cuanto hace de algo, dicho como se lee: "hace 3 h", "hace 2 días". */
+export function ago(at: number | null, now: number): string {
+  if (at === null) return 'nunca';
+  const hours = Math.floor((now - at) / 3_600_000);
+  if (hours < 1) return 'hace menos de una hora';
+  if (hours < 24) return `hace ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `hace ${days} ${days === 1 ? 'día' : 'días'}`;
+}
+
+/**
+ * El colector corre cada dia; pasado dia y medio sin una recoleccion nueva, se callo. Del
+ * 21 al 24 de septiembre fallo cuatro dias seguidos y la app seguia diciendo "al dia".
+ */
+export const SILENT_AFTER_MS = 36 * 60 * 60 * 1000;
+
+/**
+ * Lo que se dice de una fuente (spec 16.7): una que no contesta, o que contesta con lo
+ * mismo de hace dias, lo dice, y nunca se pinta lo viejo como si fuera nuevo. `silent`
+ * es que hay que avisarlo tambien en el aviso y en Hoy.
+ */
+export function sourceStatus(
+  source: Pick<DealsSourceRow, 'name' | 'health' | 'last_success_at'>,
+  now: number,
+): { line: string; silent: boolean } {
+  const last = source.last_success_at;
+  if (last === null) return { line: `${source.name}: sin datos todavía`, silent: true };
+  if (now - last > SILENT_AFTER_MS) {
+    const days = Math.max(1, Math.floor((now - last) / (24 * 3_600_000)));
+    return {
+      line: `${source.name}: sin datos nuevos desde hace ${days} ${days === 1 ? 'día' : 'días'}`,
+      silent: true,
+    };
+  }
+  if (source.health !== 'ok') {
+    return {
+      line: `${source.name}: no se pudo actualizar, última vez ${ago(last, now)}`,
+      silent: false,
+    };
+  }
+  return { line: `${source.name}: al día, última vez ${ago(last, now)}`, silent: false };
 }

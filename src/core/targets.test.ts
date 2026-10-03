@@ -4,7 +4,9 @@ import { test } from 'node:test';
 import {
   ageOn,
   computeTargets,
+  fatAgainstBand,
   fatBand,
+  kcalAgainstBand,
   kcalBand,
   needsRecalculation,
   proteinBand,
@@ -161,4 +163,22 @@ test('recalculation triggers at a kilo of drift, not before', () => {
   assert.equal(needsRecalculation(73, 72.0), true);
   // Not enough weigh-ins to know: no trigger, rather than a trigger against zero.
   assert.equal(needsRecalculation(73, null), false);
+});
+
+test('las calorias de Comida se dicen contra la banda, no contra la meta pelada', () => {
+  const band = { from: 2250, to: 2950 };
+  // 2,600 sobre una meta de 2,400: la cabecera decia "200 de mas".
+  assert.equal(kcalAgainstBand(2600, band), 'en banda (2250 a 2950)');
+  assert.equal(kcalAgainstBand(2000, band), 'faltan 250 para la banda');
+  assert.equal(kcalAgainstBand(3000, band), '50 sobre la banda');
+});
+
+test('la grasa bajo el piso duro es una alerta en un dia terminado, y hoy es lo que falta', () => {
+  const band = { from: 65, to: 90, hardFloor: 58 };
+  assert.deepEqual(fatAgainstBand(41, band, true), { note: 'bajo el piso de 58 g', alert: true });
+  assert.deepEqual(fatAgainstBand(41, band, false), {
+    note: 'faltan 17 para el piso',
+    alert: false,
+  });
+  assert.deepEqual(fatAgainstBand(70, band, true), { note: 'meta 65 a 90', alert: false });
 });

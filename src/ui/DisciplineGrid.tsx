@@ -38,6 +38,44 @@ export function ScoreCell({ color, fill, size, today = false }: CellProps) {
   );
 }
 
+type OpenDay = (date: string, at: { x: number; y: number; width: number; height: number }) => void;
+
+/**
+ * Un cuadrito tocable. Memoizado por su cuenta: cuando cambia la nota de un dia, las
+ * semanas son una lista nueva y la cuadricula se rearma, pero solo se redibuja el
+ * cuadrito que cambio.
+ */
+const GridCell = memo(function GridCell({
+  date,
+  color,
+  fill,
+  today,
+  onOpenDay,
+}: {
+  date: string;
+  color: string;
+  fill: number;
+  today: boolean;
+  onOpenDay?: OpenDay;
+}) {
+  return (
+    <Pressable
+      accessibilityLabel={`Ver el ${date}`}
+      onPress={(event) =>
+        onOpenDay?.(date, {
+          x: event.nativeEvent.pageX - 6,
+          y: event.nativeEvent.pageY - 6,
+          width: 12,
+          height: 12,
+        })
+      }
+      style={styles.touch}
+    >
+      <ScoreCell color={color} fill={fill} today={today} />
+    </Pressable>
+  );
+});
+
 /**
  * Memoizada porque es lo mas caro que se dibuja en la app: ochenta y cuatro cuadritos
  * tocables, cientos de elementos. Mientras las semanas y el gesto sean los mismos
@@ -53,7 +91,7 @@ export const DisciplineGrid = memo(function DisciplineGrid({
 }: {
   weeks: GridWeek[];
   /** Donde se toco, para colgar el globito del dedo y no de la cartilla. */
-  onOpenDay?: (date: string, at: { x: number; y: number; width: number; height: number }) => void;
+  onOpenDay?: OpenDay;
 }) {
   const today = todayIso();
 
@@ -70,21 +108,14 @@ export const DisciplineGrid = memo(function DisciplineGrid({
       {weeks.map((week) => (
         <View key={week.startsOn} style={styles.column}>
           {week.cells.map((cell) => (
-            <Pressable
+            <GridCell
               key={cell.date}
-              accessibilityLabel={`Ver el ${cell.date}`}
-              onPress={(event) =>
-                onOpenDay?.(cell.date, {
-                  x: event.nativeEvent.pageX - 6,
-                  y: event.nativeEvent.pageY - 6,
-                  width: 12,
-                  height: 12,
-                })
-              }
-              style={styles.touch}
-            >
-              <ScoreCell color={cell.color} fill={cell.fill} today={cell.date === today} />
-            </Pressable>
+              date={cell.date}
+              color={cell.color}
+              fill={cell.fill}
+              today={cell.date === today}
+              onOpenDay={onOpenDay}
+            />
           ))}
         </View>
       ))}

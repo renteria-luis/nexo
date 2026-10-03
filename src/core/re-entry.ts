@@ -14,6 +14,27 @@ export function shouldStartReEntry(consecutiveMissed: number): boolean {
   return consecutiveMissed >= TRIGGER_MISSED_SCHEDULED_DAYS;
 }
 
+/**
+ * Spec 6.5: si hoy empieza sola. Solo el interruptor de Ajustes la encendia, y un viaje o
+ * una semana enfermo hundia cada dia a 17 por la falta de entreno, justo cuando menos se
+ * acuerda de Ajustes.
+ *
+ * `lastSession` es el ultimo dia con entreno, o null si no hay ninguno reciente: sin un
+ * entreno antes no hay nada de lo que readaptarse. Una vez por parada: si ya empezo una
+ * despues del ultimo entreno, termino sin que volviera, y no se vuelve a abrir hasta que
+ * entrene otra vez y vuelva a parar.
+ */
+export function startsOnItsOwn(
+  state: ReEntryState,
+  today: IsoDate,
+  lastSession: IsoDate | null,
+  consecutiveMissed: number,
+): boolean {
+  if (lastSession === null || isReEntryActive(state, today)) return false;
+  if (state.startedOn !== null && state.startedOn > lastSession) return false;
+  return shouldStartReEntry(consecutiveMissed);
+}
+
 export function isReEntryActive(state: ReEntryState, onDate: IsoDate): boolean {
   if (state.startedOn === null) return false;
   const elapsed = daysBetween(state.startedOn, onDate);

@@ -6,6 +6,7 @@ import {
   typedSteps,
   typedWeight,
   type DailyLogEntry,
+  type DailyLogIncrement,
   type LastWeight,
 } from '../core/daily-log.ts';
 import { addDays, shortDate } from '../core/dates.ts';
@@ -63,6 +64,13 @@ export type TodayLogProps = {
   /** Con el lapiz apagado solo se lee, que es lo que hace el resto del dia. */
   editing: boolean;
   onLog: (entry: Omit<DailyLogEntry, 'date'>) => void;
+  /** Lo que suma un toque, sobre lo guardado: dos toques seguidos son dos tragos. */
+  onAdd: (increment: DailyLogIncrement) => void;
+  /** Un toque a un boton de agua, que se puede deshacer. */
+  onTapWater: (ml: number) => void;
+  /** Quita el ultimo toque de agua; apagado cuando no queda ninguno. */
+  onUndoWater: () => void;
+  canUndoWater: boolean;
 };
 
 /**
@@ -151,6 +159,10 @@ export function TodayLog({
   lastWeight,
   editing,
   onLog,
+  onAdd,
+  onTapWater,
+  onUndoWater,
+  canUndoWater,
 }: TodayLogProps) {
   // Dos casillas porque asi lo dice en voz alta: siete y media, o ciento treinta
   // minutos. Cualquiera de las dos sola vale, y 7.5 en horas tambien.
@@ -215,11 +227,17 @@ export function TodayLog({
           {containers.map((container) => (
             <Chip
               key={container.id}
-              label={`+ ${container.name}`}
-              onPress={() => onLog({ waterMl: waterMl + container.volume_ml })}
+              label={`+ ${container.volume_ml} ml`}
+              accessibilityLabel={`Sumar ${container.volume_ml} ml de agua`}
+              onPress={() => onTapWater(container.volume_ml)}
             />
           ))}
-          {waterMl > 0 && <Chip label="Reiniciar" onPress={() => onLog({ waterMl: 0 })} />}
+          <Chip
+            label="Deshacer"
+            accessibilityLabel="Deshacer el último toque de agua"
+            disabled={!canUndoWater}
+            onPress={onUndoWater}
+          />
         </View>
       </Field>
 
@@ -335,10 +353,8 @@ export function TodayLog({
       <Field title="Alcohol" icon={Wine}>
         <Text style={styles.value}>{drinks} tragos</Text>
         <View style={styles.row}>
-          <Chip label="+1" onPress={() => onLog({ alcoholDrinks: drinks + 1 })} />
-          {drinks > 0 && (
-            <Chip label="−1" onPress={() => onLog({ alcoholDrinks: Math.max(0, drinks - 1) })} />
-          )}
+          <Chip label="+1" onPress={() => onAdd({ alcoholDrinks: 1 })} />
+          {drinks > 0 && <Chip label="−1" onPress={() => onAdd({ alcoholDrinks: -1 })} />}
           <Chip
             label="Ninguno"
             selected={log?.alcohol_drinks === 0}

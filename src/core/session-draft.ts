@@ -77,3 +77,18 @@ export function fieldsAfterSelect(
 ): DraftFields {
   return previous === null ? draftFieldsFor(next, draft) : UNTOUCHED;
 }
+
+/**
+ * Con que lo esta haciendo segun el borrador, si el borrador es de esa sesion y ese
+ * ejercicio. La serie que llega por el asistente no pasa por la tarjeta, y sin esto se
+ * guardaba con el implemento del catalogo: unas laterales en la maquina contaban como
+ * mancuerna, y el volumen salia doble.
+ */
+export function implementFromDraft(
+  stored: string | undefined,
+  sessionId: string,
+  exerciseId: string,
+): string | null {
+  const draft = parseDraft(stored, sessionId);
+  return draft !== null && draft.exerciseId === exerciseId ? draft.implement : null;
+}

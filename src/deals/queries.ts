@@ -6,15 +6,15 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import type { IsoDate } from '../core/dates.ts';
 import { fold } from '../nutrition/picker.ts';
 import type {
-  DealsDealRow,
   DealsDiscountRow,
   DealsRetailerRow,
   DealsSourceRow,
+  ListedDeal,
   NutritionFoodRow,
 } from '../db/types.ts';
 
 export type DealWithContext = {
-  deal: DealsDealRow;
+  deal: ListedDeal;
   source: DealsSourceRow;
   retailer: DealsRetailerRow | null;
   /** The food it was found for, when the catalogue has it. */
@@ -26,7 +26,7 @@ export type DealWithContext = {
   stale: boolean;
 };
 
-type JoinedRow = DealsDealRow & {
+type JoinedRow = ListedDeal & {
   retailer_name: string | null;
   retailer_chain: string | null;
   food_id: string | null;
@@ -49,7 +49,7 @@ export async function listDiscounts(db: SQLiteDatabase): Promise<DealsDiscountRo
  * nombra el alimento sin serlo (pechuga empanizada) todavia pasa: eso lo resuelve el toque
  * de confirmar de spec 16.5, que no existe todavia.
  */
-function namesTheFood(deal: DealsDealRow, blocked: readonly string[]): boolean {
+function namesTheFood(deal: ListedDeal, blocked: readonly string[]): boolean {
   if (deal.category === null) return false;
   const title = fold(deal.title);
   return title.includes(fold(deal.category)) && !blocked.some((word) => title.includes(word));
@@ -69,7 +69,12 @@ export async function listDeals(
 ): Promise<DealWithContext[]> {
   const [rows, sources, foods] = await Promise.all([
     db.getAllAsync<JoinedRow>(
-      `SELECT d.*, r.name AS retailer_name, r.chain AS retailer_chain, m.food_id AS food_id
+      `SELECT d.id, d.source_id, d.retailer_id, d.title, d.description, d.price_cents,
+              d.original_price_cents, d.savings_pct, d.unit, d.grams, d.pack_ml, d.pack_count,
+              d.quantity_available, d.best_before, d.valid_from, d.valid_to, d.category,
+              d.image_url, d.source_url, d.deep_link, d.fetched_at, d.expires_at, d.confidence,
+              d.staple,
+              r.name AS retailer_name, r.chain AS retailer_chain, m.food_id AS food_id
          FROM deals_deal d
          LEFT JOIN deals_retailer r ON r.id = d.retailer_id
          LEFT JOIN deals_match m ON m.deal_id = d.id
@@ -90,7 +95,7 @@ export async function listDeals(
 
     const { retailer_name, retailer_chain, food_id, ...deal } = row;
     return {
-      deal: deal as DealsDealRow,
+      deal,
       source,
       retailer:
         row.retailer_id === null
@@ -106,9 +111,7 @@ export async function listDeals(
               city: null,
             } satisfies DealsRetailerRow),
       food:
-        food_id === null || !namesTheFood(deal as DealsDealRow, blocked)
-          ? null
-          : (foodById.get(food_id) ?? null),
+        food_id === null || !namesTheFood(deal, blocked) ? null : (foodById.get(food_id) ?? null),
       stale: deal.valid_to !== null && deal.valid_to < onDate,
     };
   });

@@ -62,3 +62,21 @@ test('el historial va del mas nuevo al mas viejo y se reconoce por lo que el esc
 test('sin ningun chat todavia no hay ninguno que abrir', async () => {
   assert.equal(await lastChat(fresh()), null);
 });
+
+test('un chat largo se abre por sus ultimas lineas, en orden', async () => {
+  const db = fresh();
+  const chat = await startChat(db, new Date('2026-09-01T10:00:00Z'));
+  for (let line = 0; line < 120; line += 1) {
+    // Dos lineas en el mismo segundo, como la pregunta y su respuesta.
+    const at = new Date(Date.UTC(2026, 8, 1, 10, 0, Math.floor(line / 2)));
+    await appendMessage(db, chat, line % 2 === 0 ? 'me' : 'app', `linea ${line}`, at);
+  }
+
+  // Antes la bola leia y dibujaba las 120 cada vez que se abria.
+  const last = await readChat(db, chat, 50);
+  assert.equal(last.length, 50);
+  assert.equal(last[0].body, 'linea 70');
+  assert.equal(last.at(-1)?.body, 'linea 119');
+  // Y sin limite siguen todas, para el historial y el respaldo.
+  assert.equal((await readChat(db, chat)).length, 120);
+});

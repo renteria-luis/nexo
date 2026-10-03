@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { dateFrom, parseCommand } from './commands.ts';
+import { dateFrom, parseCommand, setLoggedReply } from './commands.ts';
 
 const TODAY = '2026-09-28';
 
@@ -99,8 +99,9 @@ test('el anio se adivina y nunca cae en el futuro', () => {
 });
 
 test('lo que no es una fecha se queda en el comando', () => {
-  assert.equal(on('peso 7.4'), TODAY);
-  assert.deepEqual(ok('peso 7.4'), { kind: 'weight', value: 7.4 });
+  assert.equal(on('peso 74.2'), TODAY);
+  // "7.4" no se lee como el 7 de abril: es el peso, y se rechaza por serlo.
+  assert.match(rejected('peso 7.4'), /^7\.4 kg no es un peso corporal/);
   assert.equal(on('serie 65x8'), TODAY);
   assert.equal(on('creatina no'), TODAY);
   assert.match(rejected('32 set pasos 5000'), /No conozco "32"/);
@@ -111,4 +112,20 @@ test('una fecha suelta, sin comando, para las preguntas', () => {
   assert.equal(dateFrom('25 set', TODAY), '2026-09-25');
   assert.equal(dateFrom('el martes', TODAY), null);
   assert.equal(dateFrom('', TODAY), null);
+});
+
+test('un peso corporal imposible se rechaza, como en el campo de Hoy', () => {
+  // Spec 20.3 usa justo este ejemplo: antes se guardaba y movia las metas.
+  assert.match(rejected('peso 742'), /742 kg no es un peso corporal/);
+  assert.match(rejected('peso 7.4'), /7\.4 kg no es un peso corporal/);
+  assert.match(rejected('ayer peso 12'), /no es un peso corporal/);
+  assert.deepEqual(ok('peso 30'), { kind: 'weight', value: 30 });
+  assert.deepEqual(ok('peso 250'), { kind: 'weight', value: 250 });
+});
+
+test('la serie anotada por el asistente dice en que ejercicio cayo', () => {
+  assert.equal(
+    setLoggedReply(65, 'lb', 8, 'Elevaciones laterales'),
+    'Serie de 65 lb por 8 anotada en Elevaciones laterales',
+  );
 });

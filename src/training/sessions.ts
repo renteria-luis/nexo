@@ -54,11 +54,42 @@ export async function startSession(db: SQLiteDatabase, session: NewSession): Pro
   return id;
 }
 
+/** Lo que dura una sesion cuyo tiempo vale para hacer cuentas: de 20 minutos a 2 h 30. */
+export const TRUSTED_MINUTES = { min: 20, max: 150 } as const;
+
+/** Cuanto puede pasar entre la ultima serie y Terminar para que haya cerrado en el gym. */
+export const CLOSED_AT_THE_GYM_MINUTES = 20;
+
+/**
+ * Cierra la sesion, y decide si su tiempo vale para "sueles tardar" y la grafica.
+ *
+ * Nada marcaba una sesion nueva como de fiar, asi que desde el 1 de octubre ninguna
+ * entraba en la cuenta salvo que fuera a Registros a marcarla a mano. Vale si dura de
+ * 20 minutos a 2 h 30 y termino poco despues de la ultima serie, que es lo que distingue
+ * cerrar en el gym de cerrar en casa (decision 2026-10-03). El interruptor del dia sigue
+ * para lo que esto no acierte, y reabrir y volver a terminar lo decide otra vez.
+ */
 export async function finishSession(db: SQLiteDatabase, sessionId: string): Promise<void> {
-  await db.runAsync('UPDATE training_session SET end_time = ? WHERE id = ?;', [
-    Date.now(),
-    sessionId,
-  ]);
+  const now = Date.now();
+  await db.runAsync(
+    `UPDATE training_session
+        SET end_time = ?,
+            duration_trusted = CASE
+              WHEN ? - start_time BETWEEN ? AND ?
+               AND ? - (SELECT max(timestamp) FROM training_set_entry WHERE session_id = ?) <= ?
+              THEN 1 ELSE 0 END
+      WHERE id = ?;`,
+    [
+      now,
+      now,
+      TRUSTED_MINUTES.min * 60_000,
+      TRUSTED_MINUTES.max * 60_000,
+      now,
+      sessionId,
+      CLOSED_AT_THE_GYM_MINUTES * 60_000,
+      sessionId,
+    ],
+  );
 }
 
 /**
@@ -108,6 +139,33 @@ export async function getSessionOn(
   );
 }
 
+/**
+ * Lo que dura como mucho una sesion que sigue abierta despues de la medianoche. Mas alla,
+ * una sesion sin cerrar es una que se le olvido terminar, no una que sigue.
+ */
+export const OPEN_SESSION_CARRIES_MS = 6 * 3_600_000;
+
+/**
+ * La sesion empezada en el gym que sigue abierta, sea del dia que sea.
+ *
+ * Una sesion es del dia en que empezo, y la pantalla la buscaba por la fecha de hoy: la
+ * primera serie despues de medianoche recargaba, no encontraba nada para el dia nuevo, y
+ * el entreno desaparecia a mitad. Las escritas despues desde un dia pasado no cuentan:
+ * tambien quedan sin cerrar, pero nunca estuvieron en curso.
+ */
+export async function openSessionSince(
+  db: SQLiteDatabase,
+  since: number,
+): Promise<TrainingSessionRow | null> {
+  return db.getFirstAsync<TrainingSessionRow>(
+    `SELECT * FROM training_session
+      WHERE end_time IS NULL AND is_retroactive = 0 AND start_time >= ?
+   ORDER BY start_time DESC
+      LIMIT 1;`,
+    [since],
+  );
+}
+
 export type SessionDetails = {
   aloneOrPartner?: TrainingSessionRow['alone_or_partner'];
   crowding?: TrainingSessionRow['crowding'];
@@ -146,6 +204,25 @@ export async function setSessionDetails(
       sessionId,
     ]);
   }
+}
+
+/**
+ * Spec 5.5: el esfuerzo percibido va de 1 a 10, y la base no acepta otra cosa. La flecha
+ * de bajar llegaba a 0, y esa serie se rechazaba sin que la pantalla dijera nada.
+ */
+export const RPE_MIN = 1;
+export const RPE_MAX = 10;
+
+/** El esfuerzo escrito, dentro de lo que la base acepta. */
+export function clampRpe(rpe: number): number {
+  return Math.min(RPE_MAX, Math.max(RPE_MIN, rpe));
+}
+
+/** Un toque a la flecha del esfuerzo: sin nada escrito empieza en `start`, y en los bordes no se mueve. */
+export function stepRpe(current: number | null, direction: 1 | -1, start: number): number {
+  if (current === null || !Number.isFinite(current)) return start;
+  const next = current + direction;
+  return next < RPE_MIN || next > RPE_MAX ? current : next;
 }
 
 /** Con que se movio el peso, que es lo que decide si el numero escrito es de una mano. */

@@ -12,11 +12,14 @@ import { bestAndWorstE1rm, volumeLoad } from './calculations.ts';
 import { listEquipment, listExercises, listWorkingSets } from './queries.ts';
 import {
   addSet,
+  clampRpe,
+  stepRpe,
   setSessionDetails,
   deleteSet,
   finishSession,
   getSessionOn,
   lastSessionSets,
+  listSessionTimes,
   listSetsForSession,
   marksWindow,
   reopenSession,
@@ -496,4 +499,89 @@ test('una serie marcada mancuerna cuenta las dos manos aunque el gym tenga el ej
   await addSet(db, { sessionId: fit4less, exerciseId: 'lateral-raise', weightKg: 20, reps: 12 });
   const [machine] = await lastSessionSets(db, 'lateral-raise', null);
   assert.equal(machine.loadFactor, 1);
+});
+
+test('la flecha del esfuerzo para en 1, y la serie con ese esfuerzo se guarda', async () => {
+  // Bajando desde 8: antes seguia hasta 0, y la base rechazaba la serie sin decir nada.
+  const taps: number[] = [];
+  let rpe: number | null = null;
+  for (let tap = 0; tap < 10; tap += 1) {
+    rpe = stepRpe(rpe, -1, 8);
+    taps.push(rpe);
+  }
+  assert.deepEqual(taps, [8, 7, 6, 5, 4, 3, 2, 1, 1, 1]);
+  assert.equal(stepRpe(10, 1, 8), 10);
+  // Un 0 escrito a mano tambien entra como el minimo.
+  assert.equal(clampRpe(0), 1);
+  assert.equal(clampRpe(12), 10);
+
+  const db = fresh();
+  const sessionId = await sessionOn(db, '2026-10-03');
+  await addSet(db, {
+    sessionId,
+    exerciseId: 'peck-deck',
+    weightKg: 40,
+    reps: 12,
+    rpe: taps.at(-1),
+  });
+  const [stored] = await listSetsForSession(db, sessionId);
+  assert.equal(stored.rpe, 1);
+});
+
+test('terminar en el gym deja el tiempo de la sesion como de fiar, y en casa no', async () => {
+  const db = fresh();
+  const minutesAgo = (minutes: number) => Date.now() - minutes * 60_000;
+
+  // Empezo hace `long` minutos y la ultima serie fue hace `lastSet`.
+  async function finishedAfter(date: string, long: number, lastSet: number | null) {
+    const id = await sessionOn(db, date);
+    await db.runAsync('UPDATE training_session SET start_time = ? WHERE id = ?;', [
+      minutesAgo(long),
+      id,
+    ]);
+    if (lastSet !== null) {
+      await addSet(db, { sessionId: id, exerciseId: 'peck-deck', weightKg: 40, reps: 12 });
+      await db.runAsync('UPDATE training_set_entry SET timestamp = ? WHERE session_id = ?;', [
+        minutesAgo(lastSet),
+        id,
+      ]);
+    }
+    await finishSession(db, id);
+  }
+
+  await finishedAfter('2026-10-01', 80, 4); // en el gym
+  await finishedAfter('2026-10-02', 80, 45); // lo cerro en casa
+  await finishedAfter('2026-10-03', 170, 2); // mas de dos horas y media
+  await finishedAfter('2026-10-04', 12, 1); // no es un entreno
+  await finishedAfter('2026-10-05', 60, null); // sin ninguna serie
+
+  const trusted = (await listSessionTimes(db)).map((time) => [time.date, time.trusted]);
+  assert.deepEqual(trusted.sort(), [
+    ['2026-10-01', true],
+    ['2026-10-02', false],
+    ['2026-10-03', false],
+    ['2026-10-04', false],
+    ['2026-10-05', false],
+  ]);
+});
+
+test('seguir entrenando y volver a terminar lo decide otra vez', async () => {
+  const db = fresh();
+  const id = await sessionOn(db, '2026-10-01');
+  await db.runAsync('UPDATE training_session SET start_time = ? WHERE id = ?;', [
+    Date.now() - 60 * 60_000,
+    id,
+  ]);
+  await addSet(db, { sessionId: id, exerciseId: 'peck-deck', weightKg: 40, reps: 12 });
+  await db.runAsync('UPDATE training_set_entry SET timestamp = ? WHERE session_id = ?;', [
+    Date.now() - 40 * 60_000,
+    id,
+  ]);
+  await finishSession(db, id);
+  assert.equal((await listSessionTimes(db))[0].trusted, false);
+
+  await reopenSession(db, id);
+  await addSet(db, { sessionId: id, exerciseId: 'peck-deck', weightKg: 40, reps: 10 });
+  await finishSession(db, id);
+  assert.equal((await listSessionTimes(db))[0].trusted, true);
 });

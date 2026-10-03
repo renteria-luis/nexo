@@ -61,9 +61,13 @@ export function watchedDeals(
     found.push({ item, word });
   }
 
-  // En el orden de sus palabras, y dentro de cada una lo de su lista primero y lo mas
-  // barato por medida despues: ciento y pico de ofertas sin orden no es un aviso.
+  // Lo vigente antes que lo que ya paso su fecha: el aviso no esconde lo vencido (spec
+  // 16.3 regla 7), pero una semana despues casi todo lo que listaba era un precio que ya
+  // no existia, pintado igual que uno vivo. Despues, en el orden de sus palabras, y
+  // dentro de cada una lo de su lista primero y lo mas barato por medida despues:
+  // ciento y pico de ofertas sin orden no es un aviso.
   return found.sort((a, b) => {
+    if (a.item.stale !== b.item.stale) return Number(a.item.stale) - Number(b.item.stale);
     if (a.word !== b.word) return words.indexOf(a.word) - words.indexOf(b.word);
     if (a.item.deal.staple !== b.item.deal.staple) {
       return b.item.deal.staple - a.item.deal.staple;
@@ -84,4 +88,9 @@ export function newestFetch(deals: readonly DealWithContext[]): number | null {
     if (newest === null || deal.fetched_at > newest) newest = deal.fetched_at;
   }
   return newest;
+}
+
+/** Las que siguen vigentes: lo que se cuenta en Hoy y lo que abre el aviso solo. */
+export function liveDeals(found: readonly WatchedDeal[]): WatchedDeal[] {
+  return found.filter(({ item }) => !item.stale);
 }

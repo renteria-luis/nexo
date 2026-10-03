@@ -134,6 +134,10 @@ export async function upsertDailyLog(db: SQLiteDatabase, entry: DailyLogEntry): 
     ],
   );
 
+  await deriveHasData(db, entry.date);
+}
+
+async function deriveHasData(db: SQLiteDatabase, date: IsoDate): Promise<void> {
   await db.runAsync(
     `UPDATE core_daily_log
         SET has_data = CASE WHEN ${MEASURED_FIELDS.map((f) =>
@@ -141,8 +145,74 @@ export async function upsertDailyLog(db: SQLiteDatabase, entry: DailyLogEntry): 
         ).join(' OR ')}
                        THEN 1 ELSE 0 END
       WHERE date = ?;`,
-    [entry.date],
+    [date],
   );
+}
+
+/** Lo que suma un toque: una botella, un trago. Negativo para quitarlo. */
+export type DailyLogIncrement = { waterMl?: number; alcoholDrinks?: number };
+
+/**
+ * Suma un toque a lo guardado, no a lo que habia en pantalla.
+ *
+ * El chip calculaba el total nuevo con el numero pintado y guardaba ese total: dos toques
+ * antes de que llegara la recarga guardaban dos veces lo mismo y se perdia una botella, y
+ * una pantalla vieja hacia que la siguiente pisara en vez de sumar. Nunca baja de cero.
+ */
+export async function addToDailyLog(
+  db: SQLiteDatabase,
+  date: IsoDate,
+  increment: DailyLogIncrement,
+): Promise<void> {
+  const water = increment.waterMl ?? null;
+  const drinks = increment.alcoholDrinks ?? null;
+  await db.runAsync(
+    `INSERT INTO core_daily_log (date, water_ml, alcohol_drinks, rest_day, has_data)
+     VALUES (?, max(0, ?), max(0, ?), 0, 0)
+     ON CONFLICT (date) DO UPDATE SET
+       water_ml = CASE WHEN ? IS NULL THEN water_ml
+                       ELSE max(0, coalesce(water_ml, 0) + ?) END,
+       alcohol_drinks = CASE WHEN ? IS NULL THEN alcohol_drinks
+                             ELSE max(0, coalesce(alcohol_drinks, 0) + ?) END;`,
+    [date, water, drinks, water, water, drinks, drinks],
+  );
+  await deriveHasData(db, date);
+}
+
+/**
+ * El mismo toque sobre la fila que hay en pantalla, para pintarlo antes de que la base
+ * conteste. Sin fila todavia, empieza una con solo eso.
+ */
+export function withIncrement(
+  log: CoreDailyLogRow | null,
+  date: IsoDate,
+  increment: DailyLogIncrement,
+): CoreDailyLogRow {
+  const base: CoreDailyLogRow = log ?? {
+    date,
+    water_ml: null,
+    creatine_taken: null,
+    alcohol_drinks: null,
+    alcohol_after_training: null,
+    cannabis: null,
+    sleep_minutes: null,
+    sleep_source: null,
+    resting_hr: null,
+    hrv_ms: null,
+    steps: null,
+    weight_kg: null,
+    score: null,
+    has_data: 0,
+    rest_day: 0,
+  };
+  const add = (stored: number | null, by: number | undefined) =>
+    by === undefined ? stored : Math.max(0, (stored ?? 0) + by);
+  return {
+    ...base,
+    water_ml: add(base.water_ml, increment.waterMl),
+    alcohol_drinks: add(base.alcohol_drinks, increment.alcoholDrinks),
+    has_data: 1,
+  };
 }
 
 export type LastWeight = { kg: number; date: IsoDate };
@@ -186,10 +256,7 @@ export async function storeScore(
   date: IsoDate,
   score: number | null,
 ): Promise<void> {
-  await db.runAsync('UPDATE core_daily_log SET score = ? WHERE date = ?;', [
-    score === null ? null : Math.round(score),
-    date,
-  ]);
+  await db.runAsync('UPDATE core_daily_log SET score = ? WHERE date = ?;', [score, date]);
 }
 
 function fromSqlBool(value: SqlBool | null): boolean | null {

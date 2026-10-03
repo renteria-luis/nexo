@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   draftFieldsFor,
   fieldsAfterSelect,
+  implementFromDraft,
   parseDraft,
   serializeDraft,
   type SessionDraft,
@@ -72,4 +73,22 @@ test('pasar de un ejercicio a otro deja la tarjeta en blanco', () => {
   });
   assert.deepEqual(draftFieldsFor(null, draft).weight, null);
   assert.deepEqual(draftFieldsFor('incline-curl', null).weight, null);
+});
+
+test('la serie del asistente toma el implemento que la tarjeta tiene puesto', () => {
+  const stored = serializeDraft({
+    sessionId: 's1',
+    exerciseId: 'lateral-raise',
+    weight: '30',
+    reps: null,
+    rpe: null,
+    implement: 'machine',
+  });
+
+  // En la maquina de Fit4Less: antes entraba como mancuerna y el volumen contaba doble.
+  assert.equal(implementFromDraft(stored, 's1', 'lateral-raise'), 'machine');
+  // De otro ejercicio o de otra sesion no vale.
+  assert.equal(implementFromDraft(stored, 's1', 'peck-deck'), null);
+  assert.equal(implementFromDraft(stored, 's2', 'lateral-raise'), null);
+  assert.equal(implementFromDraft(undefined, 's1', 'lateral-raise'), null);
 });

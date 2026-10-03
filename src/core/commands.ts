@@ -11,6 +11,7 @@
 // pasos 5000", "pasos 5000 ayer") es ese dia: el anio no hace falta porque lo que se
 // anota ya paso.
 
+import { isBodyWeightKg } from './daily-log.ts';
 import { addDays, isRealDate, todayIso, type IsoDate } from './dates.ts';
 
 export type Command =
@@ -115,6 +116,20 @@ function readDate(words: string[], today: IsoDate): IsoDate | null {
   }
 
   return null;
+}
+
+/**
+ * Lo que contesta el asistente al anotar una serie. Dice en que ejercicio cayo: el plan
+ * abre solo el siguiente al completar las series de uno, el chat tapa la pantalla, y
+ * "Serie de 65 lb por 8 anotada" no decia si cayo en las laterales o en el siguiente.
+ */
+export function setLoggedReply(
+  weight: number,
+  unit: string,
+  reps: number,
+  exerciseName: string,
+): string {
+  return `Serie de ${weight} ${unit} por ${reps} anotada en ${exerciseName}`;
 }
 
 /**
@@ -233,6 +248,11 @@ export function parseCommand(input: string, today: IsoDate = todayIso()): Parsed
     const weight = measure(rest, ['kg']);
     if (weight === null || weight.value <= 0) {
       return bad('Cuanto pesas hoy. Por ejemplo "peso 74.2".');
+    }
+    // El mismo limite que el campo de Hoy: un 7.4 o un 742 entraban al promedio de siete
+    // dias y movian las metas, por el asistente y por el modelo, que pasan por aqui.
+    if (!isBodyWeightKg(weight.value)) {
+      return bad(`${weight.value} kg no es un peso corporal: escribe "peso 74.2".`);
     }
     return done({ kind: 'weight', value: weight.value }, weight.used);
   }

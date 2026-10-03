@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Text, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../db/types.ts';
-import { MEAL_SLOTS, roundAmount } from '../nutrition/index.ts';
-import type { BatchStart, OpenBatch } from '../shell/AppData.tsx';
+import { roundAmount } from '../nutrition/index.ts';
+import type { BatchStart } from '../shell/AppData.tsx';
+import type { OpenBatch } from '../shell/load.ts';
 
 import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
@@ -146,6 +147,8 @@ export type BatchPanelProps = {
   onStart: (start: BatchStart) => Promise<void>;
   onEat: (batchId: string, mealSlot: string) => Promise<void>;
   onThrowAway: (batchId: string) => void;
+  /** El espacio elegido arriba, en Anotar: uno solo para las dos cartillas. */
+  slot: string;
 };
 
 /**
@@ -153,8 +156,7 @@ export type BatchPanelProps = {
  * one portion. The foods the pattern is really for, chicken breast, ground beef and
  * rice, are not in the seeded catalogue, so a batch can start from a package label.
  */
-export function BatchPanel({ batches, foods, onStart, onEat, onThrowAway }: BatchPanelProps) {
-  const [slot, setSlot] = useState(MEAL_SLOTS[2]);
+export function BatchPanel({ batches, foods, onStart, onEat, onThrowAway, slot }: BatchPanelProps) {
   const [creating, setCreating] = useState(false);
   const [source, setSource] = useState<'catalog' | 'label'>('label');
   const [foodId, setFoodId] = useState<string | null>(null);
@@ -229,21 +231,9 @@ export function BatchPanel({ batches, foods, onStart, onEat, onThrowAway }: Batc
         vez y despues cada plato se descuenta solo.
       </Text>
 
-      {batches.length > 0 && (
-        <>
-          <Text style={styles.label}>La porción se anota en</Text>
-          <View style={styles.chips}>
-            {MEAL_SLOTS.map((name) => (
-              <Chip
-                key={name}
-                label={name}
-                selected={name === slot}
-                onPress={() => setSlot(name)}
-              />
-            ))}
-          </View>
-        </>
-      )}
+      {/* El espacio sale de la fila de arriba: dos filas de chips, cada una con lo suyo,
+          dejaban la porcion de la cena en "mediodía". */}
+      {batches.length > 0 && <Text style={styles.label}>La porción se anota en {slot}</Text>}
 
       {batches.map((item) => (
         <BatchCard

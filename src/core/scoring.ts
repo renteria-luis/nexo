@@ -112,10 +112,11 @@ export function dayScore(criteria: readonly ScoredCriterion[], penalty = 0): Day
   }
 
   const base = earned * scale;
-  // La nota se queda con un decimal. Redondear hacia arriba convertia un 99.2 en un
-  // cien, y el cien tiene que significar el dia entero.
+  // La nota se corta en un decimal y nunca se redondea (decision 2026-10-02): redondeando,
+  // un 99.96 salia como cien, y el cien tiene que significar el dia entero. El margen
+  // minimo es para que un 72.3 que en binario es 72.29999 no se corte en 72.2.
   return {
-    score: Math.max(0, Math.round((base + penalty) * 10) / 10),
+    score: Math.max(0, Math.floor((base + penalty) * 10 + 1e-9) / 10),
     base,
     penalty,
     criteriaWithData: withData,

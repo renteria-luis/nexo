@@ -1,7 +1,14 @@
+import { useNavigation } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
-import { cookableNow, type Cookable, type PantryItem, type Recipe } from '../../pantry/index.ts';
+import {
+  cookableNow,
+  type Cookable,
+  type NeedsWeight,
+  type PantryItem,
+  type Recipe,
+} from '../../pantry/index.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 
 import { Button } from '../Button.tsx';
@@ -33,6 +40,9 @@ export function RecipesScreen() {
   const [editing, setEditing] = useState<Recipe | null>(null);
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // Decision 2026-10-02: el aviso de la olla sin lote lleva a la ficha que le falta el peso.
+  const [needsWeight, setNeedsWeight] = useState<NeedsWeight[]>([]);
+  const navigation = useNavigation<{ navigate: (name: string, params?: object) => void }>();
   // La receta que se esta cocinando: dos toques en "Cocinar" eran dos ollas.
   const [cooking, setCooking] = useState<string | null>(null);
 
@@ -49,12 +59,14 @@ export function RecipesScreen() {
 
   const cook = (entry: Cookable) => {
     setNotice(null);
+    setNeedsWeight([]);
     setCooking(entry.recipe.id);
     cookRecipe(entry.recipe.id)
       .then((cooked) => {
         reload();
         if (cooked.batchId === null) {
           setNotice(`Descontado, pero no pude dejar el lote: ${cooked.blocked.join('; ')}.`);
+          setNeedsWeight(cooked.needsWeight);
           return;
         }
         setNotice(
@@ -114,6 +126,14 @@ export function RecipesScreen() {
       {notice !== null && (
         <Card tone="ok">
           <Text style={styles.notice}>{notice}</Text>
+          {needsWeight.map((food) => (
+            <Button
+              key={food.foodId}
+              label={`Ponerle peso a ${food.name}`}
+              accessibilityLabel={`Abrir la ficha de ${food.name} para ponerle lo que pesa`}
+              onPress={() => navigation.navigate('Alimentos', { edit: food.foodId })}
+            />
+          ))}
           <Button
             label="Entendido"
             accessibilityLabel="Entendido"

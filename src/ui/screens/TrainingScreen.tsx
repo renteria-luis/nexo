@@ -7,7 +7,8 @@ import { useAppData } from '../../shell/AppData.tsx';
 import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
 import { ChevronRight } from '../icons.ts';
-import { nextPendingExercise } from '../../training/routines.ts';
+import { restingSince } from '../../training/calculations.ts';
+import { nextPendingExercise, suggestedRest } from '../../training/routines.ts';
 import type { Implement } from '../../training/sessions.ts';
 import { Chip } from '../Chip.tsx';
 import { formatWeight } from '../../core/units.ts';
@@ -26,6 +27,7 @@ export function TrainingScreen() {
     selectExercise,
     beginSession,
     loadPlan,
+    loadOwedRoutine,
     logSet,
     removeSet,
     describeSession,
@@ -220,6 +222,7 @@ export function TrainingScreen() {
   // levantar el telefono.
   const exercise = loaded.exercise.exercises.find((item) => item.id === exerciseId) ?? null;
   const previous = loaded.exercise.todaySets.at(-1) ?? null;
+  const restFrom = restingSince(loaded.today.sessionSets);
   const resting = session !== null && session.end_time === null && width > height;
 
   return (
@@ -227,8 +230,12 @@ export function TrainingScreen() {
       {resting && (
         <RestLandscape
           exerciseName={exercise?.name_es ?? 'Entreno'}
-          since={previous?.timestamp ?? session.start_time}
-          suggestedRestSeconds={exercise?.default_rest_seconds ?? null}
+          since={restFrom ?? session.start_time}
+          suggestedRestSeconds={
+            exercise === null
+              ? null
+              : suggestedRest(loaded.plan, exercise.id, exercise.default_rest_seconds)
+          }
           setNumber={previous?.setIndex ?? null}
           lastSet={
             previous === null
@@ -247,6 +254,7 @@ export function TrainingScreen() {
               gyms={loaded.gyms}
               onLocate={whereAmI}
               onLoadPlan={loadPlan}
+              onLoadOwedRoutine={loadOwedRoutine}
               onStart={beginSession}
               restDay={loaded.today.log?.rest_day === 1}
               onRestDay={() => logDay({ restDay: true })}
@@ -317,6 +325,8 @@ export function TrainingScreen() {
                 selectedExerciseId={exerciseId}
                 onSelectExercise={selectExercise}
                 todaySets={loaded.exercise.todaySets}
+                restingSince={restFrom}
+                plan={loaded.plan}
                 lastSets={loaded.exercise.lastSets}
                 marks={loaded.exercise.marks}
                 sessionVolume={loaded.today.sessionVolume}

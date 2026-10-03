@@ -9,9 +9,9 @@ import { writeSetting } from '../core/settings.ts';
 import { writeTargetSnapshot } from '../core/snapshots.ts';
 import { computeTargets, type TargetProfile } from '../core/targets.ts';
 import { migrations } from '../db/migrations/index.ts';
-import { addSet } from '../training/index.ts';
+import { addSet, startSession } from '../training/index.ts';
 
-import { assembleDay } from './day.ts';
+import { assembleDay, exerciseContext, withTappedSet } from './day.ts';
 
 type SqlValue = string | number | null;
 
@@ -210,4 +210,34 @@ test('drinks after training cost half again, through the stored flag', async () 
   assert.equal(plain.result?.score, 30);
   // Los mismos dos tragos dentro de las seis horas de una sesion cuestan 3.
   assert.equal(afterTraining.result?.score, 29);
+});
+
+test('la serie tocada sale ya en la lista, y la siguiente propone esa y no la de antes', async () => {
+  const { db } = await fixture();
+  const sessionId = await startSession(db, { date: TODAY, timeBudget: 'completo' });
+  await addSet(db, { sessionId, exerciseId: 'peck-deck', weightKg: 40, reps: 12 });
+  const today = await assembleDay(db, TODAY, TODAY);
+  const loaded = { today, exercise: await exerciseContext(db, today, 'peck-deck') };
+
+  const tapped = withTappedSet(loaded, {
+    sessionId,
+    exerciseId: 'peck-deck',
+    weightKg: 45,
+    reps: 10,
+    rpe: 8,
+    timestamp: Date.now(),
+  });
+
+  // Lo que proponen los campos es la ultima serie de hoy: antes seguia siendo la de 40.
+  assert.deepEqual(
+    tapped.exercise.todaySets.map((set) => [set.setIndex, set.weightKg, set.reps]),
+    [
+      [1, 40, 12],
+      [2, 45, 10],
+    ],
+  );
+  // Y la cuenta del ejercicio, que decide si el plan abre el siguiente, ya la incluye.
+  assert.equal(tapped.today.sessionSets.length, 2);
+  // Lo cargado de antes no se toca: es lo que vuelve si la base la rechaza.
+  assert.equal(loaded.exercise.todaySets.length, 1);
 });

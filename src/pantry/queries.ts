@@ -12,7 +12,7 @@ import type {
 import { inTransaction } from '../db/transaction.ts';
 import { createBatch } from '../nutrition/queries.ts';
 
-import { perGram, potOf } from './cook.ts';
+import { perGram, potOf, type NeedsWeight } from './cook.ts';
 import { toItem, toRecipe, type PantryItem, type Recipe } from './pantry.ts';
 
 function newId(prefix: string): string {
@@ -85,8 +85,39 @@ export async function savePantryItem(
   return id;
 }
 
-export async function removePantryItem(db: SQLiteDatabase, id: string): Promise<void> {
-  await db.runAsync('DELETE FROM pantry_item WHERE id = ?;', [id]);
+/** Lo que paso al quitarlo: borrado, o vaciado porque estas recetas lo usan. */
+export type PantryRemoval = { outcome: 'borrado' } | { outcome: 'vaciado'; recipes: string[] };
+
+/**
+ * Quita algo de la despensa sin sacarlo de las recetas (decision 2026-10-02).
+ *
+ * Borrarlo lo borraba tambien de cada receta que lo usaba, y la receta pasaba a decir "se
+ * puede" y a cocinar una olla sin el. Si alguna receta lo usa, queda vacio en vez de
+ * borrado: en cero, en "no hay" o sin tener, segun como se tenga, y la receta lo marca
+ * como faltante por su nombre hasta que lo vuelva a tener.
+ */
+export async function removePantryItem(db: SQLiteDatabase, id: string): Promise<PantryRemoval> {
+  const used = await db.getAllAsync<{ name: string }>(
+    `SELECT r.name FROM pantry_recipe_ingredient i
+       JOIN pantry_recipe r ON r.id = i.recipe_id
+      WHERE i.item_id = ?
+   ORDER BY r.name;`,
+    [id],
+  );
+  if (used.length === 0) {
+    await db.runAsync('DELETE FROM pantry_item WHERE id = ?;', [id]);
+    return { outcome: 'borrado' };
+  }
+  await db.runAsync(
+    `UPDATE pantry_item
+        SET quantity = CASE WHEN kind IN ('counted', 'weighed') THEN 0 ELSE quantity END,
+            state = CASE WHEN kind = 'durable' THEN 'no hay' ELSE state END,
+            has_it = CASE WHEN kind = 'spice' THEN 0 ELSE has_it END,
+            updated_at = ?
+      WHERE id = ?;`,
+    [new Date().toISOString(), id],
+  );
+  return { outcome: 'vaciado', recipes: used.map((row) => row.name) };
 }
 
 export async function listRecipes(db: SQLiteDatabase): Promise<Recipe[]> {
@@ -142,6 +173,8 @@ export type Cooked = {
   batchId: string | null;
   /** Lo que impidio el lote, por su nombre. */
   blocked: string[];
+  /** Las fichas a las que les falta el peso por unidad: el aviso lleva a cada una. */
+  needsWeight: NeedsWeight[];
 };
 
 /**
@@ -217,5 +250,9 @@ export async function cookRecipe(
     });
   });
 
-  return { batchId, blocked: outcome.ok ? [] : outcome.blocked };
+  return {
+    batchId,
+    blocked: outcome.ok ? [] : outcome.blocked,
+    needsWeight: outcome.ok ? [] : outcome.needsWeight,
+  };
 }

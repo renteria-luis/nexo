@@ -279,6 +279,18 @@ export type RepDropOff = {
 };
 
 /**
+ * Desde cuando descansa: la ultima serie de la sesion, del ejercicio que sea.
+ *
+ * El reloj contaba desde la ultima serie del ejercicio abierto, y en el primero de cada
+ * ejercicio, que es justo el descanso mas largo (cambiar de maquina), contaba desde que
+ * empezo la sesion. Null antes de la primera serie.
+ */
+export function restingSince(sessionSets: readonly LoggedSet[]): number | null {
+  const stamps = sessionSets.flatMap((set) => (set.timestamp === undefined ? [] : [set.timestamp]));
+  return stamps.length === 0 ? null : Math.max(...stamps);
+}
+
+/**
  * Sets that fell below 90% of the first set's reps after resting less than this
  * exercise asks for. A drop after a full rest is fatigue doing its job and says
  * nothing about the rest, so it is not reported: spec 9 wants the target shown

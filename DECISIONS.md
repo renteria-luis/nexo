@@ -709,3 +709,38 @@ Decision: Se quedan las 5 lb fijas, como el decidio, y se suman o restan desde e
 puesto, sin redondear. El campo "paso" de cada ejercicio sigue sin mover las flechas.
 Rejected: Volver al paso de cada maquina (10 lb en la mayoria de las torres de Fanshawe, que
 con el bloquecito no es el salto util) y seguir redondeando a la cuadricula desde cero.
+
+## 2026-10-03 — El agua se anota en tres medidas y se deshace toque por toque
+Context: La auditoria del 1 de octubre encontro que el agua no tenia "menos uno": la unica
+correccion era "Reiniciar", que borraba el agua entera del dia sin preguntar y estaba a ocho
+puntos de la botella.
+Decision: Cuatro botones: "+ 150 ml", "+ 300 ml", "+ 710 ml" y "Deshacer". Deshacer quita el
+ultimo toque a cualquiera de los tres; dos veces, los dos ultimos, y asi hasta el primero del
+dia. Los toques de hoy se guardan, asi que siguen ahi si iOS cierra la app; al dia siguiente ya
+no hay nada que deshacer. "Reiniciar" desaparece. Lo que entra por el asistente o por el boton
+del aviso no es un toque y no se deshace con esto.
+Rejected: Un "menos una botella" y dejar "Reiniciar" detras de una pregunta, que era lo que
+proponia la auditoria.
+
+## 2026-10-03 — Terminar en el gym marca el tiempo de la sesion como de fiar
+Context: El 2026-09-30 decidio que solo las sesiones marcadas entran en "sueles tardar", en la
+hora de salida y en la grafica de tiempo, pero nada marcaba una sesion nueva: desde el 1 de
+octubre ninguna entraba salvo que fuera a Registros a marcarla a mano.
+Decision: Al tocar Terminar, la sesion queda marcada si duro de 20 minutos a 2 h 30 y termino a
+menos de 20 minutos de la ultima serie, que es lo que distingue cerrar en el gym de cerrar en
+casa. El interruptor del dia sigue para lo que esto no acierte, y reabrir y volver a terminar lo
+decide otra vez. Lo guardado antes se queda como lo marco la migracion 050.
+Rejected: De 20 minutos a 4 horas, el rango de la migracion 050, y dejar todas las nuevas sin
+marcar hasta que las marque a mano.
+
+## 2026-10-03 — Quitar de la despensa lo que usa una receta lo deja vacio
+Context: El 2026-10-02 decidio que quitar algo de la despensa no lo saca de las recetas, que
+lo marcan como faltante por su nombre hasta que lo vuelva a tener. La tabla de ingredientes
+borra en cascada lo que se borra de la despensa, asi que eso necesitaba decidir que pasa con
+la fila.
+Decision: Si alguna receta lo usa, "Quitar" no lo borra: lo deja en cero, en "no hay" o sin
+tener, segun como se tenga, y la pantalla dice en que recetas sigue. Volver a tenerlo es
+cambiar esa misma fila. Lo que ninguna receta usa se borra como antes.
+Rejected: Rehacer la tabla de ingredientes con una migracion para que guarde el nombre, que
+deja recetas apuntando a algo que ya no existe y obliga a reconocerlo por nombre al volver a
+comprarlo.

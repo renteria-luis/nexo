@@ -42,6 +42,7 @@ export function PantryScreen() {
   const [editing, setEditing] = useState<PantryItem | null>(null);
   const [creating, setCreating] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const reload = useCallback(() => {
     loadPantry()
@@ -112,6 +113,7 @@ export function PantryScreen() {
       />
 
       {problem && <Text style={styles.problem}>{problem}</Text>}
+      {notice && <Text style={styles.notice}>{notice}</Text>}
 
       {items === null
         ? null
@@ -145,9 +147,21 @@ export function PantryScreen() {
                             setItems((before) =>
                               (before ?? []).filter((one) => one.id !== item.id),
                             );
-                            removePantryItem(item.id).catch((error: unknown) =>
-                              console.error(error),
-                            );
+                            setProblem(null);
+                            setNotice(null);
+                            removePantryItem(item.id)
+                              .then((removal) => {
+                                if (removal.outcome === 'borrado') return;
+                                setNotice(
+                                  `${item.name} sigue en ${removal.recipes.join(', ')}: quedó sin nada para que la receta diga que falta.`,
+                                );
+                                reload();
+                              })
+                              .catch((error: unknown) => {
+                                console.error(error);
+                                setProblem(error instanceof Error ? error.message : String(error));
+                                reload();
+                              });
                           }}
                         />
                       </View>
@@ -214,6 +228,11 @@ const styles = sheet((theme) => ({
     fontSize: 13,
     fontFamily: font.bold,
     color: theme.danger,
+  },
+  notice: {
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.text,
   },
   empty: {
     fontSize: 13,

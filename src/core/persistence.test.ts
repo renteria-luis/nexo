@@ -14,6 +14,7 @@ import {
 } from '../training/history.ts';
 
 import {
+  addToDailyLog,
   listDailyLogs,
   readDailyLog,
   sleepMinutesFrom,
@@ -24,6 +25,7 @@ import {
   toDisciplineDay,
   toWeighIns,
   upsertDailyLog,
+  withIncrement,
 } from './daily-log.ts';
 import { scoreDay } from './discipline.ts';
 import {
@@ -184,11 +186,12 @@ test('a day with nothing measured is marked as having no data', async () => {
   assert.equal((await readDailyLog(db, '2026-09-13'))?.has_data, 1);
 });
 
-test('scores are stored rounded beside the day they belong to', async () => {
+test('scores are stored with their decimal beside the day they belong to', async () => {
   const { db } = fresh();
   await upsertDailyLog(db, { date: '2026-09-13', steps: 7200 });
-  await storeScore(db, '2026-09-13', 87.6);
-  assert.equal((await readDailyLog(db, '2026-09-13'))?.score, 88);
+  // Redondeado salia 70: el dia decia que no llegaba y la racha lo contaba como que si.
+  await storeScore(db, '2026-09-13', 69.6);
+  assert.equal((await readDailyLog(db, '2026-09-13'))?.score, 69.6);
 
   await storeScore(db, '2026-09-13', null);
   assert.equal((await readDailyLog(db, '2026-09-13'))?.score, null);
@@ -420,4 +423,39 @@ test('una foto que ya cubre el primer registro no se mueve', async () => {
 
   assert.equal(await backdateFirstSnapshot(db), null);
   assert.equal((await targetsInForceOn(db, '2026-09-20'))?.weightBasisKg, 73);
+});
+
+test('dos botellas tocadas antes de que llegue la recarga son dos botellas', async () => {
+  const { db } = fresh();
+  await upsertDailyLog(db, { date: '2026-10-01', waterMl: 1420, alcoholDrinks: 1 });
+
+  // Las dos salen de la misma pantalla, que todavia dice 1420.
+  await addToDailyLog(db, '2026-10-01', { waterMl: 710 });
+  await addToDailyLog(db, '2026-10-01', { waterMl: 710 });
+  await addToDailyLog(db, '2026-10-01', { alcoholDrinks: -1 });
+  await addToDailyLog(db, '2026-10-01', { alcoholDrinks: -1 });
+
+  const log = await readDailyLog(db, '2026-10-01');
+  assert.equal(log?.water_ml, 2840);
+  assert.equal(log?.alcohol_drinks, 0, 'never below zero');
+});
+
+test('la primera botella de un dia sin fila empieza la fila y cuenta como dato', async () => {
+  const { db } = fresh();
+  await addToDailyLog(db, '2026-10-01', { waterMl: 710 });
+
+  const log = await readDailyLog(db, '2026-10-01');
+  assert.equal(log?.water_ml, 710);
+  assert.equal(log?.alcohol_drinks, null, 'a drink nobody counted stays unlogged');
+  assert.equal(log?.has_data, 1);
+});
+
+test('lo pintado antes de que conteste la base suma sobre lo que ya estaba pintado', () => {
+  const once = withIncrement(null, '2026-10-01', { waterMl: 710 });
+  const twice = withIncrement(once, '2026-10-01', { waterMl: 710 });
+
+  assert.equal(once.water_ml, 710);
+  assert.equal(twice.water_ml, 1420);
+  assert.equal(twice.alcohol_drinks, null);
+  assert.equal(withIncrement(twice, '2026-10-01', { waterMl: -5000 }).water_ml, 0);
 });

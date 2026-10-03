@@ -121,6 +121,35 @@ export function kcalBand(targets: TargetValues): { from: number; to: number } {
 }
 
 /**
+ * Las calorias del dia dichas contra la banda, no contra la meta pelada (decision
+ * 2026-09-30): 2,600 sobre una meta de 2,400 esta dentro, y la cabecera de Comida decia
+ * "200 de mas", que es justo lo que lo hacia sentir que se pasaba.
+ */
+export function kcalAgainstBand(kcal: number, band: { from: number; to: number }): string {
+  if (kcal < band.from) return `faltan ${band.from - kcal} para la banda`;
+  if (kcal > band.to) return `${kcal - band.to} sobre la banda`;
+  return `en banda (${band.from} a ${band.to})`;
+}
+
+/**
+ * Spec 3.3: la grasa contra su banda y su piso duro de 0.8 g por kilo. `finished` es un
+ * dia que ya termino: ahi quedarse bajo el piso es una alerta; hoy, a media manana, es
+ * solo lo que falta.
+ */
+export function fatAgainstBand(
+  fatG: number,
+  band: { from: number; to: number; hardFloor: number },
+  finished: boolean,
+): { note: string; alert: boolean } {
+  if (fatG < band.hardFloor) {
+    return finished
+      ? { note: `bajo el piso de ${band.hardFloor} g`, alert: true }
+      : { note: `faltan ${Math.ceil(band.hardFloor - fatG)} para el piso`, alert: false };
+  }
+  return { note: `meta ${band.from} a ${band.to}`, alert: false };
+}
+
+/**
  * Spec 3.6: weight times 1.8 to weight times 2.2. Bounds are floored, which is what
  * the spec's worked example does.
  */

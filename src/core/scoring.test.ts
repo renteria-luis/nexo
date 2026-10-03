@@ -63,3 +63,18 @@ test('la nota del dia se queda con un decimal', () => {
   assert.equal(dayScore(almost).score, 99.2);
   assert.equal(dayScore([{ id: 'a', weight: 100, fraction: 1 }]).score, 100);
 });
+
+test('la nota se corta en el decimal, no se redondea', () => {
+  // Un dia al que le falta menos de una decima no es un cien (decision 2026-10-02).
+  const nearly = [
+    { id: 'a', weight: 99.96, fraction: 1 },
+    { id: 'b', weight: 0.04, fraction: 0 },
+  ];
+  assert.equal(dayScore(nearly).score, 99.9);
+  // Y lo que en binario queda un pelo por debajo de su decimal no pierde esa decima.
+  const exact = [
+    { id: 'a', weight: 72.3, fraction: 1 },
+    { id: 'b', weight: 27.7, fraction: 0 },
+  ];
+  assert.equal(dayScore(exact).score, 72.3);
+});

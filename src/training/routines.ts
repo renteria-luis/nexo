@@ -6,6 +6,7 @@
 
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { addDays, type DateRange, type IsoDate } from '../core/dates.ts';
 import type { TrainingRoutineRow, TrainingSessionRow } from '../db/types.ts';
 
 import { usualMinutes } from './pace.ts';
@@ -104,6 +105,27 @@ export function restForBudget(
   return defaultRestSeconds;
 }
 
+/**
+ * Una serie mas o menos en el plan antes de empezar. Llega a cero: una maquina rota ese
+ * dia se saca de aqui, y con el minimo en una serie no habia forma de dejarla fuera.
+ */
+export function overrideSets(
+  exercises: readonly PlannedExercise[],
+  exerciseId: string,
+  direction: 1 | -1,
+): PlannedExercise[] {
+  return exercises.map((exercise) =>
+    exercise.exerciseId === exerciseId
+      ? { ...exercise, sets: Math.max(0, exercise.sets + direction) }
+      : exercise,
+  );
+}
+
+/** Lo que de verdad se va a hacer: lo que quedo en cero no entra en la sesion. */
+export function toStart(exercises: readonly PlannedExercise[]): PlannedExercise[] {
+  return exercises.filter((exercise) => exercise.sets > 0);
+}
+
 export function estimateSeconds(exercises: readonly PlannedExercise[]): number {
   if (exercises.length === 0) return 0;
   const work = exercises.reduce(
@@ -129,12 +151,13 @@ export function trimRoutine(
       if (sets === null) return [];
 
       // Con el tiempo completo hace la version buena aunque cueste mas reloj; en
-      // cuanto recorta, vuelve la que se despacha en la mitad.
-      const chosen = budget === 'completo' && exercise.fullTime ? exercise.fullTime : exercise;
-      const restSeconds =
-        budget === 'completo' && exercise.fullTime
-          ? exercise.fullTime.defaultRestSeconds
-          : exercise.defaultRestSeconds;
+      // cuanto recorta, vuelve la que se despacha en la mitad. Solo cuesta mas reloj la
+      // de un brazo por vez: la maquina de laterales de Fit4Less es de dos brazos, y con
+      // poco tiempo el plan la cambiaba por las mancuernas, la ultima de su lista.
+      const better = exercise.fullTime;
+      const upgrade = better !== null && (budget === 'completo' || !better.unilateral);
+      const chosen = upgrade ? better : exercise;
+      const restSeconds = upgrade ? better.defaultRestSeconds : exercise.defaultRestSeconds;
 
       return [
         {
@@ -172,6 +195,68 @@ type RoutineExerciseRow = {
   full_time_unilateral: number | null;
   full_time_rest_seconds: number | null;
 };
+
+/** Spec 13: la semana son cinco dias, dos de empuje, dos de tiron y uno de pierna. */
+export const WEEKLY_SPLIT: Readonly<Record<string, number>> = { push: 2, pull: 2, legs: 1 };
+
+/** Una sesion con series, con su rutina: lo que se mira para saber que toca. */
+export type RoutineDone = { routineId: string; date: IsoDate };
+
+/**
+ * Spec 8.5 paso 2: la rutina viene puesta por el patron, no siempre la primera.
+ *
+ * La que mas le debe la semana movil (los ultimos siete dias contra spec 13), y entre las
+ * que deben lo mismo, la que hace mas que no hace; nunca hecha es la mas vieja. El chip se
+ * puede cambiar igual: esto solo ahorra el toque, y el empuje en dia de tiron que salia
+ * cuando se le olvidaba tocarlo.
+ */
+export function owedRoutine(
+  routines: readonly TrainingRoutineRow[],
+  done: readonly RoutineDone[],
+  today: IsoDate,
+): string | null {
+  const weekStartsOn = addDays(today, -6);
+  const owed = (id: string) =>
+    (WEEKLY_SPLIT[id] ?? 0) -
+    done.filter((one) => one.routineId === id && one.date >= weekStartsOn).length;
+  const lastDone = (id: string) =>
+    done.reduce<IsoDate | ''>(
+      (latest, one) => (one.routineId === id && one.date > latest ? one.date : latest),
+      '',
+    );
+
+  let best: TrainingRoutineRow | null = null;
+  for (const routine of routines) {
+    if (best === null) {
+      best = routine;
+      continue;
+    }
+    const difference = owed(routine.id) - owed(best.id);
+    if (difference > 0 || (difference === 0 && lastDone(routine.id) < lastDone(best.id))) {
+      best = routine;
+    }
+  }
+  return best?.id ?? null;
+}
+
+/** Las sesiones con series de esas fechas que dicen su rutina. */
+export async function listRoutinesDone(
+  db: SQLiteDatabase,
+  range: DateRange,
+): Promise<RoutineDone[]> {
+  return db.getAllAsync<RoutineDone>(
+    `SELECT s.routine_id AS routineId, s.date
+       FROM training_session s
+      WHERE s.date BETWEEN ? AND ?
+        AND s.routine_id IS NOT NULL
+        AND EXISTS (
+          SELECT 1 FROM training_set_entry e
+           WHERE e.session_id = s.id AND e.is_warmup = 0
+        )
+   ORDER BY s.date;`,
+    [range.from, range.to],
+  );
+}
 
 export async function listRoutines(db: SQLiteDatabase): Promise<TrainingRoutineRow[]> {
   return db.getAllAsync<TrainingRoutineRow>('SELECT * FROM training_routine ORDER BY rowid;');
@@ -240,8 +325,22 @@ export async function loadRoutine(
        JOIN training_exercise e ON e.id = re.exercise_id
        LEFT JOIN training_exercise f ON f.id = re.full_time_exercise_id
       WHERE re.routine_id = ?
+        -- Lo que el gimnasio no tiene no se planea: el interruptor "Donde lo tengo"
+        -- cambiaba la ficha y nada mas. Un gimnasio sin nada marcado ("Otro") no dice
+        -- que falte nada, y se queda con la rutina entera.
+        AND (
+          ? IS NULL
+          OR NOT EXISTS (SELECT 1 FROM training_exercise_gym WHERE gym_id = ?)
+          OR EXISTS (
+            SELECT 1 FROM training_exercise_gym g
+             WHERE g.gym_id = ?
+               AND (g.exercise_id = re.exercise_id
+                    OR g.exercise_id IN (SELECT v.exercise_id FROM training_exercise_variant v
+                                          WHERE v.base_exercise_id = re.exercise_id))
+          )
+        )
    ORDER BY re.position;`,
-    [routineId],
+    [routineId, gymId, gymId, gymId],
   );
 
   const variants = await bestVariants(db, gymId);
@@ -361,6 +460,20 @@ export type PlannedSet = {
   sets: number;
   restSeconds: number;
 };
+
+/**
+ * El descanso que toca ahora en ese ejercicio: el que aprobo en el plan de hoy, que con
+ * poco tiempo baja a 90 s en los de nivel 2 y 3 (spec 8.3 regla 5), y el del catalogo
+ * si el ejercicio no estaba en el plan. La sesion leia siempre el del catalogo y le
+ * seguia pidiendo 2:00 despues de aprobar el recorte.
+ */
+export function suggestedRest(
+  plan: readonly PlannedSet[],
+  exerciseId: string,
+  catalogueSeconds: number,
+): number {
+  return plan.find((entry) => entry.exerciseId === exerciseId)?.restSeconds ?? catalogueSeconds;
+}
 
 export async function loadSessionPlan(
   db: SQLiteDatabase,
