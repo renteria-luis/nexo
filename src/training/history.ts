@@ -7,11 +7,21 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { addDays, daysBetween, type DateRange, type IsoDate } from '../core/dates.ts';
 import { WEEKLY_SESSION_TARGET } from '../core/discipline.ts';
 
+/**
+ * Los dias en que entreno: con una sesion que tiene al menos una serie de trabajo (spec
+ * 5.5, los calentamientos no cuentan). Una sesion abierta y dejada vacia, porque el gym
+ * estaba lleno o cambio el plan, contaba como entreno: le daba a un descanso cercano sus
+ * 22 puntos y borraba las faltas de los dias siguientes.
+ */
 export async function listSessionDates(db: SQLiteDatabase, range: DateRange): Promise<IsoDate[]> {
   const rows = await db.getAllAsync<{ date: IsoDate }>(
-    `SELECT DISTINCT date FROM training_session
-      WHERE date BETWEEN ? AND ?
-   ORDER BY date;`,
+    `SELECT DISTINCT s.date FROM training_session s
+      WHERE s.date BETWEEN ? AND ?
+        AND EXISTS (
+          SELECT 1 FROM training_set_entry e
+           WHERE e.session_id = s.id AND e.is_warmup = 0
+        )
+   ORDER BY s.date;`,
     [range.from, range.to],
   );
   return rows.map((row) => row.date);

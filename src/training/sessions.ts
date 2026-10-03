@@ -88,6 +88,16 @@ export async function setSessionRoutine(
   ]);
 }
 
+/** El dia de una sesion, que es el que mueve escribir en ella. */
+export async function sessionDate(db: SQLiteDatabase, sessionId: string): Promise<IsoDate> {
+  const row = await db.getFirstAsync<{ date: IsoDate }>(
+    'SELECT date FROM training_session WHERE id = ?;',
+    [sessionId],
+  );
+  if (!row) throw new Error(`there is no session called ${sessionId}`);
+  return row.date;
+}
+
 export async function getSessionOn(
   db: SQLiteDatabase,
   date: IsoDate,

@@ -155,6 +155,7 @@ import {
   loadSessionPlan,
   saveSessionPlan,
   getSessionOn,
+  sessionDate,
   listSessionTimes,
   setDurationTrusted,
   setSessionDetails,
@@ -183,6 +184,7 @@ import {
   rescoreMissing,
   rescoreSettling,
   windowRange,
+  writeAndRescore,
   type DayDetail,
   type DayRow,
   type RecordWindow,
@@ -563,9 +565,18 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   // la nota del dia, cuando lo unico que hacia falta era leer lo de ese ejercicio.
   const openExercise = useRef<string | null>(null);
 
+  // El primer arranque de un dia nuevo rehace los ultimos siete dias aunque lo pida una
+  // escritura que no los necesita: ayer siguio abierto hasta medianoche, y su falta de
+  // entreno no existia hasta hoy.
+  const settledOn = useRef<IsoDate | null>(null);
+
   const refresh = useCallback((settle = true) => {
-    load(openExercise.current, settle)
-      .then((loaded) => setState({ phase: 'ready', loaded, problem: null }))
+    const deep = settle || settledOn.current !== todayIso();
+    load(openExercise.current, deep)
+      .then((loaded) => {
+        if (deep) settledOn.current = loaded.today.date;
+        setState({ phase: 'ready', loaded, problem: null });
+      })
       .catch((error: unknown) => {
         console.error(error);
         const message = error instanceof Error ? error.message : String(error);
@@ -816,7 +827,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         }, false),
       // Se puede esperar: la pantalla de un dia pasado tiene que volver a leerlo en
       // cuanto el borrado esta escrito, y antes lo adivinaba con un temporizador.
-      removeFood: (entryId) => write((db) => deleteFoodEntry(db, entryId), false),
+      // Sin el trabajo de fondo, pero rehaciendo el dia de esa porcion: si era de un dia
+      // pasado, su nota guardada seguia contando lo que se borro.
+      removeFood: (entryId) =>
+        write(async (db) => {
+          const date = await deleteFoodEntry(db, entryId);
+          if (date !== null) await rescoreDays(db, [date], todayIso());
+        }, false),
       beginSession: (routineId, budget, plan, company, gymId) =>
         run(async (db) => {
           const sessionId = await startSession(db, {
@@ -908,8 +925,16 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       loadDay,
       loadCharts,
       loadRecords,
-      editDay: (date, entry) => write((db) => upsertDailyLog(db, { date, ...entry })),
-      addFoodOn: (date, entry) => write((db) => addFoodEntry(db, { ...entry, date })),
+      editDay: (date, entry) =>
+        write((db) =>
+          writeAndRescore(db, date, todayIso(), () => upsertDailyLog(db, { date, ...entry }), {
+            restDay: entry.restDay !== undefined,
+          }),
+        ),
+      addFoodOn: (date, entry) =>
+        write((db) =>
+          writeAndRescore(db, date, todayIso(), () => addFoodEntry(db, { ...entry, date })),
+        ),
       openSessionOn: async (date, routineId) => {
         const db = await openDatabase();
         const existing = await getSessionOn(db, date);
@@ -925,16 +950,22 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         return id;
       },
       addSetOn: (sessionId, exerciseId, weightKg, reps, extra) =>
-        write((db) => addSet(db, { sessionId, exerciseId, weightKg, reps, ...extra })),
+        write(async (db) =>
+          writeAndRescore(db, await sessionDate(db, sessionId), todayIso(), () =>
+            addSet(db, { sessionId, exerciseId, weightKg, reps, ...extra }),
+          ),
+        ),
       removeSetOn: (sessionId, exerciseId, setIndex) =>
-        write(async (db) => {
-          const rows = await db.getAllAsync<{ id: string }>(
-            `SELECT id FROM training_set_entry
-            WHERE session_id = ? AND exercise_id = ? AND set_index = ?;`,
-            [sessionId, exerciseId, setIndex],
-          );
-          for (const row of rows) await deleteSet(db, row.id);
-        }),
+        write(async (db) =>
+          writeAndRescore(db, await sessionDate(db, sessionId), todayIso(), async () => {
+            const rows = await db.getAllAsync<{ id: string }>(
+              `SELECT id FROM training_set_entry
+              WHERE session_id = ? AND exercise_id = ? AND set_index = ?;`,
+              [sessionId, exerciseId, setIndex],
+            );
+            for (const row of rows) await deleteSet(db, row.id);
+          }),
+        ),
       exportData: () => exportToFile(),
       retry: () => {
         // Desde el panel de error tiene que verse que lo intenta otra vez; con la app

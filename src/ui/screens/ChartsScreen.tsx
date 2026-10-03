@@ -1,8 +1,8 @@
 import { useNavigation } from '@react-navigation/native';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Text, useWindowDimensions, View } from 'react-native';
 
-import { readSaturation, sayLevel } from '../../core/creatine.ts';
+import { sayLevel } from '../../core/creatine.ts';
 import { hoursAndMinutes, scoreText, thousands } from '../../core/day-report.ts';
 import { fromKg } from '../../core/units.ts';
 import { useAppData } from '../../shell/AppData.tsx';
@@ -97,21 +97,7 @@ export function ChartsScreen() {
   const [exercise, setExercise] = useState<string | null>(null);
   const [measureId, setMeasure] = useState<MeasureId>('volume');
   const measure = MEASURES.find((one) => one.id === measureId) ?? MEASURES[0];
-  // La lectura de hoy sale de la misma serie que la grafica, para que el numero grande y
-  // la ultima barra no puedan decir cosas distintas.
-  const creatine = useMemo(
-    () =>
-      data === null
-        ? null
-        : readSaturation(
-            data.creatine.map((point) => ({ date: point.date, value: point.value / 100 })),
-            data.creatine.map((point, index) => ({
-              date: point.date,
-              taken: index > 0 && point.value > data.creatine[index - 1].value,
-            })),
-          ),
-    [data],
-  );
+  const creatine = data?.creatineReading ?? null;
   const [problem, setProblem] = useState<string | null>(null);
   // El SVG necesita un ancho en numeros. Se calcula de la ventana menos los margenes
   // en vez de medirlo: medir deja el primer dibujo en cero.

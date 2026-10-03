@@ -148,6 +148,51 @@ function number(raw: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
+/**
+ * Un numero con su unidad, pegada o en la palabra siguiente: "1.5l", "1.5 l", "710".
+ * Devuelve cuantas palabras uso, para que lo que sobre se pueda rechazar. Null si la
+ * unidad no es ninguna de las que se esperan.
+ */
+function measure(
+  rest: readonly string[],
+  units: readonly string[],
+): { value: number; unit: string | null; used: number } | null {
+  const glued = /^([0-9]+(?:[.,][0-9]+)?)([a-z]+)?$/.exec(rest[0] ?? '');
+  if (!glued) return null;
+  const value = number(glued[1]);
+  if (value === null) return null;
+  if (glued[2] !== undefined) {
+    return units.includes(glued[2]) ? { value, unit: glued[2], used: 1 } : null;
+  }
+  if (rest[1] !== undefined && units.includes(rest[1])) return { value, unit: rest[1], used: 2 };
+  return { value, unit: null, used: 1 };
+}
+
+/** "7.5h", "130m", "7h30", "7h30m" o "7h 30m", en minutos. Null si no es ninguna. */
+function sleepMinutes(rest: readonly string[]): { minutes: number; used: number } | null {
+  const split = /^([0-9]+)h$/.exec(rest[0] ?? '');
+  const tail = /^([0-9]{1,2})m$/.exec(rest[1] ?? '');
+  if (split && tail) return { minutes: Number(split[1]) * 60 + Number(tail[1]), used: 2 };
+
+  const joined = /^([0-9]+)h([0-9]{1,2})m?$/.exec(rest[0] ?? '');
+  if (joined) return { minutes: Number(joined[1]) * 60 + Number(joined[2]), used: 1 };
+
+  const single = /^([0-9]+(?:[.,][0-9]+)?)(h|m)$/.exec(rest[0] ?? '');
+  const value = single ? number(single[1]) : null;
+  if (!single || value === null) return null;
+  return { minutes: Math.round(single[2] === 'h' ? value * 60 : value), used: 1 };
+}
+
+/**
+ * Pasos como los copia de la app de Salud, con el separador de miles: "8,200" y "8.200"
+ * son ocho mil doscientos, no ocho.
+ */
+function steps(raw: string): number | null {
+  const plain = /^[0-9]{1,3}(?:[.,][0-9]{3})+$/.test(raw) ? raw.replace(/[.,]/g, '') : raw;
+  const value = Number(plain);
+  return /^[0-9]+$/.test(plain) && Number.isInteger(value) ? value : null;
+}
+
 function bad(reason: string): ParsedCommand {
   return { ok: false, reason };
 }
@@ -159,43 +204,56 @@ export function parseCommand(input: string, today: IsoDate = todayIso()): Parsed
   const { date, rest: parts } = splitDate(words, today);
   const [verb, ...rest] = parts;
 
-  const done = (command: Command): ParsedCommand => ({ ok: true, command, date });
+  // Lo que sobra despues de lo que el comando espera no se tira: guardar 7 h de "sueno 7h
+  // 30m" es justo guardar algo distinto de lo que escribio.
+  const done = (command: Command, used: number): ParsedCommand =>
+    rest.length > used
+      ? bad(`Sobra "${rest.slice(used).join(' ')}": una cosa por linea.`)
+      : { ok: true, command, date };
 
-  if (verb === 'ayuda' || verb === 'help') return done({ kind: 'help' });
+  if (verb === 'ayuda' || verb === 'help') return { ok: true, command: { kind: 'help' }, date };
 
   if (verb === 'agua') {
-    const ml = number(rest[0] ?? '');
-    if (ml === null || ml <= 0) return bad('Cuantos ml. Por ejemplo "agua 710".');
-    return done({ kind: 'water', ml: Math.round(ml) });
+    const water = measure(rest, ['ml', 'l']);
+    if (water === null || water.value <= 0) return bad('Cuantos ml. Por ejemplo "agua 710".');
+    // Un ml y medio no es algo que se beba: sin unidad, un numero con decimales es un litro
+    // mal escrito, y adivinarlo seria guardar otra cosa.
+    if (water.unit === null && !Number.isInteger(water.value)) {
+      return bad(`Con unidad: "agua ${rest[0]} l" o los ml, "agua 710".`);
+    }
+    const ml = water.unit === 'l' ? water.value * 1000 : water.value;
+    return done({ kind: 'water', ml: Math.round(ml) }, water.used);
   }
 
   if (verb === 'peso') {
-    const value = number(rest[0] ?? '');
-    if (value === null || value <= 0) return bad('Cuanto pesas hoy. Por ejemplo "peso 74.2".');
-    return done({ kind: 'weight', value });
+    // Su gimnasio va en libras y el peso corporal no (2026-10-02).
+    if (rest.some((word) => /^(lb|lbs|libras?)$/.test(word) || /^[0-9.,]+lbs?$/.test(word))) {
+      return bad('El peso corporal va en kilos: "peso 74.2".');
+    }
+    const weight = measure(rest, ['kg']);
+    if (weight === null || weight.value <= 0) {
+      return bad('Cuanto pesas hoy. Por ejemplo "peso 74.2".');
+    }
+    return done({ kind: 'weight', value: weight.value }, weight.used);
   }
 
   if (verb === 'pasos') {
-    const steps = number(rest[0] ?? '');
-    if (steps === null || steps < 0) return bad('Cuantos pasos. Por ejemplo "pasos 8200".');
-    return done({ kind: 'steps', steps: Math.round(steps) });
+    const count = steps(rest[0] ?? '');
+    if (count === null) return bad('Cuantos pasos. Por ejemplo "pasos 8200".');
+    return done({ kind: 'steps', steps: count }, 1);
   }
 
   if (verb === 'sueno') {
-    const raw = rest[0] ?? '';
-    const match = /^([0-9]+(?:[.,][0-9]+)?)(h|m)$/.exec(raw);
-    if (!match) return bad('Con h o con m: "sueno 7.5h" o "sueno 130m".');
-    const value = number(match[1]);
-    if (value === null || value <= 0) return bad('Con h o con m: "sueno 7.5h" o "sueno 130m".');
-    const minutes = Math.round(match[2] === 'h' ? value * 60 : value);
-    if (minutes <= 0) return bad('Eso no llega ni a un minuto.');
-    return done({ kind: 'sleep', minutes });
+    const slept = sleepMinutes(rest);
+    if (slept === null) return bad('Con h o con m: "sueno 7.5h", "sueno 7h 30m" o "sueno 130m".');
+    if (slept.minutes <= 0) return bad('Eso no llega ni a un minuto.');
+    return done({ kind: 'sleep', minutes: slept.minutes }, slept.used);
   }
 
   if (verb === 'creatina') {
     const negative = rest[0] === 'no';
     if (rest.length > 0 && !negative) return bad('"creatina" o "creatina no".');
-    return done({ kind: 'creatine', taken: !negative });
+    return done({ kind: 'creatine', taken: !negative }, negative ? 1 : 0);
   }
 
   if (verb === 'serie') {
@@ -216,7 +274,7 @@ export function parseCommand(input: string, today: IsoDate = todayIso()): Parsed
       rpe = parsed;
     }
 
-    return done({ kind: 'set', weight, reps, rpe });
+    return done({ kind: 'set', weight, reps, rpe }, rpe === null ? 1 : 2);
   }
 
   return bad(`No conozco "${verb}". Escribe "ayuda" para ver la lista.`);

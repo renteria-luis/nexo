@@ -41,7 +41,7 @@ import {
 } from '../training/index.ts';
 
 /** How far back the missed training run is allowed to reach. */
-const HISTORY_DAYS = 60;
+export const HISTORY_DAYS = 60;
 
 export type AssembledDay = {
   date: IsoDate;

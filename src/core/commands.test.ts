@@ -55,6 +55,28 @@ test('a command it does not know writes nothing and says so', () => {
   assert.match(rejected('creatina quiza'), /creatina no/);
 });
 
+test('lo que escribe despues del numero cuenta: la unidad se lee y lo demas se rechaza', () => {
+  assert.deepEqual(ok('sueno 7h 30m'), { kind: 'sleep', minutes: 450 });
+  assert.deepEqual(ok('sueño 7h30'), { kind: 'sleep', minutes: 450 });
+  assert.deepEqual(ok('sueno 7h30m'), { kind: 'sleep', minutes: 450 });
+  assert.deepEqual(ok('agua 1.5 l'), { kind: 'water', ml: 1500 });
+  assert.deepEqual(ok('agua 1,5l'), { kind: 'water', ml: 1500 });
+  assert.deepEqual(ok('agua 710 ml'), { kind: 'water', ml: 710 });
+  assert.deepEqual(ok('pasos 8,200'), { kind: 'steps', steps: 8200 });
+  assert.deepEqual(ok('pasos 8.200'), { kind: 'steps', steps: 8200 });
+  assert.deepEqual(ok('pasos 12,345'), { kind: 'steps', steps: 12345 });
+  assert.deepEqual(ok('peso 73.4 kg'), { kind: 'weight', value: 73.4 });
+  assert.deepEqual(ok('peso 73.4kg'), { kind: 'weight', value: 73.4 });
+
+  // Antes: 710 ml y los pasos tirados, 2 ml, 8 pasos, 165 kg.
+  assert.match(rejected('agua 710 pasos 8200'), /Sobra "pasos 8200"/);
+  assert.match(rejected('agua 1.5'), /Con unidad/);
+  assert.match(rejected('pasos 8.2'), /Cuantos pasos/);
+  assert.match(rejected('peso 165 lb'), /va en kilos/);
+  assert.match(rejected('creatina no gracias'), /Sobra "gracias"/);
+  assert.match(rejected('serie 65x8 rpe8 otra'), /Sobra "otra"/);
+});
+
 test('sin fecha escrita el comando es de hoy', () => {
   assert.equal(on('agua 710'), TODAY);
   assert.equal(on('hoy agua 710'), TODAY);

@@ -7,7 +7,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { listDailyLogs, toWeighIns } from '../core/daily-log.ts';
-import { isWithin, trailingDays, type IsoDate } from '../core/dates.ts';
+import { addDays, isWithin, trailingDays, type IsoDate } from '../core/dates.ts';
 import { SLEEP_FULL_MINUTES } from '../core/discipline.ts';
 import { targetsInForceOn } from '../core/snapshots.ts';
 import { kcalBand, proteinBand, rollingWeightAverage } from '../core/targets.ts';
@@ -21,7 +21,7 @@ import {
   setLoad,
 } from '../training/index.ts';
 
-import { saturationSeries } from '../core/creatine.ts';
+import { readSaturation, saturationSeries, type CreatineReading } from '../core/creatine.ts';
 
 import { SET_BAND } from './week.ts';
 
@@ -114,6 +114,13 @@ export type ChartsData = {
    * el deposito que tiene hoy viene de las semanas de antes.
    */
   creatine: Point[];
+  /**
+   * Lo que dice la tarjeta: el nivel de hoy, hacia donde va y cuantos dias seguidos la
+   * toma. Sale de lo que anoto y de la serie sin redondear; la pantalla lo adivinaba por
+   * si la barra subia, y lleno el deposito una toma sube menos de un punto, asi que decia
+   * "dias sin tomarla" a quien la tomaba todos los dias.
+   */
+  creatineReading: CreatineReading | null;
   /** Series directas por musculo en los ultimos siete dias. */
   muscles: MuscleBar[];
   setBand: Band;
@@ -284,10 +291,15 @@ export async function loadCharts(
         .join(' · '),
     }));
 
-  const creatine = saturationSeries(
-    creatineLog.map((row) => ({ date: row.date, taken: row.creatine_taken === 1 })),
-    today,
-  )
+  const creatineDays = creatineLog.map((row) => ({
+    date: row.date,
+    taken: row.creatine_taken === 1,
+  }));
+  // Hoy entra solo cuando la anota (2026-10-02). Contado como no tomada antes de anotarla,
+  // la ultima barra bajaba cada manana y la tarjeta decia "1 dia sin tomarla".
+  const loggedToday = creatineDays.some((day) => day.date === today);
+  const saturation = saturationSeries(creatineDays, loggedToday ? today : addDays(today, -1));
+  const creatine = saturation
     .filter((day) => isWithin(day.date, range))
     .map((day) => ({ date: day.date, value: Math.round(day.value * 100) }));
 
@@ -295,6 +307,7 @@ export async function loadCharts(
     from: range.from,
     to: range.to,
     creatine,
+    creatineReading: readSaturation(saturation, creatineDays),
     gymMinutes,
     weight,
     weightAverage,

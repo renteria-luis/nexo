@@ -21,7 +21,7 @@ import {
 } from '../training/index.ts';
 import type { CoreDailyLogRow, TrainingExerciseRow, TrainingSessionRow } from '../db/types.ts';
 
-import { assembleDay, type AssembledDay } from './day.ts';
+import { assembleDay, HISTORY_DAYS, type AssembledDay } from './day.ts';
 
 export type DayExercise = {
   exerciseId: string;
@@ -167,16 +167,15 @@ export async function listDayRows(db: SQLiteDatabase, range: DateRange): Promise
   ]);
 
   const volumeByDate = new Map<IsoDate, number>();
-  const setsByDate = new Map<IsoDate, number>();
   for (const set of sets) {
     volumeByDate.set(set.date, (volumeByDate.get(set.date) ?? 0) + volumeLoad([set]));
-    setsByDate.set(set.date, (setsByDate.get(set.date) ?? 0) + 1);
   }
   const routineByDate = new Map(routines.map((row) => [row.date, row.routine]));
 
   // Una sesion abierta y cerrada sin anotar nada no es un entreno: el dia que marco
-  // descanso salia como "entrenó" y al abrirlo no habia ni una serie.
-  const trained = new Set(sessionDates.filter((date) => (setsByDate.get(date) ?? 0) > 0));
+  // descanso salia como "entrenó" y al abrirlo no habia ni una serie. listSessionDates ya
+  // deja fuera esas sesiones.
+  const trained = new Set(sessionDates);
   const dates = new Set<IsoDate>([
     ...logs.filter((log) => log.has_data === 1 || log.score !== null).map((log) => log.date),
     ...trained,
@@ -411,12 +410,71 @@ export async function rescoreDays(
   let changed = 0;
   for (const date of dates) {
     const day = await assembleDay(db, date, today);
-    if (day.log === null || day.result?.score == null) continue;
-    if (day.log.score === day.result.score) continue;
-    await storeScore(db, date, day.result.score);
+    const score = day.result?.score ?? null;
+    if (day.log === null) {
+      // La nota vive en la fila del dia, asi que un dia sin fila necesita una.
+      if (score === null) continue;
+      await upsertDailyLog(db, { date });
+    } else if (day.log.score === score) {
+      continue;
+    }
+    // Tambien sin nota: un dia que se queda sin lo que la sostenia no puede seguir con la
+    // de antes.
+    await storeScore(db, date, score);
     changed += 1;
   }
   return changed;
+}
+
+async function trainedOnDay(db: SQLiteDatabase, date: IsoDate): Promise<boolean> {
+  return (await listSessionDates(db, { from: date, to: date })).length > 0;
+}
+
+/**
+ * Los dias cuya nota puede moverse por escribir en `date`.
+ *
+ * Lo que comio y el registro del dia solo mueven ese dia. Que el dia pase a contar o a
+ * dejar de contar como entrenado, o un descanso marcado, mueven ademas la semana de
+ * alrededor (spec 4.3: las cinco sesiones de cualquier semana que lo contenga) y la racha
+ * de faltas de los dias siguientes, que llega hasta la siguiente sesion.
+ */
+async function daysMovedBy(
+  db: SQLiteDatabase,
+  date: IsoDate,
+  today: IsoDate,
+  training: boolean,
+): Promise<IsoDate[]> {
+  if (!training) return [date];
+
+  const [next] = await listSessionDates(db, { from: addDays(date, 1), to: today });
+  const week = addDays(date, 6);
+  const run = next ?? today;
+  const ends = [run > week ? run : week, today, addDays(date, HISTORY_DAYS)].sort()[0];
+
+  const dates: IsoDate[] = [];
+  for (let day = addDays(date, -6); day <= ends; day = addDays(day, 1)) dates.push(day);
+  return dates;
+}
+
+/**
+ * Escribe en un dia y rehace las notas que eso mueve, tenga la edad que tenga.
+ *
+ * La recarga solo rehace hoy, los dias sin nota y los ultimos siete. Un dia de hace tres
+ * semanas que ya tenia nota se quedaba con la vieja: lo completaba en Registros o con el
+ * asistente y su cuadrito, la racha y Registros seguian diciendo lo de antes.
+ */
+export async function writeAndRescore(
+  db: SQLiteDatabase,
+  date: IsoDate,
+  today: IsoDate,
+  write: () => Promise<unknown>,
+  { restDay = false }: { restDay?: boolean } = {},
+): Promise<void> {
+  const trainedBefore = await trainedOnDay(db, date);
+  await write();
+  const trainedAfter = await trainedOnDay(db, date);
+  const dates = await daysMovedBy(db, date, today, restDay || trainedBefore !== trainedAfter);
+  await rescoreDays(db, dates, today);
 }
 
 /**

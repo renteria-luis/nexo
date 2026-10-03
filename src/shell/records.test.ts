@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { storeScore, upsertDailyLog } from '../core/daily-log.ts';
+import { addDays } from '../core/dates.ts';
 import { migrations } from '../db/migrations/index.ts';
 import { computeTargets } from '../core/targets.ts';
 import {
@@ -12,16 +13,20 @@ import {
   setInitialTargets,
   writeTargetSnapshot,
 } from '../core/snapshots.ts';
-import { addFoodEntry } from '../nutrition/index.ts';
+import { addFoodEntry, deleteFoodEntry } from '../nutrition/index.ts';
 import { addSet, startSession } from '../training/index.ts';
+
+import { assembleDay } from './day.ts';
 
 import { loadCharts } from './charts.ts';
 import {
   buildDayExports,
   listDayRows,
+  rescoreDays,
   rescoreMissing,
   rescoreSettling,
   loadDayDetail,
+  writeAndRescore,
   sortDayRows,
   windowRange,
   type DayRow,
@@ -38,6 +43,16 @@ function adapt(raw: DatabaseSync): SQLiteDatabase {
     runAsync: async (source: string, params: SqlValue[] = []) => {
       raw.prepare(source).run(...params);
       return { changes: 0, lastInsertRowId: 0 };
+    },
+    withTransactionAsync: async (task: () => Promise<void>) => {
+      raw.exec('BEGIN;');
+      try {
+        await task();
+        raw.exec('COMMIT;');
+      } catch (error) {
+        raw.exec('ROLLBACK;');
+        throw error;
+      }
     },
   } as unknown as SQLiteDatabase;
 }
@@ -441,4 +456,146 @@ test('un dia con series dice que rutina fue', async () => {
   const [only] = await listDayRows(db, { from: '2026-09-22', to: '2026-09-22' });
   assert.equal(only.trained, true);
   assert.equal(only.routineName, 'Pull');
+});
+
+/** Un telefono con metas y una raw a mano para leer la nota guardada. */
+function scored(): { db: SQLiteDatabase; stored: (date: string) => number | null } {
+  const raw = new DatabaseSync(':memory:');
+  raw.exec('PRAGMA foreign_keys = ON;');
+  for (const migration of migrations) raw.exec(migration.sql);
+  const db = adapt(raw);
+  const stored = (date: string) =>
+    (
+      raw.prepare('SELECT score FROM core_daily_log WHERE date = ?;').get(date) as
+        { score: number | null } | undefined
+    )?.score ?? null;
+  return { db, stored };
+}
+
+const PROFILE = {
+  heightCm: 180,
+  birthDate: '1990-01-15',
+  activityFactor: 1.58,
+  phase: 'recomp' as const,
+  sleepMinutes: 420,
+  steps: 7000,
+};
+
+/** Cinco sesiones antes del dia: sin deuda de entreno, la falta no tapa la nota. */
+async function trainedWeekBefore(db: SQLiteDatabase): Promise<void> {
+  for (const date of ['2026-09-03', '2026-09-04', '2026-09-05', '2026-09-06', '2026-09-07']) {
+    const session = await startSession(db, { date, timeBudget: 'completo' });
+    await addSet(db, { sessionId: session, exerciseId: 'peck-deck', weightKg: 50, reps: 10 });
+  }
+}
+
+async function live(db: SQLiteDatabase, date: string): Promise<number | null> {
+  const score = (await assembleDay(db, date, TODAY)).result?.score ?? null;
+  return score === null ? null : Math.round(score);
+}
+
+test('completar un dia de hace dos semanas que ya tenia nota cambia su cuadrito', async () => {
+  const { db, stored } = scored();
+  await writeTargetSnapshot(db, computeTargets(73, PROFILE, '2026-09-01'), '2026-09-01');
+  await trainedWeekBefore(db);
+  await upsertDailyLog(db, {
+    date: '2026-09-08',
+    waterMl: 1200,
+    sleepMinutes: 450,
+    sleepSource: 'manual',
+  });
+  await rescoreMissing(db, { from: '2026-09-01', to: TODAY }, TODAY);
+  const before = stored('2026-09-08');
+
+  await writeAndRescore(db, '2026-09-08', TODAY, () =>
+    addFoodEntry(db, {
+      date: '2026-09-08',
+      foodId: 'chicken-breast-kirkland',
+      quantity: 600,
+      unit: 'g',
+      mealSlot: 'mediodía',
+    }),
+  );
+
+  // La recarga solo rehace los dias sin nota y los ultimos siete: este se quedaba igual.
+  assert.notEqual(stored('2026-09-08'), before);
+  assert.equal(stored('2026-09-08'), await live(db, '2026-09-08'));
+});
+
+test('una sesion escrita despues tambien rehace el descanso de su semana', async () => {
+  const { db, stored } = scored();
+  await writeTargetSnapshot(db, computeTargets(73, PROFILE, '2026-09-01'), '2026-09-01');
+  // Descanso el sabado 5, cuatro sesiones despues y una que se le olvido anotar el 3.
+  await upsertDailyLog(db, {
+    date: '2026-09-05',
+    restDay: true,
+    sleepMinutes: 450,
+    sleepSource: 'manual',
+    waterMl: 2800,
+  });
+  for (const date of ['2026-09-06', '2026-09-07', '2026-09-08', '2026-09-09']) {
+    const session = await startSession(db, { date, timeBudget: 'completo' });
+    await addSet(db, { sessionId: session, exerciseId: 'peck-deck', weightKg: 50, reps: 10 });
+  }
+  await rescoreMissing(db, { from: '2026-09-01', to: TODAY }, TODAY);
+  const before = stored('2026-09-05');
+
+  const late = await startSession(db, {
+    date: '2026-09-03',
+    timeBudget: 'completo',
+    isRetroactive: true,
+  });
+  await writeAndRescore(db, '2026-09-03', TODAY, () =>
+    addSet(db, { sessionId: late, exerciseId: 'peck-deck', weightKg: 50, reps: 10 }),
+  );
+
+  // Con la del 3, la semana del descanso llega a cinco y el descanso gana sus 22 puntos.
+  assert.ok((stored('2026-09-05') ?? 0) > (before ?? 0));
+  assert.equal(stored('2026-09-05'), await live(db, '2026-09-05'));
+});
+
+test('borrar lo que comio un dia pasado rehace la nota de ese dia', async () => {
+  const { db, stored } = scored();
+  await writeTargetSnapshot(db, computeTargets(73, PROFILE, '2026-09-01'), '2026-09-01');
+  await trainedWeekBefore(db);
+  await upsertDailyLog(db, { date: '2026-09-08', waterMl: 1200 });
+  const entry = await addFoodEntry(db, {
+    date: '2026-09-08',
+    foodId: 'chicken-breast-kirkland',
+    quantity: 600,
+    unit: 'g',
+    mealSlot: 'mediodía',
+  });
+  await rescoreMissing(db, { from: '2026-09-01', to: TODAY }, TODAY);
+  const before = stored('2026-09-08');
+  assert.notEqual(before, null);
+
+  const date = await deleteFoodEntry(db, entry);
+  assert.equal(date, '2026-09-08');
+  await rescoreDays(db, [date!], TODAY);
+
+  assert.equal(stored('2026-09-08'), await live(db, '2026-09-08'));
+  assert.notEqual(stored('2026-09-08'), before);
+});
+
+test('la tarjeta de creatina cuenta los dias que la tomo, no adivina por las barras', async () => {
+  const db = fresh();
+  // Todos los dias desde el 25 de agosto hasta ayer: el deposito ya esta lleno, y lleno una
+  // toma sube menos de un punto, que es justo cuando la tarjeta decia "dias sin tomarla".
+  let date = '2026-08-25';
+  for (; date < TODAY; date = addDays(date, 1)) {
+    await upsertDailyLog(db, { date, creatineTaken: true });
+  }
+
+  // Por la manana, antes de anotar la de hoy: la racha llega hasta ayer.
+  const morning = await loadCharts(db, TODAY, 30);
+  assert.equal(morning.creatineReading?.streak, 29);
+  assert.ok((morning.creatineReading?.level ?? 0) > 0.9);
+
+  await upsertDailyLog(db, { date: TODAY, creatineTaken: true });
+  assert.equal((await loadCharts(db, TODAY, 30)).creatineReading?.streak, 30);
+
+  // Y un dia sin tomarla de verdad si lo dice.
+  await upsertDailyLog(db, { date: TODAY, creatineTaken: false });
+  assert.equal((await loadCharts(db, TODAY, 30)).creatineReading?.streak, -1);
 });

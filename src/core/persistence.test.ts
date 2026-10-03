@@ -123,6 +123,29 @@ test('recalculation happens only when the rolling average has moved a kilo', asy
   assert.equal(second.to.weightBasisKg, 74.5);
 });
 
+test('cambiar la fase, el factor de actividad o la meta de pasos cambia las metas desde hoy', async () => {
+  const { db } = fresh();
+  const week = ['2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10'].map((date) => ({
+    date,
+    weightKg: 73,
+  }));
+  assert.ok(await recalculateTargets(db, week, profile, '2026-09-10'));
+
+  // Lo que escribe en Ajustes, y el "subimos la meta a 8 500" de Hoy. El peso no se movio.
+  const cutting = { ...profile, phase: 'cut' as const, activityFactor: 1.7, steps: 8500 };
+  const change = await recalculateTargets(db, week, cutting, '2026-09-12');
+  assert.ok(change);
+  assert.equal(change.effectiveFrom, '2026-09-12');
+  assert.equal(change.to.weightBasisKg, 73);
+  assert.equal(change.to.steps, 8500);
+  assert.equal(change.to.kcal, computeTargets(73, cutting, '2026-09-12').kcal);
+  // Los dias de antes siguen con las suyas (spec 5.10).
+  assert.equal((await targetsInForceOn(db, '2026-09-11'))?.steps, profile.steps);
+
+  // Y sin nada nuevo, nada que escribir ni que anunciar.
+  assert.equal(await recalculateTargets(db, week, cutting, '2026-09-13'), null);
+});
+
 test('too few weigh-ins means no recalculation at all', async () => {
   const { db } = fresh();
   const sparse = [
@@ -223,6 +246,11 @@ test('session history answers what the miss penalty needs', async () => {
       ('a', '2026-09-07', 'completo'),
       ('b', '2026-09-08', 'completo'),
       ('c', '2026-09-09', 'completo');
+    INSERT INTO training_set_entry
+      (id, session_id, exercise_id, set_index, weight_kg, reps, timestamp) VALUES
+      ('a1', 'a', 'peck-deck', 1, 50, 10, 1),
+      ('b1', 'b', 'peck-deck', 1, 50, 10, 1),
+      ('c1', 'c', 'peck-deck', 1, 50, 10, 1);
   `);
 
   const dates = await listSessionDates(db, { from: '2026-08-01', to: '2026-09-13' });

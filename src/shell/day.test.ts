@@ -129,9 +129,9 @@ test('una sesion vale por lo que movio, no por estar abierta', async () => {
   const trained = (day: Awaited<ReturnType<typeof assembleDay>>) =>
     day.result?.criteria.find((c) => c.id === 'trained')?.fraction ?? 0;
 
-  // Abierta y vacia: el dia cuenta como entrenado, pero no ha movido nada.
+  // Abierta y vacia todavia no es un entreno: el dia sigue abierto, sin puntos de entreno.
   const empty = await assembleDay(db, TODAY, TODAY);
-  assert.equal(empty.trained, true);
+  assert.equal(empty.trained, null);
   assert.equal(trained(empty), 0);
 
   // Una serie suelta tampoco es una sesion.
@@ -147,6 +147,31 @@ test('una sesion vale por lo que movio, no por estar abierta', async () => {
   }
   const full = await assembleDay(db, TODAY, TODAY);
   assert.ok(trained(full) > trained(single));
+});
+
+test('una sesion abierta y dejada vacia no cuenta para la semana ni para el descanso', async () => {
+  const { db, raw } = await fixture();
+  // Cuatro sesiones de verdad y el sabado marcado como descanso.
+  for (const date of ['2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24']) {
+    raw.exec(`
+      INSERT INTO training_session (id, date, time_budget) VALUES ('s-${date}', '${date}', 'completo');
+      INSERT INTO training_set_entry (id, session_id, exercise_id, set_index, weight_kg, reps, timestamp)
+      VALUES ('e-${date}', 's-${date}', 'peck-deck', 1, 50, 10, 1);
+    `);
+  }
+  await upsertDailyLog(db, { date: '2026-09-26', restDay: true, waterMl: 2800 });
+  const before = await assembleDay(db, '2026-09-26', '2026-09-28');
+
+  // Y ese sabado tocó "Empezar", el gym estaba lleno y no anotó nada.
+  raw.exec(
+    `INSERT INTO training_session (id, date, time_budget) VALUES ('vacia', '2026-09-26', 'completo');`,
+  );
+  const after = await assembleDay(db, '2026-09-26', '2026-09-28');
+
+  assert.equal(after.trained, false);
+  // Antes, la vacia era la quinta de la semana y el descanso ganaba sus 22 puntos.
+  assert.equal(after.bestWeekSessions, 4);
+  assert.equal(after.result?.score, before.result?.score);
 });
 
 test('re-entry reaches the day through the settings, not through a flag passed by hand', async () => {

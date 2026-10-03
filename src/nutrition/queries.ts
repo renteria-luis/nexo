@@ -184,13 +184,20 @@ export async function addFoodEntry(db: SQLiteDatabase, entry: NewFoodEntry): Pro
 /**
  * Removing a portion that came out of a batch hands the portion back, so a mistaken
  * tap does not quietly shrink the batch. Capped at the batch size.
+ *
+ * Returns the day the portion belonged to, which is the score that has to be redone.
  */
-export async function deleteFoodEntry(db: SQLiteDatabase, entryId: string): Promise<void> {
+export async function deleteFoodEntry(
+  db: SQLiteDatabase,
+  entryId: string,
+): Promise<IsoDate | null> {
+  let date: IsoDate | null = null;
   await inTransaction(db, async () => {
-    const entry = await db.getFirstAsync<{ batch_id: string | null }>(
-      'SELECT batch_id FROM nutrition_food_entry WHERE id = ?;',
+    const entry = await db.getFirstAsync<{ batch_id: string | null; date: IsoDate }>(
+      'SELECT batch_id, date FROM nutrition_food_entry WHERE id = ?;',
       [entryId],
     );
+    date = entry?.date ?? null;
     await db.runAsync('DELETE FROM nutrition_food_entry WHERE id = ?;', [entryId]);
     if (entry?.batch_id) {
       await db.runAsync(
@@ -200,6 +207,7 @@ export async function deleteFoodEntry(db: SQLiteDatabase, entryId: string): Prom
       );
     }
   });
+  return date;
 }
 
 export type LabelFood = {

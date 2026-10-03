@@ -150,11 +150,27 @@ export type TargetChange = {
   effectiveFrom: IsoDate;
 };
 
+const TARGET_KEYS = [
+  'weightBasisKg',
+  'kcal',
+  'proteinG',
+  'fatG',
+  'carbsG',
+  'waterMlRest',
+  'waterMlTraining',
+  'sleepMinutes',
+  'steps',
+] as const;
+
 /**
- * Spec 3.6. Recalculates only when the seven day rolling average has moved a kilo
- * from the weight the current targets were built on, and returns what changed so
- * the Today screen can say so out loud. Null means nothing moved and nothing was
- * written: recalculation is visible, never silent.
+ * Spec 3.6. Recalculates when the seven day rolling average has moved a kilo from the
+ * weight the current targets were built on, and also when the profile behind them no
+ * longer gives the same targets: a new phase, activity factor, sleep or steps target,
+ * or a birthday. Before, those waited for the weight to drift a kilo, which can take
+ * weeks, and accepting "subimos la meta a 8 500" kept scoring against 7 000 meanwhile.
+ *
+ * Returns what changed so the Today screen can say so out loud. Null means nothing
+ * moved and nothing was written: recalculation is visible, never silent.
  */
 export async function recalculateTargets(
   db: SQLiteDatabase,
@@ -162,15 +178,17 @@ export async function recalculateTargets(
   profile: TargetProfile,
   onDate: IsoDate,
 ): Promise<TargetChange | null> {
-  const rolling = rollingWeightAverage(weighIns, onDate);
-  if (rolling === null) return null;
-
   const current = await targetsInForceOn(db, onDate);
-  if (current && !needsRecalculation(current.weightBasisKg, rolling)) return null;
+  const rolling = rollingWeightAverage(weighIns, onDate);
+  const drifted =
+    rolling !== null && (current === null || needsRecalculation(current.weightBasisKg, rolling));
+  const basis = drifted ? rolling : (current?.weightBasisKg ?? null);
+  if (basis === null) return null;
 
-  const next = computeTargets(rolling, profile, onDate);
+  const next = computeTargets(basis, profile, onDate);
+  if (current !== null && TARGET_KEYS.every((key) => current[key] === next[key])) return null;
+
   await writeTargetSnapshot(db, next, onDate);
-
   return { from: current, to: next, effectiveFrom: onDate };
 }
 
