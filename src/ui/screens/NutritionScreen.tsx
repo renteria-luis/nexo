@@ -11,7 +11,8 @@ import { ChevronRight } from '../icons.ts';
 import { Screen } from './Screen.tsx';
 
 export function NutritionScreen() {
-  const { state, addFood, repeatMeal, removeFood, startBatch, eatBatchPortion } = useAppData();
+  const { state, addFood, repeatMeal, removeFood, startBatch, eatBatchPortion, throwAwayBatch } =
+    useAppData();
   const navigation = useNavigation<{ navigate: (name: string) => void }>();
   if (state.phase !== 'ready') return <Screen title="Comida">{null}</Screen>;
 
@@ -38,6 +39,7 @@ export function NutritionScreen() {
         foods={loaded.foods}
         onStart={startBatch}
         onEat={eatBatchPortion}
+        onThrowAway={throwAwayBatch}
       />
 
       {/* Spec 7.5 punto 3: la pregunta de los lacteos se contesta en su propia piel. */}

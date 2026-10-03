@@ -177,10 +177,10 @@ async function fillPhone(db: SQLiteDatabase) {
   await appendMessage(db, chat, 'app', '8200 pasos hoy');
 
   const item = await savePantryItem(db, {
-    name: 'Pechuga',
-    kind: 'weighed',
-    quantity: 800,
-    unit: 'g',
+    name: 'Hamburguesas',
+    kind: 'counted',
+    quantity: 8,
+    unit: 'unidad',
     state: null,
     hasIt: null,
     foodId: 'chicken-burger',

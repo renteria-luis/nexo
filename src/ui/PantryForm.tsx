@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 
-import type { PantryKind, PantryState } from '../db/types.ts';
+import type { NutritionFoodRow, PantryKind, PantryState } from '../db/types.ts';
 import type { NewPantryItem, PantryItem } from '../pantry/index.ts';
 import { useAppData } from '../shell/AppData.tsx';
 
@@ -61,6 +61,13 @@ export function PantryForm({
 
   const counted = kind === 'counted' || kind === 'weighed';
 
+  // Con alimento, lo contado y lo pesado van en la unidad de ese alimento (spec 21.1): la
+  // olla se pesa en ella, y tres piezas de un pollo que se anota en gramos eran 3 g.
+  const heldAs = (food: NutritionFoodRow): PantryKind =>
+    food.unit_kind === 'count' ? 'counted' : 'weighed';
+  const pickKind = (next: PantryKind) =>
+    setKind(chosen !== null && (next === 'counted' || next === 'weighed') ? heldAs(chosen) : next);
+
   const save = () => {
     if (name.trim() === '') return;
     onSave({
@@ -68,7 +75,7 @@ export function PantryForm({
       name: name.trim(),
       kind,
       quantity: counted ? Number(quantity) || 0 : null,
-      unit: counted ? (unit.trim() === '' ? (chosen?.base_unit ?? 'unidad') : unit.trim()) : null,
+      unit: counted ? (chosen?.base_unit ?? (unit.trim() === '' ? 'unidad' : unit.trim())) : null,
       state: kind === 'durable' ? store : null,
       hasIt: kind === 'spice' ? hasIt : null,
       foodId,
@@ -95,7 +102,7 @@ export function PantryForm({
             label={one.label}
             accessibilityLabel={one.label}
             selected={kind === one.id}
-            onPress={() => setKind(one.id)}
+            onPress={() => pickKind(one.id)}
           />
         ))}
       </View>
@@ -113,16 +120,26 @@ export function PantryForm({
               style={styles.short}
               focusedStyle={styles.writing}
             />
-            <TextField
-              value={unit}
-              onChange={setUnit}
-              accessibilityLabel="Unidad"
-              placeholder={chosen?.base_unit ?? (kind === 'weighed' ? 'g' : 'unidad')}
-              autoCapitalize="none"
-              style={styles.short}
-              focusedStyle={styles.writing}
-            />
+            {chosen === null ? (
+              <TextField
+                value={unit}
+                onChange={setUnit}
+                accessibilityLabel="Unidad"
+                placeholder={kind === 'weighed' ? 'g' : 'unidad'}
+                autoCapitalize="none"
+                style={styles.short}
+                focusedStyle={styles.writing}
+              />
+            ) : (
+              <Text style={styles.unit}>{chosen.base_unit}</Text>
+            )}
           </View>
+          {chosen !== null && item?.unit != null && item.unit !== chosen.base_unit && (
+            <Text style={styles.note}>
+              Estaba en {item.unit}. Va en {chosen.base_unit}, como {chosen.name}: revisa la
+              cantidad.
+            </Text>
+          )}
         </>
       )}
 
@@ -185,7 +202,7 @@ export function PantryForm({
                 onPress={() => {
                   setFoodId(food.id);
                   setSearch('');
-                  if (unit.trim() === '') setUnit(food.base_unit);
+                  if (counted) setKind(heldAs(food));
                 }}
               />
             ))}
@@ -263,6 +280,11 @@ const styles = sheet((theme) => ({
   writing: {
     backgroundColor: theme.accent,
     color: theme.accentInk,
+  },
+  unit: {
+    fontSize: 15,
+    fontFamily: font.bold,
+    color: theme.text,
   },
   actions: {
     flexDirection: 'row',

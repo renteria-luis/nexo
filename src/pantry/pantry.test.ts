@@ -5,7 +5,13 @@ import { test } from 'node:test';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { migrations } from '../db/migrations/index.ts';
-import { listFoods, listOpenBatches } from '../nutrition/queries.ts';
+import { dailyTotals } from '../nutrition/totals.ts';
+import {
+  consumeBatchPortion,
+  listFoods,
+  listOpenBatches,
+  listPortions,
+} from '../nutrition/queries.ts';
 
 import { potOf } from './cook.ts';
 import { cookableNow, missingFor, type PantryItem, type Recipe } from './pantry.ts';
@@ -109,6 +115,7 @@ test('la olla pesa lo que entro, y lo que no se mide no suma', () => {
   const foods = [
     {
       id: 'chicken',
+      base_unit: 'g',
       base_unit_g: 1,
       kcal: 1.65,
       protein_g: 0.31,
@@ -137,16 +144,73 @@ test('un ingrediente sin ficha no se puede pesar y lo dice', () => {
   const stock = [item({ id: 'pollo', kind: 'weighed', quantity: 800, unit: 'g' })];
   const outcome = potOf([{ itemId: 'pollo', amount: 600 }], stock, []);
   assert.equal(outcome.ok, false);
-  assert.deepEqual(outcome.ok ? [] : outcome.blocked, ['pollo']);
+  assert.deepEqual(outcome.ok ? [] : outcome.blocked, ['pollo, sin ficha con peso']);
+});
+
+test('piezas de un alimento que se anota en gramos no pesan la olla: lo dice en vez de dar 3 g', () => {
+  const pechuga = { id: 'chicken', base_unit: 'g', base_unit_g: 1, kcal: 1.2, protein_g: 0.224 };
+  const stock = [
+    item({
+      id: 'pollo',
+      name: 'Pechugas',
+      kind: 'counted',
+      quantity: 6,
+      unit: 'pieza',
+      foodId: 'chicken',
+    }),
+  ];
+  const outcome = potOf([{ itemId: 'pollo', amount: 3 }], stock, [pechuga] as never);
+  assert.equal(outcome.ok, false);
+  assert.deepEqual(outcome.ok ? [] : outcome.blocked, [
+    'Pechugas, que está en pieza y su ficha en g',
+  ]);
+});
+
+test('lo contado o pesado con alimento no se guarda en otra unidad que la del alimento', async () => {
+  const db = fresh();
+  await assert.rejects(
+    savePantryItem(db, {
+      name: 'Pechugas',
+      kind: 'counted',
+      quantity: 6,
+      unit: 'pieza',
+      state: null,
+      hasIt: null,
+      foodId: 'chicken-breast-kirkland',
+    }),
+    /Pechugas está en pieza y su alimento va en g/,
+  );
+  assert.deepEqual(await listPantry(db), []);
+
+  // En la unidad del alimento si entra, y sin alimento cualquier unidad vale.
+  await savePantryItem(db, {
+    name: 'Pechugas',
+    kind: 'weighed',
+    quantity: 1600,
+    unit: 'g',
+    state: null,
+    hasIt: null,
+    foodId: 'chicken-breast-kirkland',
+  });
+  await savePantryItem(db, {
+    name: 'Latas',
+    kind: 'counted',
+    quantity: 4,
+    unit: 'lata',
+    state: null,
+    hasIt: null,
+    foodId: null,
+  });
+  assert.equal((await listPantry(db)).length, 2);
 });
 
 test('cocinar descuenta lo que se midio y deja la olla como lote', async () => {
   const db = fresh();
   const pollo = await savePantryItem(db, {
-    name: 'Pechuga',
-    kind: 'weighed',
-    quantity: 800,
-    unit: 'g',
+    name: 'Hamburguesas',
+    kind: 'counted',
+    quantity: 8,
+    unit: 'unidad',
     state: null,
     hasIt: null,
     foodId: 'chicken-burger',
@@ -175,7 +239,7 @@ test('cocinar descuenta lo que se midio y deja la olla como lote', async () => {
   assert.deepEqual(cooked.blocked, []);
 
   const after = await listPantry(db);
-  assert.equal(after.find((one) => one.id === pollo)?.quantity, 797);
+  assert.equal(after.find((one) => one.id === pollo)?.quantity, 5);
   // Las especias no se mueven: no se midieron.
   assert.equal(after.find((one) => one.id === sal)?.hasIt, true);
 
@@ -191,10 +255,10 @@ test('cocinar descuenta lo que se midio y deja la olla como lote', async () => {
 test('la olla cocinada sale entre las tandas abiertas, con su alimento', async () => {
   const db = fresh();
   const pollo = await savePantryItem(db, {
-    name: 'Pechuga',
-    kind: 'weighed',
-    quantity: 800,
-    unit: 'g',
+    name: 'Hamburguesas',
+    kind: 'counted',
+    quantity: 8,
+    unit: 'unidad',
     state: null,
     hasIt: null,
     foodId: 'chicken-burger',
@@ -220,6 +284,62 @@ test('la olla cocinada sale entre las tandas abiertas, con su alimento', async (
   );
   assert.equal(open[0].food.name, 'Pollo con arroz');
   assert.equal(open[0].food.from_recipe, 1);
+});
+
+test('volver a cocinar con otras cantidades no cambia la olla anterior ni sus dias', async () => {
+  const db = fresh();
+  const hamburguesas = await savePantryItem(db, {
+    name: 'Hamburguesas',
+    kind: 'counted',
+    quantity: 10,
+    unit: 'unidad',
+    state: null,
+    hasIt: null,
+    foodId: 'chicken-burger',
+  });
+  const avena = await savePantryItem(db, {
+    name: 'Avena',
+    kind: 'weighed',
+    quantity: 1000,
+    unit: 'g',
+    state: null,
+    hasIt: null,
+    foodId: 'oats-quaker',
+  });
+  const recipe = await saveRecipe(db, {
+    name: 'Hamburguesas con avena',
+    steps: '',
+    portions: 4,
+    ingredients: [
+      { itemId: hamburguesas, amount: 3 },
+      { itemId: avena, amount: 100 },
+    ],
+  });
+
+  const first = await cookRecipe(db, recipe, '2026-09-21');
+  const [eaten] = await listOpenBatches(db);
+  await consumeBatchPortion(db, first.batchId!, '2026-09-21', 'mediodía');
+  const before = dailyTotals(await listPortions(db, '2026-09-21'));
+
+  await saveRecipe(db, {
+    id: recipe,
+    name: 'Hamburguesas con avena',
+    steps: '',
+    portions: 4,
+    ingredients: [
+      { itemId: hamburguesas, amount: 1 },
+      { itemId: avena, amount: 300 },
+    ],
+  });
+  const second = await cookRecipe(db, recipe, '2026-09-28');
+
+  const open = await listOpenBatches(db);
+  const firstPot = open.find((entry) => entry.batch.id === first.batchId)!;
+  const secondPot = open.find((entry) => entry.batch.id === second.batchId)!;
+  assert.notEqual(firstPot.food.id, secondPot.food.id);
+  assert.equal(firstPot.food.protein_g, eaten.food.protein_g);
+  assert.notEqual(secondPot.food.protein_g, eaten.food.protein_g);
+  assert.deepEqual(dailyTotals(await listPortions(db, '2026-09-21')), before);
 });
 
 test('una receta editada no deja los ingredientes de antes', async () => {

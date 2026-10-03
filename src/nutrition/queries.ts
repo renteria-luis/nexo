@@ -7,6 +7,7 @@ import type {
   NutritionFoodRow,
   UnitKind,
 } from '../db/types.ts';
+import { inTransaction } from '../db/transaction.ts';
 
 import type { LoggedPortion } from './totals.ts';
 import { MEAL_SLOTS, parseQuickAmounts } from './units.ts';
@@ -185,7 +186,7 @@ export async function addFoodEntry(db: SQLiteDatabase, entry: NewFoodEntry): Pro
  * tap does not quietly shrink the batch. Capped at the batch size.
  */
 export async function deleteFoodEntry(db: SQLiteDatabase, entryId: string): Promise<void> {
-  await db.withTransactionAsync(async () => {
+  await inTransaction(db, async () => {
     const entry = await db.getFirstAsync<{ batch_id: string | null }>(
       'SELECT batch_id FROM nutrition_food_entry WHERE id = ?;',
       [entryId],
@@ -478,6 +479,15 @@ export async function createBatch(db: SQLiteDatabase, batch: NewBatch): Promise<
 }
 
 /**
+ * Lo que queda de una olla a la basura (2026-10-02): las porciones pasan a cero y no se
+ * anota nada como comido, asi que la tanda sale del panel y su aviso se calla. Lo que ya
+ * comio de ella se queda donde esta.
+ */
+export async function discardBatch(db: SQLiteDatabase, batchId: string): Promise<void> {
+  await db.runAsync('UPDATE nutrition_batch SET portions_remaining = 0 WHERE id = ?;', [batchId]);
+}
+
+/**
  * One tap is one portion (spec 7.3). The entry is logged as a portion's share of the
  * raw weight, which is exactly the quantity the protein-per-portion arithmetic uses,
  * and the remaining count drops in the same transaction. An empty batch refuses
@@ -490,7 +500,7 @@ export async function consumeBatchPortion(
   mealSlot: string,
 ): Promise<string> {
   let entryId = '';
-  await db.withTransactionAsync(async () => {
+  await inTransaction(db, async () => {
     const batch = await db.getFirstAsync<NutritionBatchRow>(
       'SELECT * FROM nutrition_batch WHERE id = ?;',
       [batchId],

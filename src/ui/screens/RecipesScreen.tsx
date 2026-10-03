@@ -33,6 +33,8 @@ export function RecipesScreen() {
   const [editing, setEditing] = useState<Recipe | null>(null);
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // La receta que se esta cocinando: dos toques en "Cocinar" eran dos ollas.
+  const [cooking, setCooking] = useState<string | null>(null);
 
   const reload = useCallback(() => {
     Promise.all([loadPantry(), loadRecipes()])
@@ -47,20 +49,23 @@ export function RecipesScreen() {
 
   const cook = (entry: Cookable) => {
     setNotice(null);
+    setCooking(entry.recipe.id);
     cookRecipe(entry.recipe.id)
       .then((cooked) => {
         reload();
         if (cooked.batchId === null) {
-          setNotice(
-            `Descontado, pero no pude dejar el lote: ${cooked.blocked.join(', ')} no tiene ficha con peso.`,
-          );
+          setNotice(`Descontado, pero no pude dejar el lote: ${cooked.blocked.join('; ')}.`);
           return;
         }
         setNotice(
           `${entry.recipe.name}: ${entry.recipe.portions} porciones esperándote en Comida.`,
         );
       })
-      .catch((error: unknown) => console.error(error));
+      .catch((error: unknown) => {
+        console.error(error);
+        setNotice(`No se pudo cocinar: ${error instanceof Error ? error.message : String(error)}`);
+      })
+      .finally(() => setCooking(null));
   };
 
   const editor = creating || editing !== null;
@@ -182,6 +187,7 @@ export function RecipesScreen() {
                     variant="primary"
                     icon={ChefHat}
                     disabled={!ready}
+                    loading={cooking === entry.recipe.id}
                     onPress={() => cook(entry)}
                   />
                   <IconButton

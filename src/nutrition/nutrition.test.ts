@@ -7,7 +7,12 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { migrations } from '../db/migrations/index.ts';
 import type { NutritionBatchRow, NutritionFoodRow, UnitKind } from '../db/types.ts';
 
-import { SPOILAGE_WARNING_DAYS, portionMacros, spoilageWarning } from './batch.ts';
+import {
+  SPOILAGE_WARNING_DAYS,
+  portionMacros,
+  spoilageWarning,
+  withPortionTaken,
+} from './batch.ts';
 import {
   addFoodEntry,
   addFood,
@@ -16,6 +21,7 @@ import {
   consumeBatchPortion,
   createBatch,
   deleteFoodEntry,
+  discardBatch,
   getFood,
   listFoods,
   listOpenBatches,
@@ -316,6 +322,28 @@ test('spoilage warns once a batch is three days old with portions left', () => {
   });
 
   assert.equal(spoilageWarning({ ...cooked, portions_remaining: 0 }, '2026-09-20'), null);
+});
+
+test('el toque en una porcion se pinta ya: una menos, y sin ninguna la tanda sale', () => {
+  const open = [
+    { batch: batch({ id: 'pollo', portions_remaining: 3 }) },
+    { batch: batch({ id: 'arroz', portions_remaining: 1 }) },
+  ];
+
+  const afterChicken = withPortionTaken(open, 'pollo');
+  assert.deepEqual(
+    afterChicken.map((item) => [item.batch.id, item.batch.portions_remaining]),
+    [
+      ['pollo', 2],
+      ['arroz', 1],
+    ],
+  );
+  assert.deepEqual(
+    withPortionTaken(afterChicken, 'arroz').map((item) => item.batch.id),
+    ['pollo'],
+  );
+  // Lo cargado no se toca: el estado de la app se reemplaza, no se muta.
+  assert.equal(open[0].batch.portions_remaining, 3);
 });
 
 test('portions come back joined to their food, in the order they were eaten', async () => {
@@ -661,6 +689,31 @@ test('an empty batch refuses another portion instead of going negative', async (
   );
   assert.equal(remaining(raw, batch), 0);
   assert.equal((await listPortions(db, '2026-09-14')).length, 1);
+});
+
+test('tirar lo que queda cierra la tanda sin anotar nada y el aviso se calla', async () => {
+  const { db, raw } = seeded();
+  const batch = await createBatch(db, {
+    foodId: await chickenBreast(db),
+    rawWeightG: 1600,
+    portionsCount: 8,
+    cookedDate: '2026-09-01',
+    fatDrained: false,
+  });
+  await consumeBatchPortion(db, batch, '2026-09-02', 'mediodía');
+
+  await discardBatch(db, batch);
+
+  assert.equal(remaining(raw, batch), 0);
+  assert.deepEqual(await listOpenBatches(db), []);
+  // Lo que si se comio sigue en su dia; lo tirado no aparece en ninguno.
+  assert.equal((await listPortions(db, '2026-09-02')).length, 1);
+  const entries = raw.prepare('SELECT count(*) AS n FROM nutrition_food_entry;').get() as {
+    n: number;
+  };
+  assert.equal(entries.n, 1);
+  const row = raw.prepare('SELECT * FROM nutrition_batch WHERE id = ?;').get(batch);
+  assert.equal(spoilageWarning(row as NutritionBatchRow, '2026-10-01'), null);
 });
 
 test('removing a portion eaten from a batch hands it back', async () => {

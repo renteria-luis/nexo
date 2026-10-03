@@ -88,3 +88,20 @@ export function spoilageWarning(batch: NutritionBatchRow, onDate: IsoDate): Spoi
 
   return { batchId: batch.id, portionsRemaining: batch.portions_remaining, ageDays };
 }
+
+/**
+ * Las tandas con una porcion menos en esa, para pintar el toque antes de que la base
+ * conteste. Un contador que no se mueve al tocarlo invita a tocar otra vez, y ese
+ * segundo toque era una porcion de mas. La que se queda sin ninguna sale, como hace
+ * la lista de tandas abiertas.
+ */
+export function withPortionTaken<T extends { batch: NutritionBatchRow }>(
+  open: readonly T[],
+  batchId: string,
+): T[] {
+  return open.flatMap((item) => {
+    if (item.batch.id !== batchId) return [item];
+    const left = item.batch.portions_remaining - 1;
+    return left > 0 ? [{ ...item, batch: { ...item.batch, portions_remaining: left } }] : [];
+  });
+}

@@ -64,7 +64,13 @@ export function potOf(
 
     const food = item.foodId === null ? undefined : byFood.get(item.foodId);
     if (food === undefined || food.base_unit_g === null) {
-      blocked.push(item.name);
+      blocked.push(`${item.name}, sin ficha con peso`);
+      continue;
+    }
+    // La receta y la despensa cuentan en la unidad del articulo y la olla en la del
+    // alimento: con unidades distintas, tres piezas de pollo pesaban 3 g.
+    if (item.unit !== food.base_unit) {
+      blocked.push(`${item.name}, que está en ${item.unit} y su ficha en ${food.base_unit}`);
       continue;
     }
 

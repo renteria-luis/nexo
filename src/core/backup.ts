@@ -12,6 +12,8 @@
 
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { inTransaction } from '../db/transaction.ts';
+
 export const BACKUP_FORMAT = 'nexo-backup';
 export const BACKUP_VERSION = 1;
 
@@ -157,7 +159,7 @@ export async function importBackup(db: SQLiteDatabase, backup: Backup): Promise<
 
   await db.execAsync('PRAGMA foreign_keys = OFF;');
   try {
-    await db.withTransactionAsync(async () => {
+    await inTransaction(db, async () => {
       for (const [table, rows] of Object.entries(backup.tables)) {
         if (!isHisData(table)) continue;
         if (!present.has(table)) {

@@ -90,6 +90,7 @@ import type { ImportResult } from '../core/backup.ts';
 import { parseDraft, serializeDraft, type SessionDraft } from '../core/session-draft.ts';
 import type { WeightUnit } from '../core/units.ts';
 import { openDatabase, resetDatabase } from '../db/index.ts';
+import { inTransaction } from '../db/transaction.ts';
 import type {
   Company,
   CoreStudyRow,
@@ -112,11 +113,13 @@ import {
   consumeBatchPortion,
   createBatch,
   deleteFoodEntry,
+  discardBatch,
   listContainers,
   listFoods,
   listOpenBatches,
   portionMacros,
   spoilageWarning,
+  withPortionTaken,
   type LabelFood,
   type FoodEdit,
   type FoodHistory,
@@ -453,7 +456,10 @@ export type AppData = {
   declineStepsTarget: (next: number) => void;
   /** Rejects with a readable message, so the form can show why it was refused. */
   startBatch: (start: BatchStart) => Promise<void>;
-  eatBatchPortion: (batchId: string, mealSlot: string) => void;
+  /** Rechaza con el motivo, para que la tarjeta diga por que no entro la porcion. */
+  eatBatchPortion: (batchId: string, mealSlot: string) => Promise<void>;
+  /** Tira lo que queda de una tanda: nada se anota como comido. */
+  throwAwayBatch: (batchId: string) => void;
   loadWeek: (date: IsoDate) => Promise<WeekSummary>;
   loadStudies: () => Promise<CoreStudyRow[]>;
   /** Spec 16.7: the outcome is returned so the screen can say what happened. */
@@ -971,7 +977,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       startBatch: async ({ food, rawWeightG, portionsCount, fatDrained }) => {
         const db = await openDatabase();
         // One transaction: a label food whose batch is refused must not be left behind.
-        await db.withTransactionAsync(async () => {
+        await inTransaction(db, async () => {
           const foodId = 'label' in food ? await addFoodFromLabel(db, food.label) : food.foodId;
           await createBatch(db, {
             foodId,
@@ -983,8 +989,25 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         });
         refresh();
       },
-      eatBatchPortion: (batchId, mealSlot) =>
-        run((db) => consumeBatchPortion(db, batchId, todayIso(), mealSlot), false),
+      eatBatchPortion: async (batchId, mealSlot) => {
+        patch((current) => ({ ...current, batches: withPortionTaken(current.batches, batchId) }));
+        try {
+          await write((db) => consumeBatchPortion(db, batchId, todayIso(), mealSlot), false);
+        } catch (error) {
+          // Lo que se pinto por adelantado tiene que volver a lo que dice la base.
+          refresh(false);
+          throw error;
+        }
+      },
+      // Nada de lo que se lee depende de una tanda vacia: se quita de la pantalla y se
+      // guarda detras, sin recargar.
+      throwAwayBatch: (batchId) => {
+        patch((current) => ({
+          ...current,
+          batches: current.batches.filter((item) => item.batch.id !== batchId),
+        }));
+        store((db) => discardBatch(db, batchId));
+      },
       loadWeek,
       loadStudies,
       loadPace,

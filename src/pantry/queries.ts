@@ -9,6 +9,7 @@ import type {
   PantryRecipeIngredientRow,
   PantryRecipeRow,
 } from '../db/types.ts';
+import { inTransaction } from '../db/transaction.ts';
 import { createBatch } from '../nutrition/queries.ts';
 
 import { perGram, potOf } from './cook.ts';
@@ -40,6 +41,22 @@ export async function savePantryItem(
 
   const counted = item.kind === 'counted' || item.kind === 'weighed';
   const id = item.id ?? newId('pantry');
+  const unit = counted ? (item.unit ?? 'unidad') : null;
+
+  // Lo contado y lo pesado van en la unidad de su alimento (spec 21.1): cocinar descuenta
+  // en la del articulo y pesa la olla en la del alimento, y si no son la misma la olla
+  // sale cien veces mal sin que nada lo diga.
+  if (counted && item.foodId !== null) {
+    const food = await db.getFirstAsync<{ base_unit: string }>(
+      'SELECT base_unit FROM nutrition_food WHERE id = ?;',
+      [item.foodId],
+    );
+    if (food !== null && food.base_unit !== unit) {
+      throw new Error(
+        `${name} está en ${unit} y su alimento va en ${food.base_unit}: ábrelo y pon la cantidad en ${food.base_unit}`,
+      );
+    }
+  }
 
   await db.runAsync(
     `INSERT INTO pantry_item (id, name, kind, quantity, unit, state, has_it, food_id, updated_at)
@@ -58,7 +75,7 @@ export async function savePantryItem(
       name,
       item.kind,
       counted ? (item.quantity ?? 0) : null,
-      counted ? (item.unit ?? 'unidad') : null,
+      unit,
       item.kind === 'durable' ? (item.state ?? 'hay') : null,
       item.kind === 'spice' ? (item.hasIt ? 1 : 0) : null,
       item.foodId,
@@ -152,7 +169,7 @@ export async function cookRecipe(
   const byId = new Map(items.map((item) => [item.id, item]));
   let batchId: string | null = null;
 
-  await db.withTransactionAsync(async () => {
+  await inTransaction(db, async () => {
     for (const ingredient of recipe.ingredients) {
       const item = byId.get(ingredient.itemId);
       if (item === undefined) continue;
@@ -169,21 +186,15 @@ export async function cookRecipe(
     if (!outcome.ok) return;
 
     const per = perGram(outcome.pot);
-    const foodId = `recipe-${recipe.id}`;
+    // Un alimento por olla y no por receta (2026-10-02): las porciones se guardan como
+    // gramos de el, asi que reescribirlo en la siguiente coccion cambiaba lo que dicen los
+    // dias en que se comio la olla anterior.
+    const foodId = newId(`recipe-${recipe.id}`);
     await db.runAsync(
       `INSERT INTO nutrition_food
          (id, name, base_unit, unit_kind, base_unit_g, kcal, protein_g, carbs_g, sugar_g,
           fat_g, fibre_g, sodium_mg, source, is_dairy, from_recipe)
-       VALUES (?, ?, 'g', 'mass', 1, ?, ?, ?, ?, ?, ?, ?, 'user_measured', 0, 1)
-       ON CONFLICT (id) DO UPDATE SET
-         name = excluded.name,
-         kcal = excluded.kcal,
-         protein_g = excluded.protein_g,
-         carbs_g = excluded.carbs_g,
-         sugar_g = excluded.sugar_g,
-         fat_g = excluded.fat_g,
-         fibre_g = excluded.fibre_g,
-         sodium_mg = excluded.sodium_mg;`,
+       VALUES (?, ?, 'g', 'mass', 1, ?, ?, ?, ?, ?, ?, ?, 'user_measured', 0, 1);`,
       [
         foodId,
         recipe.name,

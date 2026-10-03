@@ -8,7 +8,8 @@ import type { BatchStart, OpenBatch } from '../shell/AppData.tsx';
 import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
 import { Chip } from './Chip.tsx';
-import { Plus, TriangleAlert, Utensils } from './icons.ts';
+import { Plus, Trash, TriangleAlert, Utensils } from './icons.ts';
+import { ConfirmAction } from './InfoBubble.tsx';
 import { NumericField } from './NumericField.tsx';
 import { TextField } from './TextField.tsx';
 import { Toggle } from './Toggle.tsx';
@@ -59,8 +60,30 @@ function Field({
   );
 }
 
-function BatchCard({ item, onEat }: { item: OpenBatch; onEat: () => void }) {
+function BatchCard({
+  item,
+  onEat,
+  onThrowAway,
+}: {
+  item: OpenBatch;
+  onEat: () => Promise<void>;
+  onThrowAway: () => void;
+}) {
   const { batch, food, macros, spoilage } = item;
+  // Apagado mientras escribe: dos toques seguidos eran dos porciones.
+  const [eating, setEating] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const eat = () => {
+    setEating(true);
+    setProblem(null);
+    onEat()
+      .catch((error: unknown) => {
+        console.error(error);
+        setProblem(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => setEating(false));
+  };
   const kcal =
     macros.kcal !== null
       ? `${Math.round(macros.kcal)} kcal`
@@ -97,8 +120,22 @@ function BatchCard({ item, onEat }: { item: OpenBatch; onEat: () => void }) {
         variant="primary"
         icon={Utensils}
         block
-        onPress={onEat}
+        loading={eating}
+        onPress={eat}
       />
+      {/* Una olla que se echa a perder pasa cualquier semana (spec 1.6), y antes solo
+          salia del panel anotando como comidas porciones que fueron a la basura. */}
+      <ConfirmAction
+        label="Tirar lo que queda"
+        icon={Trash}
+        question={`¿Tirar ${batch.portions_remaining === 1 ? 'la porción que queda' : `las ${batch.portions_remaining} porciones que quedan`} de ${food.name}?`}
+        yes="Sí, tirar"
+        variant="ghost"
+        block
+        accessibilityLabel={`Tirar lo que queda de ${food.name}`}
+        onConfirm={onThrowAway}
+      />
+      {problem && <Text style={styles.problem}>{problem}</Text>}
     </View>
   );
 }
@@ -107,7 +144,8 @@ export type BatchPanelProps = {
   batches: OpenBatch[];
   foods: NutritionFoodRow[];
   onStart: (start: BatchStart) => Promise<void>;
-  onEat: (batchId: string, mealSlot: string) => void;
+  onEat: (batchId: string, mealSlot: string) => Promise<void>;
+  onThrowAway: (batchId: string) => void;
 };
 
 /**
@@ -115,7 +153,7 @@ export type BatchPanelProps = {
  * one portion. The foods the pattern is really for, chicken breast, ground beef and
  * rice, are not in the seeded catalogue, so a batch can start from a package label.
  */
-export function BatchPanel({ batches, foods, onStart, onEat }: BatchPanelProps) {
+export function BatchPanel({ batches, foods, onStart, onEat, onThrowAway }: BatchPanelProps) {
   const [slot, setSlot] = useState(MEAL_SLOTS[2]);
   const [creating, setCreating] = useState(false);
   const [source, setSource] = useState<'catalog' | 'label'>('label');
@@ -208,7 +246,12 @@ export function BatchPanel({ batches, foods, onStart, onEat }: BatchPanelProps) 
       )}
 
       {batches.map((item) => (
-        <BatchCard key={item.batch.id} item={item} onEat={() => onEat(item.batch.id, slot)} />
+        <BatchCard
+          key={item.batch.id}
+          item={item}
+          onEat={() => onEat(item.batch.id, slot)}
+          onThrowAway={() => onThrowAway(item.batch.id)}
+        />
       ))}
 
       {!creating ? (

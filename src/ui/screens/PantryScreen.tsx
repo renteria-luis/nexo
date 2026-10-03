@@ -41,6 +41,7 @@ export function PantryScreen() {
   const [items, setItems] = useState<PantryItem[] | null>(null);
   const [editing, setEditing] = useState<PantryItem | null>(null);
   const [creating, setCreating] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
 
   const reload = useCallback(() => {
     loadPantry()
@@ -58,11 +59,17 @@ export function PantryScreen() {
         (before ?? []).map((one) => (one.id === item.id ? { ...one, ...item, id: one.id } : one)),
       );
     }
+    setProblem(null);
     savePantryItem(item)
       .then(() => {
         if (item.id === undefined) reload();
       })
-      .catch((error: unknown) => console.error(error));
+      .catch((error: unknown) => {
+        console.error(error);
+        // Lo pintado por adelantado vuelve a lo guardado, y se dice por que.
+        setProblem(error instanceof Error ? error.message : String(error));
+        reload();
+      });
   };
 
   const open = creating || editing !== null;
@@ -103,6 +110,8 @@ export function PantryScreen() {
         block
         onPress={() => setCreating(true)}
       />
+
+      {problem && <Text style={styles.problem}>{problem}</Text>}
 
       {items === null
         ? null
@@ -201,6 +210,11 @@ export function PantryScreen() {
 }
 
 const styles = sheet((theme) => ({
+  problem: {
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.danger,
+  },
   empty: {
     fontSize: 13,
     fontFamily: font.regular,

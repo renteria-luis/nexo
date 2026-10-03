@@ -11,6 +11,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { IsoDate } from '../core/dates.ts';
+import { inTransaction } from '../db/transaction.ts';
 
 export const SNAPSHOT_VERSION = 1;
 
@@ -163,7 +164,7 @@ function retailerId(source: string, merchant: string): string {
  * broken source never breaks the module, and that has to be true of a good one too.
  */
 export async function applySnapshot(db: SQLiteDatabase, snapshot: DealSnapshot): Promise<number> {
-  await db.withTransactionAsync(async () => {
+  await inTransaction(db, async () => {
     await db.runAsync('DELETE FROM deals_deal WHERE source_id = ?;', [snapshot.source]);
 
     for (const deal of snapshot.deals) {
