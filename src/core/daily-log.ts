@@ -69,6 +69,28 @@ export function sleepMinutesFrom(hours: string, minutes: string): number | null 
   return total > 0 ? total : null;
 }
 
+// Lo que guarda un campo de Hoy al soltarlo o al dejar de teclear: lo que el escribio en
+// el y nada mas, o null para no escribir. Sin `typed`, salir de un campo que no habia
+// tocado escribia lo que tenia puesto encima de lo que el asistente o el dia acababan de
+// guardar, y el ultimo peso de otro dia como el de hoy.
+
+export function typedSleep(hours: string, minutes: string, typed: boolean): number | null {
+  return typed ? sleepMinutesFrom(hours, minutes) : null;
+}
+
+export function typedSteps(draft: string, typed: boolean): number | null {
+  // Un campo vacio es "no lo anote", no "cero pasos".
+  if (!typed || draft.trim() === '') return null;
+  const steps = Number(draft);
+  return Number.isInteger(steps) && steps >= 0 ? steps : null;
+}
+
+export function typedWeight(draft: string, typed: boolean, storedKg: number | null): number | null {
+  if (!typed) return null;
+  const kg = Number(draft);
+  return isBodyWeightKg(kg) && kg !== storedKg ? kg : null;
+}
+
 /**
  * Writes the day, merging into whatever is already there so logging water in the
  * morning does not wipe the weight logged at breakfast. `has_data` is derived

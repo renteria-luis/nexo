@@ -1,8 +1,8 @@
-import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { longDate, todayIso } from '../core/dates.ts';
+import { longDate } from '../core/dates.ts';
+import { useAppData } from '../shell/AppData.tsx';
 
 import { Check, Menu, Settings } from './icons.ts';
 import { IconButton } from './IconButton.tsx';
@@ -31,12 +31,10 @@ import { font, hardShadow, pressed as pressedInto, sheet, shape, theme } from '.
  * La raya de abajo la dibuja la barra y no el contenido: en el borde de una lista que
  * se desplaza, la raya se va con ella en cuanto se desliza, y lo que separa la barra
  * del papel desaparecia a mitad de la pantalla.
+ *
+ * La fecha es la del dia cargado y no la del reloj al montar la barra: leida una vez, al
+ * volver a la app al dia siguiente seguia diciendo ayer hasta que iOS la mataba.
  */
-/** Fuera del render: leer el reloj dentro de un componente lo hace impuro. */
-function todayLabel(): string {
-  return longDate(todayIso());
-}
-
 export function TopBar({
   action,
   onPress,
@@ -49,13 +47,14 @@ export function TopBar({
   showDate?: boolean;
 }) {
   const insets = useSafeAreaInsets();
-  const [today] = useState(todayLabel);
+  const { state } = useAppData();
+  const today = state.phase === 'ready' ? longDate(state.loaded.today.date) : null;
 
   return (
     <View style={[styles.bar, { paddingTop: insets.top + 6 }]}>
       <View style={styles.left}>
         <IconButton icon={Menu} accessibilityLabel="Abrir el menu" onPress={onMenu} />
-        {showDate && <Text style={styles.today}>{today}</Text>}
+        {showDate && today !== null && <Text style={styles.today}>{today}</Text>}
       </View>
 
       {action === 'done' ? (

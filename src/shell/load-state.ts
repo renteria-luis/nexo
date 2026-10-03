@@ -1,3 +1,5 @@
+import type { IsoDate } from '../core/dates.ts';
+
 export type LoadState<T> =
   | { phase: 'opening' }
   | {
@@ -18,4 +20,18 @@ export function afterFailedLoad<T>(current: LoadState<T>, message: string): Load
   return current.phase === 'ready'
     ? { ...current, problem: message }
     : { phase: 'failed', message };
+}
+
+/**
+ * Si lo que esta en pantalla es de un dia que ya no es hoy.
+ *
+ * iOS deja la app dormida en memoria toda la noche, y al volver por la manana seguia
+ * mostrando ayer como si fuera hoy: la primera botella se sumaba al total de ayer y se
+ * guardaba en el dia nuevo. Solo un dia nuevo paga la recarga.
+ */
+export function showsAnotherDay(
+  loaded: { today: { date: IsoDate } } | null,
+  today: IsoDate,
+): boolean {
+  return loaded !== null && loaded.today.date !== today;
 }

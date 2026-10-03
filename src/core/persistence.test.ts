@@ -17,6 +17,9 @@ import {
   listDailyLogs,
   readDailyLog,
   sleepMinutesFrom,
+  typedSleep,
+  typedSteps,
+  typedWeight,
   storeScore,
   toDisciplineDay,
   toWeighIns,
@@ -316,6 +319,24 @@ test('an empty or impossible sleep entry writes nothing rather than a zero', () 
   assert.equal(sleepMinutesFrom('0', '0'), null);
   assert.equal(sleepMinutesFrom('-8', ''), null);
   assert.equal(sleepMinutesFrom('anoche', ''), null);
+});
+
+test('un campo de Hoy que no toco no escribe nada al soltarlo, aunque tenga un numero', () => {
+  // Lo que tenia puesto de antes: lo que el asistente acaba de cambiar, o el peso de otro dia.
+  assert.equal(typedSleep('7', '30', false), null);
+  assert.equal(typedSteps('8200', false), null);
+  assert.equal(typedWeight('73.4', false, null), null);
+});
+
+test('lo que si escribio se guarda, si tiene sentido', () => {
+  assert.equal(typedSleep('7', '30', true), 450);
+  assert.equal(typedSteps('8200', true), 8200);
+  assert.equal(typedSteps('', true), null);
+  assert.equal(typedSteps('82.5', true), null);
+  assert.equal(typedWeight('73.6', true, 73.4), 73.6);
+  // El mismo peso que ya esta no se vuelve a escribir, y un 7 a medio teclear tampoco.
+  assert.equal(typedWeight('73.4', true, 73.4), null);
+  assert.equal(typedWeight('7', true, null), null);
 });
 
 test('a day marked as rest is a day with data, not an empty one', async () => {

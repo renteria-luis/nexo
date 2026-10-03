@@ -15,6 +15,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { AppState as Lifecycle } from 'react-native';
 
 import {
   listDailyLogs,
@@ -175,7 +176,7 @@ import { WATER_ACTION_ML, type NudgeKind } from '../core/nudges.ts';
 import { listenToNudges, syncNudges } from './notifications.ts';
 import { recordNudgeAction } from './nudges.ts';
 import { loadCharts as loadChartsData, type ChartsData } from './charts.ts';
-import { afterFailedLoad, type LoadState } from './load-state.ts';
+import { afterFailedLoad, showsAnotherDay, type LoadState } from './load-state.ts';
 import {
   listDayRows,
   loadDayDetail,
@@ -768,6 +769,15 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     openLoaded.current = loaded;
   }, [loaded]);
+
+  // Volver a la app no recargaba nada, y despues de una noche dormida en memoria todo lo
+  // cargado era de ayer.
+  useEffect(() => {
+    const subscription = Lifecycle.addEventListener('change', (next) => {
+      if (next === 'active' && showsAnotherDay(openLoaded.current, todayIso())) refresh();
+    });
+    return () => subscription.remove();
+  }, [refresh]);
 
   const actions = useMemo<Omit<AppData, 'state' | 'exerciseId' | 'nudgeTarget'>>(
     () => ({

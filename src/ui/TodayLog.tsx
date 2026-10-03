@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Text, View } from 'react-native';
 
 import {
-  isBodyWeightKg,
-  sleepMinutesFrom,
+  typedSleep,
+  typedSteps,
+  typedWeight,
   type DailyLogEntry,
   type LastWeight,
 } from '../core/daily-log.ts';
@@ -136,6 +137,13 @@ function dayOfMonth(date: string): string {
   return String(Number(date.slice(8, 10)));
 }
 
+/** Lo guardado tal como se ve en su casilla: vacia si no hay nada. */
+function asText(value: number | null): string {
+  return value === null ? '' : String(value);
+}
+
+type Typed = { sleep: boolean; steps: boolean; weight: boolean };
+
 export function TodayLog({
   log,
   containers,
@@ -147,21 +155,40 @@ export function TodayLog({
   // Dos casillas porque asi lo dice en voz alta: siete y media, o ciento treinta
   // minutos. Cualquiera de las dos sola vale, y 7.5 en horas tambien.
   const slept = log?.sleep_minutes ?? null;
-  const [sleepHours, setSleepHours] = useState(
-    slept === null ? '' : String(Math.floor(slept / 60)),
-  );
-  const [sleepMinutes, setSleepMinutes] = useState(slept === null ? '' : String(slept % 60));
-  const [stepsDraft, setStepsDraft] = useState(
-    log?.steps === null || log?.steps === undefined ? '' : String(log.steps),
-  );
+  const steps = log?.steps ?? null;
+  const sleptHours = slept === null ? null : Math.floor(slept / 60);
+  const sleptMinutes = slept === null ? null : slept % 60;
+  const [sleepHours, setSleepHours] = useState(asText(sleptHours));
+  const [sleepMinutes, setSleepMinutes] = useState(asText(sleptMinutes));
+  const [stepsDraft, setStepsDraft] = useState(asText(steps));
 
   // El peso se queda puesto: si hoy no se peso, sigue valiendo el ultimo, y se ve de
   // donde salio. Anotarlo es cambiarlo, no volver a escribirlo todos los dias.
   const shownWeight = log?.weight_kg ?? lastWeight?.kg ?? null;
-  const [weightDraft, setWeightDraft] = useState(shownWeight === null ? '' : String(shownWeight));
+  const [weightDraft, setWeightDraft] = useState(asText(shownWeight));
+
+  // Los campos en los que esta escribiendo, desde la primera tecla hasta que lo suelta.
+  // Solo esos guardan, y solo esos se quedan con lo suyo si lo guardado cambia mientras.
+  const [typed, setTyped] = useState<Typed>({ sleep: false, steps: false, weight: false });
+  const typing = (field: keyof Typed) =>
+    setTyped((current) => (current[field] ? current : { ...current, [field]: true }));
+  const done = (field: keyof Typed) => setTyped((current) => ({ ...current, [field]: false }));
+
+  // Hoy se queda montado en el carrusel, asi que lo que guardan el asistente o el dia
+  // abierto desde Registros no llegaba a estos campos: seguian con lo de antes.
+  const [seen, setSeen] = useState({ slept, steps, shownWeight });
+  if (seen.slept !== slept || seen.steps !== steps || seen.shownWeight !== shownWeight) {
+    setSeen({ slept, steps, shownWeight });
+    if (seen.slept !== slept && !typed.sleep) {
+      setSleepHours(asText(sleptHours));
+      setSleepMinutes(asText(sleptMinutes));
+    }
+    if (seen.steps !== steps && !typed.steps) setStepsDraft(asText(steps));
+    if (seen.shownWeight !== shownWeight && !typed.weight) setWeightDraft(asText(shownWeight));
+  }
 
   const commitSleep = () => {
-    const total = sleepMinutesFrom(sleepHours, sleepMinutes);
+    const total = typedSleep(sleepHours, sleepMinutes, typed.sleep);
     if (total === null) return;
     // El esquema pide de donde salio el dato, y escrito a mano es 'manual'. Sin
     // esto, escribir la hora antes de tocar un chip rompe la escritura.
@@ -215,13 +242,17 @@ export function TodayLog({
         <View style={styles.row}>
           <NumericField
             value={weightDraft}
-            onChange={setWeightDraft}
+            onChange={(next) => {
+              setWeightDraft(next);
+              typing('weight');
+            }}
             allowDecimal
             accessibilityLabel="Peso corporal"
             placeholder="kg"
+            onBlur={() => done('weight')}
             onCommit={() => {
-              const parsed = Number(weightDraft);
-              if (isBodyWeightKg(parsed) && parsed !== log?.weight_kg) onLog({ weightKg: parsed });
+              const kg = typedWeight(weightDraft, typed.weight, log?.weight_kg ?? null);
+              if (kg !== null) onLog({ weightKg: kg });
             }}
             style={styles.input}
           />
@@ -247,18 +278,26 @@ export function TodayLog({
         <View style={styles.row}>
           <NumericField
             value={sleepHours}
-            onChange={setSleepHours}
+            onChange={(next) => {
+              setSleepHours(next);
+              typing('sleep');
+            }}
             allowDecimal
             accessibilityLabel="Horas de sueño"
             placeholder="horas"
+            onBlur={() => done('sleep')}
             onCommit={commitSleep}
             style={styles.input}
           />
           <NumericField
             value={sleepMinutes}
-            onChange={setSleepMinutes}
+            onChange={(next) => {
+              setSleepMinutes(next);
+              typing('sleep');
+            }}
             accessibilityLabel="Minutos de sueño"
             placeholder="min"
+            onBlur={() => done('sleep')}
             onCommit={commitSleep}
             style={styles.input}
           />
@@ -278,14 +317,16 @@ export function TodayLog({
       <Field title="Pasos" icon={Footprints}>
         <NumericField
           value={stepsDraft}
-          onChange={setStepsDraft}
+          onChange={(next) => {
+            setStepsDraft(next);
+            typing('steps');
+          }}
           accessibilityLabel="Pasos"
           placeholder="pasos"
+          onBlur={() => done('steps')}
           onCommit={() => {
-            // Un campo vacio es "no lo anote", no "cero pasos".
-            if (stepsDraft.trim() === '') return;
-            const parsed = Number(stepsDraft);
-            if (Number.isInteger(parsed) && parsed >= 0) onLog({ steps: parsed });
+            const typedValue = typedSteps(stepsDraft, typed.steps);
+            if (typedValue !== null) onLog({ steps: typedValue });
           }}
           style={styles.input}
         />
