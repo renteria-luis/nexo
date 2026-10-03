@@ -4,6 +4,7 @@ import { test } from 'node:test';
 
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { migrate } from '../db/migrate.ts';
 import { migrations } from '../db/migrations/index.ts';
 
 import { addFoodEntry } from '../nutrition/queries.ts';
@@ -307,4 +308,80 @@ test('un respaldo que dejaria referencias colgando no se aplica a medias', async
   await assert.rejects(() => importBackup(target.db, backup), /referencias rotas/);
   // Y el telefono se queda con lo suyo, no a medio restaurar.
   assert.deepEqual(dump(target.raw), before);
+});
+
+/** Una base que se quedo en esa migracion, como un telefono con una version vieja. */
+async function phoneAt(upTo: string): Promise<{ db: SQLiteDatabase; raw: DatabaseSync }> {
+  const raw = new DatabaseSync(':memory:');
+  const db = adapt(raw);
+  await migrate(db, upTo);
+  return { db, raw };
+}
+
+test('un respaldo de una version anterior se pone al dia en vez de rechazarse o volver a medias', async () => {
+  const start = new Date(2026, 8, 20, 17, 0).getTime();
+  // Antes de 042 el respaldo se rechazaba entero; en 043 volvia sin la hora de fiar de la
+  // sesion, sin el peso de la leche, sin el gimnasio "Otro" y sin el estudio de Hultman.
+  for (const version of ['041_training_score', '043_exercise_editing']) {
+    const old = await phoneAt(version);
+    old.raw.exec(`
+      INSERT INTO core_daily_log (date, sleep_minutes, sleep_source, steps, has_data)
+      VALUES ('2026-09-20', 450, 'manual', 8200, 1);
+      INSERT INTO training_session (id, date, start_time, end_time, gym_id, time_budget)
+      VALUES ('s1', '2026-09-20', ${start}, ${start + 60 * 60_000}, 'fanshawe', 'completo');
+      INSERT INTO training_set_entry
+        (id, session_id, exercise_id, set_index, weight_kg, reps, timestamp)
+      VALUES ('e1', 's1', 'hammer-curl', 1, 10, 10, ${start + 60_000});
+      INSERT INTO nutrition_food_entry (id, food_id, quantity, unit, timestamp, date, meal_slot)
+      VALUES ('f1', 'milk-1', 300, 'ml', ${start}, '2026-09-20', 'desayuno');
+    `);
+    const backup = parseBackup(JSON.parse(JSON.stringify(await exportBackup(old.db))));
+
+    const phone = fresh();
+    const scratch = adapt(new DatabaseSync(':memory:'));
+    await importBackup(phone.db, backup, scratch);
+
+    // Copiada: node:sqlite devuelve filas sin prototipo y deepEqual las compara con el.
+    const one = <T>(sql: string) => ({ ...phone.raw.prepare(sql).get() }) as T;
+    assert.deepEqual(
+      one<{ sleep_minutes: number; steps: number }>(
+        "SELECT sleep_minutes, steps FROM core_daily_log WHERE date = '2026-09-20';",
+      ),
+      { sleep_minutes: 450, steps: 8200 },
+      version,
+    );
+    assert.equal(
+      one<{ trusted: number }>(
+        "SELECT duration_trusted AS trusted FROM training_session WHERE id = 's1';",
+      ).trusted,
+      1,
+      `${version}: la sesion de una hora pasa por la migracion 050`,
+    );
+    assert.equal(one<{ n: number }>('SELECT count(*) AS n FROM training_set_entry;').n, 1, version);
+    assert.equal(
+      one<{ g: number }>("SELECT base_unit_g AS g FROM nutrition_food WHERE id = 'milk-1';").g,
+      1.03,
+      `${version}: la leche recupera su peso de la migracion 046`,
+    );
+    assert.equal(
+      one<{ n: number }>("SELECT count(*) AS n FROM training_gym WHERE id = 'otro';").n,
+      1,
+      version,
+    );
+    assert.equal(
+      one<{ n: number }>("SELECT count(*) AS n FROM core_study WHERE id = 'hultman-1996';").n,
+      1,
+      version,
+    );
+    assert.deepEqual(phone.raw.prepare('PRAGMA foreign_key_check;').all(), [], version);
+  }
+});
+
+test('un respaldo de una version anterior no se escribe sin una base aparte donde ponerse al dia', async () => {
+  const old = await phoneAt('043_exercise_editing');
+  const backup = await exportBackup(old.db);
+  const phone = fresh();
+  const before = dump(phone.raw);
+  await assert.rejects(() => importBackup(phone.db, backup), /base aparte/);
+  assert.deepEqual(dump(phone.raw), before);
 });

@@ -12,6 +12,8 @@
 
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { migrate } from '../db/migrate.ts';
+import { migrations } from '../db/migrations/index.ts';
 import { inTransaction } from '../db/transaction.ts';
 
 export const BACKUP_FORMAT = 'nexo-backup';
@@ -133,6 +135,80 @@ export function parseBackup(raw: unknown): Backup {
 
 export type ImportResult = { tables: number; rows: number; skipped: string[] };
 
+/** Borra y vuelve a escribir cada tabla suya que trae el respaldo y que existe en `db`. */
+async function writeTables(db: SQLiteDatabase, tables: Backup['tables']): Promise<ImportResult> {
+  const present = new Set(await userTables(db));
+  const result: ImportResult = { tables: 0, rows: 0, skipped: [] };
+
+  for (const [table, rows] of Object.entries(tables)) {
+    if (!isHisData(table)) continue;
+    if (!present.has(table)) {
+      result.skipped.push(table);
+      continue;
+    }
+
+    const columns = new Set(await columnsOf(db, table));
+    await db.runAsync(`DELETE FROM ${table};`);
+    result.tables += 1;
+
+    for (const row of rows) {
+      const keys = Object.keys(row).filter((key) => columns.has(key));
+      if (keys.length === 0) continue;
+      const placeholders = keys.map(() => '?').join(', ');
+      await db.runAsync(
+        `INSERT INTO ${table} (${keys.join(', ')}) VALUES (${placeholders});`,
+        keys.map((key) => row[key] as string | number | null),
+      );
+      result.rows += 1;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Un respaldo de una version anterior, puesto al dia en `scratch`.
+ *
+ * Escrito tal cual sobre este telefono, las migraciones que vinieron despues de el ya
+ * cuentan como hechas pero nunca le llegan: sus rellenos no tocan sus filas (las sesiones
+ * vuelven sin hora de fiar), sus semillas se pierden (la leche sin su peso, el estudio de
+ * la creatina) y las tablas nuevas se quedan con filas que apuntan a un catalogo que el
+ * respaldo no tiene, asi que la comprobacion lo rechazaba entero. Aqui se arma su mismo
+ * esquema, se cargan sus filas y se le pasan las migraciones que le faltan, como le
+ * habrian pasado en el telefono. Lo que sale es lo que entra.
+ */
+async function caughtUp(scratch: SQLiteDatabase, backup: Backup): Promise<Backup['tables']> {
+  const order = migrations.map((migration) => migration.id);
+  const had = new Set(backup.migrations);
+  const last = order.filter((id) => had.has(id)).at(-1);
+  // Las migraciones corren siempre en orden, asi que un respaldo de verdad trae el
+  // principio de la lista y nada suelto.
+  const prefix = last === undefined ? [] : order.slice(0, order.indexOf(last) + 1);
+  if (last === undefined || prefix.length !== had.size) {
+    throw new Error(
+      'el respaldo no dice bien con que version se hizo, asi que no se puede poner al dia',
+    );
+  }
+
+  await migrate(scratch, last);
+  await scratch.execAsync('PRAGMA foreign_keys = OFF;');
+  const loaded = await writeTables(scratch, backup.tables);
+  if (loaded.skipped.length > 0) {
+    throw new Error(
+      `el respaldo trae tablas que su version no tenia: ${loaded.skipped.join(', ')}`,
+    );
+  }
+  // El resto de las migraciones, con sus rellenos, semillas y notas borradas, sobre sus filas.
+  await migrate(scratch);
+
+  const tables: Backup['tables'] = {};
+  for (const table of await userTables(scratch)) {
+    if (!isHisData(table)) continue;
+    tables[table] = await scratch.getAllAsync<Record<string, unknown>>(`SELECT * FROM ${table};`);
+  }
+  return tables;
+}
+
 /**
  * Reemplaza el contenido del telefono por el del respaldo.
  *
@@ -141,8 +217,16 @@ export type ImportResult = { tables: number; rows: number; skipped: string[] };
  * hace de golpe al final y **dentro de la misma transaccion**: asi un respaldo
  * inconsistente la tumba entera y el telefono se queda con lo que tenia. Comprobar
  * despues de confirmar dejaba la base rota y solo avisaba de ello.
+ *
+ * Un respaldo de una version anterior se pone al dia primero en `scratch`, una base
+ * aparte y vacia, y lo que entra es el resultado (ver `caughtUp`). Uno de esta misma
+ * version entra tal cual.
  */
-export async function importBackup(db: SQLiteDatabase, backup: Backup): Promise<ImportResult> {
+export async function importBackup(
+  db: SQLiteDatabase,
+  backup: Backup,
+  scratch?: SQLiteDatabase,
+): Promise<ImportResult> {
   const applied = await db.getAllAsync<{ id: string }>(`SELECT id FROM ${MIGRATION_TABLE};`);
   const here = new Set(applied.map((row) => row.id));
   const ahead = backup.migrations.filter((id) => !here.has(id));
@@ -152,36 +236,22 @@ export async function importBackup(db: SQLiteDatabase, backup: Backup): Promise<
     );
   }
 
-  const present = new Set(await userTables(db));
-  const skipped: string[] = [];
-  let writtenTables = 0;
-  let writtenRows = 0;
+  const behind = [...here].some((id) => !backup.migrations.includes(id));
+  let tables = backup.tables;
+  if (behind) {
+    if (scratch === undefined) {
+      throw new Error(
+        'un respaldo de una version anterior necesita una base aparte donde ponerse al dia',
+      );
+    }
+    tables = await caughtUp(scratch, backup);
+  }
 
+  let result: ImportResult = { tables: 0, rows: 0, skipped: [] };
   await db.execAsync('PRAGMA foreign_keys = OFF;');
   try {
     await inTransaction(db, async () => {
-      for (const [table, rows] of Object.entries(backup.tables)) {
-        if (!isHisData(table)) continue;
-        if (!present.has(table)) {
-          skipped.push(table);
-          continue;
-        }
-
-        const columns = new Set(await columnsOf(db, table));
-        await db.runAsync(`DELETE FROM ${table};`);
-        writtenTables += 1;
-
-        for (const row of rows) {
-          const keys = Object.keys(row).filter((key) => columns.has(key));
-          if (keys.length === 0) continue;
-          const placeholders = keys.map(() => '?').join(', ');
-          await db.runAsync(
-            `INSERT INTO ${table} (${keys.join(', ')}) VALUES (${placeholders});`,
-            keys.map((key) => row[key] as string | number | null),
-          );
-          writtenRows += 1;
-        }
-      }
+      result = await writeTables(db, tables);
 
       const broken = await db.getAllAsync<{ table: string }>('PRAGMA foreign_key_check;');
       if (broken.length > 0) {
@@ -197,5 +267,5 @@ export async function importBackup(db: SQLiteDatabase, backup: Backup): Promise<
     await db.execAsync('PRAGMA foreign_keys = ON;');
   }
 
-  return { tables: writtenTables, rows: writtenRows, skipped };
+  return result;
 }

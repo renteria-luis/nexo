@@ -70,6 +70,8 @@ secrets.json
 .netrc
 
 # Database dumps and local database files
+# The app's own backup (Ajustes, Exportar): every table he has, health data included.
+nexo-*.json
 *.db
 *.db-journal
 *.db-wal

@@ -34,6 +34,8 @@ SECRET_PATH_PATTERNS = [
     r"\.db$",
     r"\.dump$",
     r"\.sql\.gz$",
+    # The app's backup, nexo-YYYY-MM-DD.json: every table he has, health data included.
+    r"(^|/)nexo-[^/\s]*\.json$",
 ]
 
 SECRET_CONTENT_PATTERNS = [
@@ -62,7 +64,7 @@ ASSIGNMENT = re.compile(
 # Files that stay local: SPEC.md carries personal health data (CLAUDE.md, security
 # section). Editing it is allowed and is the owner's call to ask for; what this blocks is
 # putting it in git, which is the part that cannot be undone once the repo is public.
-NEVER_COMMIT = [r"(^|/)SPEC\.md$"]
+NEVER_COMMIT = [r"(^|/)SPEC[^/\s]*\.md$"]
 
 # A path pattern anchored with $ matches a whole filename. Inside a shell command the
 # filename is followed by more text, so both anchors become token boundaries instead.
@@ -80,8 +82,15 @@ NEVER_COMMIT_COMMAND_PATTERNS = [as_command_pattern(p) for p in NEVER_COMMIT]
 # Strip those bodies before scanning for paths; content scanning still sees them.
 HEREDOC_BODY = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?\n.*?\n\1", re.S)
 
-GIT_STAGING = re.compile(r"\bgit\s+(add|commit|stash\s+push|update-index)\b")
-GIT_FORCE_ADD = re.compile(r"\bgit\s+add\b[^\n;&|]*\s(-f|--force)\b")
+# "git -C <repo> add" is the spelling agents here are told to prefer, because the shell's
+# cwd resets, and "-c key=value" can sit in the same place. "git stage" is "git add", and
+# the force flag can ride inside a cluster such as -Af. This is still a guess at intent
+# from the text; .githooks/pre-commit is what judges what actually got staged.
+GIT_PREFIX = r"\bgit(?:\s+-[cC]\s+\S+)*\s+"
+GIT_STAGING = re.compile(GIT_PREFIX + r"(add|stage|commit|stash\s+push|update-index)\b")
+GIT_FORCE_ADD = re.compile(
+    GIT_PREFIX + r"(?:add|stage)\b[^\n;&|]*\s(?:-[A-Za-z]*f[A-Za-z]*|--force)(?=$|\s)"
+)
 
 
 def deny(reason):

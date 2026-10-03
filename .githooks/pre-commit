@@ -16,3 +16,32 @@ for ident in "$(git var GIT_AUTHOR_IDENT)" "$(git var GIT_COMMITTER_IDENT)"; do
       ;;
   esac
 done
+
+# Refuse a commit that carries the spec, a backup of the phone, or a credential.
+#
+# The Claude Code hook judges how a command is spelled, and an ordinary spelling it did
+# not expect ("git -C <repo> add", "-Af", "git stage") walked past it. This judges what
+# is actually staged, whoever staged it and from wherever: the spec under any SPEC*.md
+# name, the app's own backup (nexo-YYYY-MM-DD.json, every table he has), and the same
+# credential files the Claude Code hook blocks.
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+blocked=$(printf '%s\n' "$staged" |
+  grep -i -E \
+    -e '(^|/)SPEC[^/]*\.md$' \
+    -e '(^|/)nexo-[^/]*\.json$' \
+    -e '(^|/)\.env(\.[^/]*)?$' \
+    -e '\.(pem|p12|p8|pfx|key|keystore|jks|cer|crt|der|mobileprovision|provisionprofile|certSigningRequest)$' \
+    -e '\.(db|sqlite|sqlite3|dump)$' \
+    -e '\.sql\.gz$' \
+    -e '(^|/)(credentials|secrets|google-services)\.json$' \
+    -e '(^|/)GoogleService-Info\.plist$' \
+    -e '(^|/)\.netrc$' \
+    -e '(^|/)id_(rsa|ed25519)' |
+  grep -v -E '(^|/)\.env\.example$')
+
+if [ -n "$blocked" ]; then
+  echo "pre-commit: these files must stay out of a public repository:" >&2
+  printf '%s\n' "$blocked" | sed 's/^/  /' >&2
+  exit 1
+fi

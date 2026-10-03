@@ -637,3 +637,17 @@ perfil inventado, y `src/public-repo.test.ts` falla si la fecha de nacimiento de
 aparece en algun archivo publicado, escrita de cualquier forma.
 Rejected: Confiar solo en la config, que una copia nueva del repo no trae, y reescribir ya
 el historial para borrar lo subido, que no tiene vuelta atras y queda para que el lo decida.
+
+## 2026-10-03 — Un respaldo viejo se pone al dia antes de entrar
+Context: La auditoria del 1 de octubre encontro que restaurar un respaldo de una version
+anterior lo rechazaba entero (si era de antes de la migracion 042) o lo dejaba a medias: las
+migraciones posteriores contaban como hechas pero nunca tocaban sus filas, asi que las
+sesiones volvian sin hora de fiar, la leche sin su peso y Lecturas sin el estudio de la
+creatina.
+Decision: El respaldo se carga en una base aparte, en memoria, con el esquema de su version;
+se le pasan las migraciones que le faltan, como le habrian pasado en el telefono, y eso es lo
+que reemplaza lo que hay. Uno de la misma version entra tal cual, como antes. Las notas que
+esas migraciones borran se rehacen solas en la siguiente carga, dentro de las doce semanas de
+la cuadricula.
+Rejected: Escribirlo tal cual sobre el esquema nuevo, que es lo que pasaba, y aceptar solo
+respaldos de la misma version, que deja sin restaurar justo el dia que mas hace falta.

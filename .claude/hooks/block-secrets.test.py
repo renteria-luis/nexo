@@ -39,6 +39,15 @@ BLOCK = [
     ("echo an aws key", "Bash", {"command": "echo " + AWS_FIXTURE}),
     ("redirect into SPEC.md", "Bash", {"command": "echo peso > SPEC.md"}),
     ("secret inside a heredoc body", "Bash", {"command": "cat > src/k.ts <<'EOF'\n" + PEM_FIXTURE + "\nEOF"}),
+    # INFRA-02: ordinary spellings that walked past the guard.
+    ("force add through git -C", "Bash", {"command": "git -C /home/l/nexo add -f SPEC.md"}),
+    ("force flag inside a cluster", "Bash", {"command": "git add -Af"}),
+    ("force flag first in a cluster", "Bash", {"command": "git add -fA ."}),
+    ("git stage is git add", "Bash", {"command": "git stage -f SPEC.md"}),
+    ("commit SPEC.md through git -C", "Bash", {"command": "git -C /home/l/nexo commit -m x SPEC.md"}),
+    ("stage a copy of the spec", "Bash", {"command": "git add docs/SPEC.v0.4.md"}),
+    ("stage the app backup", "Bash", {"command": "git add nexo-2026-10-01.json"}),
+    ("copy the app backup into the repo", "Bash", {"command": "cp ~/Downloads/nexo-2026-10-01.json ."}),
 ]
 
 ALLOW = [
@@ -51,6 +60,8 @@ ALLOW = [
     ("run this test suite", "Bash", {"command": "python3 .claude/hooks/block-secrets.test.py"}),
     ("prose naming a protected file in a heredoc body", "Bash",
      {"command": "cat > DECISIONS.md <<'EOF'\nRejected: publishing a redacted SPEC.md.\nEOF"}),
+    ("normal commit through git -C", "Bash", {"command": "git -C /home/l/nexo add src && git -C /home/l/nexo commit -m x"}),
+    ("add everything without forcing", "Bash", {"command": "git add -A src"}),
 ]
 
 

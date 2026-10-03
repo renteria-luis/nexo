@@ -6,6 +6,7 @@
 
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { openDatabaseAsync } from 'expo-sqlite';
 
 import { exportBackup, importBackup, parseBackup, type ImportResult } from '../core/backup.ts';
 import { todayIso } from '../core/dates.ts';
@@ -62,5 +63,12 @@ export async function importFromFile(): Promise<ImportResult | null> {
 
   const text = await picked.result.text();
   const db = await openDatabase();
-  return importBackup(db, parseBackup(JSON.parse(text)));
+  // En memoria y aparte: ahi se pone al dia un respaldo de una version anterior antes de
+  // tocar nada de lo que hay en el telefono.
+  const scratch = await openDatabaseAsync(':memory:');
+  try {
+    return await importBackup(db, parseBackup(JSON.parse(text)), scratch);
+  } finally {
+    await scratch.closeAsync();
+  }
 }
