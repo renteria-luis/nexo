@@ -175,6 +175,7 @@ const NUDGE_ROUTES: Record<string, string> = {
   agua: 'Hoy',
   manana: 'Hoy',
   cierre: 'Hoy',
+  creatina: 'Hoy',
   semana: 'Resumen semanal',
 };
 

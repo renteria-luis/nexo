@@ -52,6 +52,8 @@ export type CoreNudgeRow = {
   date: IsoDate;
   sent_at: EpochMs;
   acted_at: EpochMs | null;
+  /** Cuando lo muestra iOS. Null en las filas de antes de la migracion 052. */
+  fires_at: EpochMs | null;
 };
 
 export type CoreDailyLogRow = {

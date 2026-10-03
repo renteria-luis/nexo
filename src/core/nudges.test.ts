@@ -24,6 +24,7 @@ const FULL_DAY: NudgeDay = {
   sleepMinutes: 450,
   weightKg: 73,
   criteriaWithData: 8,
+  creatineLogged: true,
 };
 
 const kinds = (day: Partial<NudgeDay>, rules = DEFAULT_NUDGE_RULES): NudgeKind[] =>
@@ -156,6 +157,54 @@ test('cada aviso lleva un identificador propio por dia', () => {
   );
 });
 
+test('la creatina avisa a las 11:30 y a las 22:00 mientras no este anotada', () => {
+  const nudges = nudgesFor(
+    { ...FULL_DAY, creatineLogged: false },
+    DEFAULT_HOURS,
+    DEFAULT_NUDGE_RULES,
+  );
+  assert.deepEqual(
+    nudges.map((nudge) => [nudge.id, nudge.atMinute]),
+    [
+      ['creatina-1130-2026-09-24', 11 * 60 + 30],
+      // Dentro de la hora de silencio, a proposito: es la hora que pidio.
+      ['creatina-2200-2026-09-24', 22 * 60],
+    ],
+  );
+  // Anotada, tomada o no, ya no hay nada que recordarle.
+  assert.deepEqual(kinds({ creatineLogged: true }), []);
+});
+
+test('los de creatina no le quitan sitio a los demas, y solo los calla su interruptor', () => {
+  const crowded: Partial<NudgeDay> = {
+    filledSlots: [],
+    trained: false,
+    trainingDebt: 3,
+    waterMl: 0,
+    sleepMinutes: null,
+    weightKg: null,
+    criteriaWithData: 0,
+    creatineLogged: false,
+  };
+  const all = kinds(crowded);
+  assert.equal(all.filter((kind) => kind !== 'creatina').length, 3);
+  assert.equal(all.filter((kind) => kind === 'creatina').length, 2);
+
+  assert.deepEqual(
+    kinds({ creatineLogged: false }, { ...DEFAULT_NUDGE_RULES, silenced: ['creatina'] }),
+    [],
+  );
+
+  // Ignorarlos no los calla: son los dos que pidio.
+  const ignored = ['2026-09-20', '2026-09-21', '2026-09-22'].map((date) => ({
+    kind: 'creatina' as const,
+    date,
+    actedAt: null,
+    firesAt: 1,
+  }));
+  assert.deepEqual(silencedKinds(ignored, '2026-09-23'), []);
+});
+
 test('las horas salen de la mediana de lo que anota, no del promedio', () => {
   const lunch = [700, 710, 715, 720, 1200].map((minute, index) => ({
     kind: 'comida' as const,
@@ -201,7 +250,7 @@ test('la hora de entrenar y la de levantarse tambien se aprenden', () => {
 });
 
 test('un aviso ignorado tres veces seguidas se calla una semana', () => {
-  const ignored = (date: string) => ({ kind: 'agua' as const, date, actedAt: null });
+  const ignored = (date: string) => ({ kind: 'agua' as const, date, actedAt: null, firesAt: 1 });
 
   // Dos seguidos todavia no bastan.
   assert.deepEqual(silencedKinds([ignored('2026-09-20'), ignored('2026-09-21')], '2026-09-22'), []);
@@ -213,15 +262,29 @@ test('un aviso ignorado tres veces seguidas se calla una semana', () => {
   assert.deepEqual(silencedKinds(three, '2026-09-30'), []);
 
   // Y si toco el boton en alguno de los tres, no se calla nada.
-  const acted = [...three.slice(0, 2), { kind: 'agua' as const, date: '2026-09-22', actedAt: 1 }];
+  const acted = [
+    ...three.slice(0, 2),
+    { kind: 'agua' as const, date: '2026-09-22', actedAt: 1, firesAt: 1 },
+  ];
   assert.deepEqual(silencedKinds(acted, '2026-09-23'), []);
 });
 
 test('lo de hoy no cuenta para callar nada, que todavia puede tocarlo', () => {
   const rows = [
-    { kind: 'cierre' as const, date: '2026-09-21', actedAt: null },
-    { kind: 'cierre' as const, date: '2026-09-22', actedAt: null },
-    { kind: 'cierre' as const, date: '2026-09-23', actedAt: null },
+    { kind: 'cierre' as const, date: '2026-09-21', actedAt: null, firesAt: 1 },
+    { kind: 'cierre' as const, date: '2026-09-22', actedAt: null, firesAt: 1 },
+    { kind: 'cierre' as const, date: '2026-09-23', actedAt: null, firesAt: 1 },
   ];
   assert.deepEqual(silencedKinds(rows, '2026-09-23'), []);
+});
+
+test('lo que no se sabe si salio no cuenta como ignorado', () => {
+  // Las filas de antes de la migracion 052: planeadas, sin hora y sin tocar.
+  const unknown = ['2026-09-20', '2026-09-21', '2026-09-22'].map((date) => ({
+    kind: 'cierre' as const,
+    date,
+    actedAt: null,
+    firesAt: null,
+  }));
+  assert.deepEqual(silencedKinds(unknown, '2026-09-23'), []);
 });

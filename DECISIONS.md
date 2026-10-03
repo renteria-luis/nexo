@@ -651,3 +651,38 @@ esas migraciones borran se rehacen solas en la siguiente carga, dentro de las do
 la cuadricula.
 Rejected: Escribirlo tal cual sobre el esquema nuevo, que es lo que pasaba, y aceptar solo
 respaldos de la misma version, que deja sin restaurar justo el dia que mas hace falta.
+
+## 2026-10-03 — Ignorado es un aviso que salio y no tuvo respuesta
+Context: Spec 18.2 regla 4 calla una semana el tipo de aviso ignorado tres veces seguidas, y
+se contaba como ignorado todo lo planeado: lo que nunca llego a salir porque ya estaba
+anotado, y los dias por delante. Quien anota a tiempo se quedaba sin avisos justo el dia que
+se le olvidaba algo.
+Decision: Cada aviso programado guarda la hora a la que sale (migracion 052). Si se cancela
+antes de esa hora no lo vio y se borra. Si salio y despues anota lo que pedia, cuenta como que
+hizo caso aunque no haya tocado el aviso. Solo lo que salio y se quedo sin respuesta cuenta
+para callar. Las filas de antes, que no tienen hora, no cuentan.
+Rejected: Seguir contando lo planeado, y contar como hacer caso solo tocar un boton del aviso,
+cuando la reaccion para la que existe es abrir la app y anotar.
+
+## 2026-10-03 — Los botones del aviso que anotan abren la app
+Context: "+710 ml" y "Descanso" anotaban sin abrir la app, pero con la app cerrada iOS solo
+la levanta por detras y expo da el toque por entregado antes de que corra nada de la app: el
+aviso desaparecia y no quedaba nada anotado. Spec 18.3 promete que tocar el aviso y anotar en
+la app terminan en el mismo sitio.
+Decision: Esos dos botones abren la app, que es lo unico que garantiza que el toque se
+aplica. Al abrir, la app lee el toque que la abrio y lo aplica una sola vez, aunque llegue
+dos veces. "Hoy entreno" sigue sin abrirla: no anota nada, solo dice que hizo caso.
+Rejected: Seguir sin abrir la app y aplicar el toque la proxima vez que la abra, que se
+pierde si iOS cierra la app antes.
+
+## 2026-10-03 — Dos recordatorios de creatina, a las 11:30 y a las 22:00
+Context: Queria que la app le recordara la creatina. La idea era sacar la hora de lo que
+anota, como las comidas, pero la hora a la que la toma no se guarda en ningun lado, y dijo
+que en ese caso no se agregara.
+Decision: Dos avisos fijos, a las 11:30 y a las 22:00, solo si ese dia no hay nada anotado
+de creatina. No compiten por el cupo de tres al dia, el de las 22:00 cae dentro de la hora
+de silencio a proposito, y no se callan por ignorados: los apaga anotarla o su interruptor
+en Ajustes. Contradice spec 18.2 reglas 2, 3 y 4 solo para estos dos, y el tipo no esta en
+la tabla de spec 18.1.
+Rejected: Aprender la hora de cuando la anota, que necesitaria guardar esa hora, y meterlos
+en el cupo, donde un dia cargado los dejaba fuera.

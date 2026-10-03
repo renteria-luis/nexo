@@ -19,7 +19,6 @@ import { AppState as Lifecycle } from 'react-native';
 
 import {
   listDailyLogs,
-  readDailyLog,
   readLastWeight,
   storeScore,
   toWeighIns,
@@ -172,9 +171,9 @@ import {
 } from '../training/index.ts';
 
 import { exportToFile, importFromFile, type ExportOutcome } from './backup-file.ts';
-import { WATER_ACTION_ML, type NudgeKind } from '../core/nudges.ts';
-import { listenToNudges, syncNudges } from './notifications.ts';
-import { recordNudgeAction } from './nudges.ts';
+import type { NudgeKind } from '../core/nudges.ts';
+import { flushNudges, listenToNudges, syncNudges } from './notifications.ts';
+import { applyNudgeAction } from './nudges.ts';
 import { loadCharts as loadChartsData, type ChartsData } from './charts.ts';
 import { afterFailedLoad, showsAnotherDay, type LoadState } from './load-state.ts';
 import {
@@ -314,7 +313,7 @@ async function load(exerciseId: string | null, settle: boolean): Promise<Loaded>
 
   // Los avisos de los proximos dias se rehacen con lo que acaba de anotar. No se
   // espera: programar en iOS no tiene por que retrasar lo que ya se puede pintar.
-  void syncNudges(db, today).catch((error: unknown) => console.error(error));
+  syncNudges(db, today);
 
   const gyms = await listGyms(db);
   const lastWeight = await readLastWeight(db);
@@ -624,15 +623,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         // falta. La pantalla la decide el tipo de aviso.
         if (action === 'abrir') setNudgeTarget(kind);
         openDatabase()
-          .then(async (db) => {
-            const date = todayIso();
-            await recordNudgeAction(db, nudgeId);
-            if (action === 'descanso') await upsertDailyLog(db, { date, restDay: true });
-            if (action === 'agua') {
-              const log = await readDailyLog(db, date);
-              await upsertDailyLog(db, { date, waterMl: (log?.water_ml ?? 0) + WATER_ACTION_ML });
-            }
-          })
+          .then((db) => applyNudgeAction(db, { nudgeId, kind, action }, todayIso()))
           // El boton del aviso pudo marcar un descanso, que cambia la nota de otros
           // dias de la semana: esta recarga si hace el trabajo de fondo.
           .then(() => refresh())
@@ -771,9 +762,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }, [loaded]);
 
   // Volver a la app no recargaba nada, y despues de una noche dormida en memoria todo lo
-  // cargado era de ayer.
+  // cargado era de ayer. Y al irse, el plan de avisos tiene que quedar con lo ultimo.
   useEffect(() => {
     const subscription = Lifecycle.addEventListener('change', (next) => {
+      if (next === 'background') flushNudges();
       if (next === 'active' && showsAnotherDay(openLoaded.current, todayIso())) refresh();
     });
     return () => subscription.remove();

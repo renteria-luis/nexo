@@ -88,6 +88,7 @@ const NUDGE_SWITCHES: { kind: NudgeKind; label: string }[] = [
   { kind: 'agua', label: 'Agua' },
   { kind: 'manana', label: 'Mañana' },
   { kind: 'cierre', label: 'Cierre del día' },
+  { kind: 'creatina', label: 'Creatina' },
 ];
 
 /** El nombre de un dato encima de su casilla, en mayusculas como en el catalogo. */

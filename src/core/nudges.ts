@@ -16,7 +16,7 @@ import { daysBetween, weekday, type IsoDate } from './dates.ts';
 import { CRITERION_WEIGHTS } from './discipline.ts';
 import { MEAL_SLOTS } from '../nutrition/units.ts';
 
-export type NudgeKind = 'comida' | 'entreno' | 'agua' | 'manana' | 'cierre' | 'semana';
+export type NudgeKind = 'comida' | 'entreno' | 'agua' | 'manana' | 'cierre' | 'semana' | 'creatina';
 
 export type NudgeAction = {
   id: string;
@@ -51,6 +51,8 @@ export type NudgeDay = {
   sleepMinutes: number | null;
   weightKg: number | null;
   criteriaWithData: number;
+  /** Si ya anoto la creatina del dia, tomada o no. */
+  creatineLogged: boolean;
 };
 
 /** Las horas a las que de verdad hace cada cosa, en minutos del dia. */
@@ -171,7 +173,21 @@ export type NudgeRecord = {
   date: IsoDate;
   /** Null cuando lo dejo pasar sin tocar nada. */
   actedAt: number | null;
+  /**
+   * Cuando lo mostro iOS. Null en los de antes de saberlo (migracion 052), que no
+   * cuentan como ignorados: no hay forma de saber cuales llegaron a salir.
+   */
+  firesAt: number | null;
 };
+
+/**
+ * Los recordatorios de creatina, a hora fija (pedido el 2026-10-03). La hora a la que la
+ * toma no se guarda en ningun lado, asi que no se aprende como las demas. Son los dos que
+ * pidio y por eso no compiten por el cupo del dia, no respetan la hora de silencio (el de
+ * la noche es a las diez a proposito) y no se callan por ignorados: los apaga anotarla, o
+ * su interruptor.
+ */
+export const CREATINE_MINUTES = [11 * 60 + 30, 22 * 60];
 
 /** Ignorado estas veces seguidas, el tipo se calla. */
 export const IGNORED_BEFORE_SILENCE = 3;
@@ -185,11 +201,16 @@ export const SILENCE_DAYS = 7;
  * sirve, y seguir mandandolo es como se pierde la confianza en todos los demas. Se
  * calla una semana y se vuelve a intentar: la alternativa, callarlo para siempre,
  * castiga una semana mala como si fuera una preferencia.
+ *
+ * Solo cuenta lo que de verdad salio. Antes contaba todo lo planeado, y quien anota a
+ * tiempo, que nunca ve un aviso, se quedaba sin ninguno justo el dia que se le olvidaba.
  */
 export function silencedKinds(records: readonly NudgeRecord[], today: IsoDate): NudgeKind[] {
   const byKind = new Map<NudgeKind, NudgeRecord[]>();
   for (const record of records) {
     if (record.date >= today) continue;
+    if (record.firesAt === null && record.actedAt === null) continue;
+    if (record.kind === 'creatina') continue;
     byKind.set(record.kind, [...(byKind.get(record.kind) ?? []), record]);
   }
 
@@ -329,11 +350,26 @@ export function nudgesFor(day: NudgeDay, hours: NudgeHours, rules: NudgeRules): 
       nudge.atMinute <= rules.quietFrom,
   );
 
+  const creatine: Nudge[] =
+    day.creatineLogged || rules.silenced.includes('creatina')
+      ? []
+      : CREATINE_MINUTES.map((atMinute) => ({
+          id: `creatina-${clockOf(atMinute).replace(':', '')}-${day.date}`,
+          kind: 'creatina',
+          date: day.date,
+          atMinute,
+          title: 'Creatina sin anotar',
+          body: 'Todavía no anotas la creatina de hoy.',
+          actions: [{ id: 'abrir', label: 'Anotar' }],
+          weight: CRITERION_WEIGHTS.creatine,
+        }));
+
   // Primero se decide cuales entran, por peso, y despues se ordenan por reloj: al
   // reves, un aviso de la mañana se comeria el cupo del cierre del dia.
   return awake
     .slice()
     .sort((a, b) => b.weight - a.weight || a.atMinute - b.atMinute)
     .slice(0, rules.maxPerDay)
+    .concat(creatine)
     .sort((a, b) => a.atMinute - b.atMinute);
 }

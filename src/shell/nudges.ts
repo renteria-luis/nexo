@@ -11,10 +11,12 @@
 
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { readDailyLog, upsertDailyLog } from '../core/daily-log.ts';
 import { addDays, type IsoDate } from '../core/dates.ts';
 import { trainingDebt } from '../core/discipline.ts';
 import {
   DEFAULT_NUDGE_RULES,
+  WATER_ACTION_ML,
   learnHours,
   nudgesFor,
   silencedKinds,
@@ -74,7 +76,14 @@ async function sentNudges(db: SQLiteDatabase, from: IsoDate): Promise<NudgeRecor
     kind: row.kind as NudgeKind,
     date: row.date,
     actedAt: row.acted_at,
+    firesAt: row.fires_at,
   }));
+}
+
+/** La hora local a la que sale un aviso. */
+export function fireAt(nudge: Nudge): Date {
+  const [year, month, day] = nudge.date.split('-').map(Number);
+  return new Date(year, month - 1, day, Math.floor(nudge.atMinute / 60), nudge.atMinute % 60, 0);
 }
 
 export async function nudgePlan(
@@ -117,6 +126,7 @@ export async function nudgePlan(
     sleepMinutes: assembled.log?.sleep_minutes ?? null,
     weightKg: assembled.log?.weight_kg ?? null,
     criteriaWithData: assembled.result?.criteriaWithData ?? 0,
+    creatineLogged: assembled.log?.creatine_taken != null,
   };
 
   const rules = {
@@ -141,6 +151,7 @@ export async function nudgePlan(
           sleepMinutes: null,
           weightKg: null,
           criteriaWithData: 0,
+          creatineLogged: false,
         },
         learnHours(samples),
         rules,
@@ -151,30 +162,87 @@ export async function nudgePlan(
   return plan;
 }
 
-/** Deja escrito que se programo, para poder saber despues si lo ignoro. */
+/** Un aviso que quedo programado en iOS, y la hora a la que sale. */
+export type Scheduled = { nudge: Nudge; firesAt: number };
+
+/**
+ * Deja escrito lo que se acaba de programar y lo que paso con lo de antes, que es lo que
+ * despues dice si lo ignoro (spec 18.2 regla 4).
+ *
+ * Lo que estaba programado y ya no esta, sin haber llegado su hora, se cancelo antes de
+ * salir: no lo vio, asi que se borra. Lo de hoy que ya salio y ya no esta en el plan es
+ * que anoto lo que pedia: eso tambien es hacer caso, aunque no tocara el aviso.
+ */
 export async function recordNudges(
   db: SQLiteDatabase,
   plan: readonly Nudge[],
+  scheduled: readonly Scheduled[],
+  today: IsoDate,
   now = Date.now(),
 ): Promise<void> {
-  for (const nudge of plan) {
+  const planned = new Set(plan.map((nudge) => nudge.id));
+  const kept = new Set(scheduled.map(({ nudge }) => nudge.id));
+
+  const pending = await db.getAllAsync<{ id: string; date: IsoDate; fires_at: number }>(
+    `SELECT id, date, fires_at FROM core_nudge
+      WHERE acted_at IS NULL AND fires_at IS NOT NULL AND date >= ?;`,
+    [today],
+  );
+  for (const row of pending) {
+    if (row.fires_at > now) {
+      if (!kept.has(row.id)) await db.runAsync('DELETE FROM core_nudge WHERE id = ?;', [row.id]);
+    } else if (row.date === today && !planned.has(row.id)) {
+      await db.runAsync('UPDATE core_nudge SET acted_at = ? WHERE id = ?;', [now, row.id]);
+    }
+  }
+
+  for (const { nudge, firesAt } of scheduled) {
+    // La hora puede moverse de un dia para otro, porque se aprende de el.
     await db.runAsync(
-      `INSERT INTO core_nudge (id, kind, date, sent_at, acted_at)
-       VALUES (?, ?, ?, ?, NULL)
-       ON CONFLICT (id) DO NOTHING;`,
-      [nudge.id, nudge.kind, nudge.date, now],
+      `INSERT INTO core_nudge (id, kind, date, sent_at, acted_at, fires_at)
+       VALUES (?, ?, ?, ?, NULL, ?)
+       ON CONFLICT (id) DO UPDATE SET fires_at = excluded.fires_at WHERE acted_at IS NULL;`,
+      [nudge.id, nudge.kind, nudge.date, now, firesAt],
     );
   }
 }
 
-/** Y que si hizo caso, que es lo unico que distingue un recordatorio del ruido. */
+/**
+ * Y que si hizo caso, que es lo unico que distingue un recordatorio del ruido. Devuelve si
+ * es la primera vez: un toque que llega dos veces no se vuelve a aplicar. Si el aviso no
+ * quedo anotado al programarlo (uno de una version anterior), se anota aqui: el toque vale
+ * igual.
+ */
 export async function recordNudgeAction(
   db: SQLiteDatabase,
-  nudgeId: string,
+  { nudgeId, kind }: { nudgeId: string; kind: NudgeKind },
+  date: IsoDate,
+  now = Date.now(),
+): Promise<boolean> {
+  const result = await db.runAsync(
+    `INSERT INTO core_nudge (id, kind, date, sent_at, acted_at) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (id) DO UPDATE SET acted_at = excluded.acted_at
+      WHERE core_nudge.acted_at IS NULL;`,
+    [nudgeId, kind, date, now, now],
+  );
+  return result.changes === 1;
+}
+
+/**
+ * Lo que toco en un aviso, aplicado una sola vez y en el mismo sitio que si lo hubiera
+ * anotado en la app (spec 18.3). El mismo toque puede llegar dos veces, por lo que guardo
+ * iOS al abrir y por el oyente, y la segunda no puede sumar otra botella.
+ */
+export async function applyNudgeAction(
+  db: SQLiteDatabase,
+  { nudgeId, kind, action }: { nudgeId: string; kind: NudgeKind; action: string },
+  date: IsoDate,
   now = Date.now(),
 ): Promise<void> {
-  await db.runAsync('UPDATE core_nudge SET acted_at = ? WHERE id = ? AND acted_at IS NULL;', [
-    now,
-    nudgeId,
-  ]);
+  if (!(await recordNudgeAction(db, { nudgeId, kind }, date, now))) return;
+  if (action === 'descanso') await upsertDailyLog(db, { date, restDay: true });
+  if (action === 'agua') {
+    const log = await readDailyLog(db, date);
+    await upsertDailyLog(db, { date, waterMl: (log?.water_ml ?? 0) + WATER_ACTION_ML });
+  }
 }
