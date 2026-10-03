@@ -7,6 +7,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { consumeBatchPortion, createBatch, deleteFoodEntry } from '../nutrition/queries.ts';
 
 import { migrations } from './migrations/index.ts';
+import { inTransaction, whenIdle } from './transaction.ts';
 
 type SqlValue = string | number | null;
 
@@ -105,4 +106,23 @@ test('borrar una porcion mientras se come otra deja la tanda cuadrada', async ()
 
     assert.deepEqual(state(raw, batchId), { entries: 1, left: 7 }, `a ${offset} turnos`);
   }
+});
+
+test('una lectura que espera a la cola no ve una escritura en bloque a medias', async () => {
+  const raw = new DatabaseSync(':memory:');
+  raw.exec('CREATE TABLE deal (id INTEGER PRIMARY KEY);');
+  const db = likeExpo(raw);
+
+  // Como aplicar la recoleccion: muchas filas, una por una, dentro de una transaccion.
+  const applying = inTransaction(db, async () => {
+    for (let id = 1; id <= 50; id += 1) {
+      await db.runAsync('INSERT INTO deal (id) VALUES (?);', [id]);
+    }
+  });
+  await tick();
+  await whenIdle(db);
+  const seen = raw.prepare('SELECT count(*) AS n FROM deal;').get() as { n: number };
+  await applying;
+
+  assert.equal(seen.n, 50);
 });

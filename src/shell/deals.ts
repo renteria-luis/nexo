@@ -43,6 +43,25 @@ export function readableReason(error: unknown): string {
   return 'No se pudo actualizar. Inténtalo después.';
 }
 
+/** El colector corre una vez al dia: pasado esto, lo guardado ya no es lo de hoy. */
+const STALE_AFTER_MS = 20 * 60 * 60 * 1000;
+/** Y si no se pudo bajar, no se insiste cada vez que vuelve a la app. */
+const RETRY_AFTER_MS = 60 * 60 * 1000;
+
+/**
+ * Si toca bajar la recoleccion sola. Spec 16.10 abre la hoja de ofertas al abrir la app
+ * cuando hay recoleccion nueva, y la app solo la bajaba al tocar Actualizar, asi que la
+ * hoja nunca traia nada que el no hubiera ido a buscar.
+ */
+export function dealsDue(
+  lastSuccessAt: number | null,
+  lastTriedAt: number | null,
+  now: number,
+): boolean {
+  if (lastTriedAt !== null && now - lastTriedAt < RETRY_AFTER_MS) return false;
+  return lastSuccessAt === null || now - lastSuccessAt > STALE_AFTER_MS;
+}
+
 export type SyncOutcome =
   { kind: 'ok'; count: number; fetchedAt: number } | { kind: 'failed'; reason: string };
 

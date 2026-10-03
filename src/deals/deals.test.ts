@@ -148,10 +148,8 @@ test('an expired deal is kept and marked, never hidden', async () => {
 
 test('the deal points at the food it was found for, without copying it', async () => {
   const db = fresh();
-  await applySnapshot(
-    db,
-    parseSnapshot(JSON.stringify(snapshot([snapshotDeal({ foodId: 'eggs-large' })]))),
-  );
+  const eggs = { title: 'Large eggs 12 ct', category: 'eggs', foodId: 'eggs-large' };
+  await applySnapshot(db, parseSnapshot(JSON.stringify(snapshot([snapshotDeal(eggs)]))));
 
   const [stored] = await listDeals(db, '2026-09-20');
   assert.equal(stored.food?.id, 'eggs-large');
@@ -160,9 +158,41 @@ test('the deal points at the food it was found for, without copying it', async (
   // inventing a row that points nowhere.
   await applySnapshot(
     db,
-    parseSnapshot(JSON.stringify(snapshot([snapshotDeal({ foodId: 'no-existe' })]))),
+    parseSnapshot(JSON.stringify(snapshot([snapshotDeal({ ...eggs, foodId: 'no-existe' })]))),
   );
   assert.equal((await listDeals(db, '2026-09-20'))[0].food, null);
+});
+
+test('la proteina por dolar es solo para lo que es el alimento, no para lo que salio en su busqueda', async () => {
+  const db = fresh();
+  const found = (id: string, title: string, category: string, foodId: string) =>
+    snapshotDeal({ id, title, category, foodId });
+  await applySnapshot(
+    db,
+    parseSnapshot(
+      JSON.stringify(
+        snapshot([
+          found('a', 'Natrel fine-filtered milk', 'milk', 'milk-1'),
+          found('b', 'NEILSON CHOCOLATE MILK, 750 ML', 'milk', 'milk-1'),
+          found('c', 'Essentials Oatmeal Honey Dog Shampoo', 'oats', 'oats-quaker'),
+          found('d', 'Roman family size lasagna', 'pasta', 'catelli-pasta'),
+          found('e', 'Quaker Quick Oats, 2 × 2.58 kg', 'oats', 'oats-quaker'),
+        ]),
+      ),
+    ),
+  );
+
+  // Las palabras que el excluye, ya limpias, como las da watchWords.
+  const deals = await listDeals(db, '2026-09-20', ['chocolate', 'dog', 'shampoo']);
+  const food = (title: string) => deals.find((item) => item.deal.title === title)?.food?.id ?? null;
+  assert.equal(food('Natrel fine-filtered milk'), 'milk-1');
+  assert.equal(food('Quaker Quick Oats, 2 × 2.58 kg'), 'oats-quaker');
+  // Antes las tres salian con la cifra de la leche, la avena y la pasta.
+  assert.equal(food('NEILSON CHOCOLATE MILK, 750 ML'), null);
+  assert.equal(food('Essentials Oatmeal Honey Dog Shampoo'), null);
+  assert.equal(food('Roman family size lasagna'), null);
+  // La oferta sigue en la lista: solo pierde la cifra que no era suya.
+  assert.equal(deals.length, 5);
 });
 
 test('a source that failed says so and keeps the reason', async () => {

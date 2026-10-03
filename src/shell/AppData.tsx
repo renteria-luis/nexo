@@ -41,6 +41,7 @@ import type { PaletteId } from '../core/palettes.ts';
 import { reEntryBanner, type ReEntryBanner } from '../core/re-entry.ts';
 import {
   clearSetting,
+  dealBlocklistFrom,
   paletteFrom,
   stepsAdviceDeclinedFrom,
   stepsTargetFrom,
@@ -62,7 +63,13 @@ import {
   type NewExperiment,
 } from '../core/experiments.ts';
 import type { GymLocation } from '../core/geo.ts';
-import { listDeals, listDiscounts, listSources, type DealWithContext } from '../deals/index.ts';
+import {
+  listDeals,
+  listDiscounts,
+  listSources,
+  watchWords,
+  type DealWithContext,
+} from '../deals/index.ts';
 import {
   cookRecipe,
   listPantry,
@@ -90,7 +97,7 @@ import type { ImportResult } from '../core/backup.ts';
 import { parseDraft, serializeDraft, type SessionDraft } from '../core/session-draft.ts';
 import type { WeightUnit } from '../core/units.ts';
 import { openDatabase, resetDatabase } from '../db/index.ts';
-import { inTransaction } from '../db/transaction.ts';
+import { inTransaction, whenIdle } from '../db/transaction.ts';
 import type {
   Company,
   CoreStudyRow,
@@ -190,7 +197,7 @@ import {
   type RecordWindow,
 } from './records.ts';
 import { assembleDay, exerciseContext, type AssembledDay, type ExerciseContext } from './day.ts';
-import { syncDeals, type SyncOutcome } from './deals.ts';
+import { dealsDue, syncDeals, type SyncOutcome } from './deals.ts';
 import { locateGym, type LocationOutcome } from './location.ts';
 import { loadWeekSummary, type WeekSummary } from './week.ts';
 
@@ -255,6 +262,7 @@ export type AppState = LoadState<Loaded>;
  */
 async function load(exerciseId: string | null, settle: boolean): Promise<Loaded> {
   const db = await openDatabase();
+  await whenIdle(db);
   const today = todayIso();
   const from = weekStart(addDays(today, -(WEEKS_SHOWN - 1) * 7));
 
@@ -321,7 +329,7 @@ async function load(exerciseId: string | null, settle: boolean): Promise<Loaded>
   const lastWeight = await readLastWeight(db);
   const trainedDates = new Set(await listSessionDates(db, { from, to: today }));
   const [deals, discounts, dealSources] = await Promise.all([
-    listDeals(db, today),
+    listDeals(db, today, watchWords(dealBlocklistFrom(settings))),
     listDiscounts(db),
     listSources(db),
   ]);
@@ -772,15 +780,49 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     openLoaded.current = loaded;
   }, [loaded]);
 
+  // La recoleccion de ofertas del dia, bajada sola al abrir y al volver a la app. Solo se
+  // releen las ofertas: nada mas de lo cargado depende de ellas.
+  const triedDeals = useRef<number | null>(null);
+  const fetchDeals = useCallback(() => {
+    const current = openLoaded.current;
+    if (current === null) return;
+    const sources = current.dealSources;
+    const newest = sources.reduce(
+      (latest, source) => Math.max(latest, source.last_success_at ?? 0),
+      0,
+    );
+    const now = Date.now();
+    if (!dealsDue(newest === 0 ? null : newest, triedDeals.current, now)) return;
+    triedDeals.current = now;
+    openDatabase()
+      .then(async (db) => {
+        // Sin conexion falla callado y deja escrito por que; lo guardado sigue ahi.
+        await syncDeals(db);
+        const [deals, dealSources] = await Promise.all([
+          listDeals(db, todayIso(), watchWords(dealBlocklistFrom(current.settings))),
+          listSources(db),
+        ]);
+        patch((current) => ({ ...current, deals, dealSources }));
+      })
+      .catch((error: unknown) => console.error(error));
+  }, [patch]);
+
+  const ready = loaded !== null;
+  useEffect(() => {
+    if (ready) fetchDeals();
+  }, [ready, fetchDeals]);
+
   // Volver a la app no recargaba nada, y despues de una noche dormida en memoria todo lo
   // cargado era de ayer. Y al irse, el plan de avisos tiene que quedar con lo ultimo.
   useEffect(() => {
     const subscription = Lifecycle.addEventListener('change', (next) => {
       if (next === 'background') flushNudges();
-      if (next === 'active' && showsAnotherDay(openLoaded.current, todayIso())) refresh();
+      if (next !== 'active') return;
+      if (showsAnotherDay(openLoaded.current, todayIso())) refresh();
+      fetchDeals();
     });
     return () => subscription.remove();
-  }, [refresh]);
+  }, [refresh, fetchDeals]);
 
   const actions = useMemo<Omit<AppData, 'state' | 'exerciseId' | 'nudgeTarget'>>(
     () => ({

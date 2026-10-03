@@ -25,3 +25,12 @@ export function inTransaction(db: SQLiteDatabase, task: () => Promise<void>): Pr
   );
   return next;
 }
+
+/**
+ * Cuando termina lo que ya esta en cola. Una lectura que entra en medio de una escritura
+ * en bloque la ve a medias: las ofertas del dia, que ahora se bajan solas mientras el
+ * anota, salian con la mitad de la lista.
+ */
+export function whenIdle(db: SQLiteDatabase): Promise<void> {
+  return (tails.get(db) ?? Promise.resolve()).then(() => undefined);
+}

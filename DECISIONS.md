@@ -686,3 +686,15 @@ en Ajustes. Contradice spec 18.2 reglas 2, 3 y 4 solo para estos dos, y el tipo 
 la tabla de spec 18.1.
 Rejected: Aprender la hora de cuando la anota, que necesitaria guardar esa hora, y meterlos
 en el cupo, donde un dia cargado los dejaba fuera.
+
+## 2026-10-03 — La proteina por dolar sale solo si la oferta nombra el alimento
+Context: Cada resultado de una busqueda en Flipp quedaba atado al alimento de esa busqueda:
+leche con chocolate, de coco y condensada con las cifras de la leche 1%, un champu de avena
+para perros con las de la avena. En la recoleccion del 1 de octubre, 61 de las 121 cifras de
+proteina por dolar eran de otra cosa, pintadas de verde y arriba de la lista.
+Decision: Proteina por dolar y "bajo lo tuyo" solo salen cuando el titulo de la oferta nombra
+lo que se busco y no trae ninguna de las palabras excluidas en Ajustes. La oferta sigue en la
+lista, sin esas dos cifras. Sobre esa recoleccion, las ofertas con alimento pasan de 151 a 90.
+Rejected: Dejarlo como estaba, y esperar al toque de confirmar de spec 16.5 para arreglarlo.
+Ese toque sigue siendo la respuesta completa: lo que nombra el alimento sin serlo (pechuga
+empanizada, avena para animales) todavia pasa.

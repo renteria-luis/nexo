@@ -5,6 +5,7 @@ import {
   centsPerKgFromText,
   dealPack,
   gramsFromText,
+  localDate,
   normaliseUnit,
   packFromText,
 } from './parse.ts';
@@ -68,4 +69,15 @@ test('el paquete se lee en unidades, litros o gramos', () => {
   // El peso manda sobre la cuenta: "4 kg" es mas util que "4".
   assert.deepEqual(packFromText('4 KG'), { grams: 4000 });
   assert.equal(packFromText('selected varieties'), null);
+});
+
+test('una oferta acaba el dia que acaba en sus tiendas, no el dia de UTC', () => {
+  // Las dos horas con las que Flipp manda el final: medianoche en Ontario en horario de
+  // verano y en horario de invierno, dichas en UTC.
+  assert.equal(localDate('2026-10-07T03:59:59+00:00'), '2026-10-06');
+  assert.equal(localDate('2026-11-12T04:59:59+00:00'), '2026-11-11');
+  // El principio ya salia bien, y tiene que seguir saliendo.
+  assert.equal(localDate('2026-10-01T04:00:00+00:00'), '2026-10-01');
+  assert.equal(localDate(null), null);
+  assert.equal(localDate('mañana'), null);
 });

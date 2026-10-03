@@ -23,7 +23,7 @@
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 
-import { centsPerKgFromText, dealPack, normaliseUnit } from '../src/deals/parse.ts';
+import { centsPerKgFromText, dealPack, localDate, normaliseUnit } from '../src/deals/parse.ts';
 
 const SEARCH = 'https://backflipp.wishabi.com/flipp/items/search';
 const ITEM = 'https://backflipp.wishabi.com/flipp/items';
@@ -47,10 +47,6 @@ function cents(value) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
     ? Math.round(value * 100)
     : null;
-}
-
-function isoDate(value) {
-  return typeof value === 'string' && value.length >= 10 ? value.slice(0, 10) : null;
 }
 
 /** Solo lo que sirve para revisar despues de donde salio una cifra. */
@@ -98,8 +94,8 @@ function normalise(item, detail, term, foodId, staple) {
     packMl: pack !== null && 'millilitres' in pack ? pack.millilitres : null,
     packCount: pack !== null && 'count' in pack ? pack.count : null,
     description,
-    validFrom: isoDate(item.valid_from),
-    validTo: isoDate(item.valid_to),
+    validFrom: localDate(item.valid_from),
+    validTo: localDate(item.valid_to),
     imageUrl: item.clean_image_url ?? item.clipping_image_url ?? null,
     // El enlace universal: abre la app de Flipp en ese articulo, o su web si no esta.
     sourceUrl: `https://flipp.com/action/item/${String(item.id)}`,

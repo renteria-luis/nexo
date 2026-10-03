@@ -151,6 +151,11 @@ export function nudgesEnabled(settings: Settings): boolean {
   return raw(settings, 'nudges_enabled') !== 'false';
 }
 
+/** Las palabras que tiran una oferta aunque coincida, o las de fabrica si nunca las toco. */
+export function dealBlocklistFrom(settings: Settings): string {
+  return raw(settings, 'deal_blocklist') ?? '';
+}
+
 /** Los tipos que apago a mano, guardados como una lista separada por comas. */
 export function nudgesOffFrom(settings: Settings): string[] {
   const value = raw(settings, 'nudges_off') ?? '';

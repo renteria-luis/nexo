@@ -136,3 +136,20 @@ export function dealPack(
   // Y si no, el tamano esta escrito: casi siempre en la letra chica, no en el nombre.
   return packFromText(description) ?? packFromText(title);
 }
+
+/** Donde estan sus tiendas, y por tanto el reloj con el que una oferta empieza y acaba. */
+const SHOPS_TIME_ZONE = 'America/Toronto';
+
+/**
+ * El dia del calendario de sus tiendas en que cae un instante de Flipp.
+ *
+ * Flipp da el fin como el instante UTC de la medianoche local ("2026-10-07T03:59:59+00:00"
+ * es el 6 a las 23:59 en Ontario), y quedarse con los diez primeros caracteres guardaba
+ * el dia siguiente: todas las ofertas decian un dia mas de lo que duraban.
+ */
+export function localDate(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const when = new Date(value);
+  if (Number.isNaN(when.getTime())) return null;
+  return when.toLocaleDateString('en-CA', { timeZone: SHOPS_TIME_ZONE });
+}
