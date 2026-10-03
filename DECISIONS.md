@@ -698,3 +698,14 @@ lista, sin esas dos cifras. Sobre esa recoleccion, las ofertas con alimento pasa
 Rejected: Dejarlo como estaba, y esperar al toque de confirmar de spec 16.5 para arreglarlo.
 Ese toque sigue siendo la respuesta completa: lo que nombra el alimento sin serlo (pechuga
 empanizada, avena para animales) todavia pasa.
+
+## 2026-10-03 — Las flechas del peso suben 5 lb desde donde estan
+Context: Spec 5.1 y 6.4 dicen que las flechas suben por el paso de cada maquina. El
+2026-09-24 el codigo paso a 5 lb fijas (2.5 kg), porque la P156 sube de 15 en 15 y casi todas
+las torres traen un bloquecito de 5 lb aparte, y eso nunca se anoto aqui. Ademas el resultado
+se redondeaba a una cuadricula de 5 lb que empieza en cero, y desde un peso fuera de ella
+saltaba a uno que no existe: de 17.5 a 25, de 42.5 a 50 en la polea Matrix.
+Decision: Se quedan las 5 lb fijas, como el decidio, y se suman o restan desde el numero
+puesto, sin redondear. El campo "paso" de cada ejercicio sigue sin mover las flechas.
+Rejected: Volver al paso de cada maquina (10 lb en la mayoria de las torres de Fanshawe, que
+con el bloquecito no es el salto util) y seguir redondeando a la cuadricula desde cero.

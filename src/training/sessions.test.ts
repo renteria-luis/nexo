@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { upsertDailyLog } from '../core/daily-log.ts';
-import { formatWeight, fromKg, snapToIncrement, toKg } from '../core/units.ts';
+import { formatWeight, fromKg, stepWeight, toKg } from '../core/units.ts';
 import { migrations } from '../db/migrations/index.ts';
 
 import { bestAndWorstE1rm, volumeLoad } from './calculations.ts';
@@ -276,12 +276,20 @@ test('pounds convert both ways without drifting', () => {
   assert.equal(formatWeight(toKg(10, 'lb'), 'lb'), '10');
 });
 
-test('a weight snaps to the step the machine actually moves in', () => {
-  const tenPounds = toKg(10, 'lb');
-  assert.equal(formatWeight(snapToIncrement(toKg(133, 'lb'), tenPounds), 'lb'), '130');
-  assert.equal(formatWeight(snapToIncrement(toKg(136, 'lb'), tenPounds), 'lb'), '140');
-  assert.equal(snapToIncrement(toKg(-50, 'lb'), tenPounds), 0);
-  assert.throws(() => snapToIncrement(10, 0), /is not a step/);
+test('las flechas mueven 5 lb desde el peso puesto y caen en pesos que existen', () => {
+  // Las mancuernas ligeras van de 2.5 en 2.5: antes 17.5 saltaba a 25 y 12.5 bajaba a 5.
+  assert.equal(stepWeight(17.5, 1, 'lb'), '22.5');
+  assert.equal(stepWeight(12.5, -1, 'lb'), '7.5');
+  // La polea Matrix va de 2.5 en adelante de 5 en 5: antes 42.5 subia a 50.
+  assert.equal(stepWeight(42.5, 1, 'lb'), '47.5');
+  assert.equal(stepWeight(47.5, -1, 'lb'), '42.5');
+  // La V-Squat empieza en 54: antes subia a 60.
+  assert.equal(stepWeight(54, 1, 'lb'), '59');
+  assert.equal(stepWeight(143.3, 1, 'lb'), '148.3');
+  // En kilos el salto es de 2.5, y nunca baja de cero.
+  assert.equal(stepWeight(65, 1, 'kg'), '67.5');
+  assert.equal(stepWeight(2.5, -1, 'lb'), '0');
+  assert.equal(stepWeight(Number.NaN, 1, 'lb'), '5');
 });
 
 test('the rest before a set is measured from the previous set of that exercise', async () => {
@@ -457,4 +465,35 @@ test('terminar un entreno se puede deshacer', async () => {
   assert.equal(open?.end_time, null);
   // Y lo que ya habia anotado sigue donde estaba.
   assert.equal((await listSetsForSession(db, session)).length, 1);
+});
+
+test('una serie marcada mancuerna cuenta las dos manos aunque el gym tenga el ejercicio en polea', async () => {
+  const db = fresh();
+  // En Fanshawe el martillo va en la polea Matrix; con la polea ocupada lo hace con mancuernas.
+  const fanshawe = await startSession(db, {
+    date: '2026-09-21',
+    timeBudget: 'completo',
+    gymId: 'fanshawe',
+  });
+  await addSet(db, {
+    sessionId: fanshawe,
+    exerciseId: 'hammer-curl',
+    weightKg: 10,
+    reps: 10,
+    implement: 'dumbbell',
+  });
+  const [dumbbells] = await listWorkingSets(db, { from: '2026-09-21', to: '2026-09-21' });
+  // Antes 1: la polea del gimnasio mandaba sobre lo que dijo la serie.
+  assert.equal(dumbbells.loadFactor, 2);
+  assert.equal(volumeLoad([dumbbells]), 200);
+
+  // Y al reves: en Fit4Less la lateral va en maquina, y "la vez anterior" decia "c/u".
+  const fit4less = await startSession(db, {
+    date: '2026-09-22',
+    timeBudget: 'completo',
+    gymId: 'fit4less-proudfoot',
+  });
+  await addSet(db, { sessionId: fit4less, exerciseId: 'lateral-raise', weightKg: 20, reps: 12 });
+  const [machine] = await lastSessionSets(db, 'lateral-raise', null);
+  assert.equal(machine.loadFactor, 1);
 });

@@ -14,7 +14,7 @@ import type { SqlBool, TrainingSessionRow, TrainingSetEntryRow } from '../db/typ
 import type { PastSession } from './pace.ts';
 
 import type { LoggedSet } from './calculations.ts';
-import { isPerSide } from './queries.ts';
+import { GYM_EQUIPMENT_KIND, isPerSide } from './queries.ts';
 
 /** Una sesion con su duracion, para el promedio (`pace.ts`) y para la grafica. */
 export type SessionTime = PastSession & {
@@ -254,6 +254,7 @@ type LastSetRow = {
   timestamp: number;
   rpe: number | null;
   equipment_type: string;
+  equipment_kind: string | null;
   body_weight_kg: number | null;
 };
 
@@ -271,6 +272,7 @@ export async function lastSessionSets(
     `SELECT s.session_id, e.date, s.exercise_id, s.set_index, s.weight_kg, s.reps,
             s.rest_before_seconds, s.timestamp, s.rpe,
             coalesce(s.implement, x.equipment_type) AS equipment_type,
+            ${GYM_EQUIPMENT_KIND} AS equipment_kind,
             CASE WHEN x.equipment_type = 'bodyweight'
                  THEN (SELECT l.weight_kg
                          FROM core_daily_log l
@@ -307,9 +309,8 @@ export async function lastSessionSets(
     restBeforeSeconds: row.rest_before_seconds,
     timestamp: row.timestamp,
     rpe: row.rpe,
-    // Sin el gimnasio a mano se decide solo con lo que dice la serie, que es
-    // justamente el dato que manda cuando existe.
-    loadFactor: isPerSide(row.equipment_type, null) ? 2 : 1,
+    // La misma regla que el volumen: la serie manda, y si no dice nada, el gimnasio.
+    loadFactor: isPerSide(row.equipment_type, row.equipment_kind) ? 2 : 1,
     bodyWeightKg: row.body_weight_kg,
   }));
 }

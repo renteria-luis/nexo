@@ -3,7 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 import { Check, Circle, Minus, Plus, Trash } from './icons.ts';
 
 import { shortDate } from '../core/dates.ts';
-import { formatWeight, fromKg, snapToIncrement, toKg, type WeightUnit } from '../core/units.ts';
+import { formatWeight, fromKg, stepWeight, toKg, type WeightUnit } from '../core/units.ts';
 import {
   estimatedRestSeconds,
   repDropOffs,
@@ -13,7 +13,7 @@ import {
 import { fold } from '../nutrition/picker.ts';
 import { finishingAt } from '../training/pace.ts';
 import { isPerSide, type CatalogExercise, type Swappable } from '../training/queries.ts';
-import type { SessionDraft } from '../core/session-draft.ts';
+import { draftFieldsFor, fieldsAfterSelect, type SessionDraft } from '../core/session-draft.ts';
 import type { Implement } from '../training/sessions.ts';
 
 import { Button } from './Button.tsx';
@@ -240,9 +240,15 @@ export const SessionLog = memo(function SessionLog({
   // carry last session's values for the same set index, because that is what he
   // copies most of the time. Derived rather than stored, so changing exercise or
   // adding a set moves them without a render pass to catch up.
-  const [weightDraft, setWeightDraft] = useState<string | null>(draft?.weight ?? null);
-  const [repsDraft, setRepsDraft] = useState<string | null>(draft?.reps ?? null);
-  const [rpeDraft, setRpeDraft] = useState<string | null>(draft?.rpe ?? null);
+  const [weightDraft, setWeightDraft] = useState<string | null>(
+    () => draftFieldsFor(selectedExerciseId, draft).weight,
+  );
+  const [repsDraft, setRepsDraft] = useState<string | null>(
+    () => draftFieldsFor(selectedExerciseId, draft).reps,
+  );
+  const [rpeDraft, setRpeDraft] = useState<string | null>(
+    () => draftFieldsFor(selectedExerciseId, draft).rpe,
+  );
 
   // Spec 9: the rest counts itself up from the last set. It is a reading, not a
   // timer he starts, and nothing happens when it passes the target.
@@ -252,7 +258,7 @@ export const SessionLog = memo(function SessionLog({
   const [reopening, setReopening] = useState(false);
   // Con que lo esta haciendo hoy. Null es "con lo que dice el catalogo".
   const [implement, setImplement] = useState<Implement | null>(
-    (draft?.implement as Implement | null) ?? null,
+    () => draftFieldsFor(selectedExerciseId, draft).implement as Implement | null,
   );
   // Cada cambio se guarda, para que cerrar la app a mitad de una serie no borre lo
   // que estaba escrito. Es una escritura suelta en la base, sin recargar nada.
@@ -264,6 +270,9 @@ export const SessionLog = memo(function SessionLog({
   // guarda lleva dentro cual era, y si no se reescribe al cambiar de ejercicio el
   // borrador se queda apuntando al de antes.
   useEffect(() => {
+    // Sin ejercicio abierto no hay nada que guardar, y guardar los campos vacios borraba
+    // el borrador de verdad mientras el entreno todavia elegia cual abrir.
+    if (selectedExerciseId === null) return;
     report.current({ weight: weightDraft, reps: repsDraft, rpe: rpeDraft, implement });
   }, [weightDraft, repsDraft, rpeDraft, implement, selectedExerciseId]);
 
@@ -294,10 +303,11 @@ export const SessionLog = memo(function SessionLog({
   const [seen, setSeen] = useState(selectedExerciseId);
   if (selectedExerciseId !== seen) {
     setSeen(selectedExerciseId);
-    setWeightDraft(null);
-    setRepsDraft(null);
-    setRpeDraft(null);
-    setImplement(null);
+    const fields = fieldsAfterSelect(seen, selectedExerciseId, draft);
+    setWeightDraft(fields.weight);
+    setRepsDraft(fields.reps);
+    setRpeDraft(fields.rpe);
+    setImplement(fields.implement as Implement | null);
   }
 
   // Estable, para que los renglones de la lista no se rearmen solo porque la funcion
@@ -307,10 +317,6 @@ export const SessionLog = memo(function SessionLog({
     [onSelectExercise],
   );
 
-  // Spec 5.1 pedia el salto real de la maquina, pero la P156 sube de 15 en 15 y casi
-  // todas las torres traen un bloquecito de 5 lb que se añade aparte, asi que el
-  // salto util es ese. En kilos el equivalente redondo son 2.5.
-  const stepKg = unit === 'lb' ? toKg(5, 'lb') : 2.5;
   // El martillo y las laterales se hacen con mancuernas o en polea, y el numero que
   // escribe significa una cosa distinta en cada caso, asi que se elige aqui.
   // Las laterales y el martillo se hacen con mancuerna, en polea o en la maquina, y
@@ -372,10 +378,7 @@ export const SessionLog = memo(function SessionLog({
     setRpeDraft(String(next));
   };
 
-  const nudge = (direction: 1 | -1) => {
-    const baseKg = toKg(Number.isFinite(parsedWeight) ? parsedWeight : 0, unit);
-    setWeightDraft(formatWeight(snapToIncrement(baseKg + direction * stepKg, stepKg), unit));
-  };
+  const nudge = (direction: 1 | -1) => setWeightDraft(stepWeight(parsedWeight, direction, unit));
 
   return (
     <View style={styles.wrapper}>

@@ -37,6 +37,22 @@ function loadFactor(row: LoggedSetRow): number {
 }
 
 /**
+ * La clase de maquina con la que el gimnasio de esa sesion tiene el ejercicio, solo cuando
+ * la serie no dice con que se hizo. Si lo dice, el gimnasio no tiene nada que opinar: un
+ * martillo marcado "mancuerna" en Fanshawe, donde el ejercicio va en la polea, contaba una
+ * sola mancuerna mientras la pantalla decia que se cuentan las dos.
+ *
+ * Escalar y no un JOIN: un ejercicio con dos maquinas en el mismo gimnasio duplicaria la
+ * serie y con ella el volumen. Espera la serie como `s` y la sesion como `e`.
+ */
+export const GYM_EQUIPMENT_KIND = `CASE WHEN s.implement IS NULL THEN
+         (SELECT max(q.kind)
+            FROM training_exercise_equipment xe
+            JOIN training_equipment q ON q.id = xe.equipment_id
+           WHERE xe.exercise_id = s.exercise_id AND q.gym_id = e.gym_id)
+       END`;
+
+/**
  * El ultimo peso corporal conocido a esa fecha, que es lo que hay que sumarle a una
  * dominada. Se busca hacia atras a proposito: no se pesa todos los dias, y el peso
  * de la semana pasada describe mejor el de hoy que un cero.
@@ -64,12 +80,7 @@ export async function listWorkingSets(
             coalesce(s.implement, x.equipment_type) AS equipment_type,
             CASE WHEN x.equipment_type = 'bodyweight'
                  THEN ${BODY_WEIGHT_AS_OF} END AS body_weight_kg,
-            -- Escalar y no un JOIN: un ejercicio con dos maquinas en el mismo
-            -- gimnasio duplicaria la serie y con ella el volumen.
-            (SELECT max(q.kind)
-               FROM training_exercise_equipment xe
-               JOIN training_equipment q ON q.id = xe.equipment_id
-              WHERE xe.exercise_id = s.exercise_id AND q.gym_id = e.gym_id) AS equipment_kind
+            ${GYM_EQUIPMENT_KIND} AS equipment_kind
        FROM training_set_entry s
        JOIN training_session e ON e.id = s.session_id
        JOIN training_exercise x ON x.id = s.exercise_id

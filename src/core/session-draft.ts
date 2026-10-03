@@ -50,3 +50,30 @@ export function parseDraft(
     implement: text(draft.implement),
   };
 }
+
+/** Lo que llevan los campos de la serie. Null es "sin tocar": se ve lo de la vez anterior. */
+export type DraftFields = Pick<SessionDraft, 'weight' | 'reps' | 'rpe' | 'implement'>;
+
+const UNTOUCHED: DraftFields = { weight: null, reps: null, rpe: null, implement: null };
+
+/** Lo escrito para ese ejercicio, si el borrador es suyo. */
+export function draftFieldsFor(exerciseId: string | null, draft: SessionDraft | null): DraftFields {
+  if (exerciseId === null || draft === null || draft.exerciseId !== exerciseId) return UNTOUCHED;
+  return { weight: draft.weight, reps: draft.reps, rpe: draft.rpe, implement: draft.implement };
+}
+
+/**
+ * Lo que muestran los campos cuando cambia el ejercicio abierto.
+ *
+ * Pasar de un ejercicio a otro deja la tarjeta en blanco: lo escrito era del otro. Pero que
+ * llegue uno cuando no habia ninguno no es cambiar: al abrir la app el entreno elige el que
+ * quedo a medias, y lo escrito en el vuelve del borrador. Antes eso tambien vaciaba los
+ * campos, y el borrador guardado con ellos.
+ */
+export function fieldsAfterSelect(
+  previous: string | null,
+  next: string | null,
+  draft: SessionDraft | null,
+): DraftFields {
+  return previous === null ? draftFieldsFor(next, draft) : UNTOUCHED;
+}

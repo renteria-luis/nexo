@@ -220,137 +220,150 @@ export function TrainingScreen() {
   // levantar el telefono.
   const exercise = loaded.exercise.exercises.find((item) => item.id === exerciseId) ?? null;
   const previous = loaded.exercise.todaySets.at(-1) ?? null;
-  if (session !== null && session.end_time === null && width > height) {
-    return (
-      <RestLandscape
-        exerciseName={exercise?.name_es ?? 'Entreno'}
-        since={previous?.timestamp ?? session.start_time}
-        suggestedRestSeconds={exercise?.default_rest_seconds ?? null}
-        setNumber={previous?.setIndex ?? null}
-        lastSet={
-          previous === null
-            ? null
-            : `${formatWeight(previous.weightKg, loaded.unit)} ${loaded.unit} × ${previous.reps}`
-        }
-      />
-    );
-  }
+  const resting = session !== null && session.end_time === null && width > height;
 
   return (
-    <Screen title="Entreno" scrollEnabled={!dragging}>
-      {session === null ? (
-        <SessionPlanner
-          routines={loaded.routines}
-          gyms={loaded.gyms}
-          onLocate={whereAmI}
-          onLoadPlan={loadPlan}
-          onStart={beginSession}
-          restDay={loaded.today.log?.rest_day === 1}
-          onRestDay={() => logDay({ restDay: true })}
-          onDragging={holdScreen}
+    <>
+      {resting && (
+        <RestLandscape
+          exerciseName={exercise?.name_es ?? 'Entreno'}
+          since={previous?.timestamp ?? session.start_time}
+          suggestedRestSeconds={exercise?.default_rest_seconds ?? null}
+          setNumber={previous?.setIndex ?? null}
+          lastSet={
+            previous === null
+              ? null
+              : `${formatWeight(previous.weightKg, loaded.unit)} ${loaded.unit} × ${previous.reps}`
+          }
         />
-      ) : (
-        <>
-          {/* La rutina y el gentio: dos cosas que se miran al llegar y ninguna
+      )}
+      {/* La pantalla de pie se queda montada debajo, escondida. Cambiarla por la de lado la
+          desmontaba, y lo que habia escrito para la siguiente serie se perdia al volver. */}
+      <View style={resting ? styles.hidden : styles.page}>
+        <Screen title="Entreno" scrollEnabled={!dragging}>
+          {session === null ? (
+            <SessionPlanner
+              routines={loaded.routines}
+              gyms={loaded.gyms}
+              onLocate={whereAmI}
+              onLoadPlan={loadPlan}
+              onStart={beginSession}
+              restDay={loaded.today.log?.rest_day === 1}
+              onRestDay={() => logDay({ restDay: true })}
+              onDragging={holdScreen}
+            />
+          ) : (
+            <>
+              {/* La rutina y el gentio: dos cosas que se miran al llegar y ninguna
               despues, asi que comparten la cartilla de arriba y no gastan alto en el
               medio de la pantalla. */}
-          <Card>
-            <View style={styles.topRow}>
-              <View style={styles.routineSide}>
-                <Text style={styles.label}>RUTINA DE HOY</Text>
-                <Text style={styles.routineText}>{routine ? routine.name : 'Sin rutina'}</Text>
-              </View>
-              <Button
-                label={changingRoutine ? 'Dejar así' : 'Cambiar'}
-                accessibilityLabel="Cambiar la rutina de hoy"
-                variant="ghost"
-                onPress={() => setChangingRoutine((open) => !open)}
-              />
-            </View>
-
-            {changingRoutine && (
-              <View style={styles.chips}>
-                {loaded.routines.map((item) => (
-                  <Chip
-                    key={item.id}
-                    label={item.name}
-                    accessibilityLabel={`Cambiar a ${item.name}`}
-                    selected={item.id === session.routine_id}
-                    onPress={() => {
-                      switchRoutine(item.id);
-                      setChangingRoutine(false);
-                    }}
+              <Card>
+                <View style={styles.topRow}>
+                  <View style={styles.routineSide}>
+                    <Text style={styles.label}>RUTINA DE HOY</Text>
+                    <Text style={styles.routineText}>{routine ? routine.name : 'Sin rutina'}</Text>
+                  </View>
+                  <Button
+                    label={changingRoutine ? 'Dejar así' : 'Cambiar'}
+                    accessibilityLabel="Cambiar la rutina de hoy"
+                    variant="ghost"
+                    onPress={() => setChangingRoutine((open) => !open)}
                   />
-                ))}
-              </View>
-            )}
+                </View>
 
-            {/* Spec 8.5: se pregunta al llegar y aparte de empezar, asi que no esta en
+                {changingRoutine && (
+                  <View style={styles.chips}>
+                    {loaded.routines.map((item) => (
+                      <Chip
+                        key={item.id}
+                        label={item.name}
+                        accessibilityLabel={`Cambiar a ${item.name}`}
+                        selected={item.id === session.routine_id}
+                        onPress={() => {
+                          switchRoutine(item.id);
+                          setChangingRoutine(false);
+                        }}
+                      />
+                    ))}
+                  </View>
+                )}
+
+                {/* Spec 8.5: se pregunta al llegar y aparte de empezar, asi que no esta en
                 el camino critico. Spec 5.4 la deja fuera de una sesion escrita despues. */}
-            <View style={styles.crowdRow}>
-              <Text style={styles.label}>GENTÍO</Text>
-              <View style={styles.chips}>
-                {(
-                  [
-                    ['empty', 'vacío'],
-                    ['normal', 'normal'],
-                    ['full', 'lleno'],
-                  ] as const
-                ).map(([id, label]) => (
-                  <Chip
-                    key={id}
-                    label={label}
-                    accessibilityLabel={`Gimnasio ${label}`}
-                    selected={session.crowding === id}
-                    onPress={() => describeSession({ crowding: id })}
-                  />
-                ))}
-              </View>
-            </View>
-          </Card>
+                <View style={styles.crowdRow}>
+                  <Text style={styles.label}>GENTÍO</Text>
+                  <View style={styles.chips}>
+                    {(
+                      [
+                        ['empty', 'vacío'],
+                        ['normal', 'normal'],
+                        ['full', 'lleno'],
+                      ] as const
+                    ).map(([id, label]) => (
+                      <Chip
+                        key={id}
+                        label={label}
+                        accessibilityLabel={`Gimnasio ${label}`}
+                        selected={session.crowding === id}
+                        onPress={() => describeSession({ crowding: id })}
+                      />
+                    ))}
+                  </View>
+                </View>
+              </Card>
 
-          <SessionLog
-            exercises={loaded.exercise.exercises}
-            selectedExerciseId={exerciseId}
-            onSelectExercise={selectExercise}
-            todaySets={loaded.exercise.todaySets}
-            lastSets={loaded.exercise.lastSets}
-            marks={loaded.exercise.marks}
-            sessionVolume={loaded.today.sessionVolume}
-            unit={loaded.unit}
-            onChangeUnit={changeUnit}
-            plannedSets={planned?.sets ?? null}
-            planExerciseIds={planExerciseIds}
-            setsDoneByExercise={setsDoneByExercise}
-            plannedByExercise={plannedByExercise}
-            onAddSet={logSet}
-            onRemoveSet={removeSet}
-            startedAt={session.start_time}
-            usualMinutes={pace}
-            draft={loaded.sessionDraft}
-            onDraftChange={changeDraft}
-            finishedAt={session.end_time}
-            onFinish={endSession}
-            onReopen={reopenSession}
+              <SessionLog
+                exercises={loaded.exercise.exercises}
+                selectedExerciseId={exerciseId}
+                onSelectExercise={selectExercise}
+                todaySets={loaded.exercise.todaySets}
+                lastSets={loaded.exercise.lastSets}
+                marks={loaded.exercise.marks}
+                sessionVolume={loaded.today.sessionVolume}
+                unit={loaded.unit}
+                onChangeUnit={changeUnit}
+                plannedSets={planned?.sets ?? null}
+                planExerciseIds={planExerciseIds}
+                setsDoneByExercise={setsDoneByExercise}
+                plannedByExercise={plannedByExercise}
+                onAddSet={logSet}
+                onRemoveSet={removeSet}
+                startedAt={session.start_time}
+                usualMinutes={pace}
+                draft={loaded.sessionDraft}
+                onDraftChange={changeDraft}
+                finishedAt={session.end_time}
+                onFinish={endSession}
+                onReopen={reopenSession}
+              />
+            </>
+          )}
+
+          {/* Al final: material de consulta, no parte de anotar una serie. */}
+          <Button
+            label="Recomendaciones de rutina"
+            accessibilityLabel="Ver recomendaciones de rutina"
+            icon={ChevronRight}
+            onPress={() =>
+              navigation.navigate('Recomendaciones', {
+                routineId: session?.routine_id ?? undefined,
+              })
+            }
+            style={styles.notesLink}
           />
-        </>
-      )}
-
-      {/* Al final: material de consulta, no parte de anotar una serie. */}
-      <Button
-        label="Recomendaciones de rutina"
-        accessibilityLabel="Ver recomendaciones de rutina"
-        icon={ChevronRight}
-        onPress={() =>
-          navigation.navigate('Recomendaciones', { routineId: session?.routine_id ?? undefined })
-        }
-        style={styles.notesLink}
-      />
-    </Screen>
+        </Screen>
+      </View>
+    </>
   );
 }
 
 const styles = sheet((theme) => ({
+  page: {
+    flex: 1,
+  },
+  hidden: {
+    display: 'none',
+  },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',

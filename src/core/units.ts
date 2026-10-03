@@ -36,11 +36,17 @@ export function withUnit(kg: number, unit: WeightUnit): string {
 }
 
 /**
- * Snaps a weight to the nearest real step of the equipment. A stack that moves ten
- * pounds at a time cannot be set to eleven, and spec 5.1 is explicit that the arrows
- * step by that value and never by one.
+ * Lo que dejan las flechas del peso: un salto fijo, 5 lb o 2.5 kg, desde el numero puesto
+ * (2026-10-03). Fijo por decision suya: la P156 sube de 15 en 15 y casi todas las torres
+ * traen un bloquecito de 5 lb aparte, asi que el salto util es ese.
+ *
+ * Desde el numero puesto y sin redondear: antes el resultado se ajustaba a una cuadricula
+ * de 5 lb que empieza en cero, y desde un peso que no esta en ella saltaba a uno que no
+ * existe: de 17.5 a 25 en las mancuernas, de 42.5 a 50 en la polea Matrix, que empieza
+ * en 2.5 y sube de 5 en 5, y de 54 a 60 en la V-Squat, que empieza en 54.
  */
-export function snapToIncrement(kg: number, incrementKg: number): number {
-  if (!(incrementKg > 0)) throw new Error(`an increment of ${incrementKg} is not a step`);
-  return Math.max(0, Math.round(kg / incrementKg) * incrementKg);
+export function stepWeight(typed: number, direction: 1 | -1, unit: WeightUnit): string {
+  const step = unit === 'lb' ? 5 : 2.5;
+  const from = Number.isFinite(typed) && typed > 0 ? typed : 0;
+  return formatWeight(toKg(Math.max(0, from + direction * step), unit), unit);
 }
