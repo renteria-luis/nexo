@@ -47,7 +47,7 @@
     "lint": "expo lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test 'src/**/*.test.ts'"
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test 'src/**/*.test.ts' && python3 .claude/hooks/block-secrets.test.py"
   },
   "private": true
 }

@@ -187,20 +187,6 @@ export function proteinPerDollar(
   };
 }
 
-export type RankedDeal = {
-  deal: ListedDeal;
-  food: NutritionFoodRow;
-  value: ProteinValue;
-};
-
-/**
- * Best protein per dollar first. Spec 16.6 again: a 10% discount on a dearer shelf
- * price loses to a cheaper shop with no discount, and this is where that is settled.
- */
-export function rankByProteinPerDollar(candidates: readonly RankedDeal[]): RankedDeal[] {
-  return [...candidates].sort((a, b) => b.value.proteinPerDollar - a.value.proteinPerDollar);
-}
-
 export type PriceComparison = {
   dealCentsPerKg: number;
   usualCentsPerKg: number;

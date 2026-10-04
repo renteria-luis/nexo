@@ -19,7 +19,6 @@ import {
   profileFrom,
   readSettings,
   reEntryFrom,
-  treatMissingSleepAsZero,
   writeSetting,
   type Settings,
   settingProblem,
@@ -54,7 +53,6 @@ test('an empty store still answers with the shipped defaults', async () => {
 
   assert.equal(stored.size, 0);
   assert.equal(paletteFrom(stored), 'deutan');
-  assert.equal(treatMissingSleepAsZero(stored), false);
   assert.deepEqual(reEntryFrom(stored), { startedOn: null, weeks: 3 });
 });
 

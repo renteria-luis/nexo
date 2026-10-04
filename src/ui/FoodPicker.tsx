@@ -2,7 +2,12 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../db/types.ts';
-import { matchesSearch, roundAmount, type FoodHistory } from '../nutrition/index.ts';
+import {
+  matchesSearch,
+  referenceAmount,
+  roundAmount,
+  type FoodHistory,
+} from '../nutrition/index.ts';
 
 import { Button } from './Button.tsx';
 import { IconButton } from './IconButton.tsx';
@@ -34,7 +39,7 @@ const SUGGESTIONS = 5;
 
 /** Los macros por unidad contable, o por cien gramos o mililitros. */
 function macros(food: NutritionFoodRow): string {
-  const per = food.unit_kind === 'count' ? 1 : 100;
+  const per = referenceAmount(food);
   const unit = food.unit_kind === 'count' ? food.base_unit : `100 ${food.base_unit}`;
   return `${unit} · ${roundAmount(food.kcal * per)} kcal · ${roundAmount(food.protein_g * per)} g P`;
 }

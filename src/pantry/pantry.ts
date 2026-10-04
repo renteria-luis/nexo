@@ -129,10 +129,3 @@ export function cookableNow(recipes: readonly Recipe[], stock: readonly PantryIt
       return a.recipe.name.localeCompare(b.recipe.name);
     });
 }
-
-/** Lo que queda de un ingrediente despues de cocinar. Lo que no se mide no se mueve. */
-export function afterCooking(item: PantryItem, used: number | null): PantryItem {
-  if (item.kind !== 'counted' && item.kind !== 'weighed') return item;
-  const left = Math.max(0, (item.quantity ?? 0) - (used ?? 0));
-  return { ...item, quantity: item.kind === 'counted' ? Math.round(left) : left };
-}

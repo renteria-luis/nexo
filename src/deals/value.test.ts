@@ -10,7 +10,6 @@ import {
   unitPrice,
   finalPriceCents,
   proteinPerDollar,
-  rankByProteinPerDollar,
   weekdayOf,
 } from './value.ts';
 
@@ -156,12 +155,8 @@ test('the cheaper shop wins even when the other one discounts every day', () => 
   const metro = proteinPerDollar(deal(1050, 'kg'), CHICKEN, DISCOUNTS, 'Metro', TUESDAY);
   assert.ok(foodBasics && metro);
 
-  const ranked = rankByProteinPerDollar([
-    { deal: deal(1050, 'kg'), food: CHICKEN, value: metro },
-    { deal: deal(881, 'kg'), food: CHICKEN, value: foodBasics },
-  ]);
-  assert.equal(Math.round(ranked[0].value.finalPriceCents), 793);
-  assert.ok(ranked[0].value.proteinPerDollar > ranked[1].value.proteinPerDollar);
+  assert.equal(Math.round(foodBasics.finalPriceCents), 793);
+  assert.ok(foodBasics.proteinPerDollar > metro.proteinPerDollar);
 });
 
 test('the discount is applied to the price, not to the protein', () => {

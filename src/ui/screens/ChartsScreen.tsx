@@ -319,7 +319,7 @@ export function ChartsScreen() {
               </Text>
               <LineChart
                 width={width}
-                format={(value) => `${Math.round(fromKg(value, 'kg'))} kg`}
+                format={(value) => `${value.toFixed(1)} kg`}
                 series={[
                   { points: data.weight, color: theme.surfaceHigh, dots: true },
                   { points: data.weightAverage, color: theme.accent },

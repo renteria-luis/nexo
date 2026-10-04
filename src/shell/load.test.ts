@@ -5,7 +5,10 @@ import { test } from 'node:test';
 
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { upsertDailyLog } from '../core/daily-log.ts';
+import { readDailyLog, storeScore, upsertDailyLog } from '../core/daily-log.ts';
+import { currentStreak, longestStreak } from '../core/discipline.ts';
+import { setInitialTargets } from '../core/snapshots.ts';
+import { averageScore, buildGrid } from '../core/heatmap.ts';
 import { readSettings, reEntryFrom } from '../core/settings.ts';
 import { addDays, todayIso } from '../core/dates.ts';
 import { applySnapshot, parseSnapshot } from '../deals/snapshot.ts';
@@ -184,4 +187,91 @@ test('una sesion de ayer ya cerrada, o escrita despues, no se arrastra a hoy', a
 
   const fresh = await load(db, null, false, REREAD_ALL, null);
   assert.equal(fresh.today.session, null);
+});
+
+test('streaks retain scored history beyond the twelve-week grid', async () => {
+  const { db } = fixture();
+  for (let back = 0; back < 100; back += 1) {
+    const date = addDays(today, -back);
+    await upsertDailyLog(db, { date, creatineTaken: true });
+    await storeScore(db, date, 80);
+  }
+  const fresh = await load(db, null, false, REREAD_ALL, null);
+  // Today's incomplete score does not break yesterday's ongoing run.
+  assert.equal(currentStreak(fresh.scoreHistory, today), 99);
+  assert.equal(longestStreak(fresh.scoreHistory, today), 99);
+  assert.ok(fresh.days.length < fresh.scoreHistory.length);
+
+  await storeScore(db, addDays(today, -1), 0);
+  const broken = await load(db, null, false, REREAD_ALL, null);
+  assert.equal(currentStreak(broken.scoreHistory, today), 0);
+  assert.equal(longestStreak(broken.scoreHistory, today), 98);
+});
+
+test('a score reset also recovers days older than the grid', async () => {
+  const { db, reads } = fixture();
+  const old = addDays(today, -150);
+  await setInitialTargets(
+    db,
+    80,
+    {
+      heightCm: 175,
+      birthDate: '1990-01-01',
+      activityFactor: 1.5,
+      phase: 'recomp',
+      steps: 7000,
+      sleepMinutes: 420,
+    },
+    old,
+  );
+  await upsertDailyLog(db, { date: old, creatineTaken: true });
+  const fresh = await load(db, null, true, REREAD_ALL, null);
+  assert.notEqual((await readDailyLog(db, old))?.score, null);
+  assert.ok(fresh.scoreHistory.some((day) => day.date === old));
+  assert.ok(fresh.days.every((day) => day.date > old));
+
+  reads.length = 0;
+  await load(db, null, true, REREAD_ALL, null);
+  const pending = reads.filter(({ source }) => source.includes('SELECT DISTINCT trace.date'));
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].rows, 0);
+});
+
+test('food alone stores a score and colors today and past grid cells', async () => {
+  for (const date of [today, addDays(today, -1)]) {
+    const { db } = fixture();
+    await setInitialTargets(
+      db,
+      80,
+      {
+        heightCm: 175,
+        birthDate: '1990-01-01',
+        activityFactor: 1.5,
+        phase: 'recomp',
+        steps: 7000,
+        sleepMinutes: 420,
+      },
+      date,
+    );
+    await addFoodEntry(db, {
+      foodId: 'chicken-breast-kirkland',
+      quantity: 200,
+      unit: 'g',
+      date,
+      mealSlot: 'mediodía',
+    });
+    const fresh = await load(db, null, date !== today, REREAD_ALL, null);
+    const stored = await readDailyLog(db, date);
+    assert.ok(stored && stored.score !== null);
+    const cell = fresh.days.find((day) => day.date === date);
+    assert.ok(cell?.hasData);
+    assert.equal(cell.score, stored.score);
+    assert.equal(averageScore(fresh.days), stored.score);
+    const grid = buildGrid(fresh.days, { from: date, to: today }, 'deutan');
+    assert.equal(
+      grid.flatMap((week) => week.cells).find((day) => day.date === date)?.score,
+      stored.score,
+    );
+    if (date !== today) assert.equal(fresh.today.result?.score ?? null, null);
+  }
 });

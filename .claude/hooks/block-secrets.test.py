@@ -26,7 +26,6 @@ BLOCK = [
     ("write signing .p12", "Write", {"file_path": "ios/app.p12", "content": "x"}),
     ("write .mobileprovision", "Write", {"file_path": "nexo.mobileprovision", "content": "x"}),
     ("write database file", "Write", {"file_path": "backup/nexo.sqlite", "content": "x"}),
-    ("write a copy of SPEC.md", "Write", {"file_path": "docs/SPEC.md", "content": "peso 73 kg"}),
     ("private key in source", "Write", {"file_path": "src/keys.ts", "content": PEM_FIXTURE}),
     ("hardcoded api key", "Write", {"file_path": "src/deals/tgtg.ts", "content": APIKEY_FIXTURE}),
     ("token in ci script", "Write", {"file_path": "ci/deploy.sh", "content": GH_FIXTURE}),
@@ -37,7 +36,6 @@ BLOCK = [
     ("append to .env", "Bash", {"command": "echo FLIPP_TOKEN=abc123456789 >> .env"}),
     ("copy a provisioning profile in", "Bash", {"command": "cp ~/Downloads/nexo.mobileprovision ."}),
     ("echo an aws key", "Bash", {"command": "echo " + AWS_FIXTURE}),
-    ("redirect into SPEC.md", "Bash", {"command": "echo peso > SPEC.md"}),
     ("secret inside a heredoc body", "Bash", {"command": "cat > src/k.ts <<'EOF'\n" + PEM_FIXTURE + "\nEOF"}),
     # INFRA-02: ordinary spellings that walked past the guard.
     ("force add through git -C", "Bash", {"command": "git -C /home/l/nexo add -f SPEC.md"}),
@@ -51,6 +49,8 @@ BLOCK = [
 ]
 
 ALLOW = [
+    ("write a local copy of SPEC.md", "Write", {"file_path": "docs/SPEC.md", "content": "peso 73 kg"}),
+    ("redirect into local SPEC.md", "Bash", {"command": "echo peso > SPEC.md"}),
     ("write app source", "Write", {"file_path": "src/core/score.ts", "content": "export const trainingWeight = 22;"}),
     ("write .env.example", "Write", {"file_path": ".env.example", "content": "FLASHFOOD_PASSWORD=your_password_here"}),
     ("write sql migration", "Write", {"file_path": "db/001_training.sql", "content": "create table training_exercise (id text primary key);"}),

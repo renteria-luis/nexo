@@ -6,6 +6,30 @@ import type { DealsDealRow } from '../db/types.ts';
 import type { DealWithContext } from './queries.ts';
 import { liveDeals, newestFetch, watchedDeals, watchWords } from './watchlist.ts';
 
+test('the same offer from two flyers counts once without collapsing distinct products or sources', () => {
+  const fields = {
+    source_id: 'flipp',
+    retailer_id: 'shop',
+    price_cents: 499,
+    valid_to: '2026-10-10',
+    pack_count: 12,
+  };
+  const first = deal('Large Eggs', null, 1, { ...fields, id: 'print' });
+  const copy = deal('Large Eggs', null, 2, { ...fields, id: 'online' });
+  assert.equal(watchedDeals([first, copy], ['egg']).length, 1);
+  assert.equal(liveDeals(watchedDeals([first, copy], ['egg'])).length, 1);
+  for (const different of [
+    { source_id: 'flashfood' },
+    { retailer_id: 'other' },
+    { price_cents: 599 },
+    { valid_to: '2026-10-11' },
+    { pack_count: 18 },
+  ]) {
+    const other = deal('Large Eggs', null, 2, { ...fields, ...different, id: 'other' });
+    assert.equal(watchedDeals([first, other], ['egg']).length, 2);
+  }
+});
+
 function deal(
   title: string,
   description: string | null = null,

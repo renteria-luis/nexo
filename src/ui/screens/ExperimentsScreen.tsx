@@ -9,6 +9,7 @@ import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
 import { Chip } from '../Chip.tsx';
 import { Plus } from '../icons.ts';
+import { ConfirmAction } from '../InfoBubble.tsx';
 import { TextField } from '../TextField.tsx';
 import { font, sheet, shape } from '../theme.ts';
 
@@ -21,8 +22,6 @@ const DAIRY = {
   variableChanged: 'Leche 1% cambiada por una bebida sin lácteos',
   outcomeMetric: 'Piel de 0 a 5, una vez por semana',
 };
-
-const SCALE = [0, 1, 2, 3, 4, 5];
 
 function Field({
   label,
@@ -60,6 +59,11 @@ function Experiment({
 }) {
   const { experiment, readings, weeksRunning, halves } = item;
   const running = experiment.end_date === null;
+  const range = /\b([01])\s*(?:a|al|[-–]|to)\s*(5|10)\b/i.exec(experiment.outcome_metric);
+  const from = Number(range?.[1] ?? 0);
+  const to = Number(range?.[2] ?? 10);
+  const scale = Array.from({ length: to - from + 1 }, (_, index) => from + index);
+  const today = readings.find((reading) => reading.date === todayIso())?.value;
 
   return (
     <Card>
@@ -81,19 +85,22 @@ function Experiment({
         <>
           <Text style={styles.fieldLabel}>Cómo está hoy</Text>
           <View style={styles.chips}>
-            {SCALE.map((value) => (
+            {scale.map((value) => (
               <Chip
                 key={value}
                 label={String(value)}
+                selected={today === value}
                 accessibilityLabel={`Anotar ${value} en ${experiment.name}`}
                 onPress={() => onReading(value)}
               />
             ))}
           </View>
-          <Button
+          <ConfirmAction
             label="Terminar"
             accessibilityLabel={`Terminar ${experiment.name}`}
-            onPress={onFinish}
+            question={`¿Terminar ${experiment.name}?`}
+            yes="Sí, terminar"
+            onConfirm={onFinish}
           />
         </>
       )}

@@ -6,6 +6,7 @@ import { fatAgainstBand, kcalAgainstBand } from '../core/targets.ts';
 import type { NutritionFoodRow } from '../db/types.ts';
 import {
   MEAL_SLOTS,
+  SODIUM_FLAG_MG,
   currentSlot,
   portionLabel,
   quickAmountsFor,
@@ -89,6 +90,101 @@ export type FoodLogProps = {
 /** Los que salen arriba con su total: son los unicos que pueden mostrar un hueco. */
 const SHOWN_NUTRIENTS = ['kcal', 'protein_g', 'carbs_g', 'fat_g', 'sodium_mg'];
 
+function totalMark(totals: NutritionTotals | null, nutrient: string): string {
+  return totals?.missing.some((gap) => gap.nutrient === nutrient) ? ' +' : '';
+}
+
+function NutritionStats({
+  totals,
+  proteinBand,
+  kcalBand,
+  fatBand,
+  record = false,
+}: {
+  totals: NutritionTotals;
+} & Pick<FoodLogProps, 'proteinBand' | 'kcalBand' | 'fatBand' | 'record'>) {
+  const mark = (nutrient: string) => totalMark(totals, nutrient);
+  // Only warn about missing figures whose displayed total carries a +.
+  const shownGaps = totals.missing.filter((gap) =>
+    gap.nutrient === 'glycemic_index'
+      ? totals.glycemicLoad !== null
+      : SHOWN_NUTRIENTS.includes(gap.nutrient),
+  );
+
+  const kcal = Math.round(totals.kcal);
+  const fat = fatBand === null ? null : fatAgainstBand(totals.fatG, fatBand, record);
+
+  return (
+    <>
+      <View style={styles.stats}>
+        {record && (
+          <>
+            <Stat
+              label="Calorías"
+              value={`${kcal}${mark('kcal')}`}
+              note={kcalBand === null ? undefined : kcalAgainstBand(kcal, kcalBand)}
+            />
+            <Stat
+              label="Proteína"
+              value={`${Math.round(totals.proteinG)}${mark('protein_g')} g`}
+              note={proteinBand ? `meta ${proteinBand.from} o más` : undefined}
+            />
+          </>
+        )}
+        <Stat
+          label="Carbos"
+          value={`${roundAmount(totals.carbsG)}${mark('carbs_g')} g`}
+          note={totals.fibreG > 0 ? `fibra ${roundAmount(totals.fibreG)} g` : undefined}
+        />
+        <Stat
+          label="Grasa"
+          value={`${roundAmount(totals.fatG)}${mark('fat_g')} g`}
+          note={fat?.note}
+          alert={fat?.alert}
+        />
+        <Stat
+          label="Sodio"
+          value={`${roundAmount(totals.sodiumMg)}${mark('sodium_mg')} mg`}
+          note={totals.sodiumOverLimit ? `sobre ${SODIUM_FLAG_MG}` : undefined}
+          alert={totals.sodiumOverLimit}
+        />
+        {/* Spec 7.5: show dairy without subtracting it; glycemic load needs an index. */}
+        {totals.dairy.portions > 0 && (
+          <Stat
+            label="Lácteos"
+            value={
+              totals.dairy.millilitresG > 0
+                ? `${roundAmount(totals.dairy.millilitresG)} ml`
+                : `${totals.dairy.portions}`
+            }
+            note={
+              totals.dairy.millilitresG > 0
+                ? `${roundAmount(totals.dairy.proteinG)} g de proteína`
+                : 'porciones'
+            }
+          />
+        )}
+        {totals.glycemicLoad !== null && (
+          <Stat
+            label="Carga glucémica"
+            value={`${roundAmount(totals.glycemicLoad)}${mark('glycemic_index')}`}
+          />
+        )}
+      </View>
+      {shownGaps.length > 0 && (
+        <View style={styles.gap}>
+          <TriangleAlert size={16} color={theme.text} strokeWidth={2.5} />
+          <Text style={styles.gapText}>
+            El signo + marca totales incompletos:{' '}
+            {[...new Set(shownGaps.map((entry) => entry.foodName))].join(', ')} no trae todos los
+            datos. Se arreglan en editar alimentos.
+          </Text>
+        </View>
+      )}
+    </>
+  );
+}
+
 export function FoodLog({
   foods,
   portions,
@@ -128,22 +224,8 @@ export function FoodLog({
   const parsed = Number(quantity);
   const canAdd = selected !== null && Number.isFinite(parsed) && parsed > 0;
 
-  const missingFor = (nutrient: string) =>
-    totals?.missing.some((gap) => gap.nutrient === nutrient) ?? false;
-  const mark = (nutrient: string) => (missingFor(nutrient) ? ' +' : '');
-
-  // El aviso solo puede hablar de los huecos que se ven con un + arriba. La fibra y
-  // el indice glucemico no se muestran, asi que nombrar un alimento por no traerlos
-  // decia "faltan datos" de un alimento que los tiene todos.
-  const shownGaps = (totals?.missing ?? []).filter((gap) =>
-    gap.nutrient === 'glycemic_index'
-      ? totals?.glycemicLoad !== null && totals?.glycemicLoad !== undefined
-      : SHOWN_NUTRIENTS.includes(gap.nutrient),
-  );
-
+  const mark = (nutrient: string) => totalMark(totals, nutrient);
   const kcal = totals === null ? null : Math.round(totals.kcal);
-  const fat =
-    totals === null || fatBand === null ? null : fatAgainstBand(totals.fatG, fatBand, record);
 
   // Lo mismo en las dos formas: la lista de lo anotado y lo que hace falta para anotar.
   const shown = !record || writing;
@@ -312,73 +394,14 @@ export function FoodLog({
           </View>
 
           {totals && (
-            <View style={styles.stats}>
-              <Stat
-                label="Calorías"
-                value={`${kcal === null ? '—' : kcal}${mark('kcal')}`}
-                note={
-                  kcal === null || kcalBand === null ? undefined : kcalAgainstBand(kcal, kcalBand)
-                }
-              />
-              <Stat
-                label="Proteína"
-                value={`${Math.round(totals.proteinG)}${mark('protein_g')} g`}
-                note={proteinBand ? `meta ${proteinBand.from} o más` : undefined}
-              />
-              <Stat
-                label="Carbos"
-                value={`${roundAmount(totals.carbsG)}${mark('carbs_g')} g`}
-                note={totals.fibreG > 0 ? `fibra ${roundAmount(totals.fibreG)} g` : undefined}
-              />
-              <Stat
-                label="Grasa"
-                value={`${roundAmount(totals.fatG)}${mark('fat_g')} g`}
-                note={fat?.note}
-                alert={fat?.alert}
-              />
-              <Stat
-                label="Sodio"
-                value={`${roundAmount(totals.sodiumMg)}${mark('sodium_mg')} mg`}
-                note={totals.sodiumOverLimit ? 'sobre 2300' : undefined}
-                alert={totals.sodiumOverLimit}
-              />
-              {/* Spec 7.5: los lacteos se muestran y nunca se restan, y la carga
-                    glucemica solo aparece cuando algo comido trae indice. */}
-              {totals.dairy.portions > 0 && (
-                <Stat
-                  label="Lácteos"
-                  value={
-                    totals.dairy.millilitresG > 0
-                      ? `${roundAmount(totals.dairy.millilitresG)} ml`
-                      : `${totals.dairy.portions}`
-                  }
-                  note={
-                    totals.dairy.millilitresG > 0
-                      ? `${roundAmount(totals.dairy.proteinG)} g de proteína`
-                      : 'porciones'
-                  }
-                />
-              )}
-              {totals.glycemicLoad !== null && (
-                <Stat
-                  label="Carga glucémica"
-                  value={`${roundAmount(totals.glycemicLoad)}${mark('glycemic_index')}`}
-                />
-              )}
-            </View>
+            <NutritionStats
+              totals={totals}
+              proteinBand={proteinBand}
+              kcalBand={kcalBand}
+              fatBand={fatBand}
+              record={record}
+            />
           )}
-
-          {shownGaps.length > 0 && (
-            <View style={styles.gap}>
-              <TriangleAlert size={16} color={theme.text} strokeWidth={2.5} />
-              <Text style={styles.gapText}>
-                El signo + marca totales incompletos:{' '}
-                {[...new Set(shownGaps.map((entry) => entry.foodName))].join(', ')} no trae todos
-                los datos. Se arreglan en editar alimentos.
-              </Text>
-            </View>
-          )}
-
           {eaten}
 
           {writing && <View style={styles.writing}>{picker}</View>}
@@ -430,59 +453,13 @@ export function FoodLog({
 
       {totals && (
         <Card title="Lo que llevas">
-          <View style={styles.stats}>
-            <Stat
-              label="Carbos"
-              value={`${roundAmount(totals.carbsG)}${mark('carbs_g')} g`}
-              note={totals.fibreG > 0 ? `fibra ${roundAmount(totals.fibreG)} g` : undefined}
-            />
-            <Stat
-              label="Grasa"
-              value={`${roundAmount(totals.fatG)}${mark('fat_g')} g`}
-              note={fat?.note}
-              alert={fat?.alert}
-            />
-            <Stat
-              label="Sodio"
-              value={`${roundAmount(totals.sodiumMg)}${mark('sodium_mg')} mg`}
-              note={totals.sodiumOverLimit ? 'sobre 2300' : undefined}
-              alert={totals.sodiumOverLimit}
-            />
-            {/* Spec 7.5: los lacteos se muestran y nunca se restan, y la carga
-                glucemica solo aparece cuando algo comido trae indice. */}
-            {totals.dairy.portions > 0 && (
-              <Stat
-                label="Lácteos"
-                value={
-                  totals.dairy.millilitresG > 0
-                    ? `${roundAmount(totals.dairy.millilitresG)} ml`
-                    : `${totals.dairy.portions}`
-                }
-                note={
-                  totals.dairy.millilitresG > 0
-                    ? `${roundAmount(totals.dairy.proteinG)} g de proteína`
-                    : 'porciones'
-                }
-              />
-            )}
-            {totals.glycemicLoad !== null && (
-              <Stat
-                label="Carga glucémica"
-                value={`${roundAmount(totals.glycemicLoad)}${mark('glycemic_index')}`}
-              />
-            )}
-          </View>
-
-          {shownGaps.length > 0 && (
-            <View style={styles.gap}>
-              <TriangleAlert size={16} color={theme.text} strokeWidth={2.5} />
-              <Text style={styles.gapText}>
-                El signo + marca totales incompletos:{' '}
-                {[...new Set(shownGaps.map((entry) => entry.foodName))].join(', ')} no trae todos
-                los datos. Se arreglan en editar alimentos.
-              </Text>
-            </View>
-          )}
+          <NutritionStats
+            totals={totals}
+            proteinBand={proteinBand}
+            kcalBand={kcalBand}
+            fatBand={fatBand}
+            record={record}
+          />
         </Card>
       )}
 

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Text, View } from 'react-native';
 
 import type { NutritionFoodRow, PantryKind, PantryState } from '../db/types.ts';
+import { matchesSearch } from '../nutrition/index.ts';
 import type { NewPantryItem, PantryItem } from '../pantry/index.ts';
 import { useAppData } from '../shell/AppData.tsx';
 
@@ -56,7 +57,7 @@ export function PantryForm({
   // Sin escribir nada tambien salen: una casilla de busqueda vacia encima de una lista
   // vacia no dice que haya nada que tocar.
   const found = foods
-    .filter((food) => food.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .filter((food) => matchesSearch([food.name, food.brand, food.store, food.keywords], search))
     .slice(0, 8);
 
   const counted = kind === 'counted' || kind === 'weighed';

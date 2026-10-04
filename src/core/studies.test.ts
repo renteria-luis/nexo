@@ -7,7 +7,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { migrations } from '../db/migrations/index.ts';
 
 import { CRITERION_WEIGHTS } from './discipline.ts';
-import { groupByTopic, listStudies, studiesForCriterion } from './studies.ts';
+import { groupByTopic, listStudies } from './studies.ts';
 
 function fresh(): SQLiteDatabase {
   const raw = new DatabaseSync(':memory:');
@@ -32,6 +32,7 @@ test('the readings run in the order spec 12 argues them', async () => {
       '12.1',
       '12.2',
       '12.3',
+      '12.3b',
       '12.4',
       '12.5',
       '12.6',
@@ -53,8 +54,8 @@ test('every criterion a study claims is a criterion that exists', async () => {
     assert.ok(study.criterion in CRITERION_WEIGHTS, `${study.id} claims ${study.criterion}`);
   }
 
-  assert.equal(studiesForCriterion(studies, 'sleep').length, 4);
-  assert.equal(studiesForCriterion(studies, 'protein').length, 1);
+  assert.equal(studies.filter((study) => study.criterion === 'sleep').length, 4);
+  assert.equal(studies.filter((study) => study.criterion === 'protein').length, 1);
   // Cannabis is logged and never scored (spec 4.1), so its evidence backs no criterion.
   assert.ok(
     studies.filter((study) => study.topic === 'cannabis').every((s) => s.criterion === null),
@@ -67,5 +68,29 @@ test('every study says something in its own words', async () => {
   for (const study of studies) {
     assert.ok(study.summary.length > 40, `${study.id} has no summary`);
     assert.ok(study.title.length > 0);
+  }
+});
+
+test('fresh and upgraded databases both expose the calorie evidence once', async () => {
+  for (const upgrade of [false, true]) {
+    const raw = new DatabaseSync(':memory:');
+    const old = migrations.filter((migration) => migration.id <= '054_score_decimal');
+    const added = migrations.filter((migration) => migration.id > '054_score_decimal');
+    for (const migration of upgrade ? old : migrations) raw.exec(migration.sql);
+    if (upgrade) for (const migration of added) raw.exec(migration.sql);
+    const db = {
+      getAllAsync: async (source: string) => raw.prepare(source).all(),
+    } as unknown as SQLiteDatabase;
+    const studies = await listStudies(db);
+    const calories = studies.filter((study) => study.criterion === 'calories');
+    assert.deepEqual(
+      calories.map((study) => [study.id, study.pmid]),
+      [
+        ['areta-2014', '24595305'],
+        ['murphy-koehler-2022', '34623696'],
+      ],
+    );
+    const topics = groupByTopic(studies).map((topic) => topic.topic);
+    assert.equal(topics[topics.indexOf('protein') + 1], 'energy_availability');
   }
 });

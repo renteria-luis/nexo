@@ -6,7 +6,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import type { CoreDailyLogRow, SleepSource, SqlBool } from '../db/types.ts';
 
 import type { DateRange, IsoDate } from './dates.ts';
-import type { DisciplineDay, SessionEffort } from './discipline.ts';
+import type { DisciplineDay, SessionEffort, StreakDay } from './discipline.ts';
 
 export type DailyLogEntry = {
   date: IsoDate;
@@ -247,6 +247,13 @@ export async function listDailyLogs(
   return db.getAllAsync<CoreDailyLogRow>(
     'SELECT * FROM core_daily_log WHERE date BETWEEN ? AND ? ORDER BY date;',
     [range.from, range.to],
+  );
+}
+
+export async function listScoreHistory(db: SQLiteDatabase, today: IsoDate): Promise<StreakDay[]> {
+  return db.getAllAsync<StreakDay>(
+    'SELECT date, score FROM core_daily_log WHERE date <= ? ORDER BY date;',
+    [today],
   );
 }
 

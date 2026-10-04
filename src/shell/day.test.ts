@@ -91,6 +91,25 @@ test('nothing eaten leaves the food criteria without data, not at zero grams', a
   assert.equal(day.bestWeekSessions, 0);
 });
 
+test('legacy missing-sleep settings leave the absolute score unchanged', async () => {
+  const { db } = await fixture();
+  await upsertDailyLog(db, { date: TODAY, waterMl: 2800, steps: 7200, creatineTaken: true });
+  for (const value of ['true', 'false']) {
+    await db.runAsync(
+      `INSERT INTO core_setting (key, value) VALUES ('treat_missing_sleep_as_zero', ?)
+       ON CONFLICT (key) DO UPDATE SET value = excluded.value;`,
+      [value],
+    );
+    const day = await assembleDay(db, TODAY, TODAY);
+    assert.equal(
+      day.result?.criteria.find((criterion) => criterion.id === 'sleep')?.fraction,
+      null,
+    );
+    assert.equal(day.result?.score, 22);
+    assert.equal(day.result?.pointsWithoutData, 78);
+  }
+});
+
 test('what was eaten reaches the grid through the nutrition module', async () => {
   const { db, raw } = await fixture();
   await upsertDailyLog(db, { date: TODAY, waterMl: 2800, creatineTaken: true });

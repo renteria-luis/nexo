@@ -24,10 +24,10 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 
 import { centsPerKgFromText, dealPack, localDate, normaliseUnit } from '../src/deals/parse.ts';
+import { SNAPSHOT_VERSION } from '../src/deals/snapshot.ts';
 
 const SEARCH = 'https://backflipp.wishabi.com/flipp/items/search';
 const ITEM = 'https://backflipp.wishabi.com/flipp/items';
-const SNAPSHOT_VERSION = 1;
 /** Cuantos detalles se piden a la vez. Esto corre una vez al dia y no hay prisa. */
 const AT_A_TIME = 4;
 

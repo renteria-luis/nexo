@@ -112,7 +112,7 @@ export function instructions(today: IsoDate, unit: string): string {
     'Si el dia no es hoy, la fecha va delante del comando: "ayer", "anteayer", "25 set", "25/09".',
     '',
     'Ejemplos, cada uno independiente del anterior:',
-    '  "cual es mi mejor press banca" -> preguntar, pregunta "marca", ejercicio "press banca"',
+    '  "cual es mi mejor press pecho" -> preguntar, pregunta "marca", ejercicio "press pecho"',
     '  "que nota saque ayer" -> preguntar, pregunta "nota", fecha "ayer"',
     '  "ayer dormi como seis y media" -> anotar, comando "ayer sueno 390m"',
     '  "me pese 74 y medio" -> anotar, comando "peso 74.5"',

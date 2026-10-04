@@ -20,7 +20,6 @@ export type SettingKey =
   | 'phase'
   | 'sleep_target_minutes'
   | 'steps_target'
-  | 'treat_missing_sleep_as_zero'
   | 're_entry_started_on'
   | 're_entry_weeks'
   | 'weight_unit'
@@ -45,7 +44,6 @@ const DEFAULTS: Partial<Record<SettingKey, string>> = {
   phase: 'recomp',
   sleep_target_minutes: '420',
   steps_target: '7000',
-  treat_missing_sleep_as_zero: 'false',
   re_entry_weeks: '3',
   // His main gym is imperial. Storage stays metric either way.
   weight_unit: 'lb',
@@ -143,10 +141,6 @@ export function targetsChangeSeenFrom(settings: Settings): IsoDate | null {
   return raw(settings, 'targets_change_seen');
 }
 
-export function treatMissingSleepAsZero(settings: Settings): boolean {
-  return raw(settings, 'treat_missing_sleep_as_zero') === 'true';
-}
-
 /** Spec 18: el interruptor general. Apagado no se programa ni uno. */
 export function nudgesEnabled(settings: Settings): boolean {
   return raw(settings, 'nudges_enabled') !== 'false';
@@ -229,7 +223,6 @@ export function settingProblem(
     case 're_entry_started_on':
     case 'targets_change_seen':
       return dateProblem(trimmed);
-    case 'treat_missing_sleep_as_zero':
     case 'nudges_enabled':
       return trimmed === 'true' || trimmed === 'false' ? null : 'solo true o false';
     // Lo escribe la app al apagar un tipo de aviso, no el.

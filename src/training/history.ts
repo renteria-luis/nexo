@@ -5,7 +5,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { addDays, daysBetween, type DateRange, type IsoDate } from '../core/dates.ts';
-import { WEEKLY_SESSION_TARGET } from '../core/discipline.ts';
+import { trainingDebt } from '../core/discipline.ts';
 
 /**
  * Los dias en que entreno: con una sesion que tiene al menos una serie de trabajo (spec
@@ -73,7 +73,7 @@ export function consecutiveMissedBefore(
     const day = addDays(date, -back);
     if (trained.has(day)) return missed;
 
-    const debt = WEEKLY_SESSION_TARGET - sessionsInTrailingWeek(sessionDates, day);
+    const debt = trainingDebt(sessionsInTrailingWeek(sessionDates, day));
     if (debt > 0) missed += 1;
   }
 

@@ -8,6 +8,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
   listDailyLogs,
+  listScoreHistory,
   readLastWeight,
   storeScore,
   toWeighIns,
@@ -16,6 +17,7 @@ import {
 import type { LastWeight } from '../core/daily-log.ts';
 import { addDays, todayIso, trailingDays, weekStart, type IsoDate } from '../core/dates.ts';
 import type { ScoredDay } from '../core/heatmap.ts';
+import type { StreakDay } from '../core/discipline.ts';
 import type { PaletteId } from '../core/palettes.ts';
 import { reEntryBanner, startsOnItsOwn, type ReEntryBanner } from '../core/re-entry.ts';
 import {
@@ -99,6 +101,7 @@ export type OpenBatch = {
 
 export type Loaded = {
   days: ScoredDay[];
+  scoreHistory: StreakDay[];
   settings: Settings;
   palette: PaletteId;
   unit: WeightUnit;
@@ -212,10 +215,11 @@ export async function load(
   // Spec 4.1 da 22 de los 100 puntos a entrenar, asi que un dia que entreno es un
   // dia con datos aunque no haya registrado nada mas. Sin esto el cuadrito quedaba
   // vacio despues de una sesion de verdad, que es justo lo que le paso.
-  if (scored.trained === true && !scored.log) {
+  const hasTodayData = scored.log !== null || scored.trained === true || scored.nutrition !== null;
+  if (hasTodayData && !scored.log) {
     await upsertDailyLog(db, { date: today });
   }
-  if (scored.log || scored.trained === true) {
+  if (hasTodayData) {
     await storeScore(db, today, scored.result?.score ?? null);
   }
 
@@ -226,22 +230,24 @@ export async function load(
   if (settle) {
     // Rellenar el perfil hoy tiene que arreglar los dias de antes tambien: hasta que
     // hubo metas, todo lo anotado se guardo sin nota y la cuadricula los pintaba grises.
-    await rescoreMissing(db, { from, to: today }, today);
+    await rescoreMissing(db, { to: today }, today);
     // Y los ultimos siete se rehacen aunque ya tengan nota: un descanso marcado gana los
     // puntos del entreno cuando la semana que lo rodea llega a las cinco sesiones, y eso
     // pasa dias despues de ese dia.
     await rescoreSettling(db, today);
   }
 
-  const [logs, containers, exercise, change, openBatches, routines, plan] = await Promise.all([
-    listDailyLogs(db, { from, to: today }),
-    listContainers(db),
-    exerciseContext(db, assembled, exerciseId),
-    latestTargetChange(db),
-    listOpenBatches(db),
-    listRoutines(db),
-    assembled.session ? loadSessionPlan(db, assembled.session.id) : Promise.resolve([]),
-  ]);
+  const [logs, scoreHistory, containers, exercise, change, openBatches, routines, plan] =
+    await Promise.all([
+      listDailyLogs(db, { from, to: today }),
+      listScoreHistory(db, today),
+      listContainers(db),
+      exerciseContext(db, assembled, exerciseId),
+      latestTargetChange(db),
+      listOpenBatches(db),
+      listRoutines(db),
+      assembled.session ? loadSessionPlan(db, assembled.session.id) : Promise.resolve([]),
+    ]);
 
   const foodSlice: FoodSlice | null =
     everything || reread.foods
@@ -268,6 +274,7 @@ export async function load(
   }));
 
   return {
+    scoreHistory,
     days: (() => {
       const byDate = new Map(logs.map((log) => [log.date, log]));
       const dates = [...new Set([...byDate.keys(), ...trainedDates])].sort();
@@ -276,7 +283,7 @@ export async function load(
         return {
           date,
           score: log?.score ?? null,
-          hasData: log?.has_data === 1 || trainedDates.has(date),
+          hasData: log?.score != null || log?.has_data === 1 || trainedDates.has(date),
         };
       });
     })(),

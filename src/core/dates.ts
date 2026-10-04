@@ -79,15 +79,6 @@ const MONTH_NAMES_ES = [
   'diciembre',
 ];
 
-/** "24 de setiembre 12:51", en reloj de 24 horas, que es como lee la hora. */
-export function dateAndTime(now: Date = new Date()): string {
-  const day = now.getDate();
-  const month = MONTH_NAMES_ES[now.getMonth()];
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  return `${day} de ${month} ${hours}:${minutes}`;
-}
-
 const WEEKDAYS_ES = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
 
 const WEEKDAY_NAMES_ES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];

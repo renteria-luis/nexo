@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 
+import { matchesSearch } from '../nutrition/index.ts';
 import type { Ingredient, NewRecipe, PantryItem, Recipe } from '../pantry/index.ts';
 
 import { Button } from './Button.tsx';
@@ -47,7 +48,7 @@ export function RecipeForm({
       : pantry
           .filter(
             (item) =>
-              item.name.toLowerCase().includes(search.trim().toLowerCase()) &&
+              matchesSearch([item.name], search) &&
               !ingredients.some((one) => one.itemId === item.id),
           )
           .slice(0, 6);

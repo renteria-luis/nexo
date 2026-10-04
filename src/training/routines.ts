@@ -72,7 +72,6 @@ export type RoutinePlan = {
   name: string;
   budget: TimeBudget;
   exercises: PlannedExercise[];
-  estimatedSeconds: number;
   /** Lo que suele tardar un dia asi, o null si todavia no hay con que decirlo. */
   usualMinutes: number | null;
 };
@@ -406,7 +405,6 @@ export async function loadRoutinePlan(
     name: routine.name,
     budget,
     exercises: planned,
-    estimatedSeconds: estimateSeconds(planned),
     usualMinutes: usualMinutes(times, { gymId, routineId, budget }),
   };
 }

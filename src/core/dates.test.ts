@@ -14,7 +14,6 @@ import {
   longDate,
   shortDay,
   shortDate,
-  dateAndTime,
 } from './dates.ts';
 
 test('weeks run Monday to Sunday', () => {
@@ -106,13 +105,6 @@ test('un dia dicho en voz alta lleva su dia de la semana y su mes entero', () =>
   assert.equal(longDate('2026-09-30'), 'miércoles, 30 de setiembre');
   assert.equal(longDate('2026-01-01'), 'jueves, 1 de enero');
   assert.throws(() => longDate('2026-13-01'), /is not a date/);
-});
-
-test('la fecha y la hora se leen como las dice en voz alta', () => {
-  assert.equal(dateAndTime(new Date(2026, 8, 24, 12, 51)), '24 de setiembre 12:51');
-  assert.equal(dateAndTime(new Date(2026, 0, 3, 7, 5)), '3 de enero 07:05');
-  // Reloj de 24 horas: las nueve de la noche no son las 9.
-  assert.equal(dateAndTime(new Date(2026, 11, 31, 21, 0)), '31 de diciembre 21:00');
 });
 
 test('un dia de una lista va sin ano, que se da por supuesto', () => {

@@ -3,7 +3,6 @@ import { test } from 'node:test';
 
 import {
   CRITERION_WEIGHTS,
-  advanceConsecutiveMissed,
   alcoholPointsLost,
   currentStreak,
   isScheduledToday,
@@ -343,22 +342,6 @@ test('re-entry mode suppresses the penalty but not the scoring', () => {
   const result = scoreDay({ ...perfectDay, trained: false }, targets, readapting);
   assert.equal(result.penalty, 0);
   close(result.score, 78);
-});
-
-test('the run of misses resets on the first completed session', () => {
-  const behind: TrainingContext = {
-    sessionsLastSevenDays: 2,
-    bestWeekSessions: 2,
-    consecutiveMissed: 3,
-    isScheduledRestDay: false,
-    reEntryActive: false,
-  };
-
-  const missed = scoreDay({ ...perfectDay, trained: false }, targets, behind);
-  assert.equal(advanceConsecutiveMissed(3, missed), 4);
-
-  const trained = scoreDay({ ...perfectDay, trained: true }, targets, behind);
-  assert.equal(advanceConsecutiveMissed(3, trained), 0);
 });
 
 test('water is judged against the training day target on a training day', () => {

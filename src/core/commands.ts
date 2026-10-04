@@ -86,12 +86,29 @@ function fullYear(raw: string): number {
  */
 function readDate(words: string[], today: IsoDate): IsoDate | null {
   if (words.length === 0) return null;
+  if (/^\d{1,2}$/.test(words[0]) && words[1] === 'de') {
+    words = [words[0], ...words.slice(2)];
+  }
+  if (words.length === 2 && words[0] === 'el') words = words.slice(1);
 
   if (words.length === 1) {
     const [word] = words;
     if (word === 'hoy') return today;
-    if (word === 'ayer') return addDays(today, -1);
+    if (word === 'ayer' || word === 'anoche') return addDays(today, -1);
     if (word === 'anteayer') return addDays(today, -2);
+    const weekday = [
+      'domingo',
+      'lunes',
+      'martes',
+      'miercoles',
+      'jueves',
+      'viernes',
+      'sabado',
+    ].indexOf(word);
+    if (weekday !== -1) {
+      const current = new Date(`${today}T00:00:00Z`).getUTCDay();
+      return addDays(today, -((current - weekday + 7) % 7 || 7));
+    }
     if (/^\d{4}-\d{2}-\d{2}$/.test(word)) return isRealDate(word) ? word : null;
 
     // 25/09, 25-09, 25/09/2026. El punto no separa una fecha aqui a proposito: "peso
@@ -143,7 +160,7 @@ export function dateFrom(input: string, today: IsoDate = todayIso()): IsoDate | 
 
 /** Saca la fecha del principio o del final y devuelve el comando que queda. */
 function splitDate(parts: string[], today: IsoDate): { date: IsoDate; rest: string[] } {
-  for (let size = Math.min(3, parts.length - 1); size >= 1; size -= 1) {
+  for (let size = Math.min(4, parts.length - 1); size >= 1; size -= 1) {
     const head = readDate(parts.slice(0, size), today);
     if (head !== null) return { date: head, rest: parts.slice(size) };
 

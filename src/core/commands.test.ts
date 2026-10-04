@@ -1,7 +1,20 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-
 import { dateFrom, parseCommand, setLoggedReply } from './commands.ts';
+
+test('natural date phrases retain their intended calendar day', () => {
+  assert.equal(dateFrom('29 de septiembre', '2026-10-03'), '2026-09-29');
+  assert.equal(dateFrom('29 de septiembre 2025', '2026-10-03'), '2025-09-29');
+  assert.equal(dateFrom('el martes', '2026-10-03'), '2026-09-29');
+  assert.equal(dateFrom('martes', '2026-09-29'), '2026-09-22');
+  assert.equal(dateFrom('el miércoles', '2027-01-01'), '2026-12-30');
+  assert.equal(dateFrom('anoche', '2027-01-01'), '2026-12-31');
+  assert.equal(dateFrom('31 de febrero', '2026-10-03'), null);
+  assert.equal(dateFrom('algún día', '2026-10-03'), null);
+  const parsed = parseCommand('25 de setiembre 2025 pasos 5000', '2026-10-03');
+  assert.ok(parsed.ok);
+  assert.equal(parsed.date, '2025-09-25');
+});
 
 const TODAY = '2026-09-28';
 
@@ -110,7 +123,7 @@ test('lo que no es una fecha se queda en el comando', () => {
 test('una fecha suelta, sin comando, para las preguntas', () => {
   assert.equal(dateFrom('ayer', TODAY), '2026-09-27');
   assert.equal(dateFrom('25 set', TODAY), '2026-09-25');
-  assert.equal(dateFrom('el martes', TODAY), null);
+  assert.equal(dateFrom('el martes', TODAY), '2026-09-22');
   assert.equal(dateFrom('', TODAY), null);
 });
 

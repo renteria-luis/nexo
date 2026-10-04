@@ -930,11 +930,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       beginExperiment: async (experiment) => {
         const db = await openDatabase();
         await startExperiment(db, experiment);
-        refresh();
       },
       logExperimentReading: (id, date, value, note) =>
-        write((db) => addReading(db, id, date, value, note), false),
-      finishExperiment: (id, endDate) => write((db) => endExperiment(db, id, endDate), false),
+        openDatabase().then((db) => addReading(db, id, date, value, note)),
+      finishExperiment: (id, endDate) =>
+        openDatabase().then((db) => endExperiment(db, id, endDate)),
       saveDraft: (draft) => store((db) => writeSetting(db, 'session_draft', serializeDraft(draft))),
       loadDay,
       loadCharts,
@@ -1074,15 +1074,14 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         write((db) => setSessionMinutes(db, sessionId, minutes), false),
       loadPantry,
       loadRecipes,
-      savePantryItem: (item) => write((db) => savePantryItem(db, item), false),
-      removePantryItem: async (id) => {
-        const db = await openDatabase();
-        const removal = await removePantryItem(db, id);
-        refresh(false);
-        return removal;
+      savePantryItem: async (item) => {
+        await savePantryItem(await openDatabase(), item);
       },
-      saveRecipe: (recipe) => write((db) => saveRecipe(db, recipe), false),
-      removeRecipe: (id) => write((db) => removeRecipe(db, id), false),
+      removePantryItem: (id) => openDatabase().then((db) => removePantryItem(db, id)),
+      saveRecipe: async (recipe) => {
+        await saveRecipe(await openDatabase(), recipe);
+      },
+      removeRecipe: (id) => openDatabase().then((db) => removeRecipe(db, id)),
       // Esta si recarga: la olla aparece como lote en Comida.
       cookRecipe: async (recipeId) => {
         const db = await openDatabase();

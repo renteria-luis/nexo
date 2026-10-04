@@ -377,12 +377,6 @@ export function scoreDay(
   return { ...dayScore(criteria, penalty), criteria, missedScheduledSession };
 }
 
-/** Spec 4.3: the run resets on the first completed session. */
-export function advanceConsecutiveMissed(current: number, result: DisciplineResult): number {
-  if (result.missedScheduledSession) return current + 1;
-  return 0;
-}
-
 /** Spec 4.4: a day counts towards the streak at seventy or better. */
 export const STREAK_THRESHOLD = 70;
 

@@ -34,7 +34,7 @@ import {
   updateFood,
 } from './queries.ts';
 import { loadFoodHistory, repeatableMeal } from './picker.ts';
-import { SODIUM_FLAG_MG, dailyTotals, dairyPortions, type LoggedPortion } from './totals.ts';
+import { SODIUM_FLAG_MG, dailyTotals, type LoggedPortion } from './totals.ts';
 import {
   MAX_QUICK_AMOUNTS,
   MEAL_SLOTS,
@@ -263,11 +263,6 @@ test('glycemic load uses available carbohydrate, not total', () => {
   // 73 * ((28 - 0.4) * 2) / 100
   assert.ok(totals.glycemicLoad !== null);
   assert.ok(Math.abs(totals.glycemicLoad - 40.296) < 1e-9);
-});
-
-test('the dairy total counts portions, and removes nothing', () => {
-  const milk = { id: 'milk', name: 'Leche', is_dairy: 1 as const };
-  assert.equal(dairyPortions([portion(450, milk), portion(200)]), 450);
 });
 
 test('protein per portion comes from the raw weight, not from weighing each piece', () => {
@@ -1126,7 +1121,8 @@ test('un alimento nuevo puede llevar fibra, indice glucemico y la marca de lacte
   // Antes salian siempre vacios: ninguna ficha podia escribir estos campos.
   assert.ok(totals.glycemicLoad !== null && totals.glycemicLoad > 0);
   assert.ok(Math.abs(totals.fibreG - 3.5) < 1e-9);
-  assert.equal(dairyPortions(await listPortions(db, '2026-10-01')), 350);
+  assert.equal(totals.dairy.portions, 1);
+  assert.equal(totals.dairy.proteinG, 32);
 
   // Corregirlo tambien los puede cambiar, y lo que no se manda se queda.
   await updateFood(db, yogurt, {

@@ -14,7 +14,7 @@ import { shortDate, todayIso, type IsoDate } from '../core/dates.ts';
 import { currentStreak } from '../core/discipline.ts';
 import { INTENT_SCHEMA, instructions, readIntent, type Intent } from '../core/intent.ts';
 import { toKg, withUnit } from '../core/units.ts';
-import { fold } from '../nutrition/picker.ts';
+import { matchesSearch } from '../nutrition/picker.ts';
 import { useAppData } from '../shell/AppData.tsx';
 import { askModel, modelReady } from '../shell/model.ts';
 
@@ -201,6 +201,18 @@ export function Chat({ onClose }: { onClose: () => void }) {
     // Una serie va al ejercicio abierto, que el plan pudo haber cambiado: se dice cual.
     if (command.kind === 'set') return ` Va a ${openExerciseName()}.`;
     const log = (await loadDay(date)).day.log;
+    if (command.kind === 'water') {
+      return log?.water_ml == null
+        ? ' Todavía no hay agua anotada.'
+        : ` Ahora lleva ${(log.water_ml / 1000).toFixed(2)} L.`;
+    }
+    if (command.kind === 'creatine') {
+      return log?.creatine_taken == null
+        ? ' La creatina no está anotada.'
+        : log.creatine_taken === 1
+          ? ' La creatina ya está tomada.'
+          : ' Ahora dice que no la tomaste.';
+    }
     if (log === null) return '';
     if (command.kind === 'steps' && log.steps !== null) return ` Ahora dice ${log.steps} pasos.`;
     if (command.kind === 'weight' && log.weight_kg !== null) {
@@ -216,7 +228,7 @@ export function Chat({ onClose }: { onClose: () => void }) {
   const lookUp = async (asked: Extract<Intent, { kind: 'ask' }>): Promise<string> => {
     switch (asked.question) {
       case 'racha': {
-        const streak = currentStreak(loaded.days, todayIso());
+        const streak = currentStreak(loaded.scoreHistory, todayIso());
         if (streak === 0) return 'Hoy no llevas racha.';
         return `Llevas ${streak} ${streak === 1 ? 'día' : 'días'} de racha.`;
       }
@@ -231,7 +243,8 @@ export function Chat({ onClose }: { onClose: () => void }) {
       }
 
       case 'nota': {
-        const date = (asked.date === null ? null : dateFrom(asked.date, todayIso())) ?? todayIso();
+        const date = asked.date === null ? todayIso() : dateFrom(asked.date, todayIso());
+        if (date === null) return `No sé qué día es "${asked.date}".`;
         const { report } = await loadDay(date);
         if (report.score === null) return `${dayOf(date)} no tiene nota todavía.`;
         return `La nota de ${dayOf(date)} es ${scoreText(report.score)} de 100.`;
@@ -249,11 +262,7 @@ export function Chat({ onClose }: { onClose: () => void }) {
       case 'marca': {
         if (asked.exercise === null) return '¿De qué ejercicio?';
         const { trends } = await loadCharts(90);
-        const wanted = fold(asked.exercise);
-        const trend = trends.find((one) => {
-          const name = fold(one.name);
-          return name.includes(wanted) || wanted.includes(name);
-        });
+        const trend = trends.find((one) => matchesSearch([one.name], asked.exercise!));
         if (trend === undefined || trend.e1rm.length === 0) {
           return `No tengo marcas de "${asked.exercise}" en los últimos 90 días.`;
         }
@@ -308,6 +317,11 @@ export function Chat({ onClose }: { onClose: () => void }) {
         return;
       }
 
+      if (parsed.command.kind === 'set' && parsed.date !== todayIso()) {
+        await say('app', await run(parsed.command, parsed.date), into);
+        return;
+      }
+
       setPending({ command: parsed.command, date: parsed.date });
       const note = await already(parsed.command, parsed.date);
       const when = parsed.date === todayIso() ? '' : ` Va al ${shortDate(parsed.date)}.`;
@@ -345,6 +359,11 @@ export function Chat({ onClose }: { onClose: () => void }) {
     const parsed = parseCommand(text, todayIso());
     if (!parsed.ok) {
       await interpret(text, into, parsed.reason);
+      return;
+    }
+
+    if (parsed.command.kind === 'set' && parsed.date !== todayIso()) {
+      await say('app', await run(parsed.command, parsed.date), into);
       return;
     }
 
@@ -410,11 +429,11 @@ export function Chat({ onClose }: { onClose: () => void }) {
             <Pressable
               key={chat.id}
               accessibilityRole="button"
-              accessibilityLabel={`Abrir el chat del ${chat.startedAt.slice(0, 10)}`}
+              accessibilityLabel={`Abrir el chat del ${todayIso(new Date(chat.startedAt))}`}
               onPress={() => resume(chat.id)}
               style={({ pressed }) => [styles.chatRow, pressed && styles.chatRowPressed]}
             >
-              <Text style={styles.chatDate}>{shortDate(chat.startedAt.slice(0, 10))}</Text>
+              <Text style={styles.chatDate}>{shortDate(todayIso(new Date(chat.startedAt)))}</Text>
               <Text style={styles.chatOpener} numberOfLines={1}>
                 {chat.opener === '' ? 'sin nada escrito' : chat.opener}
               </Text>

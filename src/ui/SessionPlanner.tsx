@@ -5,6 +5,7 @@ import type { GymLocation } from '../core/geo.ts';
 import type { Company, TrainingRoutineRow } from '../db/types.ts';
 import type { LocationOutcome } from '../shell/location.ts';
 import {
+  estimateSeconds,
   overrideSets,
   toStart,
   type PlannedExercise,
@@ -423,10 +424,7 @@ export function SessionPlanner({
 
   // Spec 8.3 rule 6: the estimate follows the overrides, not the untouched plan.
   const starting = toStart(exercises);
-  const seconds = starting.reduce(
-    (total, exercise) => total + exercise.sets * (45 + exercise.restSeconds) + 60,
-    starting.length > 0 ? 300 : 0,
-  );
+  const seconds = estimateSeconds(starting);
 
   const override = (exerciseId: string, direction: 1 | -1) =>
     setExercises((current) => overrideSets(current, exerciseId, direction));

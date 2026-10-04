@@ -483,12 +483,12 @@ export async function writeAndRescore(
  * Un dia se puntua cuando se escribe, y hasta que no hay perfil no hay metas contra
  * las que medirlo, asi que todo lo anotado antes de llenar Ajustes quedaba gris para
  * siempre. Esto los recupera en el siguiente arranque. Los que siguen sin poder
- * puntuarse se vuelven a intentar, que es barato y son pocos: la ventana es la que
- * se ve en la cuadricula.
+ * puntuarse se vuelven a intentar. La historia completa tambien necesita recuperarse
+ * cuando una migracion invalida las notas, aunque ya no quepa en la cuadricula.
  */
 export async function rescoreMissing(
   db: SQLiteDatabase,
-  range: DateRange,
+  range: { from?: IsoDate; to: IsoDate },
   today: IsoDate,
 ): Promise<number> {
   // Un dia dejo rastro en cualquiera de los tres sitios: el registro diario, un
@@ -503,13 +503,13 @@ export async function rescoreMissing(
        UNION SELECT date FROM training_session
        UNION SELECT date FROM nutrition_food_entry
      ) AS trace
-     WHERE trace.date BETWEEN ? AND ?
+     WHERE trace.date <= ? ${range.from === undefined ? '' : 'AND trace.date >= ?'}
        AND NOT EXISTS (
          SELECT 1 FROM core_daily_log scored
           WHERE scored.date = trace.date AND scored.score IS NOT NULL
        )
      ORDER BY trace.date;`,
-    [range.from, range.to],
+    range.from === undefined ? [range.to] : [range.to, range.from],
   );
 
   let scored = 0;

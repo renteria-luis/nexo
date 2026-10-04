@@ -171,8 +171,8 @@ test('a shorter budget is a shorter session', async () => {
   const half = await loadRoutinePlan(db, 'push', 'minus_50');
   const express = await loadRoutinePlan(db, 'push', 'express');
 
-  assert.ok(full.estimatedSeconds > half.estimatedSeconds);
-  assert.ok(half.estimatedSeconds > express.estimatedSeconds);
+  assert.ok(estimateSeconds(full.exercises) > estimateSeconds(half.exercises));
+  assert.ok(estimateSeconds(half.exercises) > estimateSeconds(express.exercises));
   assert.equal(express.exercises.length, 1);
 });
 

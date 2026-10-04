@@ -131,10 +131,3 @@ function dedupe(figures: readonly MissingFigure[]): MissingFigure[] {
     return true;
   });
 }
-
-/** Spec 7.5 point 2: a daily dairy total, shown but never used to remove anything. */
-export function dairyPortions(portions: readonly LoggedPortion[]): number {
-  return portions
-    .filter((portion) => portion.food.is_dairy === 1)
-    .reduce((total, portion) => total + portion.quantity, 0);
-}

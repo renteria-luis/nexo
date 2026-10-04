@@ -9,8 +9,6 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { CoreStudyRow } from '../db/types.ts';
 
-import type { CriterionId } from './discipline.ts';
-
 export type StudyTopic = {
   topic: string;
   specSection: string;
@@ -32,12 +30,4 @@ export function groupByTopic(studies: readonly CoreStudyRow[]): StudyTopic[] {
     else topics.push({ topic: study.topic, specSection: study.spec_section, studies: [study] });
   }
   return topics;
-}
-
-/** The studies behind one grid criterion, which is what makes a lost point auditable. */
-export function studiesForCriterion(
-  studies: readonly CoreStudyRow[],
-  criterion: CriterionId,
-): CoreStudyRow[] {
-  return studies.filter((study) => study.criterion === criterion);
 }

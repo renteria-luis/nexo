@@ -17,6 +17,7 @@ const TOPIC_ES: Record<string, string> = {
   sleep: 'Sueño',
   alcohol: 'Alcohol',
   protein: 'Proteína',
+  energy_availability: 'Disponibilidad de energía',
   fat_testosterone: 'Grasa y testosterona',
   volume: 'Volumen de entrenamiento',
   rest: 'Descanso entre series',

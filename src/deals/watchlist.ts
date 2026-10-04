@@ -51,12 +51,32 @@ export function watchedDeals(
 
   const found: WatchedDeal[] = [];
   const seen = new Set<string>();
+  const offers = new Set<string>();
 
   for (const item of deals) {
     const haystack = fold(`${item.deal.title} ${item.deal.description ?? ''}`);
     const word = words.find((needle) => haystack.includes(needle));
     if (word === undefined || seen.has(item.deal.id)) continue;
     if (blocked.some((needle) => haystack.includes(needle))) continue;
+    const deal = item.deal;
+    // Different flyer IDs may describe one store's offer. Unknown stores/prices
+    // cannot establish equivalence, and package sizes still identify distinct products.
+    const offer =
+      deal.source_id && deal.retailer_id && deal.price_cents !== null
+        ? JSON.stringify([
+            deal.source_id,
+            deal.retailer_id,
+            fold(deal.title),
+            deal.price_cents,
+            deal.valid_to,
+            deal.grams,
+            deal.pack_ml,
+            deal.pack_count,
+            deal.unit,
+          ])
+        : null;
+    if (offer !== null && offers.has(offer)) continue;
+    if (offer !== null) offers.add(offer);
     seen.add(item.deal.id);
     found.push({ item, word });
   }

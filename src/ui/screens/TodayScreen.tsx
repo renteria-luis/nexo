@@ -257,7 +257,7 @@ export function TodayScreen({
           </View>
           <View style={styles.heroStar}>
             <Star size={78} color={theme.surface} style={styles.star}>
-              <Text style={styles.starValue}>{currentStreak(loaded.days, today)}</Text>
+              <Text style={styles.starValue}>{currentStreak(loaded.scoreHistory, today)}</Text>
             </Star>
             <Text style={styles.starLabel}>días de racha</Text>
           </View>
@@ -324,7 +324,7 @@ export function TodayScreen({
         </View>
         <DisciplineGrid weeks={weeks} onOpenDay={peek} />
         <Text style={styles.gridFoot}>
-          Máxima {longestStreak(loaded.days, today)} días · promedio{' '}
+          Máxima {longestStreak(loaded.scoreHistory, today)} días · promedio{' '}
           {average === null ? '—' : Math.round(average)}
         </Text>
       </Card>
