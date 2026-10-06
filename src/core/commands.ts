@@ -54,7 +54,7 @@ const MONTHS = [
   ['diciembre', 'dic'],
 ];
 
-function monthNumber(word: string): number | null {
+export function monthNumber(word: string): number | null {
   const index = MONTHS.findIndex((names) => names.some((name) => name.startsWith(word)));
   return index === -1 ? null : index + 1;
 }
@@ -89,7 +89,18 @@ function readDate(words: string[], today: IsoDate): IsoDate | null {
   if (/^\d{1,2}$/.test(words[0]) && words[1] === 'de') {
     words = [words[0], ...words.slice(2)];
   }
+  if (words.at(-1) === 'pasado') words = words.slice(0, -1);
   if (words.length === 2 && words[0] === 'el') words = words.slice(1);
+  if (
+    words.length === 3 &&
+    words[0] === 'hace' &&
+    /^\d+$/.test(words[1]) &&
+    /^dias?$/.test(words[2])
+  ) {
+    const days = Number(words[1]);
+    return Number.isSafeInteger(days) && days <= 3660 ? addDays(today, -days) : null;
+  }
+  if (words.length === 4 && words[2] === 'de') words = [words[0], words[1], words[3]];
 
   if (words.length === 1) {
     const [word] = words;

@@ -15,6 +15,7 @@ import {
 } from '../../core/settings.ts';
 
 import { Button } from '../Button.tsx';
+import { AssistantSettings } from '../AssistantSettings.tsx';
 import { Card } from '../Card.tsx';
 import { Chip } from '../Chip.tsx';
 import { ChevronRight, Eye, EyeOff } from '../icons.ts';
@@ -380,6 +381,8 @@ export function SettingsScreen({
           );
         })}
       </Card>
+
+      <AssistantSettings />
 
       <Card title="Ofertas">
         <Field label="Palabras que vigilo">

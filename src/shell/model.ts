@@ -1,40 +1,24 @@
-// El modelo que vive dentro del telefono. Spec 20.3.
-//
-// Apple Foundation Models, el mismo que usa el sistema: gratis, sin cuenta, sin limite
-// de llamadas, sin conexion, y nada de lo que el escribe sale del telefono. Pide iOS 26,
-// Apple Intelligence encendido y un telefono que lo soporte; el suyo lo es.
-//
-// Se habla con el modulo nativo a secas y no con el envoltorio del paquete, por dos
-// razones. La primera es que su indice arrastra el SDK de Vercel y `zod` al bundle para
-// no usar nada de eso (lo mismo que los iconos: un import por cosa, nunca el indice). La
-// segunda es que ese envoltorio llama a `getEnforcing`, que revienta al importarlo si el
-// modulo no esta compilado, y aqui hace falta justo lo contrario: que la app funcione
-// igual sin el.
-
 import { TurboModuleRegistry, type TurboModule } from 'react-native';
 
-type Said = { role: 'system' | 'user' | 'assistant'; content: string };
+import { loadAssistantCredentials } from './assistant-credentials.ts';
+import { askGroq, CloudError, withModelDeadline, type ModelMessage } from './cloud.ts';
 
 type Part = { type: string; text?: string };
 
 interface AppleLlm extends TurboModule {
   isAvailable(): boolean;
   generateText(
-    messages: Said[],
+    messages: ModelMessage[],
     options: { schema?: object; temperature?: number; maxTokens?: number },
   ): Promise<Part[]>;
 }
 
-// `undefined` es "todavia no se miro"; null es "aqui no hay modelo", que es el caso en
-// el navegador, en una compilacion anterior a esta y en cualquier telefono sin Apple
-// Intelligence. Se busca tarde y dentro de un try: `get` devuelve null en vez de
-// reventar (esa es la diferencia con `getEnforcing`), pero en el navegador no existe ni
-// el registro, y esto se importa desde la pantalla principal.
 let llm: AppleLlm | null | undefined;
 
 function model(): AppleLlm | null {
   if (llm !== undefined) return llm;
   try {
+    // The package index enforces a native module even in the browser.
     llm = TurboModuleRegistry.get<AppleLlm>('NativeAppleLLM');
   } catch {
     llm = null;
@@ -42,7 +26,6 @@ function model(): AppleLlm | null {
   return llm;
 }
 
-/** Si se le puede preguntar ahora mismo. Falso tambien con el modelo apagado. */
 export function modelReady(): boolean {
   try {
     return model()?.isAvailable() === true;
@@ -51,32 +34,63 @@ export function modelReady(): boolean {
   }
 }
 
-/**
- * Una respuesta con la forma del esquema, ya en texto. Lo que no se puede leer se
- * devuelve como error y no como una respuesta vacia: una frase que el escribio y que no
- * llego a ninguna parte tiene que decirlo.
- */
+export async function modelStatus(): Promise<{
+  provider: 'apple' | 'groq';
+  ready: boolean;
+  reason: string | null;
+}> {
+  const credentials = await loadAssistantCredentials();
+  const ready =
+    credentials.provider === 'groq' ? credentials.groqApiKey.trim() !== '' : modelReady();
+  return {
+    provider: credentials.provider,
+    ready,
+    reason: ready
+      ? null
+      : credentials.provider === 'groq'
+        ? 'Añade la clave de Groq en Ajustes.'
+        : 'El modelo local no está disponible. Revisa Apple Intelligence o elige Groq en Ajustes.',
+  };
+}
+
 export async function askModel(
-  said: readonly Said[],
+  said: readonly ModelMessage[],
   schema: object,
   signature: string,
+  options: { signal?: AbortSignal } = {},
 ): Promise<string> {
+  if (options.signal?.aborted) throw new CloudError('cancelled', 'el modelo');
+  const credentials = await loadAssistantCredentials();
+  const messages: ModelMessage[] = [{ role: 'system', content: signature }, ...said];
+  if (credentials.provider === 'groq') {
+    return askGroq({ apiKey: credentials.groqApiKey, messages, schema, signal: options.signal });
+  }
   const apple = model();
-  if (apple === null) throw new Error('Esta versión de la app no trae el modelo.');
-
-  const answer = await apple.generateText([{ role: 'system', content: signature }, ...said], {
-    schema,
-    // Bajo a proposito: esto no escribe prosa, traduce una frase a una linea exacta.
-    temperature: 0.1,
-    maxTokens: 220,
-  });
-
-  const text = answer
-    .filter((part) => part.type === 'text')
-    .map((part) => part.text ?? '')
-    .join('')
-    .trim();
-
-  if (text === '') throw new Error('El modelo contestó vacío.');
-  return text;
+  if (apple === null || !modelReady())
+    throw new Error(
+      'El modelo local no está disponible. Revisa Apple Intelligence o elige Groq en Ajustes.',
+    );
+  try {
+    return await withModelDeadline(
+      async () => {
+        const answer = await apple.generateText(messages, {
+          schema,
+          temperature: 0.1,
+          maxTokens: 500,
+        });
+        const text = answer
+          .filter((part) => part.type === 'text')
+          .map((part) => part.text ?? '')
+          .join('')
+          .trim();
+        if (text === '') throw new CloudError('invalid', 'El modelo local');
+        return text;
+      },
+      'El modelo local',
+      options,
+    );
+  } catch (error) {
+    if (error instanceof CloudError) throw error;
+    throw new CloudError('invalid', 'El modelo local');
+  }
 }

@@ -38,7 +38,8 @@
         {
           "initialOrientation": "PORTRAIT_UP"
         }
-      ]
+      ],
+      "expo-secure-store"
     ]
   }
 }

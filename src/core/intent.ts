@@ -1,130 +1,77 @@
-// Lo que el modelo del telefono puede contestar, y como se lee.
-//
-// Spec 20.3: el modelo no escribe nada. Su unico trabajo es traducir una frase suelta a
-// una linea de la gramatica de comandos, y quien decide si esa linea vale y que
-// significa es `parseCommand`, que es codigo y no un modelo. Un parser que no entiende
-// lo dice; un modelo que no entiende se lo inventa, y la diferencia es un peso de 74 kg
-// escrito como 7.4.
-//
-// Por eso la respuesta viene con esquema y no en texto libre: el modelo elige entre tres
-// cosas (anotar, preguntar, nada) y todo lo que no encaje aqui se descarta.
-
-import { COMMAND_HELP } from './commands.ts';
 import type { IsoDate } from './dates.ts';
-
-/** Lo poco que sabe contestar de su propia informacion. Spec 20.2 punto 4. */
-export type Question = 'marca' | 'nota' | 'racha' | 'proteina' | 'entreno';
+import { QUESTIONS, type ReadRequest } from './questions.ts';
 
 export type Intent =
-  /** Una linea de la gramatica de comandos, todavia sin validar. */
   | { kind: 'write'; line: string }
-  | { kind: 'ask'; question: Question; exercise: string | null; date: string | null }
+  | ({ kind: 'ask' } & ReadRequest)
   | { kind: 'none'; reply: string };
 
-const QUESTIONS: Question[] = ['marca', 'nota', 'racha', 'proteina', 'entreno'];
+export const UNSUPPORTED_REQUEST =
+  'Puedo consultar tus registros y tu despensa, buscar una receta o anotar un dato. ' +
+  'Dime qué quieres consultar; para anotar, incluye la cantidad y el día.';
 
-/**
- * El esquema que viaja con la llamada. Es el trozo de JSON Schema que entiende Apple:
- * objetos, cadenas con `enum`, y nada mas complicado que eso.
- *
- * **Todos los campos son obligatorios, y eso no es un descuido.** Con `required` solo en
- * `tipo`, el modelo del telefono rellenaba ese y se saltaba el resto: elegia "anotar" y
- * no escribia el comando, o "preguntar" sin decir que preguntaba, y la app contestaba
- * "entendi que querias anotar algo, pero no que". Lo que guia la generacion es el
- * esquema, no las instrucciones: un campo opcional es un campo que un modelo pequeno se
- * ahorra. Obligandolos, `pregunta` ademas solo puede salir de la lista, porque Apple
- * restringe la decodificacion a los valores del `enum`.
- *
- * Los que no vienen al caso llegan con cualquier cosa dentro (una cadena vacia, un
- * ejercicio inventado) y se ignoran: solo se lee el que corresponde al `tipo`.
- */
+// The native guided decoder requires simple string fields and explicit enums.
 export const INTENT_SCHEMA = {
   type: 'object',
   title: 'Intencion',
-  description: 'Lo que el dueño quiso decir',
+  description: 'La petición actual del usuario, sin inventar datos',
   properties: {
     tipo: {
       type: 'string',
-      enum: ['nada', 'anotar', 'preguntar'],
+      enum: ['nada', 'preguntar', 'anotar'],
       description:
-        'nada si es un saludo, una charla o algo que no sabes; anotar si dijo un dato ' +
-        'suyo para guardar; preguntar solo si pide uno de los datos de la lista',
+        'preguntar para consultar, incluso sin signos; anotar solo un dato explícito para guardar; nada si no está claro',
     },
     comando: {
       type: 'string',
       description:
-        'Con tipo anotar, la linea exacta en la gramatica de la app ("ayer sueno 390m"). ' +
-        'Con cualquier otro tipo, cadena vacia',
+        'Solo al anotar: comando con la cantidad y fecha que dijo el usuario. No copies ejemplos ni datos de mensajes anteriores. Si faltan datos, deja vacío',
     },
     pregunta: {
       type: 'string',
-      enum: QUESTIONS,
+      enum: ['', ...QUESTIONS],
       description:
-        'Con tipo preguntar, cual de los datos pide. Con cualquier otro tipo da igual: ' +
-        'pon marca y no se mira',
+        'El dato solicitado; marca significa peso realmente levantado y e1rm solo una estimación pedida explícitamente. Vacío si no es una consulta',
     },
     ejercicio: {
       type: 'string',
-      description: 'El ejercicio por el que pregunta si la pregunta es marca; si no, cadena vacia',
+      description:
+        'Nombre o descripción del ejercicio tal como lo pidió, sin completar una variante por tu cuenta; vacío si no aplica',
     },
     fecha: {
       type: 'string',
-      description: 'El dia por el que pregunta, escrito como el lo dijo; si no dijo ninguno, vacia',
+      description:
+        'Día o rango tal como lo pidió; vacío si no indicó ninguno. Conserva ayer y otras fechas en todas las preguntas',
     },
     respuesta: {
       type: 'string',
       description:
-        'Con tipo nada, una frase corta diciendo que hace falta o que no sabes eso. ' +
-        'Con cualquier otro tipo, cadena vacia',
+        'Cadena vacía. Los datos personales y las aclaraciones los responde la app al consultar sus registros',
     },
   },
   required: ['tipo', 'comando', 'pregunta', 'ejercicio', 'fecha', 'respuesta'],
 } as const;
 
-/**
- * Las instrucciones. Cortas a proposito: el modelo del telefono es pequeño y todo lo
- * que se le cuente de mas es sitio que le quita a lo que el escribio.
- */
 export function instructions(today: IsoDate, unit: string): string {
   return [
-    'Eres el asistente de una app personal de entreno y comida, de un solo dueño.',
-    'Lees lo ultimo que el escribio y contestas una sola cosa sobre ESO, no sobre los',
-    'ejemplos ni sobre lo que se dijo antes.',
-    '',
-    'Elige el tipo asi:',
-    '  - "anotar" solo si dijo un dato suyo con su numero. Devuelves la linea de comando.',
-    '  - "preguntar" solo si pide uno de estos datos: marca (su mejor 1RM de un',
-    '    ejercicio), nota (la nota de un dia), racha, proteina (la de hoy), entreno',
-    '    (cuando entreno por ultima vez).',
-    '  - "nada" en todo lo demas: saludos, charla, y cualquier cosa que no sea',
-    '    exactamente una de las dos de arriba. Ante la duda, "nada".',
-    '',
-    'No inventas ningun numero: si no dijo la cantidad, es "nada" y se la pides.',
-    'Contestas siempre los seis campos. Los que no vienen al caso van vacios.',
-    '',
-    'Comandos:',
-    ...COMMAND_HELP.map((row) => `  ${row}`),
-    '',
-    // El peso corporal va siempre en kilos (decision 2026-10-02); la unidad de Ajustes es
-    // solo para las series. Decirle "el peso va en lb" al lado de "peso en kilos" le dejaba
-    // escoger, y un "me pese 74" podia salir como 163 kg.
+    'Clasifica únicamente la petición actual. La app consultará los datos y escribirá la respuesta.',
+    'Una pregunta sigue siendo una consulta aunque no tenga signos de interrogación.',
+    'Peticiones como proteína consumida ayer consultan registros; nunca se convierten en anotar sueño.',
+    'preguntar: marca, e1rm, nota, racha, proteina, entreno, despensa, receta, agua, peso, pasos, sueno, creatina, nutricion.',
+    'marca es el mayor peso registrado. e1rm es una estimación y solo se elige si la pide expresamente.',
+    'receta pide una receta nueva, investigada con la despensa. No necesita una receta guardada.',
+    'anotar: cuando AFIRMA un dato suyo que ocurrió y da una cantidad, aunque no diga anota. Las cantidades escritas con palabras también cuentan.',
+    'Una afirmación de haber dormido cierta cantidad es anotar sueño; preguntar cuánto durmió es preguntar sueno. Haber caminado cierta cantidad es anotar pasos.',
+    'Una petición explícita de guardar un dato también es anotar aunque esté escrita entre signos de interrogación.',
+    'No inventes cantidades, unidades, ejercicios, fechas ni hechos personales. Ante una duda devuelve nada.',
+    'La única excepción sin cantidad es haber tomado o no la creatina, cuando lo dice explícitamente.',
+    'No conviertas consultas ni hipótesis en registros. La negación de haber tomado creatina se registra como creatina no. No copies datos de mensajes anteriores.',
+    'Gramática de escritura: agua <ml>; peso <kg>; pasos <cantidad>; sueno <horas>h o sueno <minutos>m;',
+    'Sueño usa UNA sola cantidad: horas decimales o minutos totales, nunca una mezcla de h y m. Media hora equivale a 0.5 horas.',
+    'creatina o creatina no; serie <peso>x<repeticiones> con rpe<valor> solo si se indicó.',
+    'La fecha va delante del comando. Si dijo ayer, anteayer o una fecha, copia esa fecha delante del comando; nunca la omitas. Sin fecha corresponde a hoy.',
     `El peso corporal va siempre en kg; el de las series, en ${unit}. Hoy es ${today}.`,
-    'Si el dia no es hoy, la fecha va delante del comando: "ayer", "anteayer", "25 set", "25/09".',
-    '',
-    'Ejemplos, cada uno independiente del anterior:',
-    '  "cual es mi mejor press pecho" -> preguntar, pregunta "marca", ejercicio "press pecho"',
-    '  "que nota saque ayer" -> preguntar, pregunta "nota", fecha "ayer"',
-    '  "ayer dormi como seis y media" -> anotar, comando "ayer sueno 390m"',
-    '  "me pese 74 y medio" -> anotar, comando "peso 74.5"',
-    '  "ya tome la creatina" -> anotar, comando "creatina"',
-    '  "dormi 1 hora" -> anotar, comando "sueno 60m"',
-    '  "camine como nueve mil pasos" -> anotar, comando "pasos 9000"',
-    '  "cuanta racha llevo" -> preguntar, pregunta "racha"',
-    '  "cuanta proteina llevo" -> preguntar, pregunta "proteina"',
-    '  "cuando entrene por ultima vez" -> preguntar, pregunta "entreno"',
-    '  "hola" -> nada, respuesta "Dime que anotaste."',
-    '  "que tal tu dia" -> nada, respuesta "Aqui solo llevo lo tuyo."',
-    '  "tome un vaso de agua" -> nada, respuesta "Dime cuantos ml."',
+    'Devuelve los seis campos. respuesta siempre queda vacía. Los campos que no aplican quedan vacíos, incluida pregunta cuando tipo no sea preguntar.',
   ].join('\n');
 }
 
@@ -132,50 +79,26 @@ function text(value: unknown): string | null {
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
 }
 
-/**
- * Lo que contesto el modelo, convertido en algo que la app entiende. Cualquier cosa que
- * no encaje se queda en `none`: es un modelo pequeño contestando, no una llamada a una
- * funcion nuestra, y tratar su respuesta como valida por venir con la forma correcta es
- * exactamente lo que hay que no hacer.
- */
 export function readIntent(answer: unknown): Intent {
   let raw = answer;
   if (typeof raw === 'string') {
     try {
       raw = JSON.parse(raw);
     } catch {
-      return { kind: 'none', reply: 'No entendí eso.' };
+      return { kind: 'none', reply: UNSUPPORTED_REQUEST };
     }
   }
-  if (typeof raw !== 'object' || raw === null) return { kind: 'none', reply: 'No entendí eso.' };
-
+  if (typeof raw !== 'object' || raw === null) return { kind: 'none', reply: UNSUPPORTED_REQUEST };
   const body = raw as Record<string, unknown>;
-  const kind = text(body.tipo);
-
-  if (kind === 'anotar') {
+  if (body.tipo === 'anotar') {
     const line = text(body.comando);
-    if (line === null) {
-      return {
-        kind: 'none',
-        reply: 'Entendí que querías anotar algo, pero no qué. Dímelo con el número: "sueno 60m".',
-      };
-    }
-    return { kind: 'write', line };
+    return line === null ? { kind: 'none', reply: UNSUPPORTED_REQUEST } : { kind: 'write', line };
   }
-
-  if (kind === 'preguntar') {
-    const asked = text(body.pregunta);
-    const question = QUESTIONS.find((one) => one === asked);
-    if (question === undefined) {
-      return {
-        kind: 'none',
-        reply:
-          'De lo tuyo sé contestar: tu mejor marca de un ejercicio, la nota de un día, tu ' +
-          'racha, la proteína de hoy y cuándo entrenaste por última vez.',
-      };
+  if (body.tipo === 'preguntar') {
+    const question = QUESTIONS.find((one) => one === body.pregunta);
+    if (question) {
+      return { kind: 'ask', question, exercise: text(body.ejercicio), date: text(body.fecha) };
     }
-    return { kind: 'ask', question, exercise: text(body.ejercicio), date: text(body.fecha) };
   }
-
-  return { kind: 'none', reply: text(body.respuesta) ?? 'No entendí eso.' };
+  return { kind: 'none', reply: UNSUPPORTED_REQUEST };
 }

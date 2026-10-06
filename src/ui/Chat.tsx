@@ -1,22 +1,21 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Keyboard, Pressable, ScrollView, Text, View } from 'react-native';
+import { Keyboard, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 
 import type { ChatMessage, ChatSummary } from '../core/assistant.ts';
-import {
-  COMMAND_HELP,
-  dateFrom,
-  parseCommand,
-  setLoggedReply,
-  type Command,
-} from '../core/commands.ts';
-import { scoreText } from '../core/day-report.ts';
+import { COMMAND_HELP, parseCommand, setLoggedReply, type Command } from '../core/commands.ts';
 import { shortDate, todayIso, type IsoDate } from '../core/dates.ts';
-import { currentStreak } from '../core/discipline.ts';
-import { INTENT_SCHEMA, instructions, readIntent, type Intent } from '../core/intent.ts';
-import { toKg, withUnit } from '../core/units.ts';
-import { matchesSearch } from '../nutrition/picker.ts';
+import { INTENT_SCHEMA, instructions, readIntent } from '../core/intent.ts';
+import {
+  extractQuestionDate,
+  readQuestion,
+  resolveQuestionDates,
+  type ReadRequest,
+} from '../core/questions.ts';
+import { toKg, type WeightUnit } from '../core/units.ts';
+import { commandLine, interpretedCommand } from '../core/write-intent.ts';
 import { useAppData } from '../shell/AppData.tsx';
-import { askModel, modelReady } from '../shell/model.ts';
+import { askModel, modelStatus } from '../shell/model.ts';
+import { publicRecipeUrl, suggestRecipe } from '../shell/recipes.ts';
 
 import { Button } from './Button.tsx';
 import { List, Plus, Send, X } from './icons.ts';
@@ -24,43 +23,48 @@ import { IconButton } from './IconButton.tsx';
 import { TextField } from './TextField.tsx';
 import { font, hardShadow, sheet, shape } from './theme.ts';
 
-/**
- * El chat con el asistente, que es lo que la bola abre.
- *
- * Lo que escribe pasa primero por el parser de comandos, que es codigo: "25 set pasos
- * 5000" no necesita modelo ninguno y es instantaneo. Solo cuando el parser no lo
- * reconoce entra el modelo del telefono (spec 20.3), y lo unico que se le pide es que
- * traduzca la frase a una linea de esa misma gramatica, que vuelve a pasar por el
- * parser. El modelo nunca escribe: propone una linea y el parser decide.
- *
- * Nada se escribe en otro dia sin preguntar, y nada de lo que interprete el modelo se
- * escribe sin preguntar. Corregir hoy es barato de ver; cambiar un martes de hace tres
- * semanas no se nota hasta que la cuadricula ya cambio de color, y un modelo pequeño que
- * lee "seis y media" como seis minutos lo hace sin avisar.
- *
- * Solo la conversacion: donde se pone la ventana y como se mueve es cosa de
- * `Assistant`, que es quien la lleva pegada a la bola.
- */
-type Pending = { command: Command; date: IsoDate };
-
+type SetTarget = {
+  exerciseId: string | null;
+  sessionId: string | null;
+  unit: WeightUnit;
+  name: string;
+};
+type Pending = { command: Command; date: IsoDate; target: SetTarget | null };
+type Request = { generation: number; controller: AbortController };
 const YES = ['si', 'sí', 'dale', 'ok', 'hazlo'];
 const NO = ['no', 'cancela', 'nada'];
-
-function plain(text: string): string {
-  return text.toLowerCase().trim();
-}
-
-/** Lo que se lee de un chat al abrirlo; lo de antes queda a un toque. */
 const CHAT_PAGE = 50;
+const plain = (text: string) => text.toLowerCase().trim().replace(/[.!]$/g, '');
 
-/**
- * Una linea del chat. Memoizada: cada tecla del cuadro de abajo redibuja el chat, y sin
- * esto redibujaba tambien todas las lineas.
- */
-const Bubble = memo(function Bubble({ role, body }: { role: 'me' | 'app'; body: string }) {
+const Bubble = memo(function Bubble({
+  role,
+  body,
+  onSource,
+}: {
+  role: 'me' | 'app';
+  body: string;
+  onSource: (url: string) => void;
+}) {
   return (
     <View style={[styles.bubble, role === 'me' ? styles.mine : styles.theirs]}>
-      <Text style={role === 'me' ? styles.mineText : styles.theirsText}>{body}</Text>
+      <Text style={role === 'me' ? styles.mineText : styles.theirsText}>
+        {body.split(/(https:\/\/[^\s]+)/g).map((part, index) => {
+          const url = role === 'app' ? publicRecipeUrl(part) : null;
+          return url === null ? (
+            part
+          ) : (
+            <Text
+              key={index}
+              accessibilityRole="link"
+              accessibilityLabel="Abrir fuente de la receta"
+              onPress={() => onSource(url)}
+              style={{ textDecorationLine: 'underline' }}
+            >
+              {part}
+            </Text>
+          );
+        })}
+      </Text>
     </View>
   );
 });
@@ -69,14 +73,12 @@ export function Chat({ onClose }: { onClose: () => void }) {
   const {
     state,
     exerciseId,
-    logDay,
-    addToDay,
     logSet,
     editDay,
     addToDayOn,
     loadDay,
-    loadCharts,
-    loadRecords,
+    askLocal,
+    loadPantry,
     loadChat,
     loadChats,
     lastChatId,
@@ -88,324 +90,417 @@ export function Chat({ onClose }: { onClose: () => void }) {
   const [draft, setDraft] = useState('');
   const [pending, setPending] = useState<Pending | null>(null);
   const [history, setHistory] = useState<ChatSummary[] | null>(null);
-  const [thinking, setThinking] = useState(false);
-  // Cuantas lineas del final se muestran, y si quedan mas arriba.
+  const [activity, setActivity] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [shown, setShown] = useState(CHAT_PAGE);
   const [older, setOlder] = useState(false);
   const scroll = useRef<ScrollView>(null);
+  const generation = useRef(0);
+  const active = useRef<Request | null>(null);
+  const currentChat = useRef<string | null>(null);
+  const previousQuestion = useRef<ReadRequest | null>(null);
+  const recipeRequest = useRef<string | null>(null);
+  const target = useRef<SetTarget>({ exerciseId: null, sessionId: null, unit: 'kg', name: '' });
+  useEffect(() => {
+    if (state.phase !== 'ready') return;
+    target.current = {
+      exerciseId,
+      sessionId: state.loaded.today.session?.id ?? null,
+      unit: state.loaded.unit,
+      name:
+        state.loaded.exercise.exercises.find((item) => item.id === exerciseId)?.name_es ??
+        'el ejercicio abierto',
+    };
+  }, [state, exerciseId]);
+  const valid = (request: Request) =>
+    request.generation === generation.current && !request.controller.signal.aborted;
 
-  /** Las ultimas `count` lineas de ese chat; una de mas dice si quedan anteriores. */
+  const cancel = useCallback(() => {
+    generation.current += 1;
+    active.current?.controller.abort();
+    active.current = null;
+    setActivity(null);
+    setNotice(null);
+    setPending(null);
+  }, []);
+
   const showPage = useCallback(
-    async (id: string, count: number) => {
+    async (id: string, count: number, version = generation.current) => {
       const page = await loadChat(id, count + 1);
+      if (version !== generation.current) return;
       setOlder(page.length > count);
       setSaid(page.slice(-count));
       setShown(count);
+      let question: ReadRequest | null = null;
+      let recipe: string | null = null;
+      for (const message of page) {
+        if (message.role !== 'me') continue;
+        const at = Number.isNaN(Date.parse(message.createdAt))
+          ? todayIso()
+          : todayIso(new Date(message.createdAt));
+        const next = readQuestion(message.body, question, at);
+        if (next === null) continue;
+        if (next.question === 'receta') {
+          recipe =
+            question?.question === 'receta' && recipe !== null
+              ? `${recipe}\nCambio pedido: ${message.body}`
+              : message.body;
+        } else if (!['marca', 'e1rm', 'entreno', 'despensa'].includes(next.question)) {
+          const dates = resolveQuestionDates(next.date, at);
+          if (dates !== null)
+            next.date = dates.from === dates.to ? dates.from : `entre ${dates.from} y ${dates.to}`;
+        }
+        question = next;
+      }
+      previousQuestion.current = question;
+      recipeRequest.current = recipe;
     },
     [loadChat],
   );
 
   useEffect(() => {
-    let alive = true;
-    lastChatId().then(async (id) => {
-      if (!alive) return;
-      setChatId(id);
-      if (id !== null) await showPage(id, CHAT_PAGE);
-    });
+    const version = generation.current;
+    void lastChatId()
+      .then(async (id) => {
+        if (version !== generation.current || active.current !== null) return;
+        currentChat.current = id;
+        setChatId(id);
+        if (id !== null) await showPage(id, CHAT_PAGE, version);
+      })
+      .catch((error: unknown) => {
+        if (version === generation.current)
+          setNotice(
+            `No se pudo abrir el chat: ${error instanceof Error ? error.message : String(error)}`,
+          );
+      });
     return () => {
-      alive = false;
+      generation.current += 1;
+      active.current?.controller.abort();
+      active.current = null;
     };
   }, [lastChatId, showPage]);
 
-  const say = useCallback(
-    async (role: 'me' | 'app', body: string, into?: string) => {
-      const id = into ?? chatId ?? (await openChat());
-      if (id !== chatId) setChatId(id);
-      const message = await sayInChat(id, role, body);
-      setSaid((before) => [...before, message]);
-      return id;
-    },
-    [chatId, openChat, sayInChat],
-  );
+  const say = async (
+    request: Request,
+    role: 'me' | 'app',
+    body: string,
+    into?: string,
+  ): Promise<string | null> => {
+    if (!valid(request)) return null;
+    const id = into ?? currentChat.current ?? (await openChat());
+    if (!valid(request)) return null;
+    currentChat.current = id;
+    setChatId(id);
+    const message = await sayInChat(id, role, body);
+    if (valid(request)) setSaid((before) => [...before, message]);
+    return id;
+  };
 
   if (state.phase !== 'ready') return null;
-  const { loaded } = state;
-
   const dayOf = (date: IsoDate) => (date === todayIso() ? 'hoy' : `el ${shortDate(date)}`);
 
-  /** Escribe el comando y devuelve la frase que dice que quedo guardado. */
-  const run = async (command: Command, date: IsoDate): Promise<string> => {
-    const today = date === todayIso();
+  const run = async (entry: Pending, request: Request): Promise<string> => {
+    const { command, date, target: confirmed } = entry;
     const when = dayOf(date);
-
     switch (command.kind) {
       case 'help':
-        return ['Esto es lo que entiendo:', ...COMMAND_HELP].join('\n');
-
+        return [
+          'Puedes consultar tus registros, tu despensa o pedir una receta. Para anotar:',
+          ...COMMAND_HELP,
+        ].join('\n');
       case 'water': {
-        const had = today
-          ? (loaded.today.log?.water_ml ?? 0)
-          : ((await loadDay(date)).day.log?.water_ml ?? 0);
-        const total = had + command.ml;
-        if (today) addToDay({ waterMl: command.ml });
-        else await addToDayOn(date, { waterMl: command.ml });
+        const { day } = await loadDay(date);
+        if (!valid(request)) return 'Solicitud cancelada.';
+        const total = (day.log?.water_ml ?? 0) + command.ml;
+        await addToDayOn(date, { waterMl: command.ml });
         return `Agua +${command.ml} ml ${when}, van ${(total / 1000).toFixed(2)} L`;
       }
-
-      case 'weight': {
-        // Su peso siempre en kilos (decision suya, 2026-09-30): el ajuste de libras es
-        // para los discos del gimnasio, y el numero que escribe de si mismo lo piensa
-        // en kilos pase lo que pase ahi.
-        if (today) logDay({ weightKg: command.value });
-        else await editDay(date, { weightKg: command.value });
+      case 'weight':
+        await editDay(date, { weightKg: command.value });
         return `Peso de ${when}: ${command.value} kg`;
-      }
-
       case 'steps':
-        if (today) logDay({ steps: command.steps });
-        else await editDay(date, { steps: command.steps });
+        await editDay(date, { steps: command.steps });
         return `${command.steps} pasos ${when}`;
-
-      case 'sleep': {
-        const entry = {
-          sleepMinutes: command.minutes,
-          sleepSource: loaded.today.log?.sleep_source ?? ('manual' as const),
-        };
-        if (today) logDay(entry);
-        else await editDay(date, { ...entry, sleepSource: 'manual' });
+      case 'sleep':
+        await editDay(date, { sleepMinutes: command.minutes, sleepSource: 'manual' });
         return `Sueño de ${when}: ${Math.floor(command.minutes / 60)} h ${command.minutes % 60} min`;
-      }
-
       case 'creatine':
-        if (today) logDay({ creatineTaken: command.taken });
-        else await editDay(date, { creatineTaken: command.taken });
+        await editDay(date, { creatineTaken: command.taken });
         return command.taken ? `Creatina tomada ${when}` : `Creatina no tomada ${when}`;
-
       case 'set': {
-        if (!today) return 'Las series de otro día se anotan en la pantalla de ese día.';
-        if (loaded.today.session === null) return 'No hay entreno abierto, no anoté nada.';
-        if (exerciseId === null) return 'Elige el ejercicio en Entreno y repite el comando.';
-        await logSet(toKg(command.weight, loaded.unit), command.reps, { rpe: command.rpe });
-        return setLoggedReply(command.weight, loaded.unit, command.reps, openExerciseName());
+        if (date !== todayIso())
+          return 'Las series de otro día se anotan en la pantalla de ese día.';
+        const now = target.current;
+        if (
+          confirmed !== null &&
+          (confirmed.exerciseId !== now.exerciseId ||
+            confirmed.sessionId !== now.sessionId ||
+            confirmed.unit !== now.unit)
+        ) {
+          return 'Cambió el ejercicio, el entreno o la unidad. No anoté la serie; repítela para confirmar el destino actual.';
+        }
+        if (now.sessionId === null) return 'No hay entreno abierto, no anoté nada.';
+        if (now.exerciseId === null) return 'Elige el ejercicio en Entreno y repite el comando.';
+        await logSet(toKg(command.weight, now.unit), command.reps, { rpe: command.rpe });
+        return setLoggedReply(command.weight, now.unit, command.reps, now.name);
       }
     }
   };
 
-  /** El ejercicio en el que cae una serie: el abierto en Entreno ahora mismo. */
-  const openExerciseName = () =>
-    loaded.exercise.exercises.find((item) => item.id === exerciseId)?.name_es ??
-    'el ejercicio abierto';
-
-  /** Lo que ese dia ya tiene escrito, para que la pregunta diga que se va a pisar. */
-  const already = async (command: Command, date: IsoDate): Promise<string> => {
-    // Una serie va al ejercicio abierto, que el plan pudo haber cambiado: se dice cual.
-    if (command.kind === 'set') return ` Va a ${openExerciseName()}.`;
+  const already = async ({ command, date, target: confirmed }: Pending): Promise<string> => {
+    if (command.kind === 'set')
+      return ` Va a ${confirmed?.name ?? target.current.name}, en ${confirmed?.unit ?? target.current.unit}.`;
     const log = (await loadDay(date)).day.log;
-    if (command.kind === 'water') {
+    if (command.kind === 'water')
       return log?.water_ml == null
         ? ' Todavía no hay agua anotada.'
         : ` Ahora lleva ${(log.water_ml / 1000).toFixed(2)} L.`;
-    }
-    if (command.kind === 'creatine') {
+    if (command.kind === 'creatine')
       return log?.creatine_taken == null
         ? ' La creatina no está anotada.'
         : log.creatine_taken === 1
           ? ' La creatina ya está tomada.'
           : ' Ahora dice que no la tomaste.';
-    }
-    if (log === null) return '';
-    if (command.kind === 'steps' && log.steps !== null) return ` Ahora dice ${log.steps} pasos.`;
-    if (command.kind === 'weight' && log.weight_kg !== null) {
+    if (log == null) return '';
+    if (command.kind === 'steps' && log.steps != null) return ` Ahora dice ${log.steps} pasos.`;
+    if (command.kind === 'weight' && log.weight_kg != null)
       return ` Ahora dice ${log.weight_kg} kg.`;
-    }
-    if (command.kind === 'sleep' && log.sleep_minutes !== null) {
+    if (command.kind === 'sleep' && log.sleep_minutes != null)
       return ` Ahora dice ${Math.floor(log.sleep_minutes / 60)} h ${log.sleep_minutes % 60} min.`;
-    }
     return '';
   };
 
-  /** Lo que sabe contestar de su propia informacion. Spec 20.2 punto 4. */
-  const lookUp = async (asked: Extract<Intent, { kind: 'ask' }>): Promise<string> => {
-    switch (asked.question) {
-      case 'racha': {
-        const streak = currentStreak(loaded.scoreHistory, todayIso());
-        if (streak === 0) return 'Hoy no llevas racha.';
-        return `Llevas ${streak} ${streak === 1 ? 'día' : 'días'} de racha.`;
-      }
-
-      case 'proteina': {
-        const eaten = Math.round(loaded.today.nutrition?.proteinG ?? 0);
-        const target = loaded.today.targets?.proteinG ?? null;
-        if (target === null) return `Hoy llevas ${eaten} g de proteína.`;
-        const left = Math.round(target - eaten);
-        if (left > 0) return `Hoy llevas ${eaten} g de proteína, te faltan ${left} para la meta.`;
-        return `Hoy llevas ${eaten} g de proteína, ${-left} por encima de la meta.`;
-      }
-
-      case 'nota': {
-        const date = asked.date === null ? todayIso() : dateFrom(asked.date, todayIso());
-        if (date === null) return `No sé qué día es "${asked.date}".`;
-        const { report } = await loadDay(date);
-        if (report.score === null) return `${dayOf(date)} no tiene nota todavía.`;
-        return `La nota de ${dayOf(date)} es ${scoreText(report.score)} de 100.`;
-      }
-
-      case 'entreno': {
-        const rows = await loadRecords('quarter');
-        const last = rows.find((row) => row.trained);
-        if (last === undefined) return 'No tengo ningún entreno en los últimos 90 días.';
-        const ago = Math.round((Date.parse(todayIso()) - Date.parse(last.date)) / 86_400_000);
-        if (ago === 0) return 'Entrenaste hoy.';
-        return `La última vez que entrenaste fue el ${shortDate(last.date)}, hace ${ago} ${ago === 1 ? 'día' : 'días'}.`;
-      }
-
-      case 'marca': {
-        if (asked.exercise === null) return '¿De qué ejercicio?';
-        const { trends } = await loadCharts(90);
-        const trend = trends.find((one) => matchesSearch([one.name], asked.exercise!));
-        if (trend === undefined || trend.e1rm.length === 0) {
-          return `No tengo marcas de "${asked.exercise}" en los últimos 90 días.`;
-        }
-        const best = trend.e1rm.reduce((top, one) => (one.value > top.value ? one : top));
-        return `Tu mejor ${trend.name}: ${withUnit(best.value, loaded.unit)} estimados, el ${shortDate(best.date)}.`;
-      }
+  const read = async (request: Request, asked: ReadRequest, text: string, into: string) => {
+    let reply: string;
+    if (asked.question === 'receta') {
+      setActivity('Buscando recetas en internet con Groq y Tavily…');
+      const pantry = await loadPantry();
+      if (!valid(request)) return;
+      const combined =
+        previousQuestion.current?.question === 'receta' && recipeRequest.current !== null
+          ? `${recipeRequest.current}\nCambio pedido: ${text}`
+          : text;
+      reply = await suggestRecipe({
+        request: text,
+        previousRequest:
+          previousQuestion.current?.question === 'receta'
+            ? (recipeRequest.current ?? undefined)
+            : undefined,
+        pantry,
+        signal: request.controller.signal,
+      });
+      if (valid(request)) recipeRequest.current = combined;
+    } else {
+      setActivity('Consultando tus registros…');
+      reply = await askLocal(asked);
     }
+    if (!valid(request)) return;
+    previousQuestion.current = asked;
+    await say(request, 'app', reply, into);
   };
 
-  /**
-   * Lo que no es un comando se lo lleva el modelo del telefono, que solo puede contestar
-   * con una linea de la misma gramatica. Esa linea vuelve al parser, y lo que salga de
-   * ahi se pregunta antes de escribirlo.
-   */
-  const interpret = async (text: string, into: string, why: string) => {
-    if (!modelReady()) {
-      await say('app', `${why}\n\nY el modelo del teléfono no está disponible.`, into);
+  const processCommand = async (
+    request: Request,
+    command: Command,
+    date: IsoDate,
+    into: string,
+    interpreted?: string,
+  ) => {
+    const entry: Pending = {
+      command,
+      date,
+      target: command.kind === 'set' ? { ...target.current } : null,
+    };
+    if (command.kind === 'set' && date !== todayIso()) {
+      await say(request, 'app', await run(entry, request), into);
       return;
     }
+    if (command.kind !== 'help' && (interpreted !== undefined || date !== todayIso())) {
+      const note = await already(entry);
+      if (!valid(request)) return;
+      const when = date === todayIso() ? 'hoy' : `al ${shortDate(date)}`;
+      const prefix =
+        interpreted === undefined ? `Eso va ${when}.` : `Entendí: ${interpreted}. Va ${when}.`;
+      await say(request, 'app', `${prefix}${note} ¿Lo escribo?`, into);
+      if (valid(request)) setPending(entry);
+      return;
+    }
+    await say(request, 'app', await run(entry, request), into);
+  };
 
-    setThinking(true);
-    try {
-      // Solo la ultima pregunta y su respuesta: con mas, un modelo pequeno que ya
-      // contesto mal una vez se queda repitiendo lo mismo pase lo que pase.
-      const recent = said.slice(-2).map((message) => ({
-        role: message.role === 'me' ? ('user' as const) : ('assistant' as const),
-        content: message.body.slice(0, 160),
-      }));
-      const answer = await askModel(
-        [...recent, { role: 'user', content: text }],
-        INTENT_SCHEMA,
-        instructions(todayIso(), loaded.unit),
+  const interpret = async (request: Request, text: string, into: string) => {
+    const status = await modelStatus();
+    if (!valid(request)) return;
+    if (!status.ready) {
+      await say(
+        request,
+        'app',
+        `${status.reason ?? 'El modelo no está disponible.'} Puedes consultar tus registros y usar los comandos de ayuda.`,
+        into,
       );
-      const intent = readIntent(answer);
-
-      if (intent.kind === 'ask') {
-        await say('app', await lookUp(intent), into);
-        return;
-      }
-      if (intent.kind === 'none') {
-        await say('app', intent.reply, into);
-        return;
-      }
-
-      const parsed = parseCommand(intent.line, todayIso());
+      return;
+    }
+    setActivity(
+      status.provider === 'groq'
+        ? 'Consultando con Groq en internet…'
+        : 'Consultando en el teléfono…',
+    );
+    const answer = await askModel(
+      [{ role: 'user', content: text }],
+      INTENT_SCHEMA,
+      [
+        instructions(todayIso(), target.current.unit),
+        previousQuestion.current === null
+          ? ''
+          : `Última consulta del chat, solo como contexto para referencias: ${JSON.stringify(previousQuestion.current)}.`,
+      ].join('\n'),
+      { signal: request.controller.signal },
+    );
+    if (!valid(request)) return;
+    const intent = readIntent(answer);
+    if (intent.kind === 'ask') {
+      await read(
+        request,
+        { ...intent, date: extractQuestionDate(text, todayIso()) ?? intent.date },
+        text,
+        into,
+      );
+    } else if (intent.kind === 'none') {
+      await say(request, 'app', intent.reply, into);
+    } else {
+      const parsed = interpretedCommand(text, intent.line, todayIso(), target.current.unit);
       if (!parsed.ok) {
-        await say('app', `Entendí "${intent.line}", pero no me cuadra: ${parsed.reason}`, into);
+        await say(request, 'app', `No anoté nada: ${parsed.reason}`, into);
         return;
       }
-      if (parsed.command.kind === 'help') {
-        await say('app', await run(parsed.command, parsed.date), into);
-        return;
-      }
-
-      if (parsed.command.kind === 'set' && parsed.date !== todayIso()) {
-        await say('app', await run(parsed.command, parsed.date), into);
-        return;
-      }
-
-      setPending({ command: parsed.command, date: parsed.date });
-      const note = await already(parsed.command, parsed.date);
-      const when = parsed.date === todayIso() ? '' : ` Va al ${shortDate(parsed.date)}.`;
-      await say('app', `Entendí: ${intent.line}.${when}${note} ¿Lo escribo?`, into);
-    } catch (error) {
-      // Una frase suya que no llego a ninguna parte tiene que decirlo, no quedarse en un
-      // "no entendí" que parece que la culpa es de como lo escribio.
-      await say('app', `El modelo falló: ${(error as Error).message}`, into);
-    } finally {
-      setThinking(false);
+      await processCommand(
+        request,
+        parsed.command,
+        parsed.date,
+        into,
+        `${parsed.date} ${commandLine(parsed.command)}`,
+      );
     }
   };
 
-  const submit = async () => {
-    const text = draft.trim();
-    if (text === '') return;
+  const perform = async (message: string, confirmation?: boolean) => {
+    if (active.current !== null || message.trim() === '') return;
+    const request: Request = { generation: generation.current, controller: new AbortController() };
+    active.current = request;
+    setNotice(null);
+    setActivity('Un momento…');
     setDraft('');
-    const into = await say('me', text);
-
-    if (pending !== null) {
-      if (YES.includes(plain(text))) {
-        const { command, date } = pending;
-        setPending(null);
-        await say('app', await run(command, date), into);
-        return;
-      }
-      if (NO.includes(plain(text))) {
-        setPending(null);
-        await say('app', 'Listo, no escribí nada.', into);
-        return;
-      }
-      setPending(null);
-    }
-
-    const parsed = parseCommand(text, todayIso());
-    if (!parsed.ok) {
-      await interpret(text, into, parsed.reason);
-      return;
-    }
-
-    if (parsed.command.kind === 'set' && parsed.date !== todayIso()) {
-      await say('app', await run(parsed.command, parsed.date), into);
-      return;
-    }
-
-    // Otro dia se pregunta antes. Hoy se ve y se corrige; un dia de hace tres semanas no.
-    if (parsed.date !== todayIso() && parsed.command.kind !== 'help') {
-      setPending({ command: parsed.command, date: parsed.date });
-      const note = await already(parsed.command, parsed.date);
-      await say('app', `Eso va al ${shortDate(parsed.date)}.${note} ¿Lo escribo?`, into);
-      return;
-    }
-
-    await say('app', await run(parsed.command, parsed.date), into);
-  };
-
-  const answer = async (yes: boolean) => {
-    if (pending === null) return;
-    const { command, date } = pending;
+    const outstanding = pending;
     setPending(null);
-    const into = await say('me', yes ? 'sí' : 'no');
-    await say('app', yes ? await run(command, date) : 'Listo, no escribí nada.', into);
+    try {
+      const into = await say(request, 'me', message);
+      if (into === null || !valid(request)) return;
+      const accepted =
+        confirmation ??
+        (YES.includes(plain(message)) ? true : NO.includes(plain(message)) ? false : undefined);
+      if (outstanding !== null && accepted !== undefined) {
+        const reply = accepted ? await run(outstanding, request) : 'Listo, no escribí nada.';
+        await say(request, 'app', reply, into);
+        return;
+      }
+      const social = message
+        .toLowerCase()
+        .trim()
+        .replace(/[¡!¿?.]/g, '');
+      if (/^(hola|buenas|buenos días|buenos dias|buenas tardes|buenas noches)$/.test(social)) {
+        await say(
+          request,
+          'app',
+          'Hola. Puedes preguntarme por tus registros o tu despensa, pedir una receta nueva o anotar un dato.',
+          into,
+        );
+        return;
+      }
+      if (/^(gracias|muchas gracias)$/.test(social)) {
+        await say(request, 'app', 'De nada.', into);
+        return;
+      }
+      const asked = readQuestion(message, previousQuestion.current, todayIso());
+      if (asked !== null) {
+        await read(request, asked, message, into);
+        return;
+      }
+      const parsed = parseCommand(message, todayIso());
+      if (parsed.ok) await processCommand(request, parsed.command, parsed.date, into);
+      else await interpret(request, message, into);
+    } catch (error) {
+      if (!valid(request)) return;
+      setPending(null);
+      const detail = error instanceof Error ? error.message : String(error);
+      try {
+        await say(request, 'app', `No pude completar la solicitud: ${detail}`);
+      } catch {
+        if (valid(request)) setNotice(`No se pudo guardar el mensaje: ${detail}`);
+      }
+    } finally {
+      if (active.current === request) {
+        active.current = null;
+        setActivity(null);
+      }
+    }
   };
 
+  const submit = () => perform(draft.trim());
+  const answer = (yes: boolean) =>
+    pending === null ? Promise.resolve() : perform(yes ? 'sí' : 'no', yes);
+  const resetContext = () => {
+    previousQuestion.current = null;
+    recipeRequest.current = null;
+  };
   const fresh = () => {
+    cancel();
+    currentChat.current = null;
     setChatId(null);
     setSaid([]);
     setOlder(false);
-    setPending(null);
     setHistory(null);
+    resetContext();
   };
-
   const openHistory = async () => {
+    cancel();
     Keyboard.dismiss();
-    setHistory(await loadChats());
+    const version = generation.current;
+    try {
+      const chats = await loadChats();
+      if (version === generation.current) setHistory(chats);
+    } catch (error) {
+      if (version === generation.current)
+        setNotice(
+          `No se pudo abrir el historial: ${error instanceof Error ? error.message : String(error)}`,
+        );
+    }
   };
-
   const resume = async (id: string) => {
+    cancel();
+    resetContext();
+    currentChat.current = id;
     setChatId(id);
-    await showPage(id, CHAT_PAGE);
-    setPending(null);
+    setSaid([]);
     setHistory(null);
+    try {
+      await showPage(id, CHAT_PAGE);
+    } catch (error) {
+      setNotice(
+        `No se pudo abrir el chat: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   };
-
+  const openSource = async (url: string) => {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setNotice('No se pudo abrir la fuente. Intenta abrir el enlace en tu navegador.');
+    }
+  };
+  const close = () => {
+    cancel();
+    onClose();
+  };
   return (
     <View style={styles.panel}>
       <View style={styles.head}>
@@ -418,10 +513,11 @@ export function Chat({ onClose }: { onClose: () => void }) {
             accessibilityLabel="Chats anteriores"
             onPress={history === null ? openHistory : () => setHistory(null)}
           />
-          <IconButton icon={X} accessibilityLabel="Cerrar el chat" onPress={onClose} />
+          <IconButton icon={X} accessibilityLabel="Cerrar el chat" onPress={close} />
         </View>
       </View>
 
+      {notice !== null && <Text style={styles.empty}>{notice}</Text>}
       {history !== null ? (
         <ScrollView style={styles.scroll} contentContainerStyle={styles.list}>
           {history.length === 0 && <Text style={styles.empty}>Todavía no hay ningún chat.</Text>}
@@ -449,8 +545,9 @@ export function Chat({ onClose }: { onClose: () => void }) {
         >
           {said.length === 0 && (
             <Text style={styles.empty}>
-              Escribe lo que anotaste. Por ejemplo &quot;agua 710&quot;, &quot;pasos 8200&quot; o
-              &quot;25 set pasos 5000&quot;. &quot;ayuda&quot; lista todo.
+              Pregunta por tus registros, tu despensa o una receta nueva. Por ejemplo &quot;proteína
+              de ayer&quot; o &quot;mi máximo press inclinado&quot;. También puedes anotar:
+              &quot;agua 710&quot;.
             </Text>
           )}
           {older && chatId !== null && (
@@ -458,15 +555,27 @@ export function Chat({ onClose }: { onClose: () => void }) {
               label="Ver anteriores"
               variant="ghost"
               accessibilityLabel="Ver los mensajes anteriores"
-              onPress={() => showPage(chatId, shown + CHAT_PAGE)}
+              disabled={activity !== null}
+              onPress={() => {
+                const version = generation.current;
+                void showPage(chatId, shown + CHAT_PAGE, version).catch(() => {
+                  if (version === generation.current)
+                    setNotice('No se pudieron cargar los mensajes anteriores.');
+                });
+              }}
             />
           )}
           {said.map((message) => (
-            <Bubble key={message.id} role={message.role} body={message.body} />
+            <Bubble
+              key={message.id}
+              role={message.role}
+              body={message.body}
+              onSource={openSource}
+            />
           ))}
-          {thinking && (
+          {activity !== null && (
             <View style={[styles.bubble, styles.theirs]}>
-              <Text style={styles.theirsText}>pensando…</Text>
+              <Text style={styles.theirsText}>{activity}</Text>
             </View>
           )}
           {pending !== null && (
@@ -491,7 +600,7 @@ export function Chat({ onClose }: { onClose: () => void }) {
             onSubmit={submit}
             autoCapitalize="none"
             accessibilityLabel="Lo que le dices al asistente"
-            placeholder="agua 710, 25 set pasos 5000"
+            placeholder="proteína de ayer, receta con pollo…"
             style={styles.input}
           />
           <IconButton
@@ -499,7 +608,7 @@ export function Chat({ onClose }: { onClose: () => void }) {
             tone="accent"
             accessibilityLabel="Enviar"
             onPress={submit}
-            disabled={draft.trim() === '' || thinking}
+            disabled={draft.trim() === '' || activity !== null}
           />
         </View>
       )}

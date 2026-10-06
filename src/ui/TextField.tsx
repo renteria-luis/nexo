@@ -28,6 +28,7 @@ export type TextFieldProps = {
   onBlur?: () => void;
   multiline?: boolean;
   autoCapitalize?: 'none' | 'sentences';
+  secureTextEntry?: boolean;
   style?: StyleProp<TextStyle>;
   focusedStyle?: StyleProp<TextStyle>;
   /** Lo que tiene que quedar encima del teclado al enfocar. */
@@ -46,6 +47,7 @@ export function TextField({
   onBlur,
   multiline = false,
   autoCapitalize = 'sentences',
+  secureTextEntry = false,
   style,
   focusedStyle,
   reveals,
@@ -81,6 +83,8 @@ export function TextField({
       multiline={multiline}
       autoCapitalize={autoCapitalize}
       autoCorrect={false}
+      secureTextEntry={secureTextEntry}
+      autoComplete={secureTextEntry ? 'off' : undefined}
       inputAccessoryViewID={KEYBOARD_BAR}
       returnKeyType={onSubmit ? 'send' : 'done'}
       onSubmitEditing={() => {

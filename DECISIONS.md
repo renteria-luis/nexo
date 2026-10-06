@@ -744,3 +744,47 @@ cambiar esa misma fila. Lo que ninguna receta usa se borra como antes.
 Rejected: Rehacer la tabla de ingredientes con una migracion para que guarde el nombre, que
 deja recetas apuntando a algo que ya no existe y obliga a reconocerlo por nombre al volver a
 comprarlo.
+
+## 2026-10-04 — Reliable record queries and researched recipes
+Context: The assistant review reproduced incorrect record semantics, ignored nutrition
+dates, ambiguous exercise selection, unsupported pantry requests and conversation-state
+errors. The owner approved the complete proposed plan and recommendations, but requested
+credential preparation first and will delegate implementation in a subsequent message.
+Decision: Keep a hybrid assistant. Common questions query local records without requiring
+a model; models interpret broader requests and explain verified results. Protein uses the
+requested date and its target. Missing records remain unknown rather than implying zero
+consumption. A weight record means the greatest recorded working-set load over all history
+unless a range is requested, preserving per-dumbbell versus total-load conventions and the
+latest date that maximum occurred. Estimated 1RM is returned only when explicitly asked.
+Exercise resolution supports partial names and aliases, keeps variants separate and reports
+all relevant ambiguous matches. Single-day histories and sets above twelve reps remain
+valid weight records. Dates, follow-up questions and punctuation variations are covered.
+
+New recipe requests work without saved recipes: search real sources, link them, compare
+ingredients and amounts with actual pantry stock, and report portions, steps and missing
+shopping items. Generating a suggestion does not save it, log food or consume inventory.
+Interpreted writes require confirmation, cannot invent quantities and preserve the date,
+exercise, session and units displayed at confirmation. Fix stale replies after chat changes,
+concurrent submissions and pending actions left active after errors. Personal-data claims
+must be backed by actual queries rather than unconstrained model text.
+
+Use Groq's free inference tier and Tavily's free search tier as the cloud candidates, with
+Apple Foundation Models retained as a local option. Compare candidates on the same Spanish
+questions before choosing the cloud model; simulated intents do not prove native model
+accuracy. Cloud use is visible, sends only the request and relevant context, and stops at
+free-tier limits without enabling paid billing. Credentials are supplied locally through
+GROQ_API_KEY and TAVILY_API_KEY in the ignored .env.assistant.local preparation file; they
+must never enter Git, public build artifacts or logs. The current app does not load that
+file. Runtime provisioning remains part of the subsequent implementation.
+
+Acceptance covers record units and dates, aliases and ambiguity, nutrition dates and absent
+data, follow-up context, read/write separation, stable confirmations, empty recipe libraries,
+pantry quantities and states, real recipe sources, unavailable models, invalid responses,
+database failures, network failures and exhausted quotas. Repeat model-understanding tests
+on the actual phone; local harness results and native-model results are reported separately.
+This decision supersedes the restrictive assistant scope of the 2026-09-29 entry and SPEC
+sections 20.2, 20.3, 20.6 and 21.7 where they conflict. SPEC.md itself remains unchanged.
+Rejected: Swapping only the model while retaining incorrect queries; treating estimated
+strength as recorded weight; silently selecting one exercise; limiting recipe suggestions
+to saved recipes; downloading a larger local model before measuring it; paid cloud usage;
+starting the implementation during credential preparation.

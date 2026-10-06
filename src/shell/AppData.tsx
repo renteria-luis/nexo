@@ -167,6 +167,8 @@ import {
 import { dealsDue, syncDeals, type SyncOutcome } from './deals.ts';
 import { locateGym, type LocationOutcome } from './location.ts';
 import { loadWeekSummary, type WeekSummary } from './week.ts';
+import type { ReadRequest } from '../core/questions.ts';
+import { answerLocalQuestion } from './assistant-read.ts';
 
 export type BatchStart = {
   /** A food already in the catalogue, or one typed in from its package label. */
@@ -301,6 +303,7 @@ export type AppData = {
   saveDraft: (draft: SessionDraft) => void;
   /** Un dia cualquiera abierto entero, con el desglose de su nota. */
   loadDay: (date: IsoDate) => Promise<DayDetail>;
+  askLocal: (request: ReadRequest) => Promise<string>;
   /** Todo lo guardado a lo largo del tiempo, listo para dibujar. */
   loadCharts: (days: number) => Promise<ChartsData>;
   /** Todos los dias con rastro dentro de la ventana, del mas nuevo al mas viejo. */
@@ -607,6 +610,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     (days: number) => openDatabase().then((db) => loadChartsData(db, todayIso(), days)),
     [],
   );
+
+  const askLocal = useCallback((request: ReadRequest) => {
+    const unit = openLoaded.current?.unit ?? 'lb';
+    return openDatabase().then((db) => answerLocalQuestion(db, request, todayIso(), unit));
+  }, []);
 
   const loadRecords = useCallback(
     (window: RecordWindow) =>
@@ -937,6 +945,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         openDatabase().then((db) => endExperiment(db, id, endDate)),
       saveDraft: (draft) => store((db) => writeSetting(db, 'session_draft', serializeDraft(draft))),
       loadDay,
+      askLocal,
       loadCharts,
       loadRecords,
       editDay: (date, entry) =>
@@ -1123,6 +1132,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     loadArchivedFoods,
     loadCharts,
     loadDay,
+    askLocal,
     loadExperiments,
     loadCatalog,
     loadExercise,
