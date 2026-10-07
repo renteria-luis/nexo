@@ -174,7 +174,9 @@ export async function exerciseContext(
 
   return {
     exercises,
-    todaySets: day.sessionSets.filter((set) => set.exerciseId === exerciseId),
+    todaySets: day.sessionSets.filter(
+      (set) => set.exerciseId === exerciseId && set.sessionId === day.session?.id,
+    ),
     lastSets,
     marks: bestAndWorstE1rm(windowSets),
   };

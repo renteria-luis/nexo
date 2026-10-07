@@ -3,7 +3,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Text, useWindowDimensions, View } from 'react-native';
 
-import { useAppData } from '../../shell/AppData.tsx';
+import { useAppData, type AppData } from '../../shell/AppData.tsx';
 import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
 import { ChevronRight } from '../icons.ts';
@@ -13,12 +13,20 @@ import type { Implement } from '../../training/sessions.ts';
 import { Chip } from '../Chip.tsx';
 import { formatWeight } from '../../core/units.ts';
 import { RestLandscape } from '../RestLandscape.tsx';
+import { TrainingTiming } from '../TrainingTiming.tsx';
 import { SessionLog } from '../SessionLog.tsx';
 import { SessionPlanner } from '../SessionPlanner.tsx';
 import { useSwipeLock } from '../SwipeLock.tsx';
 
 import { Screen } from './Screen.tsx';
 import { font, sheet } from '../theme.ts';
+
+type SessionAction = {
+  kind: 'start' | 'routine' | 'finish' | 'reopen';
+  sessionId: string | null;
+  error: string;
+  work: () => Promise<void>;
+};
 
 export function TrainingScreen() {
   const {
@@ -38,14 +46,30 @@ export function TrainingScreen() {
     reopenSession,
     switchRoutine,
     whereAmI,
-    loadPace,
   } = useAppData();
   const navigation = useNavigation<{
     navigate: (name: string, params?: { routineId?: string }) => void;
   }>();
   const [changingRoutine, setChangingRoutine] = useState(false);
-  // Lo que suele tardar un dia como el de hoy, para poder decir a que hora sale.
-  const [pace, setPace] = useState<number | null>(null);
+  const [pendingAction, setPendingAction] = useState<SessionAction['kind'] | null>(null);
+  const [failedAction, setFailedAction] = useState<SessionAction | null>(null);
+  const writingSession = useRef(false);
+  const performSessionAction = useCallback(async (action: SessionAction) => {
+    // A ref also catches taps before React has painted the disabled buttons.
+    if (writingSession.current) return;
+    writingSession.current = true;
+    setPendingAction(action.kind);
+    setFailedAction(null);
+    try {
+      await action.work();
+    } catch (error) {
+      console.error(error);
+      setFailedAction(action);
+    } finally {
+      writingSession.current = false;
+      setPendingAction(null);
+    }
+  }, []);
   const { width, height } = useWindowDimensions();
   // Mientras arrastra una fila del orden, ni la pantalla se desplaza ni se pasa de
   // pestana: los dos gestos son nativos y se llevan el toque aunque este tomado.
@@ -66,16 +90,47 @@ export function TrainingScreen() {
   const sessionSets = ready?.today.sessionSets ?? null;
   const plan = ready?.plan ?? null;
   const openSessionId = ready?.today.session?.id ?? null;
+  const startTraining = useCallback(
+    (...args: Parameters<AppData['beginSession']>) => {
+      void performSessionAction({
+        kind: 'start',
+        sessionId: null,
+        error: 'No se pudo iniciar el entreno.',
+        work: () => beginSession(...args),
+      });
+    },
+    [beginSession, performSessionAction],
+  );
+  const finishTraining = useCallback(() => {
+    void performSessionAction({
+      kind: 'finish',
+      sessionId: openSessionId,
+      error: 'No se pudo terminar el entreno.',
+      work: endSession,
+    });
+  }, [endSession, openSessionId, performSessionAction]);
+  const resumeTraining = useCallback(() => {
+    void performSessionAction({
+      kind: 'reopen',
+      sessionId: openSessionId,
+      error: 'No se pudo reabrir el entreno.',
+      work: reopenSession,
+    });
+  }, [reopenSession, openSessionId, performSessionAction]);
+  const activeSets = useMemo(
+    () => (sessionSets ?? []).filter((set) => set.sessionId === openSessionId),
+    [sessionSets, openSessionId],
+  );
 
   // Cuantas series lleva cada ejercicio hoy y cuantas aprobo, para que el chip diga
   // de un vistazo que falta sin tener que entrar a cada uno.
   const setsDoneByExercise = useMemo(() => {
     const done = new Map<string, number>();
-    for (const set of sessionSets ?? []) {
+    for (const set of activeSets) {
       done.set(set.exerciseId, (done.get(set.exerciseId) ?? 0) + 1);
     }
     return done;
-  }, [sessionSets]);
+  }, [activeSets]);
 
   const plannedByExercise = useMemo(
     () => new Map((plan ?? []).map((entry) => [entry.exerciseId, entry.sets])),
@@ -149,36 +204,6 @@ export function TrainingScreen() {
   const first =
     drafted !== null && plannedByExercise.has(drafted) ? drafted : (planExerciseIds[0] ?? null);
 
-  // Y se elige una vez por sesion, no una vez por "no hay nada elegido": al empezar otra
-  // sesion en la misma sentada seguia puesto el ejercicio de la anterior, y entonces esto
-  // no elegia nada.
-  // El promedio del tipo de dia que esta entrenando. Se pide una vez por sesion: es una
-  // consulta de nada, pero no tiene por que repetirse en cada serie que anota.
-  const kind =
-    state.phase === 'ready' && state.loaded.today.session
-      ? {
-          gymId: state.loaded.today.session.gym_id,
-          routineId: state.loaded.today.session.routine_id,
-          budget: state.loaded.today.session.time_budget as string,
-        }
-      : null;
-  const kindKey = kind === null ? null : `${kind.gymId}|${kind.routineId}|${kind.budget}`;
-
-  useEffect(() => {
-    if (kind === null) return;
-    let alive = true;
-    loadPace(kind)
-      .then((minutes) => {
-        if (alive) setPace(minutes);
-      })
-      .catch((error: unknown) => console.error(error));
-    return () => {
-      alive = false;
-    };
-    // La firma es la dependencia: el objeto se arma en cada render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kindKey, loadPace]);
-
   // La unica pantalla que rota. Se permite al entrar con un entreno abierto y se vuelve
   // a dejar de pie al salir: en el resto de la app el horizontal no aporta nada y las
   // cartillas se estiran feas.
@@ -222,8 +247,25 @@ export function TrainingScreen() {
   // levantar el telefono.
   const exercise = loaded.exercise.exercises.find((item) => item.id === exerciseId) ?? null;
   const previous = loaded.exercise.todaySets.at(-1) ?? null;
-  const restFrom = restingSince(loaded.today.sessionSets);
+  const restFrom = restingSince(activeSets);
   const resting = session !== null && session.end_time === null && width > height;
+  const failureNote =
+    failedAction !== null && failedAction.sessionId === openSessionId ? (
+      <View style={styles.actionProblem}>
+        <Text accessibilityRole="alert" style={styles.actionError}>
+          {failedAction.error} El cambio no se guardó; puedes reintentarlo.
+        </Text>
+        {failedAction.kind !== 'start' && (
+          <Button
+            label="Reintentar"
+            accessibilityLabel="Reintentar la acción del entreno"
+            onPress={() => {
+              void performSessionAction(failedAction);
+            }}
+          />
+        )}
+      </View>
+    ) : null;
 
   return (
     <>
@@ -255,7 +297,9 @@ export function TrainingScreen() {
               onLocate={whereAmI}
               onLoadPlan={loadPlan}
               onLoadOwedRoutine={loadOwedRoutine}
-              onStart={beginSession}
+              onStart={startTraining}
+              busy={pendingAction !== null}
+              startProblem={failedAction?.kind === 'start' ? failureNote : null}
               restDay={loaded.today.log?.rest_day === 1}
               onRestDay={() => logDay({ restDay: true })}
               onDragging={holdScreen}
@@ -275,6 +319,8 @@ export function TrainingScreen() {
                     label={changingRoutine ? 'Dejar así' : 'Cambiar'}
                     accessibilityLabel="Cambiar la rutina de hoy"
                     variant="ghost"
+                    disabled={pendingAction !== null}
+                    loading={pendingAction === 'routine'}
                     onPress={() => setChangingRoutine((open) => !open)}
                   />
                 </View>
@@ -287,14 +333,23 @@ export function TrainingScreen() {
                         label={item.name}
                         accessibilityLabel={`Cambiar a ${item.name}`}
                         selected={item.id === session.routine_id}
+                        disabled={pendingAction !== null}
                         onPress={() => {
-                          switchRoutine(item.id);
-                          setChangingRoutine(false);
+                          void performSessionAction({
+                            kind: 'routine',
+                            sessionId: session.id,
+                            error: `No se pudo cambiar la rutina a ${item.name}.`,
+                            work: async () => {
+                              await switchRoutine(item.id);
+                              setChangingRoutine(false);
+                            },
+                          });
                         }}
                       />
                     ))}
                   </View>
                 )}
+                {failedAction?.kind === 'routine' && failureNote}
 
                 {/* Spec 8.5: se pregunta al llegar y aparte de empezar, asi que no esta en
                 el camino critico. Spec 5.4 la deja fuera de una sesion escrita despues. */}
@@ -320,6 +375,23 @@ export function TrainingScreen() {
                 </View>
               </Card>
 
+              <TrainingTiming
+                session={session}
+                revision={activeSets}
+                plan={loaded.plan}
+                catalog={loaded.exercise.exercises}
+                activeImplement={
+                  exerciseId === null
+                    ? undefined
+                    : {
+                        exerciseId,
+                        implement:
+                          loaded.sessionDraft?.exerciseId === exerciseId
+                            ? loaded.sessionDraft.implement
+                            : null,
+                      }
+                }
+              />
               <SessionLog
                 exercises={loaded.exercise.exercises}
                 selectedExerciseId={exerciseId}
@@ -339,12 +411,17 @@ export function TrainingScreen() {
                 onAddSet={logSet}
                 onRemoveSet={removeSet}
                 startedAt={session.start_time}
-                usualMinutes={pace}
                 draft={loaded.sessionDraft}
                 onDraftChange={changeDraft}
                 finishedAt={session.end_time}
-                onFinish={endSession}
-                onReopen={reopenSession}
+                onFinish={finishTraining}
+                onReopen={resumeTraining}
+                sessionAction={pendingAction}
+                sessionProblem={
+                  failedAction?.kind === 'finish' || failedAction?.kind === 'reopen'
+                    ? failureNote
+                    : null
+                }
               />
             </>
           )}
@@ -368,6 +445,8 @@ export function TrainingScreen() {
 }
 
 const styles = sheet((theme) => ({
+  actionProblem: { gap: 8 },
+  actionError: { fontSize: 14, fontFamily: font.bold, color: theme.text },
   page: {
     flex: 1,
   },

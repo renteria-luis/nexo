@@ -118,23 +118,28 @@ import {
   listRoutinesDone,
   loadRoutinePlan,
   owedRoutine,
-  saveSessionPlan,
+  startPlannedSession,
+  changePlannedRoutine,
   getSessionOn,
   sessionDate,
-  listSessionTimes,
   setDurationTrusted,
   setSessionDetails,
   setSessionMinutes,
-  setSessionRoutine,
   startSession,
-  usualMinutes,
   type Implement,
   type SessionDetails,
-  type SessionKind,
   type PlannedExercise,
   type RoutinePlan,
   type TimeBudget,
 } from '../training/index.ts';
+
+import {
+  prepareTimingHistory,
+  readSessionTiming,
+  reviewSetTiming,
+  type TimingCorrection,
+} from '../training/timing-store.ts';
+import type { SessionTiming } from '../training/timing.ts';
 
 import { exportToFile, importFromFile, type ExportOutcome } from './backup-file.ts';
 import type { NudgeKind } from '../core/nudges.ts';
@@ -255,7 +260,7 @@ export type AppData = {
     plan: PlannedExercise[],
     company?: Company,
     gymId?: string,
-  ) => void;
+  ) => Promise<void>;
   /** Spec 5.2: asked for once, by him, never watched. */
   whereAmI: () => Promise<LocationOutcome>;
   /** La rutina que le toca hoy por el patron de la semana (spec 8.5), para traerla puesta. */
@@ -270,11 +275,11 @@ export type AppData = {
   ) => Promise<void>;
   describeSession: (details: SessionDetails) => void;
   /** Writes the end time. Spec 6: the session is over when he says it is. */
-  endSession: () => void;
+  endSession: () => Promise<void>;
   /** Deshace el terminar entreno, que es el unico boton sin vuelta atras. */
-  reopenSession: () => void;
+  reopenSession: () => Promise<void>;
   /** Corrects a routine picked by mistake, replanning at the budget already chosen. */
-  switchRoutine: (routineId: string) => void;
+  switchRoutine: (routineId: string) => Promise<void>;
   loadExperiments: () => Promise<ExperimentWithReadings[]>;
   beginExperiment: (experiment: NewExperiment) => Promise<void>;
   logExperimentReading: (id: string, date: IsoDate, value: number, note?: string) => Promise<void>;
@@ -347,8 +352,9 @@ export type AppData = {
     extra?: { isWarmup?: boolean; rpe?: number | null; restBeforeSeconds?: number | null },
   ) => Promise<void>;
   removeSetOn: (sessionId: string, exerciseId: string, setIndex: number) => Promise<void>;
-  /** Lo que suele tardar un dia asi, o null si no hay sesiones de fiar con que decirlo. */
-  loadPace: (kind: SessionKind) => Promise<number | null>;
+  /** Timing observations and learned pace for a session, independently of its total duration. */
+  loadSessionTiming: (sessionId: string, prepare?: boolean) => Promise<SessionTiming>;
+  reviewTiming: (setId: string, correction: TimingCorrection) => Promise<void>;
   /** Si el tiempo de esa sesion sirve para hacer cuentas, y cuanto duro de verdad. */
   trustSessionTime: (sessionId: string, trusted: boolean) => Promise<void>;
   editSessionMinutes: (sessionId: string, minutes: number) => Promise<void>;
@@ -398,6 +404,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   // de el: antes, elegir otro ejercicio volvia a leer la app entera y hasta a escribir
   // la nota del dia, cuando lo unico que hacia falta era leer lo de ese ejercicio.
   const openExercise = useRef<string | null>(null);
+  const startingSession = useRef<Promise<void> | null>(null);
 
   // El primer arranque de un dia nuevo rehace los ultimos siete dias aunque lo pida una
   // escritura que no los necesita: ayer siguio abierto hasta medianoche, y su falta de
@@ -572,14 +579,6 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   );
 
   const loadStudies = useCallback(() => openDatabase().then(listStudies), []);
-
-  const loadPace = useCallback(
-    (kind: SessionKind) =>
-      openDatabase()
-        .then(listSessionTimes)
-        .then((times) => usualMinutes(times, kind)),
-    [],
-  );
 
   const loadPantry = useCallback(() => openDatabase().then(listPantry), []);
   const loadRecipes = useCallback(() => openDatabase().then(listRecipes), []);
@@ -826,19 +825,26 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           false,
           REREAD_FOODS,
         ),
-      beginSession: (routineId, budget, plan, company, gymId) =>
-        run(async (db) => {
-          const sessionId = await startSession(db, {
-            date: todayIso(),
-            timeBudget: budget,
-            routineId,
-            gymId: gymId ?? null,
-            aloneOrPartner: company ?? null,
-          });
-          // Spec 8.3 rule 7: nothing starts until he has approved the plan, so the
-          // approved plan and the session are written together.
-          await saveSessionPlan(db, sessionId, plan);
-        }),
+      beginSession: (routineId, budget, plan, company, gymId) => {
+        if (startingSession.current) return startingSession.current;
+        const pending = write((db) =>
+          startPlannedSession(
+            db,
+            {
+              date: todayIso(),
+              timeBudget: budget,
+              routineId,
+              gymId: gymId ?? null,
+              aloneOrPartner: company ?? null,
+            },
+            plan,
+          ),
+        ).finally(() => {
+          startingSession.current = null;
+        });
+        startingSession.current = pending;
+        return pending;
+      },
       whereAmI: () => locateGym(openLoaded.current?.gyms ?? []),
       loadPlan,
       loadOwedRoutine,
@@ -846,7 +852,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         const session = openLoaded.current?.today.session;
         const exerciseId = openExercise.current;
         if (!session || !exerciseId) throw new Error('there is no open exercise to log a set into');
+        if (session.end_time !== null)
+          throw new Error('Reabre el entreno antes de anotar otra serie.');
         const sessionId = session.id;
+        const timestamp = Date.now();
         // Una serie despues de medianoche en la sesion de anoche cambia la nota de anoche,
         // y eso solo lo rehace el trabajo de fondo.
         const settle = session.date !== todayIso();
@@ -857,7 +866,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
             weightKg,
             reps,
             rpe: extra?.rpe ?? null,
-            timestamp: Date.now(),
+            timestamp,
           }),
         );
         try {
@@ -872,7 +881,15 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
                     sessionId,
                     exerciseId,
                   ) as Implement | null);
-            await addSet(db, { sessionId, exerciseId, weightKg, reps, ...extra, implement });
+            await addSet(db, {
+              sessionId,
+              exerciseId,
+              weightKg,
+              reps,
+              ...extra,
+              implement,
+              timestamp,
+            });
           }, settle);
         } catch (error) {
           // Lo que se pinto por adelantado tiene que volver a lo que dice la base.
@@ -906,33 +923,18 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       },
       endSession: () => {
         const sessionId = openLoaded.current?.today.session?.id;
-        if (!sessionId) return;
-        run((db) => finishSession(db, sessionId));
+        if (!sessionId) return Promise.reject(new Error('No hay un entreno para terminar.'));
+        return write((db) => finishSession(db, sessionId));
       },
       reopenSession: () => {
         const sessionId = openLoaded.current?.today.session?.id;
-        if (!sessionId) return;
-        run((db) => reopenSessionInDb(db, sessionId));
+        if (!sessionId) return Promise.reject(new Error('No hay un entreno para reabrir.'));
+        return write((db) => inTransaction(db, () => reopenSessionInDb(db, sessionId)));
       },
       switchRoutine: (routineId) => {
         const session = openLoaded.current?.today.session;
-        if (!session) return;
-        patch((current) =>
-          current.today.session
-            ? {
-                ...current,
-                today: {
-                  ...current.today,
-                  session: { ...current.today.session, routine_id: routineId },
-                },
-              }
-            : current,
-        );
-        run(async (db) => {
-          const plan = await loadRoutinePlan(db, routineId, session.time_budget, session.gym_id);
-          await setSessionRoutine(db, session.id, routineId);
-          await saveSessionPlan(db, session.id, plan.exercises);
-        });
+        if (!session) return Promise.reject(new Error('No hay un entreno para cambiar.'));
+        return write((db) => changePlannedRoutine(db, session.id, routineId));
       },
       loadExperiments,
       beginExperiment: async (experiment) => {
@@ -981,7 +983,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       addSetOn: (sessionId, exerciseId, weightKg, reps, extra) =>
         write(async (db) =>
           writeAndRescore(db, await sessionDate(db, sessionId), todayIso(), () =>
-            addSet(db, { sessionId, exerciseId, weightKg, reps, ...extra }),
+            addSet(db, { sessionId, exerciseId, weightKg, reps, ...extra, timingEligible: false }),
           ),
         ),
       removeSetOn: (sessionId, exerciseId, setIndex) =>
@@ -1076,7 +1078,19 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       },
       loadWeek,
       loadStudies,
-      loadPace,
+      loadSessionTiming: async (sessionId, prepare = false) => {
+        const db = await openDatabase();
+        if (prepare) await prepareTimingHistory(db, sessionId);
+        await whenIdle(db);
+        return readSessionTiming(db, sessionId);
+      },
+      reviewTiming: async (setId, correction) => {
+        const db = await openDatabase();
+        await reviewSetTiming(db, setId, correction);
+        const currentSession = openLoaded.current?.today.session;
+        if (currentSession) await prepareTimingHistory(db, currentSession.id);
+        refresh(false);
+      },
       trustSessionTime: (sessionId, trusted) =>
         write((db) => setDurationTrusted(db, sessionId, trusted), false),
       editSessionMinutes: (sessionId, minutes) =>
@@ -1140,7 +1154,6 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     loadOwedRoutine,
     loadRecords,
     loadStudies,
-    loadPace,
     loadPantry,
     loadRecipes,
     loadChats,

@@ -49,6 +49,19 @@ async function fixture(): Promise<{ db: SQLiteDatabase; raw: DatabaseSync }> {
   return { db, raw };
 }
 
+test('the open exercise only contains sets from its session when a day has two workouts', async () => {
+  const { db, raw } = await fixture();
+  raw.exec(`INSERT INTO training_session (id, date, start_time, time_budget)
+    VALUES ('early', '${TODAY}', 1000000, 'completo'), ('later', '${TODAY}', 2000000, 'completo');`);
+  await addSet(db, { sessionId: 'early', exerciseId: 'peck-deck', weightKg: 30, reps: 10 });
+  await addSet(db, { sessionId: 'later', exerciseId: 'peck-deck', weightKg: 40, reps: 12 });
+  const day = await assembleDay(db, TODAY, TODAY);
+  assert.equal(day.sessionSets.length, 2);
+  const exercise = await exerciseContext(db, day, 'peck-deck');
+  assert.equal(exercise.todaySets.length, 1);
+  assert.equal(exercise.todaySets[0].sessionId, 'later');
+});
+
 test('a day with nothing logged has no score at all', async () => {
   const { db } = await fixture();
   const day = await assembleDay(db, TODAY, TODAY);

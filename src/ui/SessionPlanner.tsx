@@ -340,6 +340,8 @@ export type SessionPlannerProps = {
     company?: Company,
     gymId?: string,
   ) => void;
+  busy?: boolean;
+  startProblem?: ReactNode;
   /** Spec 4.3: un descanso dicho a tiempo no es un entreno fallado. */
   restDay: boolean;
   onRestDay: () => void;
@@ -367,6 +369,8 @@ export function SessionPlanner({
   onLoadPlan,
   onLoadOwedRoutine,
   onStart,
+  busy = false,
+  startProblem,
   restDay,
   onRestDay,
   onDragging,
@@ -380,6 +384,7 @@ export function SessionPlanner({
   const [plan, setPlan] = useState<RoutinePlan | null>(null);
   const [exercises, setExercises] = useState<PlannedExercise[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
+  const [planFor, setPlanFor] = useState<string | null>(null);
 
   // La que toca por la semana. Hasta que llega no se elige ninguna, para no cargar el plan
   // de empuje y cambiarlo enseguida.
@@ -400,6 +405,7 @@ export function SessionPlanner({
   }, [onLoadOwedRoutine]);
 
   const selected = routineId ?? (owed === null ? null : (owed.id ?? routines[0]?.id ?? null));
+  const requestedPlan = JSON.stringify([selected, budget, gymId]);
 
   useEffect(() => {
     if (!selected) return;
@@ -411,6 +417,7 @@ export function SessionPlanner({
         if (cancelled) return;
         setPlan(loaded);
         setExercises(loaded.exercises);
+        setPlanFor(JSON.stringify([selected, budget, gymId]));
         setProblem(null);
       })
       .catch((error: unknown) => {
@@ -556,16 +563,27 @@ export function SessionPlanner({
         </Card>
       )}
 
+      {startProblem}
       <Button
-        label="Empezar entreno"
+        label={startProblem ? 'Reintentar inicio' : 'Empezar entreno'}
         icon={Play}
         variant="primary"
         size="large"
         block
-        disabled={!selected || gymId === null || starting.length === 0}
-        accessibilityLabel="Empezar entreno"
+        disabled={
+          busy || !selected || gymId === null || starting.length === 0 || planFor !== requestedPlan
+        }
+        loading={busy}
+        accessibilityLabel={startProblem ? 'Reintentar inicio del entreno' : 'Empezar entreno'}
         onPress={() => {
-          if (!selected || gymId === null || starting.length === 0) return;
+          if (
+            busy ||
+            !selected ||
+            gymId === null ||
+            starting.length === 0 ||
+            planFor !== requestedPlan
+          )
+            return;
           onStart(selected, budget, starting, company ?? undefined, gymId);
         }}
       />

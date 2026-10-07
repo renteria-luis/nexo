@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Check, Circle, Minus, Plus, Trash } from './icons.ts';
 
@@ -11,7 +11,6 @@ import {
   type LoggedSet,
 } from '../training/calculations.ts';
 import { fold } from '../nutrition/picker.ts';
-import { finishingAt } from '../training/pace.ts';
 import { isPerSide, type CatalogExercise, type Swappable } from '../training/queries.ts';
 import { suggestedRest, type PlannedSet } from '../training/routines.ts';
 import { draftFieldsFor, fieldsAfterSelect, type SessionDraft } from '../core/session-draft.ts';
@@ -115,8 +114,6 @@ export type SessionLogProps = {
   onRemoveSet: (setIndex: number) => void;
   /** Cuando toco empezar, para el reloj de la sesion. */
   startedAt: number | null;
-  /** Lo que suele tardar un dia asi, para decir a que hora sale. Null si no se sabe. */
-  usualMinutes: number | null;
   /** Lo que quedo escrito la ultima vez que estuvo aqui, si la app se cerro. */
   draft: SessionDraft | null;
   onDraftChange: (draft: {
@@ -130,6 +127,8 @@ export type SessionLogProps = {
   onFinish: () => void;
   /** Deshace el terminar: es el unico boton de aqui sin vuelta atras. */
   onReopen: () => void;
+  sessionAction?: 'start' | 'routine' | 'finish' | 'reopen' | null;
+  sessionProblem?: ReactNode;
 };
 
 /**
@@ -217,12 +216,13 @@ export const SessionLog = memo(function SessionLog({
   onAddSet,
   onRemoveSet,
   startedAt,
-  usualMinutes,
   draft,
   onDraftChange,
   finishedAt,
   onFinish,
   onReopen,
+  sessionAction = null,
+  sessionProblem,
 }: SessionLogProps) {
   const exercise = exercises.find((item) => item.id === selectedExerciseId) ?? null;
   const card = useRef<View>(null);
@@ -410,13 +410,6 @@ export const SessionLog = memo(function SessionLog({
                   clock((finishedAt - startedAt) / 1000)
                 )}
               </Text>
-              {/* A que hora sale si tarda lo de siempre. Es un calculo de una resta y no
-                  mira que ejercicios faltan: dice el rato que suele estar, no el que le
-                  queda. Sin dias de fiar de este tipo no sale nada, que es mejor que un
-                  numero inventado. */}
-              {finishedAt === null && usualMinutes !== null && (
-                <Text style={styles.finishing}>sales ~{finishingAt(startedAt, usualMinutes)}</Text>
-              )}
             </View>
           )}
         </View>
@@ -701,7 +694,7 @@ export const SessionLog = memo(function SessionLog({
                       variant="primary"
                       size="large"
                       block
-                      disabled={!canAdd}
+                      disabled={!canAdd || sessionAction !== null}
                       loading={saving}
                       accessibilityLabel="Agregar serie"
                       onPress={() => {
@@ -740,6 +733,7 @@ export const SessionLog = memo(function SessionLog({
           </View>
         )}
 
+        {sessionProblem}
         {finishedAt === null ? (
           <Button
             label="Terminar entreno"
@@ -747,6 +741,8 @@ export const SessionLog = memo(function SessionLog({
             size="large"
             block
             accessibilityLabel="Terminar entreno"
+            disabled={saving || sessionAction !== null}
+            loading={sessionAction === 'finish'}
             onPress={onFinish}
             style={styles.finish}
           />
@@ -765,6 +761,8 @@ export const SessionLog = memo(function SessionLog({
                     label="Sí, seguir"
                     accessibilityLabel="Sí, seguir entrenando"
                     variant="primary"
+                    disabled={sessionAction !== null}
+                    loading={sessionAction === 'reopen'}
                     onPress={() => {
                       setReopening(false);
                       onReopen();
@@ -773,6 +771,7 @@ export const SessionLog = memo(function SessionLog({
                   <Button
                     label="No"
                     accessibilityLabel="No seguir entrenando"
+                    disabled={sessionAction !== null}
                     onPress={() => setReopening(false)}
                   />
                 </View>
@@ -781,6 +780,8 @@ export const SessionLog = memo(function SessionLog({
               <Button
                 label="Seguir entrenando"
                 accessibilityLabel="Seguir entrenando"
+                disabled={sessionAction !== null}
+                loading={sessionAction === 'reopen'}
                 onPress={() => setReopening(true)}
               />
             )}
@@ -821,12 +822,6 @@ const styles = sheet((theme) => ({
     fontSize: 30,
     fontFamily: font.display,
     color: theme.text,
-    fontVariant: ['tabular-nums'],
-  },
-  finishing: {
-    fontSize: 11,
-    fontFamily: font.bold,
-    color: theme.textFaint,
     fontVariant: ['tabular-nums'],
   },
   sessionClock: {

@@ -37,7 +37,10 @@ function providerFixture() {
       REREAD_NOTHING: { deals: false, foods: false },
       load: async () => {
         loads += 1;
-        return { today: { date: todayIso() }, settings: new Map(), dealSources: [] };
+        const session =
+          raw.prepare('SELECT * FROM training_session ORDER BY start_time DESC LIMIT 1;').get() ??
+          null;
+        return { today: { date: todayIso(), session }, settings: new Map(), dealSources: [] };
       },
       withFresh: (_current: unknown, fresh: unknown) => fresh,
     },
@@ -128,4 +131,59 @@ test('experiment actions save readings and finish without global reloads', async
   assert.equal(loads(), baseline);
   assert.equal(raw.prepare('SELECT value FROM core_experiment_reading').get()!.value, 8);
   assert.equal(raw.prepare('SELECT end_date FROM core_experiment').get()!.end_date, todayIso());
+});
+
+test('starting from the provider shares one pending write and permits retry after failure', async () => {
+  const { raw, actions } = providerFixture();
+  const app = await actions();
+  const plan = await app.loadPlan('push', 'completo', 'fanshawe');
+  raw.exec(
+    "CREATE TRIGGER reject_plan BEFORE INSERT ON training_session_plan BEGIN SELECT RAISE(ABORT, 'storage failure'); END;",
+  );
+  const first = app.beginSession('push', 'completo', plan.exercises, 'alone', 'fanshawe');
+  const second = app.beginSession('push', 'completo', plan.exercises, 'alone', 'fanshawe');
+  assert.equal(first, second);
+  await assert.rejects(first, /storage failure/);
+  assert.equal(raw.prepare('SELECT count(*) AS n FROM training_session;').get()!.n, 0);
+  raw.exec('DROP TRIGGER reject_plan;');
+  await app.beginSession('push', 'completo', plan.exercises, 'alone', 'fanshawe');
+  await app.beginSession('push', 'completo', plan.exercises, 'alone', 'fanshawe');
+  assert.equal(raw.prepare('SELECT count(*) AS n FROM training_session;').get()!.n, 1);
+});
+
+test('routine, finish and reopen failures reach the caller without painting a false result', async () => {
+  const { raw, actions, screen } = providerFixture();
+  let app = await actions();
+  const plan = await app.loadPlan('push', 'completo', 'fanshawe');
+  await app.beginSession('push', 'completo', plan.exercises, 'alone', 'fanshawe');
+  app = await actions();
+  raw.exec(
+    "CREATE TRIGGER reject_plan BEFORE INSERT ON training_session_plan BEGIN SELECT RAISE(ABORT, 'plan failure'); END;",
+  );
+  await assert.rejects(app.switchRoutine('pull'), /plan failure/);
+  await screen.settle();
+  assert.equal((await actions()).state.loaded.today.session.routine_id, 'push');
+  assert.equal(raw.prepare('SELECT routine_id FROM training_session;').get()!.routine_id, 'push');
+  raw.exec('DROP TRIGGER reject_plan;');
+  await app.switchRoutine('pull');
+  app = await actions();
+  assert.equal(app.state.loaded.today.session.routine_id, 'pull');
+  raw.exec(
+    "CREATE TRIGGER reject_close BEFORE UPDATE OF end_time ON training_session BEGIN SELECT RAISE(ABORT, 'close failure'); END;",
+  );
+  await assert.rejects(app.endSession(), /close failure/);
+  assert.equal(raw.prepare('SELECT end_time FROM training_session;').get()!.end_time, null);
+  raw.exec('DROP TRIGGER reject_close;');
+  await app.endSession();
+  app = await actions();
+  const finished = app.state.loaded.today.session.end_time;
+  assert.ok(finished);
+  raw.exec(
+    "CREATE TRIGGER reject_reopen BEFORE UPDATE OF end_time ON training_session BEGIN SELECT RAISE(ABORT, 'reopen failure'); END;",
+  );
+  await assert.rejects(app.reopenSession(), /reopen failure/);
+  assert.equal(raw.prepare('SELECT end_time FROM training_session;').get()!.end_time, finished);
+  raw.exec('DROP TRIGGER reject_reopen;');
+  await app.reopenSession();
+  assert.equal(raw.prepare('SELECT end_time FROM training_session;').get()!.end_time, null);
 });

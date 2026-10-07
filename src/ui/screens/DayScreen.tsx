@@ -11,6 +11,7 @@ import type { DayDetail } from '../../shell/records.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 import { fromKg } from '../../core/units.ts';
 import { Card } from '../Card.tsx';
+import { TrainingTiming } from '../TrainingTiming.tsx';
 import { DayTraining } from '../DayTraining.tsx';
 import { FoodLog } from '../FoodLog.tsx';
 import { ChevronLeft, ChevronRight, Pencil } from '../icons.ts';
@@ -250,6 +251,13 @@ export function DayScreen() {
           </Text>
         )}
       </Card>
+      {day.session !== null && (
+        <TrainingTiming
+          session={day.session}
+          revision={day.sessionSets}
+          catalog={loaded.exercise.exercises}
+        />
+      )}
 
       {/* La comida trae sus propias cartillas, asi que no va dentro de otra. */}
       <FoodLog
