@@ -5,3 +5,4 @@ export * from './routines.ts';
 export * from './history.ts';
 export * from './pace.ts';
 export * from './sessions.ts';
+export * from './session-plan.ts';
