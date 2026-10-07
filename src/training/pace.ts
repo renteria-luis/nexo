@@ -30,6 +30,13 @@ function sameKind(session: PastSession, kind: SessionKind): boolean {
   );
 }
 
+export function median(values: readonly number[]): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
 /**
  * Lo que suele tardar un dia de este tipo, o null si no hay ninguno con el que decirlo.
  *
@@ -40,14 +47,11 @@ function sameKind(session: PastSession, kind: SessionKind): boolean {
 export function usualMinutes(sessions: readonly PastSession[], kind: SessionKind): number | null {
   const times = sessions
     .filter((session) => session.trusted && session.minutes > 0 && sameKind(session, kind))
-    .map((session) => session.minutes)
-    .sort((a, b) => a - b);
+    .map((session) => session.minutes);
 
   if (times.length === 0) return null;
-  const middle = Math.floor(times.length / 2);
-  return times.length % 2 === 1
-    ? times[middle]
-    : Math.round((times[middle - 1] + times[middle]) / 2);
+  const value = median(times)!;
+  return times.length % 2 === 1 ? value : Math.round(value);
 }
 
 /** "01h21m", que es como lo lee de un vistazo. Por debajo de la hora, "48m". */

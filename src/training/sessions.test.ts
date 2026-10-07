@@ -15,6 +15,7 @@ import {
   clampRpe,
   stepRpe,
   setSessionDetails,
+  setSessionMinutes,
   deleteSet,
   finishSession,
   getSessionOn,
@@ -30,6 +31,16 @@ type SqlValue = string | number | null;
 
 function adapt(db: DatabaseSync): SQLiteDatabase {
   return {
+    withTransactionAsync: async (work: () => Promise<void>) => {
+      db.exec('BEGIN');
+      try {
+        await work();
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
+    },
     getAllAsync: async <T>(source: string, params: SqlValue[] = []): Promise<T[]> =>
       db.prepare(source).all(...params) as T[],
     getFirstAsync: async <T>(source: string, params: SqlValue[] = []): Promise<T | null> =>
@@ -584,4 +595,53 @@ test('seguir entrenando y volver a terminar lo decide otra vez', async () => {
   await addSet(db, { sessionId: id, exerciseId: 'peck-deck', weightKg: 40, reps: 10 });
   await finishSession(db, id);
   assert.equal((await listSessionTimes(db))[0].trusted, true);
+});
+
+test('returning from another machine has no measured rest, and retroactive additions do not time rest', async () => {
+  const db = fresh();
+  const sessionId = await sessionOn(db, '2026-10-07');
+  const start = Date.now();
+  await addSet(db, {
+    sessionId,
+    exerciseId: 'peck-deck',
+    weightKg: 30,
+    reps: 10,
+    timestamp: start,
+  });
+  await addSet(db, {
+    sessionId,
+    exerciseId: 'pull-up',
+    weightKg: 0,
+    reps: 10,
+    timestamp: start + 180000,
+  });
+  await addSet(db, {
+    sessionId,
+    exerciseId: 'peck-deck',
+    weightKg: 30,
+    reps: 10,
+    timestamp: start + 360000,
+  });
+  await addSet(db, {
+    sessionId,
+    exerciseId: 'peck-deck',
+    weightKg: 30,
+    reps: 10,
+    timingEligible: false,
+  });
+  const deck = (await listSetsForSession(db, sessionId)).filter(
+    (set) => set.exercise_id === 'peck-deck',
+  );
+  assert.deepEqual(
+    deck.map((set) => set.rest_before_seconds),
+    [null, null, null],
+  );
+});
+
+test('manual session corrections retain fractional minutes', async () => {
+  const db = fresh();
+  const id = await sessionOn(db, '2026-10-07');
+  await setSessionMinutes(db, id, 0.5);
+  const row = await getSessionOn(db, '2026-10-07');
+  assert.equal(row!.end_time! - row!.start_time!, 30000);
 });

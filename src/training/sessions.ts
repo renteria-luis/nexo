@@ -8,6 +8,9 @@
 
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { inTransaction } from '../db/transaction.ts';
+import { rebuildExerciseTimes } from './timing-store.ts';
+
 import { trailingDays, type IsoDate } from '../core/dates.ts';
 import type { SqlBool, TrainingSessionRow, TrainingSetEntryRow } from '../db/types.ts';
 
@@ -71,25 +74,29 @@ export const CLOSED_AT_THE_GYM_MINUTES = 20;
  */
 export async function finishSession(db: SQLiteDatabase, sessionId: string): Promise<void> {
   const now = Date.now();
-  await db.runAsync(
-    `UPDATE training_session
+  await inTransaction(db, async () => {
+    await db.runAsync(
+      `UPDATE training_session
         SET end_time = ?,
             duration_trusted = CASE
               WHEN ? - start_time BETWEEN ? AND ?
-               AND ? - (SELECT max(timestamp) FROM training_set_entry WHERE session_id = ?) <= ?
+               AND is_retroactive = 0
+               AND ? - (SELECT max(timestamp) FROM training_set_entry WHERE session_id = ?) BETWEEN 0 AND ?
               THEN 1 ELSE 0 END
       WHERE id = ?;`,
-    [
-      now,
-      now,
-      TRUSTED_MINUTES.min * 60_000,
-      TRUSTED_MINUTES.max * 60_000,
-      now,
-      sessionId,
-      CLOSED_AT_THE_GYM_MINUTES * 60_000,
-      sessionId,
-    ],
-  );
+      [
+        now,
+        now,
+        TRUSTED_MINUTES.min * 60_000,
+        TRUSTED_MINUTES.max * 60_000,
+        now,
+        sessionId,
+        CLOSED_AT_THE_GYM_MINUTES * 60_000,
+        sessionId,
+      ],
+    );
+    await rebuildExerciseTimes(db, sessionId);
+  });
 }
 
 /**
@@ -236,26 +243,27 @@ export type NewSet = {
   isWarmup?: boolean;
   rpe?: number | null;
   restBeforeSeconds?: number | null;
+  timestamp?: number;
+  timingEligible?: boolean;
   /** Null cuando se hizo con lo que dice el catalogo del ejercicio. */
   implement?: Implement | null;
 };
 
 /**
- * Spec 9. The rest is read off the previous set of the same exercise instead of a
- * timer he has to remember to start, which is the only way a number this boring
- * ever gets recorded. Null on the first set of an exercise, where there is nothing
- * to measure from.
+ * The interval includes work and rest. Only consecutive sets of the same exercise
+ * are comparable; a return from another machine has no measured rest interval.
  */
 async function measureRest(db: SQLiteDatabase, set: NewSet, now: number): Promise<number | null> {
-  const previous = await db.getFirstAsync<{ timestamp: number }>(
-    `SELECT timestamp FROM training_set_entry
-      WHERE session_id = ? AND exercise_id = ?
-   ORDER BY set_index DESC
+  const previous = await db.getFirstAsync<{ timestamp: number; exercise_id: string }>(
+    `SELECT s.timestamp, s.exercise_id FROM training_set_entry s
+       JOIN training_session e ON e.id = s.session_id
+      WHERE s.session_id = ? AND e.end_time IS NULL AND e.is_retroactive = 0
+   ORDER BY s.timestamp DESC, s.rowid DESC
       LIMIT 1;`,
-    [set.sessionId, set.exerciseId],
+    [set.sessionId],
   );
 
-  if (!previous) return null;
+  if (!previous || previous.exercise_id !== set.exerciseId) return null;
   return Math.max(0, Math.round((now - previous.timestamp) / 1000));
 }
 
@@ -267,7 +275,8 @@ export async function addSet(db: SQLiteDatabase, set: NewSet): Promise<string> {
     throw new Error(`a set cannot weigh ${set.weightKg} kg`);
   }
 
-  const timestamp = Date.now();
+  const timestamp = set.timestamp ?? Date.now();
+  if (!Number.isSafeInteger(timestamp) || timestamp <= 0) throw new Error('Invalid set timestamp');
   const id = `set-${timestamp}-${Math.floor(Math.random() * 1e6)}`;
 
   // A set typed in after the fact carries its own rest or none at all: the clock
@@ -275,17 +284,20 @@ export async function addSet(db: SQLiteDatabase, set: NewSet): Promise<string> {
   const restBeforeSeconds =
     set.restBeforeSeconds !== undefined
       ? set.restBeforeSeconds
-      : await measureRest(db, set, timestamp);
+      : set.timingEligible === false
+        ? null
+        : await measureRest(db, set, timestamp);
 
   await db.runAsync(
     `INSERT INTO training_set_entry
        (id, session_id, exercise_id, set_index, weight_kg, reps, rest_before_seconds,
-        timestamp, rpe, is_warmup, implement)
+        timestamp, rpe, is_warmup, implement, timing_eligible)
      VALUES (
        ?, ?, ?,
        (SELECT coalesce(max(set_index), 0) + 1 FROM training_set_entry
          WHERE session_id = ? AND exercise_id = ?),
-       ?, ?, ?, ?, ?, ?, ?
+       ?, ?, ?, ?, ?, ?, ?,
+       CASE WHEN ? = 1 AND EXISTS (SELECT 1 FROM training_session WHERE id = ? AND end_time IS NULL AND is_retroactive = 0) THEN 1 ELSE 0 END
      );`,
     [
       id,
@@ -300,6 +312,8 @@ export async function addSet(db: SQLiteDatabase, set: NewSet): Promise<string> {
       set.rpe ?? null,
       set.isWarmup ? 1 : 0,
       set.implement ?? null,
+      set.timingEligible === false ? 0 : 1,
+      set.sessionId,
     ],
   );
 
@@ -441,7 +455,7 @@ export async function setSessionMinutes(
   );
   if (!session) throw new Error(`there is no session called ${sessionId}`);
 
-  const span = Math.round(minutes) * 60_000;
+  const span = Math.max(1, Math.round(minutes * 60_000));
   if (session.start_time !== null) {
     await db.runAsync('UPDATE training_session SET end_time = ? WHERE id = ?;', [
       session.start_time + span,
