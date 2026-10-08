@@ -28,9 +28,9 @@ import {
   listSessionDates,
   listWorkingSets,
   loadExerciseMuscles,
-  loadSessionPlan,
+  loadDayPlans,
   marksWindow,
-  sessionEffort,
+  dailyEffort,
   sessionsInBestWeekAround,
   sessionsInTrailingWeek,
   trainedOn,
@@ -82,12 +82,16 @@ export async function assembleDay(
   // Spec 4.1: los 22 puntos del entreno salen de lo que movio contra lo que tocaba,
   // asi que hace falta el plan de esa sesion y a que musculos toca cada ejercicio.
   const [plan, muscles] = session
-    ? await Promise.all([loadSessionPlan(db, session.id), loadExerciseMuscles(db)])
+    ? await Promise.all([loadDayPlans(db, date), loadExerciseMuscles(db)])
     : [[], new Map()];
   const effort = session
-    ? sessionEffort(
+    ? dailyEffort(
         sessionSets,
-        plan.map((entry) => ({ exerciseId: entry.exerciseId, setsPlanned: entry.sets })),
+        plan.map((entry) => ({
+          sessionId: entry.sessionId,
+          exerciseId: entry.exerciseId,
+          setsPlanned: entry.sets,
+        })),
         muscles,
       )
     : null;
@@ -184,6 +188,7 @@ export async function exerciseContext(
 
 /** Lo que se sabe de una serie en el momento de tocar "Serie", antes de que la base conteste. */
 export type TappedSet = Pick<LoggedSet, 'sessionId' | 'exerciseId' | 'weightKg' | 'reps'> & {
+  isWarmup?: boolean;
   rpe: number | null;
   timestamp: number;
 };
@@ -201,6 +206,7 @@ export function withTappedSet<T extends { today: AssembledDay; exercise: Exercis
   loaded: T,
   set: TappedSet,
 ): T {
+  if (set.isWarmup) return loaded;
   const sameExercise = loaded.today.sessionSets.filter(
     (logged) => logged.sessionId === set.sessionId && logged.exerciseId === set.exerciseId,
   );

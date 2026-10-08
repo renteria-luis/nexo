@@ -220,6 +220,8 @@ export type SessionEffort = {
   /** Musculos que quedaron tocados, y los que el plan pedia. */
   musclesDone: number;
   musclesPlanned: number;
+  /** Each nonempty workout keeps its own denominator before daily aggregation. */
+  sessions?: readonly SessionEffort[];
 };
 
 /**
@@ -238,6 +240,16 @@ export const REFERENCE_WORK = 24;
  * una sola cosa no son el dia que el plan pedia.
  */
 export function trainingFraction(effort: SessionEffort): number {
+  if (effort.sessions?.length) {
+    let total = 0;
+    let weight = 0;
+    for (const session of effort.sessions) {
+      const target = session.workPlanned > 0 ? session.workPlanned : REFERENCE_WORK;
+      total += trainingFraction(session) * target;
+      weight += target;
+    }
+    return total / weight;
+  }
   const target = effort.workPlanned > 0 ? effort.workPlanned : REFERENCE_WORK;
   const work = Math.min(1, effort.work / target);
   const spread =

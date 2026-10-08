@@ -207,6 +207,38 @@ export type E1rmMark = {
   e1rm: number;
 };
 
+export function dailyEffort(
+  sets: readonly LoggedSet[],
+  plans: readonly (PlannedWork & { sessionId: string })[],
+  muscles: ExerciseMuscles,
+): SessionEffort {
+  const grouped = new Map<string, LoggedSet[]>();
+  for (const set of sets) {
+    const group = grouped.get(set.sessionId) ?? [];
+    group.push(set);
+    grouped.set(set.sessionId, group);
+  }
+  const sessions = [...grouped].map(([id, entries]) =>
+    sessionEffort(
+      entries,
+      plans.filter((entry) => entry.sessionId === id),
+      muscles,
+    ),
+  );
+  if (sessions.length === 1) return sessions[0];
+  const sum = (key: Exclude<keyof SessionEffort, 'sessions'>) =>
+    sessions.reduce((total, session) => total + session[key], 0);
+  return {
+    sets: sum('sets'),
+    setsPlanned: sum('setsPlanned'),
+    work: sum('work'),
+    workPlanned: sum('workPlanned'),
+    musclesDone: sum('musclesDone'),
+    musclesPlanned: sum('musclesPlanned'),
+    sessions,
+  };
+}
+
 /**
  * Best and worst estimated 1RM in the given sets, spec 6.3. Sets above 12 reps
  * are left out because spec 6.2 says the estimate does not hold there. Null when

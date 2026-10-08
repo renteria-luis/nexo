@@ -54,6 +54,7 @@ import { sql as waterGlasses } from './053_water_glasses.ts';
 import { sql as scoreDecimal } from './054_score_decimal.ts';
 import { sql as calorieStudies } from './055_calorie_studies.ts';
 import { sql as exerciseTiming } from './056_exercise_timing.ts';
+import { sql as multiSessionScore } from './057_multi_session_score.ts';
 
 export type Migration = {
   id: string;
@@ -119,4 +120,5 @@ export const migrations: Migration[] = [
   { id: '054_score_decimal', sql: scoreDecimal },
   { id: '055_calorie_studies', sql: calorieStudies },
   { id: '056_exercise_timing', sql: exerciseTiming },
+  { id: '057_multi_session_score', sql: multiSessionScore },
 ];

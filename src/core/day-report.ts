@@ -122,13 +122,13 @@ function lines(input: ReportInput): CriterionLine[] {
             : !trained
               ? 'no entrenó'
               : effort
-                ? `${effort.sets} series`
+                ? `${effort.sets} series${effort.sessions && effort.sessions.length > 1 ? ` · ${effort.sessions.length} entrenos` : ''}`
                 : 'entrenó',
       // Spec 4.1: los puntos salen de lo hecho contra lo planeado, asi que la linea
       // tiene que decir contra que se midio.
       target:
         trained === true && effort && effort.setsPlanned > 0
-          ? `${effort.setsPlanned} del plan`
+          ? `${effort.setsPlanned} ${effort.sessions && effort.sessions.length > 1 ? 'de sus planes' : 'del plan'}`
           : null,
     },
     {

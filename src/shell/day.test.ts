@@ -10,6 +10,8 @@ import { writeTargetSnapshot } from '../core/snapshots.ts';
 import { computeTargets, type TargetProfile } from '../core/targets.ts';
 import { migrations } from '../db/migrations/index.ts';
 import { addSet, startSession } from '../training/index.ts';
+import { trainingFraction } from '../core/discipline.ts';
+import { rescoreMissing } from './records.ts';
 
 import { assembleDay, exerciseContext, withTappedSet } from './day.ts';
 
@@ -60,6 +62,72 @@ test('the open exercise only contains sets from its session when a day has two w
   const exercise = await exerciseContext(db, day, 'peck-deck');
   assert.equal(exercise.todaySets.length, 1);
   assert.equal(exercise.todaySets[0].sessionId, 'later');
+});
+
+test('two workouts use their own plans, cap each workout and ignore an empty later session', async () => {
+  const { db, raw } = await fixture();
+  raw.exec(`INSERT INTO training_session (id, date, start_time, time_budget)
+    VALUES ('early', '${TODAY}', 1000, 'completo'), ('later', '${TODAY}', 2000, 'completo');
+    INSERT INTO training_session_plan (session_id, exercise_id, position, sets_planned, rest_seconds)
+    VALUES ('early', 'peck-deck', 1, 4, 120), ('later', 'peck-deck', 1, 8, 120);`);
+  for (let n = 0; n < 20; n++)
+    await addSet(db, { sessionId: 'early', exerciseId: 'peck-deck', weightKg: 30, reps: 10 });
+  for (let n = 0; n < 2; n++)
+    await addSet(db, { sessionId: 'later', exerciseId: 'peck-deck', weightKg: 30, reps: 10 });
+  await upsertDailyLog(db, { date: TODAY, waterMl: 3500, creatineTaken: true });
+  const before = await assembleDay(db, TODAY, TODAY);
+  // First workout earns 100%; second earns 75% × 2/8 + 25% = 43.75%.
+  // Their 4:8 plan sizes give (4 + 8 × .4375) / 12 = .625.
+  assert.equal(trainingFraction(before.effort!), 0.625);
+  assert.equal(before.result!.criteria.find((entry) => entry.id === 'trained')!.fraction, 0.625);
+  assert.equal(before.effort!.setsPlanned, 12);
+  assert.equal(before.effort!.sets, 22);
+  raw.exec(`INSERT INTO training_session (id, date, start_time, time_budget) VALUES ('empty', '${TODAY}', 3000, 'completo');
+    INSERT INTO training_session_plan (session_id, exercise_id, position, sets_planned, rest_seconds)
+    VALUES ('empty', 'peck-deck', 1, 100, 120);`);
+  const after = await assembleDay(db, TODAY, TODAY);
+  assert.equal(after.result!.score, before.result!.score);
+  assert.equal(after.effort!.setsPlanned, 12);
+});
+
+test('a planless workout has its own reference denominator beside a planned workout', async () => {
+  const { db, raw } = await fixture();
+  raw.exec(`INSERT INTO training_session (id, date, start_time, time_budget)
+    VALUES ('planned', '${TODAY}', 1000, 'completo'), ('unplanned', '${TODAY}', 2000, 'completo');
+    INSERT INTO training_session_plan (session_id, exercise_id, position, sets_planned, rest_seconds)
+    VALUES ('planned', 'peck-deck', 1, 4, 120);`);
+  for (const [sessionId, count] of [
+    ['planned', 4],
+    ['unplanned', 12],
+  ] as const)
+    for (let n = 0; n < count; n++)
+      await addSet(db, { sessionId, exerciseId: 'peck-deck', weightKg: 30, reps: 10 });
+  const day = await assembleDay(db, TODAY, TODAY);
+  assert.equal(trainingFraction(day.effort!), (4 + 12) / 28);
+});
+
+test('the score migration only invalidates multi-session dates and the normal load rebuilds them', async () => {
+  const { db, raw } = await fixture();
+  await upsertDailyLog(db, { date: TODAY, waterMl: 3500, creatineTaken: true });
+  await upsertDailyLog(db, { date: '2026-09-12', waterMl: 3500 });
+  raw.exec(`UPDATE core_daily_log SET score = 88;
+    INSERT INTO training_session (id, date, start_time, time_budget)
+    VALUES ('a', '${TODAY}', 1000, 'completo'), ('b', '${TODAY}', 2000, 'completo');`);
+  await addSet(db, { sessionId: 'a', exerciseId: 'peck-deck', weightKg: 30, reps: 10 });
+  raw.exec(migrations.find((migration) => migration.id === '057_multi_session_score')!.sql);
+  assert.equal(
+    raw.prepare('SELECT score FROM core_daily_log WHERE date = ?').get(TODAY)!.score,
+    null,
+  );
+  assert.equal(
+    raw.prepare("SELECT score FROM core_daily_log WHERE date = '2026-09-12'").get()!.score,
+    88,
+  );
+  await rescoreMissing(db, { to: TODAY }, TODAY);
+  assert.equal(
+    raw.prepare('SELECT score FROM core_daily_log WHERE date = ?').get(TODAY)!.score,
+    (await assembleDay(db, TODAY, TODAY)).result!.score,
+  );
 });
 
 test('a day with nothing logged has no score at all', async () => {
@@ -272,4 +340,17 @@ test('la serie tocada sale ya en la lista, y la siguiente propone esa y no la de
   assert.equal(tapped.today.sessionSets.length, 2);
   // Lo cargado de antes no se toca: es lo que vuelve si la base la rechaza.
   assert.equal(loaded.exercise.todaySets.length, 1);
+
+  const warmup = withTappedSet(tapped, {
+    sessionId,
+    exerciseId: 'peck-deck',
+    weightKg: 15,
+    reps: 10,
+    timestamp: Date.now(),
+    rpe: null,
+    isWarmup: true,
+  });
+  assert.equal(warmup, tapped);
+  assert.equal(warmup.today.sessionSets.length, 2);
+  assert.equal(warmup.exercise.todaySets.length, 2);
 });

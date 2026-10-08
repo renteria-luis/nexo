@@ -866,6 +866,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
             weightKg,
             reps,
             rpe: extra?.rpe ?? null,
+            isWarmup: extra?.isWarmup,
             timestamp,
           }),
         );

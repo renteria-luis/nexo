@@ -459,6 +459,19 @@ export type PlannedSet = {
   restSeconds: number;
 };
 
+export async function loadDayPlans(
+  db: SQLiteDatabase,
+  date: IsoDate,
+): Promise<(PlannedSet & { sessionId: string })[]> {
+  return db.getAllAsync<PlannedSet & { sessionId: string }>(
+    `SELECT p.session_id AS sessionId, p.exercise_id AS exerciseId,
+            p.position, p.sets_planned AS sets, p.rest_seconds AS restSeconds
+       FROM training_session_plan p JOIN training_session s ON s.id = p.session_id
+      WHERE s.date = ? ORDER BY p.session_id, p.position;`,
+    [date],
+  );
+}
+
 /**
  * El descanso que toca ahora en ese ejercicio: el que aprobo en el plan de hoy, que con
  * poco tiempo baja a 90 s en los de nivel 2 y 3 (spec 8.3 regla 5), y el del catalogo
