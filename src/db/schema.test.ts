@@ -342,9 +342,8 @@ test('the exercise catalog seeds the routine the owner trains today', () => {
   const row = db.prepare('SELECT COUNT(*) AS count FROM training_exercise;').get() as {
     count: number;
   };
-  // Los dieciseis de siempre, las dos versiones de las laterales que no son
-  // mancuerna (polea y maquina) y el curl inverso, primer antebrazo directo.
-  assert.equal(row.count, 19);
+  // Equipment choices now include a separate cable hammer curl.
+  assert.equal(row.count, 20);
 });
 
 test('every seeded exercise has exactly one primary muscle row', () => {
@@ -388,5 +387,5 @@ test('direct and weighted set counts are different questions', () => {
   // vienen de dominadas y martillo. Los dos numeros siguen siendo distintos, que es
   // lo que esta prueba defiende.
   assert.equal(direct.count, 1);
-  assert.equal(weighted.total, 2);
+  assert.equal(weighted.total, 2.5);
 });

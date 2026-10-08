@@ -35,6 +35,16 @@ function fresh(): SQLiteDatabase {
   raw.exec('PRAGMA foreign_keys = ON;');
   for (const migration of migrations) raw.exec(migration.sql);
   return {
+    withTransactionAsync: async (work: () => Promise<void>) => {
+      raw.exec('BEGIN');
+      try {
+        await work();
+        raw.exec('COMMIT');
+      } catch (error) {
+        raw.exec('ROLLBACK');
+        throw error;
+      }
+    },
     getAllAsync: async <T>(source: string, params: SqlValue[] = []): Promise<T[]> =>
       raw.prepare(source).all(...params) as T[],
     getFirstAsync: async <T>(source: string, params: SqlValue[] = []): Promise<T | null> =>

@@ -137,6 +137,9 @@ export function parseImplements(stored: string): Swappable[] {
 }
 
 export type CatalogExercise = Omit<TrainingExerciseRow, 'implements'> & {
+  familyId?: string;
+  familyName?: string;
+  archived?: number;
   /** Primary muscle first, then secondaries alphabetically. */
   muscles: MuscleShare[];
   /** The machine it is performed on at this gym, when it is performed on one. */
@@ -181,7 +184,16 @@ export async function listExercises(
   gymId?: string,
 ): Promise<CatalogExercise[]> {
   const [exercises, muscles, notes, links] = await Promise.all([
-    db.getAllAsync<TrainingExerciseRow>('SELECT * FROM training_exercise ORDER BY name_es;'),
+    db.getAllAsync<
+      TrainingExerciseRow & { familyId: string; familyName: string; archived: number }
+    >(
+      `SELECT e.*, coalesce(v.base_exercise_id, e.id) AS familyId,
+              coalesce(b.family_name, b.name_es, e.family_name, e.name_es) AS familyName
+         FROM training_exercise e
+         LEFT JOIN training_exercise_variant v ON v.exercise_id = e.id
+         LEFT JOIN training_exercise b ON b.id = v.base_exercise_id
+        ORDER BY e.name_es;`,
+    ),
     loadExerciseMuscles(db),
     db.getAllAsync<{ exercise_id: string; implement: string; note: string }>(
       'SELECT exercise_id, implement, note FROM training_exercise_note;',

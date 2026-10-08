@@ -11,6 +11,7 @@ import { addFoodEntry } from '../nutrition/queries.ts';
 import { buildDayExports } from '../shell/records.ts';
 import { cookRecipe, savePantryItem, saveRecipe } from '../pantry/index.ts';
 import { addSet, startSession } from '../training/sessions.ts';
+import { createExercise, archiveExercise, loadExerciseCard } from '../training/catalog.ts';
 
 import { appendMessage, startChat } from './assistant.ts';
 import { exportBackup, importBackup, parseBackup, BACKUP_FORMAT } from './backup.ts';
@@ -54,6 +55,35 @@ function fresh(): { db: SQLiteDatabase; raw: DatabaseSync } {
   }
   return { db: adapt(raw), raw };
 }
+
+test('custom exercise families, explanations and archived variants survive backup restore', async () => {
+  const source = fresh();
+  const input = {
+    name: 'My exercise',
+    muscle: 'chest',
+    equipmentType: 'dumbbell' as const,
+    unilateral: false,
+    restSeconds: 120,
+    loadIncrement: 2.5,
+    note: 'My saved explanation',
+  };
+  const base = await createExercise(source.db, input);
+  const variant = await createExercise(source.db, {
+    ...input,
+    name: 'My cable variant',
+    equipmentType: 'cable',
+    variantOf: base,
+  });
+  await archiveExercise(source.db, variant, true);
+  const backup = await exportBackup(source.db);
+  const target = fresh();
+  await importBackup(target.db, parseBackup(JSON.parse(JSON.stringify(backup))));
+  const card = await loadExerciseCard(target.db, variant);
+  assert.equal(card.familyId, base);
+  assert.equal(card.exercise.archived, 1);
+  assert.equal(card.notes[''], input.note);
+  assert.equal(card.variants.length, 2);
+});
 
 test('what comes out of a phone goes back into another one unchanged', async () => {
   const source = fresh();

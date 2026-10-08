@@ -176,6 +176,7 @@ export function trimRoutine(
 }
 
 type RoutineExerciseRow = {
+  archived: number;
   exercise_id: string;
   name_es: string;
   position: number;
@@ -286,6 +287,7 @@ async function bestVariants(
        FROM training_exercise_variant v
        JOIN training_exercise e ON e.id = v.exercise_id
        JOIN training_exercise_gym g ON g.exercise_id = v.exercise_id AND g.gym_id = ?
+   WHERE e.archived = 0 AND v.auto_select = 1
    ORDER BY v.base_exercise_id, v.rank;`,
     [gymId],
   );
@@ -312,17 +314,17 @@ export async function loadRoutine(
   gymId: string | null = null,
 ): Promise<RoutineExercise[]> {
   const rows = await db.getAllAsync<RoutineExerciseRow>(
-    `SELECT re.exercise_id, e.name_es, re.position, re.tier,
+    `SELECT re.exercise_id, e.name_es, e.archived, re.position, re.tier,
             re.sets_full, re.sets_minus_25, re.sets_minus_50, re.sets_express,
             re.target_rep_mode, re.target_rep_min, re.target_rep_max,
             e.default_rest_seconds, e.unilateral,
-            re.full_time_exercise_id,
+            f.id AS full_time_exercise_id,
             f.name_es              AS full_time_name,
             f.unilateral           AS full_time_unilateral,
             f.default_rest_seconds AS full_time_rest_seconds
        FROM training_routine_exercise re
        JOIN training_exercise e ON e.id = re.exercise_id
-       LEFT JOIN training_exercise f ON f.id = re.full_time_exercise_id
+       LEFT JOIN training_exercise f ON f.id = re.full_time_exercise_id AND f.archived = 0
       WHERE re.routine_id = ?
         -- Lo que el gimnasio no tiene no se planea: el interruptor "Donde lo tengo"
         -- cambiaba la ficha y nada mas. Un gimnasio sin nada marcado ("Otro") no dice
@@ -335,7 +337,7 @@ export async function loadRoutine(
              WHERE g.gym_id = ?
                AND (g.exercise_id = re.exercise_id
                     OR g.exercise_id IN (SELECT v.exercise_id FROM training_exercise_variant v
-                                          WHERE v.base_exercise_id = re.exercise_id))
+                                          WHERE v.base_exercise_id = re.exercise_id AND v.auto_select = 1))
           )
         )
    ORDER BY re.position;`,
@@ -344,7 +346,7 @@ export async function loadRoutine(
 
   const variants = await bestVariants(db, gymId);
 
-  return rows.map((row) => {
+  return rows.flatMap((row) => {
     const here = variants.get(row.exercise_id);
     const fullTime = here
       ? {
@@ -362,11 +364,12 @@ export async function loadRoutine(
             defaultRestSeconds: row.full_time_rest_seconds ?? row.default_rest_seconds,
           };
 
+    if (row.archived && !fullTime) return [];
     return {
-      exerciseId: row.exercise_id,
-      name: row.name_es,
-      unilateral: row.unilateral === 1,
-      fullTime,
+      exerciseId: row.archived ? fullTime!.exerciseId : row.exercise_id,
+      name: row.archived ? fullTime!.name : row.name_es,
+      unilateral: row.archived ? fullTime!.unilateral : row.unilateral === 1,
+      fullTime: row.archived ? null : fullTime,
       position: row.position,
       tier: row.tier,
       setsFull: row.sets_full,
@@ -376,7 +379,7 @@ export async function loadRoutine(
       repMode: row.target_rep_mode,
       repMin: row.target_rep_min,
       repMax: row.target_rep_max,
-      defaultRestSeconds: row.default_rest_seconds,
+      defaultRestSeconds: row.archived ? fullTime!.defaultRestSeconds : row.default_rest_seconds,
     };
   });
 }
@@ -436,7 +439,7 @@ export function nextPendingExercise(
 export async function saveSessionPlan(
   db: SQLiteDatabase,
   sessionId: string,
-  exercises: readonly PlannedExercise[],
+  exercises: readonly PlannedSet[],
 ): Promise<void> {
   // Replacing rather than adding, because approving a plan twice for one session
   // means he corrected it, and the second plan is the one he is training.
