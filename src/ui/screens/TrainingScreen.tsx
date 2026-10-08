@@ -9,6 +9,7 @@ import { Card } from '../Card.tsx';
 import { ChevronRight } from '../icons.ts';
 import { restingSince } from '../../training/calculations.ts';
 import { nextPendingExercise, suggestedRest } from '../../training/routines.ts';
+import { familyOf } from '../../training/variants.ts';
 import type { Implement } from '../../training/sessions.ts';
 import { Chip } from '../Chip.tsx';
 import { formatWeight } from '../../core/units.ts';
@@ -16,13 +17,14 @@ import { RestLandscape } from '../RestLandscape.tsx';
 import { TrainingTiming } from '../TrainingTiming.tsx';
 import { SessionLog } from '../SessionLog.tsx';
 import { SessionPlanner } from '../SessionPlanner.tsx';
+import { SessionPlanEditor } from '../SessionPlanEditor.tsx';
 import { useSwipeLock } from '../SwipeLock.tsx';
 
 import { Screen } from './Screen.tsx';
 import { font, sheet } from '../theme.ts';
 
 type SessionAction = {
-  kind: 'start' | 'routine' | 'finish' | 'reopen';
+  kind: 'start' | 'finish' | 'reopen';
   sessionId: string | null;
   error: string;
   work: () => Promise<void>;
@@ -44,13 +46,18 @@ export function TrainingScreen() {
     saveDraft,
     endSession,
     reopenSession,
-    switchRoutine,
+    loadTrainingPlan,
+    saveTrainingPlan,
+    replaceTrainingVariant,
     whereAmI,
   } = useAppData();
   const navigation = useNavigation<{
     navigate: (name: string, params?: { routineId?: string }) => void;
   }>();
   const [changingRoutine, setChangingRoutine] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<{ sessionId: string; routineId?: string } | null>(
+    null,
+  );
   const [pendingAction, setPendingAction] = useState<SessionAction['kind'] | null>(null);
   const [failedAction, setFailedAction] = useState<SessionAction | null>(null);
   const writingSession = useRef(false);
@@ -166,6 +173,45 @@ export function TrainingScreen() {
     if (next !== null && next !== exerciseId) selectExercise(next);
   }, [exerciseId, setsDoneByExercise, plannedByExercise, planExerciseIds, selectExercise]);
 
+  const selectVariant = useCallback(
+    async (targetId: string) => {
+      const catalog = ready?.exercise.exercises ?? [];
+      const target = catalog.find((entry) => entry.id === targetId);
+      if (!target || !openSessionId) return;
+      const source =
+        (plan ?? []).find((entry) => {
+          const candidate = catalog.find((item) => item.id === entry.exerciseId);
+          return (
+            candidate &&
+            familyOf(candidate) === familyOf(target) &&
+            entry.exerciseId !== targetId &&
+            entry.sets > (setsDoneByExercise.get(entry.exerciseId) ?? 0) &&
+            entry.exerciseId === exerciseId
+          );
+        }) ??
+        (plan ?? []).find((entry) => {
+          const candidate = catalog.find((item) => item.id === entry.exerciseId);
+          return (
+            candidate &&
+            familyOf(candidate) === familyOf(target) &&
+            entry.exerciseId !== targetId &&
+            entry.sets > (setsDoneByExercise.get(entry.exerciseId) ?? 0)
+          );
+        });
+      if (source) await replaceTrainingVariant(openSessionId, source.exerciseId, targetId);
+      else selectExercise(targetId);
+    },
+    [
+      ready?.exercise.exercises,
+      openSessionId,
+      plan,
+      exerciseId,
+      setsDoneByExercise,
+      replaceTrainingVariant,
+      selectExercise,
+    ],
+  );
+
   const changeUnit = useCallback(
     (next: 'kg' | 'lb') => saveSetting('weight_unit', next),
     [saveSetting],
@@ -241,6 +287,7 @@ export function TrainingScreen() {
   const session = loaded.today.session;
   const planned = loaded.plan.find((entry) => entry.exerciseId === exerciseId);
   const routine = loaded.routines.find((item) => item.id === session?.routine_id) ?? null;
+  const planOpen = editingPlan?.sessionId === session?.id && editingPlan !== null;
 
   // De lado y con el entreno abierto, la pantalla es otra cosa: el descanso en grande y
   // nada mas. Spec 9: el descanso se mide, no se exige, y mirarlo no deberia costar
@@ -319,8 +366,7 @@ export function TrainingScreen() {
                     label={changingRoutine ? 'Dejar así' : 'Cambiar'}
                     accessibilityLabel="Cambiar la rutina de hoy"
                     variant="ghost"
-                    disabled={pendingAction !== null}
-                    loading={pendingAction === 'routine'}
+                    disabled={pendingAction !== null || planOpen || session.end_time !== null}
                     onPress={() => setChangingRoutine((open) => !open)}
                   />
                 </View>
@@ -333,23 +379,17 @@ export function TrainingScreen() {
                         label={item.name}
                         accessibilityLabel={`Cambiar a ${item.name}`}
                         selected={item.id === session.routine_id}
-                        disabled={pendingAction !== null}
+                        disabled={
+                          pendingAction !== null || planOpen || item.id === session.routine_id
+                        }
                         onPress={() => {
-                          void performSessionAction({
-                            kind: 'routine',
-                            sessionId: session.id,
-                            error: `No se pudo cambiar la rutina a ${item.name}.`,
-                            work: async () => {
-                              await switchRoutine(item.id);
-                              setChangingRoutine(false);
-                            },
-                          });
+                          setEditingPlan({ sessionId: session.id, routineId: item.id });
+                          setChangingRoutine(false);
                         }}
                       />
                     ))}
                   </View>
                 )}
-                {failedAction?.kind === 'routine' && failureNote}
 
                 {/* Spec 8.5: se pregunta al llegar y aparte de empezar, asi que no esta en
                 el camino critico. Spec 5.4 la deja fuera de una sesion escrita despues. */}
@@ -375,6 +415,36 @@ export function TrainingScreen() {
                 </View>
               </Card>
 
+              {!planOpen && session.end_time === null && (
+                <Button
+                  label="Editar lo que falta"
+                  disabled={pendingAction !== null}
+                  onPress={() => setEditingPlan({ sessionId: session.id })}
+                />
+              )}
+              {planOpen && (
+                <SessionPlanEditor
+                  key={`${editingPlan.sessionId}:${editingPlan.routineId ?? ''}`}
+                  sessionId={editingPlan.sessionId}
+                  routineId={editingPlan.routineId}
+                  catalog={loaded.exercise.exercises}
+                  onLoad={loadTrainingPlan}
+                  onSave={saveTrainingPlan}
+                  onCancel={() => setEditingPlan(null)}
+                  onApplied={(edit) => {
+                    setEditingPlan(null);
+                    setFailedAction(null);
+                    const done = new Map(edit.done.map((entry) => [entry.exerciseId, entry.sets]));
+                    const pending = edit.exercises.filter(
+                      (entry) => entry.sets > (done.get(entry.exerciseId) ?? 0),
+                    );
+                    if (!pending.some((entry) => entry.exerciseId === exerciseId)) {
+                      const next = pending[0]?.exerciseId ?? edit.exercises[0]?.exerciseId;
+                      if (next) selectExercise(next);
+                    }
+                  }}
+                />
+              )}
               <TrainingTiming
                 session={session}
                 revision={activeSets}
@@ -392,37 +462,40 @@ export function TrainingScreen() {
                       }
                 }
               />
-              <SessionLog
-                exercises={loaded.exercise.exercises}
-                selectedExerciseId={exerciseId}
-                onSelectExercise={selectExercise}
-                todaySets={loaded.exercise.todaySets}
-                restingSince={restFrom}
-                plan={loaded.plan}
-                lastSets={loaded.exercise.lastSets}
-                marks={loaded.exercise.marks}
-                sessionVolume={loaded.today.sessionVolume}
-                unit={loaded.unit}
-                onChangeUnit={changeUnit}
-                plannedSets={planned?.sets ?? null}
-                planExerciseIds={planExerciseIds}
-                setsDoneByExercise={setsDoneByExercise}
-                plannedByExercise={plannedByExercise}
-                onAddSet={logSet}
-                onRemoveSet={removeSet}
-                startedAt={session.start_time}
-                draft={loaded.sessionDraft}
-                onDraftChange={changeDraft}
-                finishedAt={session.end_time}
-                onFinish={finishTraining}
-                onReopen={resumeTraining}
-                sessionAction={pendingAction}
-                sessionProblem={
-                  failedAction?.kind === 'finish' || failedAction?.kind === 'reopen'
-                    ? failureNote
-                    : null
-                }
-              />
+              <View style={planOpen ? styles.hidden : undefined}>
+                <SessionLog
+                  exercises={loaded.exercise.exercises}
+                  selectedExerciseId={exerciseId}
+                  onSelectExercise={selectExercise}
+                  onSelectVariant={selectVariant}
+                  todaySets={loaded.exercise.todaySets}
+                  restingSince={restFrom}
+                  plan={loaded.plan}
+                  lastSets={loaded.exercise.lastSets}
+                  marks={loaded.exercise.marks}
+                  sessionVolume={loaded.today.sessionVolume}
+                  unit={loaded.unit}
+                  onChangeUnit={changeUnit}
+                  plannedSets={planned?.sets ?? null}
+                  planExerciseIds={planExerciseIds}
+                  setsDoneByExercise={setsDoneByExercise}
+                  plannedByExercise={plannedByExercise}
+                  onAddSet={logSet}
+                  onRemoveSet={removeSet}
+                  startedAt={session.start_time}
+                  draft={loaded.sessionDraft}
+                  onDraftChange={changeDraft}
+                  finishedAt={session.end_time}
+                  onFinish={finishTraining}
+                  onReopen={resumeTraining}
+                  sessionAction={pendingAction}
+                  sessionProblem={
+                    failedAction?.kind === 'finish' || failedAction?.kind === 'reopen'
+                      ? failureNote
+                      : null
+                  }
+                />
+              </View>
             </>
           )}
 

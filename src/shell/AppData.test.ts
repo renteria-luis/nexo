@@ -160,12 +160,14 @@ test('routine, finish and reopen failures reach the caller without painting a fa
   raw.exec(
     "CREATE TRIGGER reject_plan BEFORE INSERT ON training_session_plan BEGIN SELECT RAISE(ABORT, 'plan failure'); END;",
   );
-  await assert.rejects(app.switchRoutine('pull'), /plan failure/);
+  const sessionId = app.state.loaded.today.session.id;
+  const edit = await app.loadTrainingPlan(sessionId, 'pull');
+  await assert.rejects(app.saveTrainingPlan(edit), /plan failure/);
   await screen.settle();
   assert.equal((await actions()).state.loaded.today.session.routine_id, 'push');
   assert.equal(raw.prepare('SELECT routine_id FROM training_session;').get()!.routine_id, 'push');
   raw.exec('DROP TRIGGER reject_plan;');
-  await app.switchRoutine('pull');
+  await app.saveTrainingPlan(edit);
   app = await actions();
   assert.equal(app.state.loaded.today.session.routine_id, 'pull');
   raw.exec(

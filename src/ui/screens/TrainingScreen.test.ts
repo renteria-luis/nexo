@@ -38,7 +38,8 @@ function fixture(active = false) {
     beginSession: async (..._args: unknown[]) => {},
     endSession: async () => {},
     reopenSession: async () => {},
-    switchRoutine: async (_id: string) => {},
+    loadTrainingPlan: async (_id: string) => {},
+    saveTrainingPlan: async (_edit: unknown) => {},
   };
   const screen = renderModule('src/ui/screens/TrainingScreen.tsx', {
     '@react-navigation/native': { useNavigation: () => ({ navigate() {} }), useFocusEffect() {} },
@@ -63,6 +64,7 @@ function fixture(active = false) {
       }),
     },
     '../TrainingTiming.tsx': { TrainingTiming: 'TrainingTiming' },
+    '../SessionPlanEditor.tsx': { SessionPlanEditor: 'SessionPlanEditor' },
     '../RestLandscape.tsx': { RestLandscape: 'RestLandscape' },
   }).mount('TrainingScreen');
   const component = async (type: string) => {
@@ -72,7 +74,7 @@ function fixture(active = false) {
   };
   const button = async (label: string) => {
     const found = nodes(await screen.settle()).find(
-      (node) => node.props.accessibilityLabel === label,
+      (node) => (node.props.accessibilityLabel ?? node.props.label) === label,
     );
     assert.ok(found, label);
     return found.props;
@@ -108,24 +110,27 @@ test('the start handler catches same-render double taps, displays failure and pe
   assert.equal(calls, 2);
 });
 
-test('routine errors persist across unrelated data refreshes and retry the chosen routine', async (t) => {
-  t.mock.method(console, 'error', () => {});
-  const { app, button, screen } = fixture(true);
-  let calls = 0;
-  app.switchRoutine = async (id) => {
-    calls++;
-    assert.equal(id, 'pull');
-    if (calls === 1) throw new Error('storage failure');
+test('routine changes open a review without writing, and cancelling preserves the session', async () => {
+  const { app, button, component, screen } = fixture(true);
+  let saves = 0;
+  app.saveTrainingPlan = async () => {
+    saves++;
   };
   (await button('Cambiar la rutina de hoy')).onPress();
   (await button('Cambiar a Pull')).onPress();
-  assert.match(textOf(await screen.settle()), /No se pudo cambiar la rutina a Pull/);
-  app.state = { ...app.state, loaded: { ...app.state.loaded } };
-  assert.match(textOf(await screen.settle()), /No se pudo cambiar la rutina a Pull/);
+  const editor = await component('SessionPlanEditor');
+  assert.equal(editor.sessionId, 'session');
+  assert.equal(editor.routineId, 'pull');
   assert.equal(app.state.loaded.today.session?.routine_id, 'push');
-  (await button('Reintentar la acción del entreno')).onPress();
-  assert.doesNotMatch(textOf(await screen.settle()), /No se pudo cambiar/);
-  assert.equal(calls, 2);
+  assert.equal(saves, 0);
+  editor.onCancel();
+  assert.equal(
+    nodes(await screen.settle()).some((node) => node.type === 'SessionPlanEditor'),
+    false,
+  );
+  assert.equal(app.state.loaded.today.session?.routine_id, 'push');
+  (await button('Editar lo que falta')).onPress();
+  assert.equal((await component('SessionPlanEditor')).routineId, undefined);
 });
 
 test('finish and reopen errors appear beside their controls, with retry and pending state', async (t) => {

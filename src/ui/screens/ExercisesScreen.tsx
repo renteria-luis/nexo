@@ -1,11 +1,14 @@
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Text, View, type StyleProp, type TextStyle } from 'react-native';
 
 import { matchesSearch } from '../../nutrition/index.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 import type { CatalogEntry, ExerciseCard, ExerciseRoutine } from '../../training/catalog.ts';
 import { SWAPPABLE, type Swappable } from '../../training/queries.ts';
+import type { EquipmentType } from '../../db/types.ts';
+import { EQUIPMENT_NAMES, variantLabel } from '../../training/variants.ts';
+import { SavedText } from '../SavedText.tsx';
 import type { TimeBudget } from '../../training/routines.ts';
 
 import { Button } from '../Button.tsx';
@@ -40,6 +43,163 @@ const TIER_ES: Record<number, string> = {
   3: 'accesorio',
   4: 'opcional',
 };
+
+function NewExerciseForm({
+  parent,
+  onCreated,
+  onCancel,
+}: {
+  parent?: ExerciseCard;
+  onCreated: (id: string) => void;
+  onCancel: () => void;
+}) {
+  const { createExercise } = useAppData();
+  const [name, setName] = useState('');
+  const [muscle, setMuscle] = useState(parent?.exercise.primary_muscle ?? 'chest');
+  const [secondary, setSecondary] = useState<string[]>(
+    () =>
+      parent?.variants
+        .find((item) => item.id === parent.exercise.id)
+        ?.muscles.filter((item) => item.contribution === 0.5)
+        .map((item) => item.muscle) ?? [],
+  );
+  const [equipment, setEquipment] = useState<EquipmentType>(
+    parent?.exercise.equipment_type ?? 'dumbbell',
+  );
+  const [unilateral, setUnilateral] = useState(false);
+  const [rest, setRest] = useState(String(parent?.exercise.default_rest_seconds ?? 120));
+  const [increment, setIncrement] = useState(String(parent?.exercise.load_increment ?? 2.5));
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const writing = useRef(false);
+  const save = async () => {
+    if (writing.current) return;
+    writing.current = true;
+    setBusy(true);
+    setProblem(null);
+    try {
+      const id = await createExercise({
+        name,
+        muscle,
+        equipmentType: equipment,
+        unilateral,
+        restSeconds: Number(rest),
+        loadIncrement: Number(increment),
+        note,
+        variantOf: parent?.familyId,
+        secondaryMuscles: secondary.filter((item) => item !== muscle),
+      });
+      onCreated(id);
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : 'No se pudo crear el ejercicio.');
+    } finally {
+      writing.current = false;
+      setBusy(false);
+    }
+  };
+  return (
+    <Card title={parent ? `Nueva variante de ${parent.familyName}` : 'Nuevo ejercicio'}>
+      <Field label="Nombre">
+        <TextField
+          value={name}
+          onChange={setName}
+          accessibilityLabel="Nombre del nuevo ejercicio"
+          style={styles.input}
+        />
+      </Field>
+      <Field label="Equipo">
+        <View style={styles.chips}>
+          {Object.entries(EQUIPMENT_NAMES).map(([id, label]) => (
+            <Chip
+              key={id}
+              label={label}
+              selected={equipment === id}
+              onPress={() => setEquipment(id as EquipmentType)}
+            />
+          ))}
+        </View>
+      </Field>
+      <Field label="Músculo principal">
+        <View style={styles.chips}>
+          {Object.entries(MUSCLE_ES).map(([id, label]) => (
+            <Chip
+              key={id}
+              label={label}
+              accessibilityLabel={`Principal ${label}`}
+              selected={muscle === id}
+              onPress={() => setMuscle(id)}
+            />
+          ))}
+        </View>
+      </Field>
+      <Field label="Músculos secundarios (opcional)">
+        <View style={styles.chips}>
+          {Object.entries(MUSCLE_ES)
+            .filter(([id]) => id !== muscle)
+            .map(([id, label]) => (
+              <Chip
+                key={id}
+                label={label}
+                accessibilityLabel={`Secundario ${label}`}
+                selected={secondary.includes(id)}
+                onPress={() =>
+                  setSecondary((current) =>
+                    current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+                  )
+                }
+              />
+            ))}
+        </View>
+      </Field>
+      <SwitchRow
+        label="Unilateral"
+        value={unilateral}
+        onChange={setUnilateral}
+        hint="Un lado por vez; el cálculo incluye ambos lados."
+      />
+      <Field label="Descanso (segundos)">
+        <NumericField
+          value={rest}
+          onChange={setRest}
+          accessibilityLabel="Descanso del nuevo ejercicio"
+          style={styles.input}
+        />
+      </Field>
+      <Field label="Salto de peso (kg)">
+        <NumericField
+          value={increment}
+          onChange={setIncrement}
+          allowDecimal
+          accessibilityLabel="Salto de peso del nuevo ejercicio"
+          style={styles.input}
+        />
+      </Field>
+      <Field label="Explicación">
+        <TextField
+          value={note}
+          onChange={setNote}
+          multiline
+          accessibilityLabel="Explicación del nuevo ejercicio"
+          style={[styles.input, styles.note]}
+        />
+      </Field>
+      {problem && (
+        <Text accessibilityRole="alert" style={styles.problem}>
+          {problem}
+        </Text>
+      )}
+      <Button
+        label={busy ? 'Creando…' : 'Guardar nuevo ejercicio'}
+        disabled={busy || !name.trim()}
+        onPress={() => {
+          void save();
+        }}
+      />
+      <Button label="Cancelar creación" variant="ghost" disabled={busy} onPress={onCancel} />
+    </Card>
+  );
+}
 
 /** Un dato con su nombre encima, como en el registro del dia. */
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -122,6 +282,8 @@ function SavedNumber({
  */
 export function ExercisesScreen() {
   const { state, loadCatalog } = useAppData();
+  const [creating, setCreating] = useState(false);
+  const [archived, setArchived] = useState(false);
   const navigation = useNavigation<{
     navigate: (name: string, params: { exerciseId: string }) => void;
   }>();
@@ -151,15 +313,31 @@ export function ExercisesScreen() {
 
   if (state.phase !== 'ready') return <Screen title="Ejercicios">{null}</Screen>;
 
-  const shown = (list ?? []).filter((item) => matchesSearch([item.name, item.muscle], search));
+  const shown = (list ?? []).filter(
+    (item) =>
+      Boolean(item.archived) === archived &&
+      matchesSearch([item.name, item.familyName, item.muscle], search),
+  );
 
   return (
     <Screen title="Ejercicios">
       <Text style={styles.intro}>
-        Todo lo que la app sabe de cada ejercicio, para cambiarlo sin pedirlo: con qué se puede
-        hacer, qué dice su (i), en qué gimnasio lo tienes y cuántas series le toca en cada rutina y
-        con cada tiempo.
+        Tus ejercicios, variantes y explicaciones. Cada variante conserva su historial.
       </Text>
+      <View style={styles.chips}>
+        <Chip label="Activos" selected={!archived} onPress={() => setArchived(false)} />
+        <Chip label="Archivados" selected={archived} onPress={() => setArchived(true)} />
+      </View>
+      <Button label="Crear ejercicio" onPress={() => setCreating(true)} />
+      {creating && (
+        <NewExerciseForm
+          onCancel={() => setCreating(false)}
+          onCreated={(id) => {
+            setCreating(false);
+            navigation.navigate('Ejercicio', { exerciseId: id });
+          }}
+        />
+      )}
 
       <TextField
         value={search}
@@ -178,7 +356,8 @@ export function ExercisesScreen() {
             <View style={styles.rowText}>
               <Text style={styles.rowName}>{item.name}</Text>
               <Text style={styles.rowDetail}>
-                {MUSCLE_ES[item.muscle] ?? item.muscle}
+                {MUSCLE_ES[item.muscle] ?? item.muscle} · {EQUIPMENT_NAMES[item.equipmentType]}
+                {item.unilateral ? ' · unilateral' : ''}
                 {item.implements.length > 1
                   ? ` · ${item.implements.map((option) => IMPLEMENT_ES[option].toLowerCase()).join(', ')}`
                   : ''}
@@ -210,12 +389,18 @@ export function ExerciseScreen() {
     editExercise,
     editExerciseNote,
     editExerciseGym,
+    archiveExercise,
+    editExerciseRoutine,
     editRoutineSets,
     editRoutineReps,
     editRoutineTier,
   } = useAppData();
   const route = useRoute<RouteProp<Record<string, { exerciseId: string }>, string>>();
   const exerciseId = route.params.exerciseId;
+  const navigation = useNavigation<{
+    navigate: (name: string, params: { exerciseId: string }) => void;
+  }>();
+  const [creatingVariant, setCreatingVariant] = useState(false);
 
   const [card, setCard] = useState<ExerciseCard | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -225,11 +410,22 @@ export function ExerciseScreen() {
     setProblem(error instanceof Error ? error.message : String(error));
   }, []);
 
+  const request = useRef(0);
   const reload = useCallback(() => {
-    loadExercise(exerciseId).then(setCard).catch(complain);
+    const revision = ++request.current;
+    loadExercise(exerciseId)
+      .then((loaded) => {
+        if (request.current === revision) setCard(loaded);
+      })
+      .catch(complain);
   }, [loadExercise, exerciseId, complain]);
 
   useEffect(reload, [reload]);
+  const [seenId, setSeenId] = useState(exerciseId);
+  if (seenId !== exerciseId) {
+    setSeenId(exerciseId);
+    setCreatingVariant(false);
+  }
 
   /** Cada cambio se guarda solo y la ficha se vuelve a leer de la base. */
   const after = useCallback(
@@ -244,7 +440,19 @@ export function ExerciseScreen() {
     [reload, complain],
   );
 
-  if (state.phase !== 'ready' || card === null) return <Screen>{null}</Screen>;
+  if (state.phase !== 'ready' || card === null || card.exercise.id !== exerciseId)
+    return (
+      <Screen title="Ejercicio">
+        {problem ? (
+          <>
+            <Text style={styles.problem}>{problem}</Text>
+            <Button label="Reintentar" onPress={reload} />
+          </>
+        ) : (
+          <Text style={styles.hint}>Cargando…</Text>
+        )}
+      </Screen>
+    );
 
   const exercise = card.exercise;
 
@@ -254,19 +462,14 @@ export function ExerciseScreen() {
 
       <Card>
         <Text style={styles.hint}>
-          {MUSCLE_ES[exercise.primary_muscle] ?? exercise.primary_muscle} ·{' '}
-          {exercise.equipment_type}
+          {MUSCLE_ES[exercise.primary_muscle] ?? exercise.primary_muscle} · {variantLabel(exercise)}
         </Text>
 
         <Field label="Nombre">
-          <TextField
-            defaultValue={exercise.name_es}
-            onCommit={(text) => {
-              const next = text.trim();
-              if (next !== '' && next !== exercise.name_es) {
-                after(editExercise(exercise.id, { name: next }));
-              }
-            }}
+          <SavedText
+            key={`${exercise.id}-name`}
+            value={exercise.name_es}
+            onSave={(name) => editExercise(exercise.id, { name })}
             accessibilityLabel="Nombre del ejercicio"
             style={styles.input}
             focusedStyle={styles.inputEditing}
@@ -307,58 +510,81 @@ export function ExerciseScreen() {
         />
       </Card>
 
-      <Card title="Con qué se hace">
+      <Card title="Variantes">
+        <Field label="Nombre de la familia">
+          <SavedText
+            key={`${card.familyId}-family`}
+            value={card.familyName}
+            onSave={(familyName) => editExercise(exercise.id, { familyName })}
+            accessibilityLabel="Nombre de la familia"
+            style={styles.input}
+            focusedStyle={styles.inputEditing}
+          />
+        </Field>
         <Text style={styles.hint}>
-          Con dos o más, en el entreno salen los botones para elegir. Con uno o ninguno no hay nada
-          que elegir y no sale ninguno.
+          Al cambiar de variante durante el entreno, se reemplazan sus series pendientes. Cada una
+          tiene sus propios pesos y tiempos.
         </Text>
-        {SWAPPABLE.map((option) => (
-          <SwitchRow
-            key={option}
-            label={IMPLEMENT_ES[option]}
-            value={card.implements.includes(option)}
-            onChange={(next) =>
-              after(
-                editExercise(exercise.id, {
-                  implements: next
-                    ? [...card.implements, option]
-                    : card.implements.filter((kept) => kept !== option),
-                }),
-              )
-            }
+        {card.variants.map((variant) => (
+          <Button
+            key={variant.id}
+            label={`${variant.name_es} · ${variantLabel(variant)}${variant.archived ? ' · archivado' : ''}`}
+            disabled={variant.id === exercise.id}
+            onPress={() => navigation.navigate('Ejercicio', { exerciseId: variant.id })}
           />
         ))}
+        <Button label="Crear variante" onPress={() => setCreatingVariant(true)} />
+        {creatingVariant && (
+          <NewExerciseForm
+            parent={card}
+            onCancel={() => setCreatingVariant(false)}
+            onCreated={(id) => {
+              setCreatingVariant(false);
+              navigation.navigate('Ejercicio', { exerciseId: id });
+            }}
+          />
+        )}
       </Card>
 
-      <Card title="Lo que dice la (i)">
+      <Card title="Explicación">
         <Text style={styles.hint}>
-          La nota general vale siempre; la de un implemento manda cuando lo estás haciendo con ese.
-          Vacía la borra.
+          Se guarda mientras escribes. Si existe una nota específica del equipo, se muestra antes
+          que la general.
         </Text>
-
         <Field label="General">
-          <TextField
-            defaultValue={card.notes[''] ?? ''}
+          <SavedText
+            key={`${exercise.id}-general`}
+            value={card.notes[''] ?? ''}
             multiline
-            onCommit={(text) => after(editExerciseNote(exercise.id, '', text))}
+            onSave={(text) => editExerciseNote(exercise.id, '', text)}
             accessibilityLabel="Nota general"
             style={[styles.input, styles.note]}
             focusedStyle={styles.inputEditing}
           />
         </Field>
-
-        {card.implements.map((option) => (
-          <Field key={option} label={IMPLEMENT_ES[option]}>
-            <TextField
-              defaultValue={card.notes[option] ?? ''}
+        {SWAPPABLE.filter((option) => card.notes[option] !== undefined).map((option) => (
+          <Field key={option} label={`Nota con ${IMPLEMENT_ES[option].toLowerCase()}`}>
+            <SavedText
+              key={`${exercise.id}-${option}`}
+              value={card.notes[option] ?? ''}
               multiline
-              onCommit={(text) => after(editExerciseNote(exercise.id, option, text))}
+              onSave={(text) => editExerciseNote(exercise.id, option, text)}
               accessibilityLabel={`Nota con ${IMPLEMENT_ES[option].toLowerCase()}`}
               style={[styles.input, styles.note]}
               focusedStyle={styles.inputEditing}
             />
           </Field>
         ))}
+      </Card>
+      <Card title="Catálogo">
+        <Text style={styles.hint}>
+          Archivar oculta esta variante de las nuevas selecciones y conserva sus series, notas e
+          historial.
+        </Text>
+        <Button
+          label={exercise.archived ? 'Restaurar ejercicio' : 'Archivar ejercicio'}
+          onPress={() => after(archiveExercise(exercise.id, !exercise.archived))}
+        />
       </Card>
 
       <Card title="Dónde lo tengo">
@@ -375,8 +601,30 @@ export function ExerciseScreen() {
         ))}
       </Card>
 
+      <Card title="Añadir a una rutina">
+        <Text style={styles.hint}>
+          Los cambios se aplican a próximos entrenos. El plan de una sesión iniciada se edita desde
+          Entreno.
+        </Text>
+        {card.availableRoutines.map((routine) => (
+          <Button
+            key={routine.id}
+            label={`Añadir a ${routine.name}`}
+            disabled={Boolean(exercise.archived)}
+            onPress={() => after(editExerciseRoutine(exercise.id, routine.id, true))}
+          />
+        ))}
+        {card.availableRoutines.length === 0 && (
+          <Text style={styles.hint}>Ya está en todas tus rutinas.</Text>
+        )}
+      </Card>
       {card.routines.map((routine) => (
         <Card key={routine.routineId} title={`En ${routine.name}`}>
+          <Button
+            label={`Quitar de ${routine.name}`}
+            variant="ghost"
+            onPress={() => after(editExerciseRoutine(exercise.id, routine.routineId, false))}
+          />
           <Text style={styles.hint}>
             Puesto {routine.position} de la rutina. Las series vacías lo dejan fuera con ese tiempo.
           </Text>

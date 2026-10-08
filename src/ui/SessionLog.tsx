@@ -11,10 +11,12 @@ import {
   type LoggedSet,
 } from '../training/calculations.ts';
 import { fold } from '../nutrition/picker.ts';
-import { isPerSide, type CatalogExercise, type Swappable } from '../training/queries.ts';
+import { isPerSide, type CatalogExercise } from '../training/queries.ts';
 import { suggestedRest, type PlannedSet } from '../training/routines.ts';
 import { draftFieldsFor, fieldsAfterSelect, type SessionDraft } from '../core/session-draft.ts';
 import { clampRpe, stepRpe as steppedRpe, type Implement } from '../training/sessions.ts';
+
+import { familyOf, variantLabel } from '../training/variants.ts';
 
 import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
@@ -24,19 +26,6 @@ import { SearchField } from './SearchField.tsx';
 import { ConfirmButton, InfoDot, InfoText } from './InfoBubble.tsx';
 import { NumericField } from './NumericField.tsx';
 import { font, sheet, shape, theme } from './theme.ts';
-
-/**
- * Con que se puede hacer el mismo ejercicio.
- *
- * Solo la mancuerna se escribe por mano: en polea y en maquina el numero del pin ya
- * es todo lo que se movio. Sin la opcion de maquina habia que marcar mancuerna y el
- * volumen salia al doble.
- */
-const IMPLEMENTS: { id: Swappable; short: string; long: string }[] = [
-  { id: 'dumbbell', short: 'mancuerna', long: 'Con mancuernas' },
-  { id: 'cable', short: 'polea', long: 'En polea' },
-  { id: 'machine', short: 'máquina', long: 'En máquina' },
-];
 
 /** Donde cae casi siempre una serie efectiva, asi que el primer toque arranca ahi. */
 const RPE_START = 8;
@@ -84,6 +73,7 @@ export type SessionLogProps = {
   exercises: CatalogExercise[];
   selectedExerciseId: string | null;
   onSelectExercise: (exerciseId: string) => void;
+  onSelectVariant?: (exerciseId: string) => Promise<void>;
   /** Sets already logged today for the selected exercise. */
   todaySets: LoggedSet[];
   /** Spec 6.4: what he did last time, which is what he copies. */
@@ -127,7 +117,7 @@ export type SessionLogProps = {
   onFinish: () => void;
   /** Deshace el terminar: es el unico boton de aqui sin vuelta atras. */
   onReopen: () => void;
-  sessionAction?: 'start' | 'routine' | 'finish' | 'reopen' | null;
+  sessionAction?: 'start' | 'finish' | 'reopen' | null;
   sessionProblem?: ReactNode;
 };
 
@@ -160,7 +150,7 @@ const ExerciseRow = memo(function ExerciseRow({
 
   return (
     <Pressable
-      accessibilityLabel={`${item.name_es}${
+      accessibilityLabel={`${item.familyName ?? item.name_es}${
         progress === 'done' ? ', hecho' : progress === 'partial' ? ', a medias' : ''
       }`}
       onPress={() => onPick(item.id)}
@@ -187,7 +177,7 @@ const ExerciseRow = memo(function ExerciseRow({
         ]}
         numberOfLines={1}
       >
-        {item.name_es}
+        {item.familyName ?? item.name_es}
       </Text>
       <Text style={styles.exerciseCount}>
         {done}
@@ -201,6 +191,7 @@ export const SessionLog = memo(function SessionLog({
   exercises,
   selectedExerciseId,
   onSelectExercise,
+  onSelectVariant,
   todaySets,
   lastSets,
   restingSince,
@@ -233,15 +224,64 @@ export const SessionLog = memo(function SessionLog({
   // Escribir busca en el catalogo entero: la maquina ocupada se cambia por otra que casi
   // nunca esta en el plan de hoy, y recorrer treinta nombres con el pulgar no es buscar.
   const [search, setSearch] = useState('');
-  const inPlan = exercises.filter((item) => planExerciseIds.includes(item.id));
+  const available = exercises.filter((item) => !item.archived || planExerciseIds.includes(item.id));
+  const families = new Map<string, CatalogExercise[]>();
+  for (const item of available) {
+    const family = familyOf(item);
+    families.set(family, [...(families.get(family) ?? []), item]);
+  }
+  const representatives = [...families.values()].map(
+    (members) =>
+      members.find((item) => item.id === selectedExerciseId) ??
+      members.find(
+        (item) => (plannedByExercise.get(item.id) ?? 0) > (setsDoneByExercise.get(item.id) ?? 0),
+      ) ??
+      members.find((item) => planExerciseIds.includes(item.id)) ??
+      members[0],
+  );
+  const inPlan = representatives.filter((item) =>
+    families.get(familyOf(item))!.some((member) => planExerciseIds.includes(member.id)),
+  );
   const looking = search.trim() !== '';
-  const visibleExercises = looking
-    ? exercises.filter((item) => fold(item.name_es).includes(fold(search)))
-    : showAll || inPlan.length === 0
-      ? exercises
-      : exercises.filter(
-          (item) => planExerciseIds.includes(item.id) || item.id === selectedExerciseId,
-        );
+  const visibleExercises = representatives.filter((item) =>
+    looking
+      ? families
+          .get(familyOf(item))!
+          .some((member) =>
+            fold(`${member.familyName ?? ''} ${member.name_es} ${variantLabel(member)}`).includes(
+              fold(search),
+            ),
+          )
+      : showAll || inPlan.length === 0 || inPlan.includes(item) || item.id === selectedExerciseId,
+  );
+  const variants = exercise
+    ? exercises.filter(
+        (item) =>
+          familyOf(item) === familyOf(exercise) && (!item.archived || item.id === exercise.id),
+      )
+    : [];
+  const [variantProblem, setVariantProblem] = useState<string | null>(null);
+  const [switchingVariant, setSwitchingVariant] = useState(false);
+  const switching = useRef(false);
+  const chooseVariant = async (id: string) => {
+    if (switching.current || saving) return;
+    if (finishedAt !== null) {
+      onSelectExercise(id);
+      return;
+    }
+    switching.current = true;
+    setSwitchingVariant(true);
+    setVariantProblem(null);
+    try {
+      if (onSelectVariant) await onSelectVariant(id);
+      else onSelectExercise(id);
+    } catch (error) {
+      setVariantProblem(error instanceof Error ? error.message : 'No se pudo cambiar la variante.');
+    } finally {
+      switching.current = false;
+      setSwitchingVariant(false);
+    }
+  };
 
   // Null means untouched, so the field shows the pre-fill. Spec 6.4: the fields
   // carry last session's values for the same set index, because that is what he
@@ -264,9 +304,11 @@ export const SessionLog = memo(function SessionLog({
   // dedazo ahi vuelve a abrir una sesion que ya estaba cerrada.
   const [reopening, setReopening] = useState(false);
   // Con que lo esta haciendo hoy. Null es "con lo que dice el catalogo".
-  const [implement, setImplement] = useState<Implement | null>(
-    () => draftFieldsFor(selectedExerciseId, draft).implement as Implement | null,
-  );
+  const implement: Implement | null =
+    exercise && ['dumbbell', 'cable', 'machine'].includes(exercise.equipment_type)
+      ? (exercise.equipment_type as Implement)
+      : null;
+
   // Cada cambio se guarda, para que cerrar la app a mitad de una serie no borre lo
   // que estaba escrito. Es una escritura suelta en la base, sin recargar nada.
   const report = useRef(onDraftChange);
@@ -321,7 +363,6 @@ export const SessionLog = memo(function SessionLog({
     setWeightDraft(fields.weight);
     setRepsDraft(fields.reps);
     setRpeDraft(fields.rpe);
-    setImplement(fields.implement as Implement | null);
   }
 
   // Estable, para que los renglones de la lista no se rearmen solo porque la funcion
@@ -337,8 +378,7 @@ export const SessionLog = memo(function SessionLog({
   // el numero que escribe significa una cosa distinta en cada caso: con mancuerna es
   // el de una mano, con polea y con maquina ya es todo lo que movio.
   // Con mas de una forma de hacerlo hay algo que elegir; con una sola o ninguna, no.
-  const swappable = exercise !== null && exercise.implements.length > 1;
-  const doneWith = implement ?? exercise?.equipment_type ?? null;
+  const doneWith = exercise?.equipment_type ?? null;
   // La nota de la (i): la del implemento con el que lo esta haciendo, y si ese no tiene
   // una propia, la general del ejercicio.
   const note =
@@ -424,19 +464,27 @@ export const SessionLog = memo(function SessionLog({
             value={search}
             onChange={setSearch}
             accessibilityLabel="Buscar un ejercicio"
-            note={`${exercises.length} en el catálogo`}
+            note={`${families.size} en el catálogo`}
           />
           <View style={styles.exerciseList}>
             {visibleExercises.map((item) => (
               <ExerciseRow
                 key={item.id}
                 item={item}
-                done={setsDoneByExercise.get(item.id) ?? 0}
-                planned={plannedByExercise.get(item.id)}
+                done={families
+                  .get(familyOf(item))!
+                  .reduce((sum, member) => sum + (setsDoneByExercise.get(member.id) ?? 0), 0)}
+                planned={
+                  families.get(familyOf(item))!.some((member) => plannedByExercise.has(member.id))
+                    ? families
+                        .get(familyOf(item))!
+                        .reduce((sum, member) => sum + (plannedByExercise.get(member.id) ?? 0), 0)
+                    : undefined
+                }
                 selected={item.id === selectedExerciseId}
                 onPick={(id) => {
                   setSearch('');
-                  pick(id);
+                  if (!switching.current && !saving) pick(id);
                 }}
               />
             ))}
@@ -464,7 +512,7 @@ export const SessionLog = memo(function SessionLog({
                   nombre de la maquina ya no se muestra, empujaba los botones fuera de
                   sitio en cuanto era largo y no decia nada que el no supiera. */}
               <View style={styles.exerciseHead}>
-                <Text style={styles.exerciseTitle}>{exercise.name_es}</Text>
+                <Text style={styles.exerciseTitle}>{exercise.familyName ?? exercise.name_es}</Text>
                 {note !== null && (
                   <InfoDot accessibilityLabel={`Ver la técnica de ${exercise.name_es}`}>
                     <InfoText>{note}</InfoText>
@@ -474,20 +522,43 @@ export const SessionLog = memo(function SessionLog({
 
               {/* Solo donde hay de verdad mas de una forma de hacerlo, que es un dato
                   del ejercicio y ya no una suposicion por el tipo de equipo. */}
-              {swappable && (
-                <View style={styles.implements}>
-                  {IMPLEMENTS.filter((option) => exercise.implements.includes(option.id)).map(
-                    (option) => (
+              <Text style={styles.lastLabel}>
+                {exercise.name_es} · {variantLabel(exercise)}
+              </Text>
+              {variants.length > 1 && (
+                <>
+                  <View style={styles.implements}>
+                    {variants.map((option) => (
                       <Chip
                         key={option.id}
-                        label={option.short}
-                        accessibilityLabel={option.long}
-                        selected={doneWith === option.id}
-                        onPress={() => setImplement(option.id)}
+                        label={
+                          variants.filter((one) => variantLabel(one) === variantLabel(option))
+                            .length > 1
+                            ? option.name_es
+                            : variantLabel(option)
+                        }
+                        accessibilityLabel={`Usar variante ${option.name_es} · ${variantLabel(option)}`}
+                        selected={option.id === exercise.id}
+                        disabled={switchingVariant || saving}
+                        onPress={() => {
+                          if (option.id !== exercise.id) void chooseVariant(option.id);
+                        }}
                       />
-                    ),
-                  )}
-                </View>
+                    ))}
+                  </View>
+                  <Text style={styles.lastLabel}>
+                    {switchingVariant
+                      ? 'Cambiando variante…'
+                      : finishedAt !== null
+                        ? 'Elige una variante para ver sus series.'
+                        : 'Cambiar variante reemplaza sus series pendientes.'}
+                  </Text>
+                </>
+              )}
+              {variantProblem && (
+                <Text accessibilityRole="alert" style={styles.lastLabel}>
+                  {variantProblem} Vuelve a tocar la variante para reintentar.
+                </Text>
               )}
 
               {/* Spec 9: el reloj cuenta desde que anoto la ultima serie, que es cuando
@@ -694,11 +765,11 @@ export const SessionLog = memo(function SessionLog({
                       variant="primary"
                       size="large"
                       block
-                      disabled={!canAdd || sessionAction !== null}
+                      disabled={!canAdd || switchingVariant || sessionAction !== null}
                       loading={saving}
                       accessibilityLabel="Agregar serie"
                       onPress={() => {
-                        if (!canAdd || saving) return;
+                        if (!canAdd || saving || switching.current) return;
                         const rpe =
                           parsedRpe !== null && Number.isFinite(parsedRpe)
                             ? clampRpe(parsedRpe)
@@ -741,7 +812,7 @@ export const SessionLog = memo(function SessionLog({
             size="large"
             block
             accessibilityLabel="Terminar entreno"
-            disabled={saving || sessionAction !== null}
+            disabled={switchingVariant || saving || sessionAction !== null}
             loading={sessionAction === 'finish'}
             onPress={onFinish}
             style={styles.finish}

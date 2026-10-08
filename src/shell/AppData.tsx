@@ -98,6 +98,10 @@ import {
 } from '../nutrition/index.ts';
 import {
   listCatalog,
+  createExercise,
+  archiveExercise,
+  setExerciseRoutine,
+  type NewExercise,
   loadExerciseCard,
   setExerciseGym,
   setExerciseNote,
@@ -110,6 +114,7 @@ import {
   type ExerciseEdit,
 } from '../training/catalog.ts';
 import {
+  listExercises,
   addSet,
   deleteSet,
   finishSession,
@@ -119,7 +124,10 @@ import {
   loadRoutinePlan,
   owedRoutine,
   startPlannedSession,
-  changePlannedRoutine,
+  loadSessionPlanEdit,
+  applySessionPlanEdit,
+  replaceSessionVariant,
+  type SessionPlanEdit,
   getSessionOn,
   sessionDate,
   setDurationTrusted,
@@ -278,8 +286,9 @@ export type AppData = {
   endSession: () => Promise<void>;
   /** Deshace el terminar entreno, que es el unico boton sin vuelta atras. */
   reopenSession: () => Promise<void>;
-  /** Corrects a routine picked by mistake, replanning at the budget already chosen. */
-  switchRoutine: (routineId: string) => Promise<void>;
+  loadTrainingPlan: (sessionId: string, routineId?: string) => Promise<SessionPlanEdit>;
+  saveTrainingPlan: (edit: SessionPlanEdit) => Promise<void>;
+  replaceTrainingVariant: (sessionId: string, from: string, to: string) => Promise<void>;
   loadExperiments: () => Promise<ExperimentWithReadings[]>;
   beginExperiment: (experiment: NewExperiment) => Promise<void>;
   logExperimentReading: (id: string, date: IsoDate, value: number, note?: string) => Promise<void>;
@@ -317,6 +326,9 @@ export type AppData = {
   /** El catalogo de ejercicios, para la pantalla donde lo edita. */
   loadCatalog: () => Promise<CatalogEntry[]>;
   loadExercise: (exerciseId: string) => Promise<ExerciseCard>;
+  createExercise: (input: NewExercise) => Promise<string>;
+  archiveExercise: (exerciseId: string, archived: boolean) => Promise<void>;
+  editExerciseRoutine: (exerciseId: string, routineId: string, included: boolean) => Promise<void>;
   editExercise: (exerciseId: string, edit: ExerciseEdit) => Promise<void>;
   /** La nota de la (i). Implemento vacio es la general. */
   editExerciseNote: (exerciseId: string, implement: string, note: string) => Promise<void>;
@@ -932,10 +944,18 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         if (!sessionId) return Promise.reject(new Error('No hay un entreno para reabrir.'));
         return write((db) => inTransaction(db, () => reopenSessionInDb(db, sessionId)));
       },
-      switchRoutine: (routineId) => {
-        const session = openLoaded.current?.today.session;
-        if (!session) return Promise.reject(new Error('No hay un entreno para cambiar.'));
-        return write((db) => changePlannedRoutine(db, session.id, routineId));
+      loadTrainingPlan: async (sessionId, routineId) =>
+        loadSessionPlanEdit(await openDatabase(), sessionId, routineId),
+      saveTrainingPlan: (edit) => write((db) => applySessionPlanEdit(db, edit)),
+      replaceTrainingVariant: async (sessionId, from, to) => {
+        const db = await openDatabase();
+        const plan = await replaceSessionVariant(db, sessionId, from, to);
+        const today = openDay.current;
+        if (!today || today.session?.id !== sessionId) return;
+        const exercise = await exerciseContext(db, today, to);
+        patch((loaded) => ({ ...loaded, plan, exercise }));
+        selectExercise(to);
+        refresh();
       },
       loadExperiments,
       beginExperiment: async (experiment) => {
@@ -1120,12 +1140,39 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       sayInChat,
       loadCatalog,
       loadExercise,
+      createExercise: async (input) => {
+        const db = await openDatabase();
+        const id = await createExercise(db, input);
+        refresh(false);
+        return id;
+      },
+      archiveExercise: (id, archived) => write((db) => archiveExercise(db, id, archived), false),
+      editExerciseRoutine: (id, routineId, included) =>
+        write((db) => setExerciseRoutine(db, id, routineId, included), false),
       // Editar el catalogo no cambia la nota de ningun dia, pero si lo que la pantalla
       // de entreno tiene delante, asi que se recarga sin el trabajo de fondo.
-      editExercise: (exerciseId, edit) =>
-        write((db) => updateExercise(db, exerciseId, edit), false),
-      editExerciseNote: (exerciseId, implement, note) =>
-        write((db) => setExerciseNote(db, exerciseId, implement, note), false),
+      editExercise: async (exerciseId, edit) => {
+        const db = await openDatabase();
+        await updateExercise(db, exerciseId, edit);
+        const exercises = await listExercises(db, openDay.current?.session?.gym_id ?? undefined);
+        patch((loaded) => ({ ...loaded, exercise: { ...loaded.exercise, exercises } }));
+      },
+      editExerciseNote: async (exerciseId, implement, note) => {
+        await setExerciseNote(await openDatabase(), exerciseId, implement, note);
+        patch((loaded) => ({
+          ...loaded,
+          exercise: {
+            ...loaded.exercise,
+            exercises: loaded.exercise.exercises.map((exercise) => {
+              if (exercise.id !== exerciseId) return exercise;
+              const notes = new Map(exercise.notes);
+              if (note.trim()) notes.set(implement, note.trim());
+              else notes.delete(implement);
+              return { ...exercise, notes };
+            }),
+          },
+        }));
+      },
       editExerciseGym: (exerciseId, gymId, available) =>
         write((db) => setExerciseGym(db, exerciseId, gymId, available), false),
       editRoutineSets: (routineId, exerciseId, budget, sets) =>
