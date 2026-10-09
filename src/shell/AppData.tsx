@@ -132,6 +132,7 @@ import {
   loadRoutinePlan,
   owedRoutine,
   startPlannedSession,
+  serializePlannerDraft,
   loadSessionPlanEdit,
   applySessionPlanEdit,
   replaceSessionVariant,
@@ -145,6 +146,7 @@ import {
   type Implement,
   type SessionDetails,
   type PlannedExercise,
+  type PlannerDraft,
   type RoutinePlan,
   type TimeBudget,
 } from '../training/index.ts';
@@ -192,7 +194,7 @@ import {
   type Reread,
 } from './load.ts';
 import { dealsDue, syncDeals, type SyncOutcome } from './deals.ts';
-import { locateGym, type LocationOutcome } from './location.ts';
+import { locateGym, type LocateMode, type LocationOutcome } from './location.ts';
 import { loadWeekSummary, type WeekSummary } from './week.ts';
 import type { ReadRequest } from '../core/questions.ts';
 import { answerLocalQuestion } from './assistant-read.ts';
@@ -287,8 +289,8 @@ export type AppData = {
     company?: Company,
     gymId?: string,
   ) => Promise<void>;
-  /** Spec 5.2: asked for once, by him, never watched. */
-  whereAmI: () => Promise<LocationOutcome>;
+  /** Spec 5.2: one reading, on entering Entreno or on his tap, never watched. */
+  whereAmI: (mode: LocateMode) => Promise<LocationOutcome>;
   /** La rutina que le toca hoy por el patron de la semana (spec 8.5), para traerla puesta. */
   loadOwedRoutine: () => Promise<string | null>;
   /** The trimmed plan for a routine at a budget, for the screen that asks approval. */
@@ -333,6 +335,8 @@ export type AppData = {
    * un refresco por tecla dejaria la pantalla inservible.
    */
   saveDraft: (draft: SessionDraft) => void;
+  /** Lo que eligio antes de empezar. Tampoco recarga; rechaza si no se guardo. */
+  savePlannerDraft: (draft: PlannerDraft) => Promise<void>;
   /** Un dia cualquiera abierto entero, con el desglose de su nota. */
   loadDay: (date: IsoDate) => Promise<DayDetail>;
   askLocal: (request: ReadRequest) => Promise<string>;
@@ -934,7 +938,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         startingSession.current = pending;
         return pending;
       },
-      whereAmI: () => locateGym(openLoaded.current?.gyms ?? []),
+      whereAmI: (mode) => locateGym(openLoaded.current?.gyms ?? [], mode),
       loadPlan,
       loadOwedRoutine,
       logSet: async (weightKg, reps, extra) => {
@@ -1044,6 +1048,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       finishExperiment: (id, endDate) =>
         openDatabase().then((db) => endExperiment(db, id, endDate)),
       saveDraft: (draft) => store((db) => writeSetting(db, 'session_draft', serializeDraft(draft))),
+      savePlannerDraft: (draft) =>
+        openDatabase().then((db) =>
+          writeSetting(db, 'planner_draft', serializePlannerDraft(draft)),
+        ),
       loadDay,
       askLocal,
       loadCharts,

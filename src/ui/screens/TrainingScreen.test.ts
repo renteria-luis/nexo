@@ -42,7 +42,11 @@ function fixture(active = false) {
     saveTrainingPlan: async (_edit: unknown) => {},
   };
   const screen = renderModule('src/ui/screens/TrainingScreen.tsx', {
-    '@react-navigation/native': { useNavigation: () => ({ navigate() {} }), useFocusEffect() {} },
+    '@react-navigation/native': {
+      useNavigation: () => ({ navigate() {} }),
+      useFocusEffect() {},
+      useIsFocused: () => true,
+    },
     'expo-screen-orientation': {},
     '../../shell/AppData.tsx': { useAppData: () => app },
     '../SwipeLock.tsx': { useSwipeLock: () => ({ setLocked() {} }) },

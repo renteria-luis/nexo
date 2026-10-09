@@ -6,7 +6,7 @@ import { runInThisContext } from 'node:vm';
 import ts from 'typescript';
 
 type Node = { type: unknown; props: Record<string, any> };
-type Slot = { value?: any; deps?: unknown[] };
+type Slot = { value?: any; deps?: unknown[]; cleanup?: unknown };
 
 // Execute the real component callbacks in the existing Node runner. Native views
 // are inert leaves; no phone APIs or additional test dependencies are required.
@@ -45,7 +45,13 @@ export function renderModule(file: string, mocks: Record<string, any> = {}) {
     useCallback: (callback: unknown, deps: unknown[]) => react.useMemo(() => callback, deps),
     useEffect: (effect: () => unknown, deps: unknown[]) => {
       const state = slot();
-      if (changed(state.deps, deps)) effects.push(effect);
+      // Like React, the previous run's cleanup goes first when the dependencies change.
+      if (changed(state.deps, deps)) {
+        effects.push(() => {
+          if (typeof state.cleanup === 'function') state.cleanup();
+          state.cleanup = effect();
+        });
+      }
       state.deps = deps;
     },
   };

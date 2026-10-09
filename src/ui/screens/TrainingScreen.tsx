@@ -1,7 +1,7 @@
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Text, useWindowDimensions, View } from 'react-native';
+import { AppState, Text, useWindowDimensions, View } from 'react-native';
 
 import { useAppData, type AppData } from '../../shell/AppData.tsx';
 import { Button } from '../Button.tsx';
@@ -44,6 +44,7 @@ export function TrainingScreen() {
     logDay,
     saveSetting,
     saveDraft,
+    savePlannerDraft,
     endSession,
     reopenSession,
     loadTrainingPlan,
@@ -78,6 +79,18 @@ export function TrainingScreen() {
     }
   }, []);
   const { width, height } = useWindowDimensions();
+  // La pestana enfrente y la app abierta, que es cuando el planificador busca el gimnasio
+  // solo: volver a la app con Entreno abierto cuenta igual que entrar a la pestana.
+  // Solo el fondo cuenta como irse: el aviso de permiso de ubicacion deja la app
+  // "inactive" mientras esta encima, y eso no puede tirar la lectura que lo pidio.
+  const focused = useIsFocused();
+  const [active, setActive] = useState(true);
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next) =>
+      setActive(next !== 'background'),
+    );
+    return () => subscription.remove();
+  }, []);
   // Mientras arrastra una fila del orden, ni la pantalla se desplaza ni se pasa de
   // pestana: los dos gestos son nativos y se llevan el toque aunque este tomado.
   const [dragging, setDragging] = useState(false);
@@ -339,9 +352,14 @@ export function TrainingScreen() {
         <Screen title="Entreno" scrollEnabled={!dragging} refreshable>
           {session === null ? (
             <SessionPlanner
+              // Un dia nuevo empieza de cero: vuelve la rutina que toca y lo de ayer se va.
+              key={loaded.today.date}
               routines={loaded.routines}
               gyms={loaded.gyms}
+              draft={loaded.plannerDraft}
+              onSaveDraft={savePlannerDraft}
               onLocate={whereAmI}
+              visible={focused && active}
               onLoadPlan={loadPlan}
               onLoadOwedRoutine={loadOwedRoutine}
               onStart={startTraining}

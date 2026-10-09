@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { distanceMetres, gymAt, type GymLocation } from './geo.ts';
+import { distanceMetres, readGym, type GymLocation } from './geo.ts';
 
 const FANSHAWE: GymLocation = {
   id: 'fanshawe',
@@ -39,19 +39,33 @@ test('the two gyms are about eight kilometres apart', () => {
   );
 });
 
-test('standing in one gym finds that gym', () => {
-  const insideFanshawe = { lat: 43.0138, lng: -81.2015 };
-  assert.equal(gymAt(GYMS, insideFanshawe)?.gym.id, 'fanshawe');
+const gymOf = (position: { lat: number; lng: number }, errorM: number | null = 20) => {
+  const reading = readGym(GYMS, position, errorM);
+  return reading.kind === 'match' ? reading.fix.gym.id : reading.kind;
+};
 
-  const insideFit4Less = { lat: 42.98681, lng: -81.28835 };
-  assert.equal(gymAt(GYMS, insideFit4Less)?.gym.id, 'fit4less-proudfoot');
+test('standing in one gym finds that gym', () => {
+  assert.equal(gymOf({ lat: 43.0138, lng: -81.2015 }), 'fanshawe');
+  assert.equal(gymOf({ lat: 42.98681, lng: -81.28835 }), 'fit4less-proudfoot');
 });
 
-test('standing anywhere else finds nothing rather than the closest', () => {
+test('standing anywhere else is elsewhere rather than the closest', () => {
   // Downtown London, kilometres from both.
-  assert.equal(gymAt(GYMS, { lat: 42.9849, lng: -81.2453 }), null);
+  assert.equal(gymOf({ lat: 42.9849, lng: -81.2453 }), 'elsewhere');
   // Just outside the Fit4Less radius, around 300 m away.
-  assert.equal(gymAt(GYMS, { lat: 42.9894, lng: -81.2883 }), null);
+  assert.equal(gymOf({ lat: 42.9894, lng: -81.2883 }), 'elsewhere');
+});
+
+test('a reading whose error reaches into a gym decides nothing', () => {
+  // About 190 m from Fit4Less: outside its 150 m, but not with 60 m of error.
+  assert.equal(gymOf({ lat: 42.98848, lng: -81.2883 }, 15), 'elsewhere');
+  assert.equal(gymOf({ lat: 42.98848, lng: -81.2883 }, 60), 'unsure');
+});
+
+test('an unknown or too large error decides nothing, even inside a gym', () => {
+  assert.equal(gymOf({ lat: 43.0138, lng: -81.2015 }, null), 'unsure');
+  assert.equal(gymOf({ lat: 43.0138, lng: -81.2015 }, 101), 'unsure');
+  assert.equal(gymOf({ lat: 43.0138, lng: -81.2015 }, 100), 'fanshawe');
 });
 
 test('a gym without coordinates is skipped, not matched', () => {
@@ -62,5 +76,5 @@ test('a gym without coordinates is skipped, not matched', () => {
     lng: null,
     radiusM: 400,
   };
-  assert.equal(gymAt([unknown], { lat: 43.0138, lng: -81.2015 }), null);
+  assert.equal(readGym([unknown], { lat: 43.0138, lng: -81.2015 }, 10).kind, 'elsewhere');
 });

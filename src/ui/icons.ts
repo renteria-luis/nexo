@@ -47,6 +47,7 @@ export { default as MapPin } from 'lucide-react-native/icons/map-pin';
 export { default as Menu } from 'lucide-react-native/icons/menu';
 export { default as Minus } from 'lucide-react-native/icons/minus';
 export { default as Moon } from 'lucide-react-native/icons/moon';
+export { default as Navigation } from 'lucide-react-native/icons/navigation';
 export { default as Pencil } from 'lucide-react-native/icons/pencil';
 export { default as Pill } from 'lucide-react-native/icons/pill';
 export { default as Play } from 'lucide-react-native/icons/play';

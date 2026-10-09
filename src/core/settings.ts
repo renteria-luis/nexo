@@ -27,6 +27,7 @@ export type SettingKey =
   | 'targets_change_seen'
   | 'steps_advice_declined'
   | 'session_draft'
+  | 'planner_draft'
   | 'nudges_enabled'
   | 'nudges_off'
   | 'deal_watchlist'
@@ -256,6 +257,8 @@ export function settingProblem(
       return inRange(trimmed, 1, 12, 'semanas entre 1 y 12');
     // Lo escribe la app, no el: es lo que quedo a medio teclear en el entreno.
     case 'session_draft':
+    // Y lo que eligio antes de empezar, para que cerrar la app no se lo quite.
+    case 'planner_draft':
       return null;
   }
 }

@@ -78,7 +78,9 @@ import {
   loadSessionPlan,
   OPEN_SESSION_CARRIES_MS,
   openSessionSince,
+  parsePlannerDraft,
   type PlannedSet,
+  type PlannerDraft,
 } from '../training/index.ts';
 
 import {
@@ -129,6 +131,8 @@ export type Loaded = {
   lastWeight: LastWeight | null;
   /** Lo que quedo a medio escribir en el entreno de hoy, si la app se cerro. */
   sessionDraft: SessionDraft | null;
+  /** Lo que eligio hoy antes de empezar, para que cerrar la app no se lo quite. */
+  plannerDraft: PlannerDraft;
 };
 
 type DealSlice = Pick<Loaded, 'deals' | 'discounts' | 'dealSources'>;
@@ -292,6 +296,7 @@ export async function load(
     plan,
     lastWeight,
     sessionDraft: parseDraft(settings.get('session_draft'), assembled.session?.id ?? null),
+    plannerDraft: parsePlannerDraft(settings.get('planner_draft'), today),
     dealSlice,
     foodSlice,
   };
