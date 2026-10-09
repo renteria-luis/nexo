@@ -15,7 +15,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { AppState as Lifecycle } from 'react-native';
+import { AppState as Lifecycle, Linking } from 'react-native';
 
 import {
   addToDailyLog,
@@ -40,6 +40,12 @@ import {
   type DateRange,
   type IsoDate,
 } from '../core/dates.ts';
+import {
+  parseHealthLink,
+  saveHealthReadings,
+  type HealthReading,
+  type HealthResult,
+} from '../core/health-import.ts';
 import { scoreScaleProblem, type ScoreScaleOptions } from '../core/palettes.ts';
 import type { ScoredDay } from '../core/heatmap.ts';
 import { loadScorePeriod } from './score-days.ts';
@@ -81,7 +87,7 @@ import { implementFromDraft, serializeDraft, type SessionDraft } from '../core/s
 import { parseWaterTaps, serializeWaterTaps, undoLastTap } from '../core/water-taps.ts';
 import { openDatabase, resetDatabase } from '../db/index.ts';
 import { inTransaction, whenIdle } from '../db/transaction.ts';
-import type { Company, CoreStudyRow, NutritionFoodRow } from '../db/types.ts';
+import type { Company, CoreStudyRow, HealthMetric, NutritionFoodRow } from '../db/types.ts';
 import {
   addFoodEntry,
   addFood as addFoodToCatalog,
@@ -209,6 +215,22 @@ export type BatchStart = {
 
 export type AppState = LoadState<Loaded>;
 
+/** Lo que trajo el ultimo enlace del Atajo de iOS, hasta que el lo cierra. */
+export type HealthArrival = {
+  /** Uno nuevo por enlace: asi se sabe que llego otro aunque diga lo mismo. */
+  id: number;
+  results: HealthResult[];
+  /** Por que no se uso el enlace, o por que no se pudo guardar. */
+  problem: string | null;
+};
+
+/**
+ * El enlace con el que se abrio la app se lee una vez por arranque: iOS lo sigue
+ * devolviendo igual mientras el proceso viva, y el proveedor se vuelve a montar al
+ * borrar la base.
+ */
+let initialLinkRead = false;
+
 /** Una recarga pedida: con o sin el trabajo de fondo, y que mas releer ademas del dia. */
 type Reload = Reread & { settle: boolean };
 
@@ -248,6 +270,10 @@ function withSetting(loaded: Loaded, key: SettingKey, value: string): Loaded {
 export type AppData = {
   state: AppState;
   dataRevision: number;
+  healthArrival: HealthArrival | null;
+  /** Ante lo que escribio a mano: true usa lo que llego del Atajo, false deja lo suyo. */
+  answerHealthConflict: (metric: HealthMetric, replace: boolean) => Promise<void>;
+  dismissHealthArrival: () => void;
   refreshData: () => Promise<void>;
   saveScoreScale: (scale: ScoreScaleOptions) => Promise<void>;
   loadScoreDays: (range: DateRange) => Promise<ScoredDay[]>;
@@ -769,8 +795,77 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   // la app.
   const waterTaps = useRef<{ date: IsoDate; taps: number[] } | null>(null);
 
+  // Guarda lo que trajo el Atajo y rehace la nota de los dias pasados que toco: hoy ya
+  // se puntua en la recarga, y si no se guardo nada no hay nada que recargar.
+  const storeHealth = useCallback(
+    async (readings: readonly HealthReading[], replace: boolean) => {
+      const db = await openDatabase();
+      const today = todayIso();
+      const results = await saveHealthReadings(db, readings, Date.now(), replace);
+      const saved = results
+        .filter((result) => result.outcome === 'saved')
+        .map((result) => result.reading.date);
+      if (saved.length > 0) {
+        await rescoreDays(
+          db,
+          [...new Set(saved)].filter((date) => date < today),
+          today,
+        );
+        refresh(false);
+      }
+      return results;
+    },
+    [refresh],
+  );
+
+  const [healthArrival, setHealthArrival] = useState<HealthArrival | null>(null);
+  const healthArrivals = useRef(0);
+  const openArrival = useRef(healthArrival);
+  useEffect(() => {
+    openArrival.current = healthArrival;
+  }, [healthArrival]);
+
+  const receiveHealthLink = useCallback(
+    async (url: string) => {
+      const link = parseHealthLink(url, new Date());
+      if (link === null) return;
+      const id = ++healthArrivals.current;
+      if (!link.ok) {
+        setHealthArrival({ id, results: [], problem: link.problem });
+        return;
+      }
+      try {
+        setHealthArrival({ id, results: await storeHealth(link.readings, false), problem: null });
+      } catch (error) {
+        console.error(error);
+        const reason = error instanceof Error ? error.message : String(error);
+        setHealthArrival({ id, results: [], problem: `No se pudo guardar: ${reason}` });
+      }
+    },
+    [storeHealth],
+  );
+
+  // El Atajo abre la app con su enlace: al arrancar llega como el enlace inicial, y con la
+  // app abierta o de fondo, como evento.
+  const receive = useRef(receiveHealthLink);
+  useEffect(() => {
+    receive.current = receiveHealthLink;
+  }, [receiveHealthLink]);
+  useEffect(() => {
+    if (!initialLinkRead) {
+      initialLinkRead = true;
+      Linking.getInitialURL()
+        .then((url) => (url === null ? undefined : receive.current(url)))
+        .catch((error: unknown) => console.error(error));
+    }
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      receive.current(url).catch((error: unknown) => console.error(error));
+    });
+    return () => subscription.remove();
+  }, []);
+
   const actions = useMemo<
-    Omit<AppData, 'state' | 'exerciseId' | 'nudgeTarget' | 'dataRevision'>
+    Omit<AppData, 'state' | 'exerciseId' | 'nudgeTarget' | 'dataRevision' | 'healthArrival'>
   >(() => {
     const tapsToday = () => {
       const date = todayIso();
@@ -883,6 +978,27 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       restoreFood: (id) => run((db) => restoreFoodInCatalogue(db, id), true, REREAD_FOODS),
       loadArchivedFoods,
       clearNudgeTarget,
+      answerHealthConflict: async (metric, replace) => {
+        const arrival = openArrival.current;
+        const conflict = arrival?.results.find(
+          (result) => result.reading.metric === metric && result.outcome === 'conflict',
+        );
+        if (!arrival || !conflict) return;
+        const answered = replace
+          ? (await storeHealth([conflict.reading], true))[0]
+          : { ...conflict, outcome: 'kept' as const };
+        setHealthArrival((current) =>
+          current?.id !== arrival.id
+            ? current
+            : {
+                ...current,
+                results: current.results.map((result) =>
+                  result.reading.metric === metric ? answered : result,
+                ),
+              },
+        );
+      },
+      dismissHealthArrival: () => setHealthArrival(null),
       editFood: (id, food) =>
         write(
           async (db) => {
@@ -1300,12 +1416,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     run,
     selectExercise,
     store,
+    storeHealth,
     write,
   ]);
 
   const value: AppData = useMemo(
-    () => ({ state, exerciseId, nudgeTarget, dataRevision, ...actions }),
-    [state, exerciseId, nudgeTarget, dataRevision, actions],
+    () => ({ state, exerciseId, nudgeTarget, dataRevision, healthArrival, ...actions }),
+    [state, exerciseId, nudgeTarget, dataRevision, healthArrival, actions],
   );
 
   return <Context.Provider value={value}>{children}</Context.Provider>;

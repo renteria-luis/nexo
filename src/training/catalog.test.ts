@@ -273,7 +273,7 @@ test('migration preserves customized notes, names, and every historical set whil
     INSERT INTO training_set_entry (id, session_id, exercise_id, set_index, weight_kg, reps, timestamp, implement)
     VALUES ('past-set', 'past', 'lateral-raise', 1, 20, 12, 100, 'cable');`);
   const before = await db.getAllAsync('SELECT * FROM training_set_entry;');
-  await db.execAsync(migrations.at(-1)!.sql);
+  await db.execAsync(migrations.find((migration) => migration.id === '058_exercise_catalog')!.sql);
   assert.deepEqual(await db.getAllAsync('SELECT * FROM training_set_entry;'), before);
   const base = await loadExerciseCard(db, 'lateral-raise');
   assert.equal(base.exercise.name_es, 'My lateral raise');

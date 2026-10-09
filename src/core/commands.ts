@@ -182,11 +182,11 @@ function splitDate(parts: string[], today: IsoDate): { date: IsoDate; rest: stri
 }
 
 /** Sin tildes y en minusculas, para que "sueño" y "sueno" sean el mismo comando. */
-function plain(text: string): string {
+export function plain(text: string): string {
   return text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 }
 
-function number(raw: string): number | null {
+export function number(raw: string): number | null {
   const value = Number(raw.replace(',', '.'));
   return Number.isFinite(value) ? value : null;
 }
@@ -230,7 +230,7 @@ function sleepMinutes(rest: readonly string[]): { minutes: number; used: number 
  * Pasos como los copia de la app de Salud, con el separador de miles: "8,200" y "8.200"
  * son ocho mil doscientos, no ocho.
  */
-function steps(raw: string): number | null {
+export function steps(raw: string): number | null {
   const plain = /^[0-9]{1,3}(?:[.,][0-9]{3})+$/.test(raw) ? raw.replace(/[.,]/g, '') : raw;
   const value = Number(plain);
   return /^[0-9]+$/.test(plain) && Number.isInteger(value) ? value : null;

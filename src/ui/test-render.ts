@@ -63,6 +63,7 @@ export function renderModule(file: string, mocks: Record<string, any> = {}) {
     Keyboard: { dismiss() {} },
     StyleSheet: { create: (value: unknown) => value },
     AppState: { addEventListener: () => ({ remove() {} }) },
+    Linking: { getInitialURL: async () => null, addEventListener: () => ({ remove() {} }) },
     Platform: { OS: 'web' },
     useWindowDimensions: () => ({ width: 400, height: 800 }),
     Animated: {

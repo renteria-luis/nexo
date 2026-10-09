@@ -6,7 +6,7 @@ import { migrations } from '../db/migrations/index.ts';
 import { todayIso } from '../core/dates.ts';
 import { nodes, renderModule } from '../ui/test-render.ts';
 
-function providerFixture() {
+function providerFixture({ initialUrl = null }: { initialUrl?: string | null } = {}) {
   const raw = new DatabaseSync(':memory:');
   raw.exec('PRAGMA foreign_keys = ON;');
   migrations.forEach((migration) => raw.exec(migration.sql));
@@ -28,6 +28,7 @@ function providerFixture() {
   };
   let loads = 0;
   let appStateListener: (state: string) => void = () => {};
+  let linkListener: (event: { url: string }) => void = () => {};
   const requests: { settle: boolean; reread: unknown }[] = [];
   const screen = renderModule('src/shell/AppData.tsx', {
     'react-native': {
@@ -35,6 +36,13 @@ function providerFixture() {
         currentState: 'active',
         addEventListener: (_event: string, listener: (state: string) => void) => {
           appStateListener = listener;
+          return { remove() {} };
+        },
+      },
+      Linking: {
+        getInitialURL: async () => initialUrl,
+        addEventListener: (_event: string, listener: (event: { url: string }) => void) => {
+          linkListener = listener;
           return { remove() {} };
         },
       },
@@ -79,6 +87,7 @@ function providerFixture() {
     loads: () => loads,
     requests,
     appState: (state: string) => appStateListener(state),
+    openLink: (url: string) => linkListener({ url }),
   };
 }
 
@@ -272,4 +281,74 @@ test('an active midnight updates an empty day; background time waits until resum
   assert.equal(loads(), baseline);
   appState('active');
   assert.equal((await actions()).state.loaded.today.date, '2026-10-10');
+});
+
+/** Lo que hace un enlace pasa por varias lecturas y escrituras: se espera a que se vea. */
+async function until(actions: () => Promise<any>, seen: (app: any) => boolean) {
+  for (let i = 0; i < 30; i++) {
+    const app = await actions();
+    if (seen(app)) return app;
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  throw new Error('the provider never got there');
+}
+
+test('a Shortcut link that opens the app is saved and reported once, with one light reload', async () => {
+  const { raw, actions, requests } = providerFixture({
+    initialUrl: 'nexo://salud?sueno=7.5&pasos=8123',
+  });
+  const app = await until(actions, (current) => current.healthArrival !== null);
+  assert.deepEqual(
+    app.healthArrival.results.map((result: { outcome: string }) => result.outcome),
+    ['saved', 'saved'],
+  );
+  assert.equal(app.healthArrival.problem, null);
+  const day = raw.prepare('SELECT * FROM core_daily_log WHERE date = ?;').get(todayIso())!;
+  assert.equal(day.sleep_minutes, 450);
+  assert.equal(day.sleep_source, 'autosleep');
+  assert.equal(day.steps, 8123);
+  assert.equal(requests.at(-1)?.settle, false);
+  app.dismissHealthArrival();
+  assert.equal((await actions()).healthArrival, null);
+});
+
+test('a link over a value typed by hand waits for his answer, either way', async () => {
+  const { raw, actions, openLink } = providerFixture();
+  raw
+    .prepare('INSERT INTO core_daily_log (date, steps, rest_day, has_data) VALUES (?, 5000, 0, 1);')
+    .run(todayIso());
+  await actions();
+  openLink('nexo://salud?pasos=9000');
+  let app = await until(actions, (current) => current.healthArrival !== null);
+  assert.deepEqual(
+    app.healthArrival.results.map((result: { outcome: string; current: number }) => [
+      result.outcome,
+      result.current,
+    ]),
+    [['conflict', 5000]],
+  );
+  await app.answerHealthConflict('steps', false);
+  app = await until(actions, (current) => current.healthArrival.results[0].outcome === 'kept');
+  const steps = () =>
+    raw.prepare('SELECT steps FROM core_daily_log WHERE date = ?;').get(todayIso())!.steps;
+  assert.equal(steps(), 5000);
+
+  openLink('nexo://salud?pasos=9000');
+  app = await until(actions, (current) => current.healthArrival.results[0].outcome === 'conflict');
+  const second = app.healthArrival.id;
+  await app.answerHealthConflict('steps', true);
+  app = await until(actions, (current) => current.healthArrival.results[0].outcome === 'saved');
+  assert.equal(app.healthArrival.id, second);
+  assert.equal(steps(), 9000);
+});
+
+test('other links are ignored and malformed ones are reported without writing', async () => {
+  const { raw, actions, openLink } = providerFixture();
+  await actions();
+  openLink('https://example.com/');
+  assert.equal((await actions()).healthArrival, null);
+  openLink('nexo://salud?pasos=muchos');
+  const app = await until(actions, (current) => current.healthArrival !== null);
+  assert.match(app.healthArrival.problem, /no son un número/);
+  assert.equal(raw.prepare('SELECT count(*) AS n FROM core_health_import;').get()!.n, 0);
 });

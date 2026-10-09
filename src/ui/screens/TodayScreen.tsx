@@ -23,6 +23,7 @@ import { useInfo } from '../InfoBubble.tsx';
 import { useNow } from '../useNow.ts';
 import { ChevronRight, Dumbbell, Tag, Utensils, Wallet, type LucideIcon } from '../icons.ts';
 import { Star } from '../Star.tsx';
+import { HealthArrivalCard } from '../HealthArrivalCard.tsx';
 import { TodayLog } from '../TodayLog.tsx';
 import { font, sheet, shape, theme } from '../theme.ts';
 
@@ -132,6 +133,9 @@ export function TodayScreen({
     raiseStepsTarget,
     declineStepsTarget,
     saveSetting,
+    healthArrival,
+    answerHealthConflict,
+    dismissHealthArrival,
   } = useAppData();
   const info = useInfo();
   const now = useNow();
@@ -264,6 +268,15 @@ export function TodayScreen({
         </View>
       </Card>
 
+      {healthArrival && (
+        <HealthArrivalCard
+          arrival={healthArrival}
+          today={today}
+          onAnswer={answerHealthConflict}
+          onDismiss={dismissHealthArrival}
+        />
+      )}
+
       {loaded.readapting && (
         <Card tone="warn">
           <Text style={styles.noticeTitle}>Readaptación</Text>
@@ -395,6 +408,7 @@ export function TodayScreen({
           key={loaded.today.date}
           log={loaded.today.log}
           lastWeight={loaded.lastWeight}
+          healthImports={loaded.healthImports}
           containers={loaded.containers}
           waterTargetMl={
             targets

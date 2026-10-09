@@ -9,8 +9,14 @@ import {
   type DailyLogIncrement,
   type LastWeight,
 } from '../core/daily-log.ts';
-import { addDays, shortDate } from '../core/dates.ts';
-import type { CoreDailyLogRow, NutritionContainerRow, SleepSource } from '../db/types.ts';
+import { addDays, clockTime, shortDate } from '../core/dates.ts';
+import { HEALTH_SOURCE_LABEL, originOf } from '../core/health-import.ts';
+import type {
+  CoreDailyLogRow,
+  CoreHealthImportRow,
+  HealthMetric,
+  NutritionContainerRow,
+} from '../db/types.ts';
 
 import { Chip } from './Chip.tsx';
 import { Droplets, Footprints, Moon, Pill, Scale, Wine, type LucideIcon } from './icons.ts';
@@ -18,11 +24,21 @@ import { NumericField } from './NumericField.tsx';
 import { Toggle } from './Toggle.tsx';
 import { font, sheet, shape, theme } from './theme.ts';
 
-const SLEEP_SOURCES: { value: SleepSource; label: string }[] = [
-  { value: 'autosleep', label: 'AutoSleep' },
-  { value: 'apple_health', label: 'Apple Health' },
-  { value: 'manual', label: 'A mano' },
-];
+/**
+ * De donde salio el sueno o los pasos del dia: del Atajo, con la hora en que llego, o de
+ * su mano. Null sin dato, y tambien cuando la pantalla no sabe que llego del Atajo.
+ */
+function origin(
+  log: CoreDailyLogRow | null,
+  imports: readonly CoreHealthImportRow[] | undefined,
+  metric: HealthMetric,
+): string | null {
+  const found = imports === undefined ? null : originOf(log, imports, metric);
+  if (found === null) return null;
+  return found.kind === 'manual'
+    ? 'a mano'
+    : `${HEALTH_SOURCE_LABEL[found.source]}, ${clockTime(found.importedAt)}`;
+}
 
 /**
  * Un dato del dia, con su icono y su raya.
@@ -61,6 +77,8 @@ export type TodayLogProps = {
   waterTargetMl: number | null;
   /** El ultimo peso anotado, que se sigue mostrando los dias que no se pesa. */
   lastWeight: LastWeight | null;
+  /** Lo que llego ese dia por el Atajo de iOS. Sin esto no se dice de donde salio nada. */
+  healthImports?: CoreHealthImportRow[];
   /** Con el lapiz apagado solo se lee, que es lo que hace el resto del dia. */
   editing: boolean;
   onLog: (entry: Omit<DailyLogEntry, 'date'>) => void;
@@ -83,8 +101,13 @@ function Summary({
   log,
   waterTargetMl,
   lastWeight,
-}: Pick<TodayLogProps, 'log' | 'waterTargetMl' | 'lastWeight'>) {
+  healthImports,
+}: Pick<TodayLogProps, 'log' | 'waterTargetMl' | 'lastWeight' | 'healthImports'>) {
   const weightKg = log?.weight_kg ?? lastWeight?.kg ?? null;
+  const from = (metric: HealthMetric) => {
+    const text = origin(log, healthImports, metric);
+    return text === null ? '' : ` · ${text}`;
+  };
   const rows: { icon: LucideIcon; label: string; value: string }[] = [
     {
       icon: Droplets,
@@ -113,12 +136,12 @@ function Summary({
       value:
         log?.sleep_minutes == null
           ? 'sin anotar'
-          : `${Math.floor(log.sleep_minutes / 60)} h ${log.sleep_minutes % 60} min`,
+          : `${Math.floor(log.sleep_minutes / 60)} h ${log.sleep_minutes % 60} min${from('sleep')}`,
     },
     {
       icon: Footprints,
       label: 'Pasos',
-      value: log?.steps == null ? 'sin anotar' : String(log.steps),
+      value: log?.steps == null ? 'sin anotar' : `${log.steps}${from('steps')}`,
     },
     {
       icon: Wine,
@@ -157,6 +180,7 @@ export function TodayLog({
   containers,
   waterTargetMl,
   lastWeight,
+  healthImports,
   editing,
   onLog,
   onAdd,
@@ -202,9 +226,9 @@ export function TodayLog({
   const commitSleep = () => {
     const total = typedSleep(sleepHours, sleepMinutes, typed.sleep);
     if (total === null) return;
-    // El esquema pide de donde salio el dato, y escrito a mano es 'manual'. Sin
-    // esto, escribir la hora antes de tocar un chip rompe la escritura.
-    onLog({ sleepMinutes: total, sleepSource: log?.sleep_source ?? 'manual' });
+    // Escrito aqui es suyo, aunque antes lo hubiera traido el Atajo: el esquema pide de
+    // donde salio el dato, y la proxima importacion le pregunta antes de pisarlo.
+    onLog({ sleepMinutes: total, sleepSource: 'manual' });
     setSleepHours(String(Math.floor(total / 60)));
     setSleepMinutes(String(total % 60));
   };
@@ -213,8 +237,18 @@ export function TodayLog({
   const drinks = log?.alcohol_drinks ?? 0;
 
   if (!editing) {
-    return <Summary log={log} waterTargetMl={waterTargetMl} lastWeight={lastWeight} />;
+    return (
+      <Summary
+        log={log}
+        waterTargetMl={waterTargetMl}
+        lastWeight={lastWeight}
+        healthImports={healthImports}
+      />
+    );
   }
+
+  const sleepFrom = origin(log, healthImports, 'sleep');
+  const stepsFrom = origin(log, healthImports, 'steps');
 
   return (
     <View style={styles.wrapper}>
@@ -320,16 +354,7 @@ export function TodayLog({
             style={styles.input}
           />
         </View>
-        <View style={styles.row}>
-          {SLEEP_SOURCES.map((source) => (
-            <Chip
-              key={source.value}
-              label={source.label}
-              selected={log?.sleep_source === source.value}
-              onPress={() => onLog({ sleepSource: source.value })}
-            />
-          ))}
-        </View>
+        {sleepFrom && <Text style={styles.note}>{sleepFrom}</Text>}
       </Field>
 
       <Field title="Pasos" icon={Footprints}>
@@ -348,6 +373,7 @@ export function TodayLog({
           }}
           style={styles.input}
         />
+        {stepsFrom && <Text style={styles.note}>{stepsFrom}</Text>}
       </Field>
 
       <Field title="Alcohol" icon={Wine}>

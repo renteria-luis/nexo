@@ -375,7 +375,8 @@ test('after-the-fact additions and session finish delays cannot become timing ob
 test('upgrading an existing database preserves tap timestamps and backfills derived minutes', async () => {
   const raw = new DatabaseSync(':memory:');
   raw.exec('PRAGMA foreign_keys = ON;');
-  for (const migration of migrations.slice(0, -1)) raw.exec(migration.sql);
+  const timing = migrations.findIndex((migration) => migration.id === '056_exercise_timing');
+  for (const migration of migrations.slice(0, timing)) raw.exec(migration.sql);
   raw.exec(`INSERT INTO training_session (id, date, start_time, end_time, time_budget)
     VALUES ('legacy', '2026-10-07', 1000000, 3000000, 'completo');
     INSERT INTO training_set_entry (id, session_id, exercise_id, set_index, weight_kg, reps, timestamp)
@@ -383,7 +384,7 @@ test('upgrading an existing database preserves tap timestamps and backfills deri
            ('b', 'legacy', 'peck-deck', 2, 30, 10, 1600000),
            ('c', 'legacy', 'peck-deck', 3, 30, 10, 1900000);`);
   const before = raw.prepare('SELECT id, timestamp FROM training_set_entry ORDER BY id;').all();
-  raw.exec(migrations.at(-1)!.sql);
+  raw.exec(migrations[timing].sql);
   assert.deepEqual(
     raw.prepare('SELECT id, timestamp FROM training_set_entry ORDER BY id;').all(),
     before,

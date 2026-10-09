@@ -2,6 +2,7 @@
   "expo": {
     "name": "nexo",
     "slug": "nexo",
+    "scheme": "nexo",
     "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/icon.png",

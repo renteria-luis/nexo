@@ -34,6 +34,7 @@ import {
   type Settings,
 } from '../core/settings.ts';
 import { parseDraft, type SessionDraft } from '../core/session-draft.ts';
+import { listHealthImports } from '../core/health-import.ts';
 import {
   backdateFirstSnapshot,
   latestTargetChange,
@@ -52,6 +53,7 @@ import {
   type DealWithContext,
 } from '../deals/index.ts';
 import type {
+  CoreHealthImportRow,
   DealsDiscountRow,
   DealsSourceRow,
   NutritionBatchRow,
@@ -133,6 +135,8 @@ export type Loaded = {
   sessionDraft: SessionDraft | null;
   /** Lo que eligio hoy antes de empezar, para que cerrar la app no se lo quite. */
   plannerDraft: PlannerDraft;
+  /** Lo que llego hoy por el Atajo, para decir de donde salio el sueno y los pasos. */
+  healthImports: CoreHealthImportRow[];
 };
 
 type DealSlice = Pick<Loaded, 'deals' | 'discounts' | 'dealSources'>;
@@ -259,6 +263,7 @@ export async function load(
 
   const gyms = await listGyms(db);
   const lastWeight = await readLastWeight(db);
+  const healthImports = await listHealthImports(db, today);
   const dealSlice: DealSlice | null =
     everything || reread.deals
       ? {
@@ -297,6 +302,7 @@ export async function load(
     lastWeight,
     sessionDraft: parseDraft(settings.get('session_draft'), assembled.session?.id ?? null),
     plannerDraft: parsePlannerDraft(settings.get('planner_draft'), today),
+    healthImports,
     dealSlice,
     foodSlice,
   };

@@ -48,6 +48,12 @@ export function todayIso(now: Date = new Date()): IsoDate {
   return `${year}-${month}-${day}`;
 }
 
+/** La hora local de un instante, en 24 h: "07:25". */
+export function clockTime(timestamp: number): string {
+  const when = new Date(timestamp);
+  return `${String(when.getHours()).padStart(2, '0')}:${String(when.getMinutes()).padStart(2, '0')}`;
+}
+
 export function millisecondsToLocalMidnight(now = new Date()): number {
   const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   return Math.max(1, next.getTime() - now.getTime());

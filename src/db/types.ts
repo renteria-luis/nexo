@@ -16,6 +16,8 @@ export type TimeBudget = 'completo' | 'minus_25' | 'minus_50' | 'express';
 export type Crowding = 'empty' | 'normal' | 'full';
 export type Company = 'alone' | 'with_someone';
 export type SleepSource = 'apple_health' | 'autosleep' | 'manual' | 'none';
+export type HealthMetric = 'sleep' | 'steps';
+export type HealthSource = 'autosleep' | 'apple_health';
 export type FoodSource = 'user_measured' | 'off' | 'usda' | 'label';
 export type UnitKind = 'mass' | 'volume' | 'count';
 export type TargetRepMode = 'range' | 'amrap' | 'failure';
@@ -75,6 +77,19 @@ export type CoreDailyLogRow = {
   has_data: SqlBool;
   /** Spec 4.3: el dia estaba planeado como descanso, asi que no fallo ningun entreno. */
   rest_day: SqlBool;
+};
+
+/** Lo ultimo que mando una fuente para un dato de un dia (migracion 059). */
+export type CoreHealthImportRow = {
+  date: IsoDate;
+  metric: HealthMetric;
+  source: HealthSource;
+  /** Minutos de sueno o pasos, tal como se aplicaron al dia. */
+  value: number;
+  /** La noche que AutoSleep tomo como sueno principal, cuando la manda. */
+  started_at: EpochMs | null;
+  ended_at: EpochMs | null;
+  imported_at: EpochMs;
 };
 
 export type TrainingGymRow = {

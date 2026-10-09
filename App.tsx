@@ -6,7 +6,7 @@ import {
   useNavigationContainerRef,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Keyboard, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,7 +42,7 @@ import {
 import { InfoProvider } from './src/ui/InfoBubble.tsx';
 import { KeyboardBar } from './src/ui/KeyboardBar.tsx';
 import { Assistant } from './src/ui/Assistant.tsx';
-import { nudgeDestination, type Navigate } from './src/ui/navigation.ts';
+import { goTo, nudgeDestination, type Navigate } from './src/ui/navigation.ts';
 import { SidebarProvider, useSidebar } from './src/ui/Sidebar.tsx';
 import { SwipeLockProvider, useSwipeLock } from './src/ui/SwipeLock.tsx';
 import { FloatingBarSpace, TabBar, tabBarSpace } from './src/ui/TabBar.tsx';
@@ -177,7 +177,7 @@ function SettingsRoute() {
  * pantalla que ya no era la suya.
  */
 function Navigation({ navigation }: { navigation: ReturnType<typeof useNavigationContainerRef> }) {
-  const { nudgeTarget, clearNudgeTarget } = useAppData();
+  const { nudgeTarget, clearNudgeTarget, healthArrival } = useAppData();
   const sidebar = useSidebar();
 
   useEffect(() => {
@@ -187,6 +187,17 @@ function Navigation({ navigation }: { navigation: ReturnType<typeof useNavigatio
     if (navigation.isReady()) navigate(...nudgeDestination(nudgeTarget));
     clearNudgeTarget();
   }, [nudgeTarget, clearNudgeTarget, navigation]);
+
+  // Lo que manda el Atajo se cuenta en Hoy, donde quedan el sueno y los pasos. Una vez por
+  // enlace: contestar un choque cambia lo que dice, no lo vuelve a llevar a Hoy.
+  const arrivalShown = useRef<number | null>(null);
+  const arrivalId = healthArrival?.id ?? null;
+  useEffect(() => {
+    if (arrivalId === null || arrivalId === arrivalShown.current) return;
+    arrivalShown.current = arrivalId;
+    const navigate = navigation.navigate as (...args: Navigate) => void;
+    if (navigation.isReady()) navigate(...goTo('Hoy', true));
+  }, [arrivalId, navigation]);
 
   return (
     <NavigationContainer
