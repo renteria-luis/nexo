@@ -449,3 +449,23 @@ test('an excluded or future last tap cannot provide elapsed-time credit to the E
   const future = data([set(30, 1)]);
   assert.equal(remainingEstimate(future, plan.slice(0, 1), catalog, now).seconds, 2 * (180 + 45));
 });
+
+test('the estimate says how many measured workouts its thinnest pace comes from', () => {
+  // Nothing measured yet: the plan alone, so there is no evidence to report.
+  assert.equal(remainingEstimate(data([]), plan, catalog, START).fewestSessions, null);
+
+  // Two past workouts of the press, plus today's interval; the peck deck has none and
+  // still runs on the plan, so it does not count as learned.
+  const press = [sample(15), sample(14, { sessionId: 'p2' })];
+  const today = data([set(5, 1), set(10, 2)], press);
+  assert.equal(remainingEstimate(today, plan, catalog, START + 10 * 60000).fewestSessions, 3);
+
+  // Once both have history, the thinner one sets the level.
+  const peck = Array.from({ length: 6 }, (_, index) =>
+    sample(12, { sessionId: `k${index}`, exerciseId: 'peck-deck', implement: 'machine', sets: 4 }),
+  );
+  const both = data([set(5, 1), set(10, 2)], [...press, ...peck]);
+  assert.equal(remainingEstimate(both, plan, catalog, START + 10 * 60000).fewestSessions, 3);
+  const onlyPeck = data([], peck);
+  assert.equal(remainingEstimate(onlyPeck, plan.slice(1), catalog, START).fewestSessions, 6);
+});

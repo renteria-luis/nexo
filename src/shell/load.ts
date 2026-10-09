@@ -81,6 +81,7 @@ import {
   OPEN_SESSION_CARRIES_MS,
   openSessionSince,
   parsePlannerDraft,
+  trainingWeekStreak,
   type PlannedSet,
   type PlannerDraft,
 } from '../training/index.ts';
@@ -137,6 +138,8 @@ export type Loaded = {
   plannerDraft: PlannerDraft;
   /** Lo que llego hoy por el Atajo, para decir de donde salio el sueno y los pasos. */
   healthImports: CoreHealthImportRow[];
+  /** Spec 4.4: semanas seguidas con las cinco sesiones, contando la de ahora si ya llego. */
+  trainingStreak: number;
 };
 
 type DealSlice = Pick<Loaded, 'deals' | 'discounts' | 'dealSources'>;
@@ -264,6 +267,11 @@ export async function load(
   const gyms = await listGyms(db);
   const lastWeight = await readLastWeight(db);
   const healthImports = await listHealthImports(db, today);
+  // Toda la historia, porque la racha no tiene tope; son solo las fechas con sesion.
+  const trainingStreak = trainingWeekStreak(
+    await listSessionDates(db, { from: '0000-01-01', to: today }),
+    today,
+  );
   const dealSlice: DealSlice | null =
     everything || reread.deals
       ? {
@@ -303,6 +311,7 @@ export async function load(
     sessionDraft: parseDraft(settings.get('session_draft'), assembled.session?.id ?? null),
     plannerDraft: parsePlannerDraft(settings.get('planner_draft'), today),
     healthImports,
+    trainingStreak,
     dealSlice,
     foodSlice,
   };

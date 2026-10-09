@@ -9,6 +9,7 @@ import type { PlannedSet } from '../training/routines.ts';
 import type { CatalogExercise } from '../training/queries.ts';
 import {
   exerciseHistory,
+  CONFIDENT_SESSIONS,
   remainingEstimate,
   type IntervalReason,
   type SessionTiming,
@@ -211,6 +212,7 @@ const LiveEstimate = memo(function LiveEstimate({
           : estimate.learnedSets < estimate.sets
             ? 'Combina tus tiempos con el plan donde falta historial.'
             : 'Según tus tiempos y las series que faltan.'}
+        {estimate.fewestSessions !== null && ` ${evidence(estimate.fewestSessions)}`}
       </Text>
       {estimate.overdue && (
         <Text style={styles.hint}>
@@ -220,6 +222,17 @@ const LiveEstimate = memo(function LiveEstimate({
     </View>
   );
 });
+
+/**
+ * Que tan firme es lo aprendido: un ritmo sacado de uno o dos entrenos puede estar lejos,
+ * y decirlo evita leer "Sales ~19:40" como una promesa.
+ */
+function evidence(sessions: number): string {
+  const measured = `${sessions} ${sessions === 1 ? 'entreno medido' : 'entrenos medidos'}`;
+  return sessions < CONFIDENT_SESSIONS
+    ? `Todavía con pocos datos: algún ejercicio lleva solo ${measured}.`
+    : `Con al menos ${measured} por ejercicio.`;
+}
 
 export const TrainingTiming = memo(function TrainingTiming({
   session,

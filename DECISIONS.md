@@ -900,3 +900,13 @@ Context: With the Shortcut route working, the owner asked whether Nexo itself co
 Decision: Add "Traer de Salud" to the right of the Sueño title in Hoy's daily log. It opens `shortcuts://run-shortcut?name=Nexo%20Salud`; Shortcuts runs the owner's Shortcut, which returns to Nexo through the existing `nexo://salud` link and its card. The name is fixed in code and must match the Shortcut on the phone. If Shortcuts cannot be opened, the field says so. The button appears only on Hoy, because the Shortcut always reads today. iOS shows Shortcuts briefly; an app cannot run a Shortcut invisibly.
 Rejected: Running the Shortcut automatically whenever Nexo opens, which would flash Shortcuts on every launch and could loop through its own return link, and offering the button on past days that the Shortcut cannot read.
 
+## 2026-10-09 — Show the training week streak on Hoy
+Context: Spec 4.4 asks for a training streak, consecutive weeks hitting five sessions, shown on Today and above the grid. It was never built.
+Decision: Count Monday-to-Sunday weeks with at least five training days (days with a working set), walking back from the current week. The current week adds once it reaches five and never breaks the streak before it ends, like today in the day streak. Marked rest days are not sessions. The whole history is read in one query per load, and the line sits in the Hoy score card under the day's note, above the grid.
+Rejected: Rolling seven-day windows, counting rest days as sessions, and another line in the grid header right after its height was reduced.
+
+## 2026-10-09 — Say how much evidence a training estimate rests on
+Context: Training finding 9: a learned pace can come from a single interval, and the estimate read the same either way. The owner asked for it now rather than after weeks of data.
+Decision: The remaining-time estimate reports, among pending exercises with a learned pace, the fewest measured workouts behind any of them, today included once it has an interval. Below five, the same threshold the interval review uses, it says the estimate still rests on little data; from five it states that minimum. Ranges and calibration against actual finish times wait for real data.
+Rejected: Showing a time range before measuring forecast error, and treating the plan-only estimate as evidence.
+

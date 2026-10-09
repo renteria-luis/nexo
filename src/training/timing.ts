@@ -185,8 +185,19 @@ export type RemainingEstimate = {
   seconds: number;
   sets: number;
   learnedSets: number;
+  /**
+   * De cuantos entrenos medidos sale el ritmo con menos historial de lo que falta, hoy
+   * incluido si ya se midio. Null si nada de lo que falta tiene ritmo propio todavia.
+   */
+  fewestSessions: number | null;
   overdue: boolean;
 };
+
+/**
+ * Desde cuantos entrenos medidos un ritmo deja de ser una corazonada. Son los mismos cinco
+ * que pide la revision automatica de intervalos antes de juzgar uno como raro.
+ */
+export const CONFIDENT_SESSIONS = 5;
 
 export function remainingEstimate(
   data: SessionTiming,
@@ -200,6 +211,7 @@ export function remainingEstimate(
     sets: number;
     cycle: number;
     learned: boolean;
+    sessions: number;
     transition: number;
   }[] = [];
   const working = data.sets.filter((set) => !set.warmup);
@@ -228,11 +240,17 @@ export function remainingEstimate(
       sets: left,
       cycle,
       learned: past !== null || observed !== null,
+      sessions:
+        exerciseHistory(data.history, entry.exerciseId, implement).length +
+        (observed === null ? 0 : 1),
       transition: done.length === 0 ? TRANSITION_SECONDS : 0,
     });
   }
   const setsLeft = pending.reduce((sum, item) => sum + item.sets, 0);
-  if (!setsLeft) return { seconds: 0, sets: 0, learnedSets: 0, overdue: false };
+  if (!setsLeft) {
+    return { seconds: 0, sets: 0, learnedSets: 0, fewestSessions: null, overdue: false };
+  }
+  const learned = pending.filter((item) => item.learned).map((item) => item.sessions);
   let seconds = pending.reduce((sum, item) => sum + item.sets * item.cycle + item.transition, 0);
   let overdue = false;
   if (!latest) {
@@ -252,6 +270,7 @@ export function remainingEstimate(
     seconds: Math.max(30, seconds),
     sets: setsLeft,
     learnedSets: pending.reduce((sum, item) => sum + (item.learned ? item.sets : 0), 0),
+    fewestSessions: learned.length === 0 ? null : Math.min(...learned),
     overdue,
   };
 }

@@ -4,8 +4,8 @@
 
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { addDays, daysBetween, type DateRange, type IsoDate } from '../core/dates.ts';
-import { trainingDebt } from '../core/discipline.ts';
+import { addDays, daysBetween, weekStart, type DateRange, type IsoDate } from '../core/dates.ts';
+import { trainingDebt, WEEKLY_SESSION_TARGET } from '../core/discipline.ts';
 
 /**
  * Los dias en que entreno: con una sesion que tiene al menos una serie de trabajo (spec
@@ -82,4 +82,25 @@ export function consecutiveMissedBefore(
 
 export function trainedOn(sessionDates: readonly IsoDate[], date: IsoDate): boolean {
   return sessionDates.includes(date);
+}
+
+/**
+ * Spec 4.4: cuantas semanas seguidas, de lunes a domingo, llego a las cinco sesiones.
+ *
+ * La semana en curso suma en cuanto llega a cinco y no corta antes, igual que hoy en la
+ * racha de dias: el lunes ninguna semana tiene cinco, y contarla rota dejaria la racha en
+ * cero al empezar cada semana. Un descanso marcado no es una sesion y no suma.
+ */
+export function trainingWeekStreak(sessionDates: readonly IsoDate[], today: IsoDate): number {
+  const perWeek = new Map<IsoDate, number>();
+  for (const date of sessionDates) {
+    if (date > today) continue;
+    const week = weekStart(date);
+    perWeek.set(week, (perWeek.get(week) ?? 0) + 1);
+  }
+  const full = (week: IsoDate) => (perWeek.get(week) ?? 0) >= WEEKLY_SESSION_TARGET;
+  const current = weekStart(today);
+  let streak = full(current) ? 1 : 0;
+  for (let week = addDays(current, -7); full(week); week = addDays(week, -7)) streak += 1;
+  return streak;
 }

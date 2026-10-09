@@ -264,6 +264,11 @@ export function TodayScreen({
               de 100
               {pending > 0 ? ` · faltan ${Math.round(pending)} por anotar` : ' · día completo'}
             </Text>
+            {/* Spec 4.4: la racha de semanas con cinco entrenos, junto a la de dias. */}
+            <Text style={styles.heroNote}>
+              entreno: {loaded.trainingStreak}{' '}
+              {loaded.trainingStreak === 1 ? 'semana seguida' : 'semanas seguidas'} con 5
+            </Text>
           </View>
           <View style={styles.heroStar}>
             <Star size={78} color={theme.surface} style={styles.star}>
