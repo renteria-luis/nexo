@@ -9,6 +9,7 @@ import {
   GRID_VISIBLE_WEEKS,
   historyRange,
   historyRangeLabel,
+  historyToRead,
   historyWeeks,
 } from '../core/grid-history.ts';
 import { levelForScore, scoreLevels, type ScoreScaleOptions } from '../core/palettes.ts';
@@ -18,7 +19,8 @@ import { font, hardShadow, sheet, shape } from './theme.ts';
 
 const GAP = 2;
 const GUTTER = 24;
-const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+// La X es el miercoles, como en los calendarios de aqui: dos M seguidas no se distinguen.
+const WEEKDAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 type OpenDay = (date: string, at: { x: number; y: number; width: number; height: number }) => void;
 
 export function ScoreCell({
@@ -161,28 +163,20 @@ export const DisciplineGrid = memo(function DisciplineGrid({
   const [retry, setRetry] = useState(0);
   const recentFrom = weekStart(addDays(today, -(GRID_VISIBLE_WEEKS - 1) * 7));
   const visible = historyRange(weeks, firstIndex, GRID_VISIBLE_WEEKS, today);
-  const page = Math.floor(firstIndex / GRID_VISIBLE_WEEKS);
-  const wanted = historyRange(
-    weeks,
-    Math.max(0, (page - 1) * GRID_VISIBLE_WEEKS),
-    GRID_VISIBLE_WEEKS * 3,
-    today,
-  );
   const needsHistory = visible.from < recentFrom;
+  const toRead = historyToRead(weeks, firstIndex, today, cache, revision);
+  // Por sus extremos y no por el objeto, que es nuevo en cada pixel de desplazamiento.
+  const readFrom = toRead?.from ?? null;
+  const readTo = toRead?.to ?? null;
   useEffect(() => {
-    if (!needsHistory) return;
-    if (
-      cache?.revision === revision &&
-      cache.range.from <= visible.from &&
-      cache.range.to >= visible.to
-    )
-      return;
+    if (readFrom === null || readTo === null) return;
+    const range = { from: readFrom, to: readTo };
     let live = true;
     const timer = setTimeout(() => {
       setProblem(null);
-      loadDays(wanted)
+      loadDays(range)
         .then((result) => {
-          if (live) setCache({ range: wanted, days: result, revision });
+          if (live) setCache({ range, days: result, revision });
         })
         .catch((error: unknown) => {
           if (live)
@@ -193,9 +187,7 @@ export const DisciplineGrid = memo(function DisciplineGrid({
       live = false;
       clearTimeout(timer);
     };
-    // A page covers a moving viewport plus its neighbors; do not query on every pixel.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, revision, today, needsHistory, loadDays, retry]);
+  }, [readFrom, readTo, revision, loadDays, retry]);
 
   const combined = useMemo(() => {
     const byDate = new Map(cache?.days.map((day) => [day.date, day]) ?? []);

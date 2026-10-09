@@ -31,6 +31,42 @@ export function historyRange(
   };
 }
 
+/**
+ * Lo que falta leer para ver las doce semanas que empiezan en `firstIndex`, o null si ya
+ * esta todo: las recientes vienen con la carga del dia, y lo demas con la ultima lectura
+ * si sigue siendo de estos datos.
+ *
+ * Se lee por paginas de doce semanas con una pagina de cada lado, para no consultar a cada
+ * pixel. Pero lo que decide si hace falta leer es la ventana que se ve, no la pagina: una
+ * lectura hecha desde otra pagina no siempre cubre la ventana entera de esta, y cuando solo
+ * se miraba al cambiar de pagina se quedaba en "Cargando historial" hasta moverla.
+ */
+export function historyToRead(
+  weeks: readonly IsoDate[],
+  firstIndex: number,
+  today: IsoDate,
+  read: { range: DateRange; revision: number } | null,
+  revision: number,
+): DateRange | null {
+  const recentFrom = weekStart(addDays(today, -(GRID_VISIBLE_WEEKS - 1) * 7));
+  const visible = historyRange(weeks, firstIndex, GRID_VISIBLE_WEEKS, today);
+  if (visible.from >= recentFrom) return null;
+  if (
+    read?.revision === revision &&
+    read.range.from <= visible.from &&
+    read.range.to >= visible.to
+  ) {
+    return null;
+  }
+  const page = Math.floor(firstIndex / GRID_VISIBLE_WEEKS);
+  return historyRange(
+    weeks,
+    Math.max(0, (page - 1) * GRID_VISIBLE_WEEKS),
+    GRID_VISIBLE_WEEKS * 3,
+    today,
+  );
+}
+
 export function historyRangeLabel(range: DateRange): string {
   const from = `${shortMonth(range.from)} ${range.from.slice(0, 4)}`;
   const to = `${shortMonth(range.to)} ${range.to.slice(0, 4)}`;

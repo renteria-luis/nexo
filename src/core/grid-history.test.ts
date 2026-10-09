@@ -6,6 +6,7 @@ import {
   GRID_VISIBLE_WEEKS,
   historyRange,
   historyRangeLabel,
+  historyToRead,
   historyWeeks,
 } from './grid-history.ts';
 
@@ -48,4 +49,29 @@ test('the history grows at Monday and supports leap years and year labels', () =
     to: '2025-01-01',
   });
   assert.equal(historyRangeLabel({ from: '2025-12-29', to: '2026-01-04' }), 'Dic 2025 – Ene 2026');
+});
+
+test('history is read whenever the visible weeks are not covered, not only on a new page', () => {
+  const today = '2026-10-08';
+  const weeks = historyWeeks(today);
+  const page = 4;
+  const start = page * GRID_VISIBLE_WEEKS;
+
+  // Read while two pages back, then come forward to the start of this page: still covered.
+  const twoBack = historyToRead(weeks, start - 2 * GRID_VISIBLE_WEEKS, today, null, 1)!;
+  const read = { range: twoBack, revision: 1 };
+  assert.equal(historyToRead(weeks, start - GRID_VISIBLE_WEEKS, today, read, 1), null);
+
+  // Further right on that same page the window leaves the earlier read: it must load.
+  const wanted = historyToRead(weeks, start - 1, today, read, 1);
+  assert.ok(wanted);
+  assert.ok(wanted.to >= historyRange(weeks, start - 1, GRID_VISIBLE_WEEKS, today).to);
+  const reread = { range: wanted, revision: 1 };
+  for (let index = start - GRID_VISIBLE_WEEKS; index < start; index++) {
+    assert.equal(historyToRead(weeks, index, today, reread, 1), null, `week ${index}`);
+  }
+
+  // New data makes an earlier read stale; the latest weeks never need one.
+  assert.ok(historyToRead(weeks, start - 1, today, reread, 2));
+  assert.equal(historyToRead(weeks, weeks.length - GRID_VISIBLE_WEEKS, today, null, 1), null);
 });

@@ -505,10 +505,13 @@ const styles = sheet((theme) => ({
     flexDirection: 'row',
     gap: 8,
   },
+  // El boton de Registros mide 40 para el dedo, y con el relleno de la tarjeta dejaba
+  // mucho blanco alrededor del titulo. Se mete en ese relleno sin perder area de toque.
   gridHead: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginVertical: -8,
   },
   gridTitle: {
     fontSize: 16,
