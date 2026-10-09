@@ -2,76 +2,34 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { averageScore, buildGrid, type ScoredDay } from './heatmap.ts';
-import {
-  NO_DATA_COLOR,
-  PREVIEW_SCORES,
-  colorForScore,
-  fillForScore,
-  type PaletteId,
-} from './palettes.ts';
+import { NO_DATA_COLOR, colorForScore } from './palettes.ts';
 
-const PALETTES: PaletteId[] = ['deutan', 'standard', 'tritan'];
+test('score buckets honor exact boundaries without rounding up completion', () => {
+  const examples: [number, string][] = [
+    [0, '#D1D5DB'],
+    [0.1, '#A7D9B0'],
+    [25, '#A7D9B0'],
+    [25.1, '#70BB84'],
+    [50, '#70BB84'],
+    [50.1, '#36985B'],
+    [75, '#36985B'],
+    [99.9, '#36985B'],
+    [100, '#17683A'],
+  ];
+  for (const [score, color] of examples) assert.equal(colorForScore(score), color);
+  assert.equal(colorForScore(null), NO_DATA_COLOR);
+  assert.notEqual(colorForScore(null), colorForScore(0));
+});
 
-function luminance(hex: string): number {
-  const channel = (at: number) => parseInt(hex.slice(at, at + 2), 16);
-  // Rec. 709, which is close enough to judge whether a ramp is monotonic.
-  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
-}
-
-test('every palette produces a colour across the whole range', () => {
-  for (const palette of PALETTES) {
-    for (const score of PREVIEW_SCORES) {
-      assert.match(colorForScore(score, palette), /^#[0-9a-f]{6}$/);
-    }
+test('invalid scores cannot silently produce a valid completion color', () => {
+  for (const score of [-1, 100.1, NaN, Infinity]) {
+    assert.throws(() => colorForScore(score), /outside 0 to 100/);
   }
-});
-
-test('a score outside 0 to 100 is a mistake, not a clamped colour', () => {
-  assert.throws(() => colorForScore(101, 'deutan'), /outside 0 to 100/);
-  assert.throws(() => colorForScore(-1, 'deutan'), /outside 0 to 100/);
-});
-
-test('the deutan scale runs dark blue at the top to yellow at the bottom', () => {
-  assert.equal(colorForScore(100, 'deutan'), '#00204c');
-  assert.equal(colorForScore(0, 'deutan'), '#ffea46');
-});
-
-test('the deutan scale survives losing hue entirely', () => {
-  // Spec 4.5: luminance has to vary monotonically with the score, so the grid still
-  // reads for someone who sees no colour at all.
-  const steps = PREVIEW_SCORES.map((score) => luminance(colorForScore(score, 'deutan')));
-  for (let i = 1; i < steps.length; i += 1) {
-    assert.ok(
-      steps[i] < steps[i - 1],
-      `luminance should keep falling as the score rises, broke at ${PREVIEW_SCORES[i]}`,
-    );
-  }
-});
-
-test('the tritan scale is monotonic too', () => {
-  const steps = PREVIEW_SCORES.map((score) => luminance(colorForScore(score, 'tritan')));
-  for (let i = 1; i < steps.length; i += 1) {
-    assert.ok(steps[i] < steps[i - 1], `broke at ${PREVIEW_SCORES[i]}`);
-  }
-});
-
-test('no data has its own colour, distinct from both ends of every palette', () => {
-  assert.equal(colorForScore(null, 'deutan'), NO_DATA_COLOR);
-  for (const palette of PALETTES) {
-    assert.notEqual(colorForScore(0, palette), NO_DATA_COLOR);
-    assert.notEqual(colorForScore(100, palette), NO_DATA_COLOR);
-  }
-});
-
-test('the fill is proportional to the score', () => {
-  assert.equal(fillForScore(0), 0);
-  assert.equal(fillForScore(50), 0.5);
-  assert.equal(fillForScore(100), 1);
 });
 
 test('the grid lays days out in Monday to Sunday rows', () => {
   // 2026-09-07 is a Monday, 2026-09-13 the Sunday that closes the week.
-  const weeks = buildGrid([], { from: '2026-09-07', to: '2026-09-20' }, 'deutan');
+  const weeks = buildGrid([], { from: '2026-09-07', to: '2026-09-20' });
 
   assert.equal(weeks.length, 2);
   assert.deepEqual(
@@ -84,33 +42,33 @@ test('the grid lays days out in Monday to Sunday rows', () => {
 });
 
 test('a range starting mid week still begins on the Monday', () => {
-  const weeks = buildGrid([], { from: '2026-09-10', to: '2026-09-13' }, 'deutan');
+  const weeks = buildGrid([], { from: '2026-09-10', to: '2026-09-13' });
   assert.equal(weeks[0].startsOn, '2026-09-07');
   assert.equal(weeks.length, 1);
 });
 
-test('a day with no entry renders as neutral grey, filled', () => {
-  const weeks = buildGrid([], { from: '2026-09-07', to: '2026-09-13' }, 'deutan');
+test('a day with no entry renders without a score color', () => {
+  const weeks = buildGrid([], { from: '2026-09-07', to: '2026-09-13' });
   const cell = weeks[0].cells[0];
 
   assert.equal(cell.hasData, false);
   assert.equal(cell.score, null);
   assert.equal(cell.color, NO_DATA_COLOR);
-  // Full grey, so an absent day reads as absent instead of as a day scored zero.
-  assert.equal(cell.fill, 1);
+  assert.equal(cell.inRange, true);
 });
 
-test('a day scored zero leaves the cell empty, which is not the same picture', () => {
+test('a recorded zero uses solid grey, distinct from no data', () => {
   const days: ScoredDay[] = [{ date: '2026-09-07', score: 0, hasData: true }];
-  const cell = buildGrid(days, { from: '2026-09-07', to: '2026-09-13' }, 'deutan')[0].cells[0];
+  const cell = buildGrid(days, { from: '2026-09-07', to: '2026-09-13' })[0].cells[0];
 
-  assert.equal(cell.fill, 0);
+  assert.equal(cell.score, 0);
+  assert.equal(cell.color, '#D1D5DB');
   assert.notEqual(cell.color, NO_DATA_COLOR);
 });
 
-test('a day flagged as having no data is grey even if a score is sitting there', () => {
+test('a day flagged as having no data stays uncolored even if a score is sitting there', () => {
   const days: ScoredDay[] = [{ date: '2026-09-07', score: 90, hasData: false }];
-  const cell = buildGrid(days, { from: '2026-09-07', to: '2026-09-13' }, 'deutan')[0].cells[0];
+  const cell = buildGrid(days, { from: '2026-09-07', to: '2026-09-13' })[0].cells[0];
 
   assert.equal(cell.score, null);
   assert.equal(cell.color, NO_DATA_COLOR);
@@ -121,7 +79,7 @@ test('scores land on the right weekday', () => {
     { date: '2026-09-07', score: 90, hasData: true },
     { date: '2026-09-13', score: 40, hasData: true },
   ];
-  const week = buildGrid(days, { from: '2026-09-07', to: '2026-09-13' }, 'standard')[0];
+  const week = buildGrid(days, { from: '2026-09-07', to: '2026-09-13' })[0];
 
   assert.equal(week.cells[0].score, 90);
   assert.equal(week.cells[6].score, 40);
@@ -142,8 +100,35 @@ test('averages leave out the days without data instead of counting them as zero'
 });
 
 test('a range that ends before it starts is a mistake', () => {
-  assert.throws(
-    () => buildGrid([], { from: '2026-09-13', to: '2026-09-01' }, 'deutan'),
-    /before it starts/,
+  assert.throws(() => buildGrid([], { from: '2026-09-13', to: '2026-09-01' }), /before it starts/);
+});
+
+test('month headings cross years without duplicating January after a partial week', () => {
+  const weeks = buildGrid([], { from: '2024-12-23', to: '2025-02-09' });
+  assert.deepEqual(
+    weeks.map((week) => week.month),
+    ['Dic', null, 'Ene', null, null, null, 'Feb'],
   );
+  const january = buildGrid([], { from: '2025-01-01', to: '2025-01-12' });
+  assert.deepEqual(
+    january.map((week) => week.month),
+    ['Ene', null],
+  );
+});
+
+test('padding days cannot expose out-of-range records as selectable scores', () => {
+  const days: ScoredDay[] = [
+    { date: '2024-12-30', score: 100, hasData: true },
+    { date: '2025-01-05', score: 100, hasData: true },
+  ];
+  const cells = buildGrid(days, { from: '2025-01-01', to: '2025-01-04' })[0].cells;
+  assert.deepEqual(
+    cells.map((cell) => cell.inRange),
+    [false, false, true, true, true, true, false],
+  );
+  for (const cell of [cells[0], cells[6]]) {
+    assert.equal(cell.score, null);
+    assert.equal(cell.hasData, false);
+    assert.equal(cell.color, NO_DATA_COLOR);
+  }
 });

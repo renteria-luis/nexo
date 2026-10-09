@@ -49,50 +49,67 @@ export function showsAnotherDay(
  * por hacer: lo que escribio en la base ya esta, pero lo que leyo para la pantalla se
  * perdio con ella, y la siguiente tiene que volver a leerlo.
  */
+export type ReloadResult = { ok: true } | { ok: false; error: unknown };
+
+type Complete = (result: ReloadResult) => void;
+
 export function reloadQueue<R, T>(
   load: (request: R) => Promise<T>,
   apply: (result: T) => void,
   fail: (error: unknown) => void,
   join: (a: R, b: R) => R,
   unfinished: (request: R) => R,
-): (request: R) => void {
+): (request: R) => Promise<ReloadResult> {
   let running = false;
   let pending: R | null = null;
+  let pendingWaiters: Complete[] = [];
   let owed: R | null = null;
 
-  const next = () => {
+  const next = (carried: Complete[] = []) => {
     running = false;
-    if (pending === null) return false;
+    if (pending === null) return;
     const request = pending;
+    const waiters = [...carried, ...pendingWaiters];
     pending = null;
-    start(request);
-    return true;
+    pendingWaiters = [];
+    start(request, waiters);
   };
 
-  const start = (request: R) => {
+  const start = (request: R, waiters: Complete[]) => {
     running = true;
     const asked = owed === null ? request : join(owed, request);
     owed = null;
-    load(asked).then(
-      (result) => {
-        if (pending === null) {
-          running = false;
-          apply(result);
+    const failed = (error: unknown) => {
+      owed = unfinished(asked);
+      fail(error);
+      waiters.forEach((resolve) => resolve({ ok: false, error }));
+      next();
+    };
+    try {
+      load(asked).then((result) => {
+        if (pending !== null) {
+          owed = unfinished(asked);
+          next(waiters);
           return;
         }
-        owed = unfinished(asked);
-        next();
-      },
-      (error: unknown) => {
-        owed = unfinished(asked);
-        fail(error);
-        next();
-      },
-    );
+        running = false;
+        try {
+          apply(result);
+          waiters.forEach((resolve) => resolve({ ok: true }));
+        } catch (error) {
+          failed(error);
+        }
+      }, failed);
+    } catch (error) {
+      failed(error);
+    }
   };
 
-  return (request) => {
-    if (running) pending = pending === null ? request : join(pending, request);
-    else start(request);
-  };
+  return (request) =>
+    new Promise((resolve) => {
+      if (running) {
+        pending = pending === null ? request : join(pending, request);
+        pendingWaiters.push(resolve);
+      } else start(request, [resolve]);
+    });
 }

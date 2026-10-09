@@ -33,11 +33,19 @@ import {
   type ChatMessage,
   type ChatSummary,
 } from '../core/assistant.ts';
-import { addDays, todayIso, type IsoDate } from '../core/dates.ts';
+import {
+  addDays,
+  millisecondsToLocalMidnight,
+  todayIso,
+  type DateRange,
+  type IsoDate,
+} from '../core/dates.ts';
+import { scoreScaleProblem, type ScoreScaleOptions } from '../core/palettes.ts';
+import type { ScoredDay } from '../core/heatmap.ts';
+import { loadScorePeriod } from './score-days.ts';
 import {
   clearSetting,
   dealBlocklistFrom,
-  paletteFrom,
   readSettings,
   weightUnitFrom,
   writeSetting,
@@ -154,7 +162,13 @@ import type { NudgeKind } from '../core/nudges.ts';
 import { flushNudges, listenToNudges, syncNudges } from './notifications.ts';
 import { applyNudgeAction } from './nudges.ts';
 import { loadCharts as loadChartsData, type ChartsData } from './charts.ts';
-import { afterFailedLoad, reloadQueue, showsAnotherDay, type LoadState } from './load-state.ts';
+import {
+  afterFailedLoad,
+  reloadQueue,
+  showsAnotherDay,
+  type LoadState,
+  type ReloadResult,
+} from './load-state.ts';
 import {
   listDayRows,
   loadDayDetail,
@@ -206,6 +220,7 @@ type Reload = Reread & { settle: boolean };
  */
 const LOOK_ONLY: ReadonlySet<SettingKey> = new Set([
   'palette',
+  'score_scale',
   'weight_unit',
   'deal_watchlist',
   'deals_seen_at',
@@ -224,13 +239,16 @@ function withSetting(loaded: Loaded, key: SettingKey, value: string): Loaded {
   return {
     ...loaded,
     settings,
-    palette: paletteFrom(settings),
     unit: weightUnitFrom(settings),
   };
 }
 
 export type AppData = {
   state: AppState;
+  dataRevision: number;
+  refreshData: () => Promise<void>;
+  saveScoreScale: (scale: ScoreScaleOptions) => Promise<void>;
+  loadScoreDays: (range: DateRange) => Promise<ScoredDay[]>;
   exerciseId: string | null;
   selectExercise: (exerciseId: string) => void;
   saveSetting: (key: SettingKey, value: string) => void;
@@ -417,6 +435,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   // la nota del dia, cuando lo unico que hacia falta era leer lo de ese ejercicio.
   const openExercise = useRef<string | null>(null);
   const startingSession = useRef<Promise<void> | null>(null);
+  const manualRefresh = useRef<Promise<void> | null>(null);
+  const [dataRevision, setDataRevision] = useState(0);
 
   // El primer arranque de un dia nuevo rehace los ultimos siete dias aunque lo pida una
   // escritura que no los necesita: ayer siguio abierto hasta medianoche, y su falta de
@@ -434,20 +454,24 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     openLoaded.current = loaded;
   }, [loaded]);
 
-  const reloads = useRef<((request: Reload) => void) | null>(null);
+  const reloads = useRef<((request: Reload) => Promise<ReloadResult>) | null>(null);
   const refresh = useCallback((settle = true, reread: Reread = REREAD_NOTHING) => {
     reloads.current ??= reloadQueue<Reload, Fresh>(
       async (request) => {
         const db = await openDatabase();
         await whenIdle(db);
         const deep = request.settle || settledOn.current !== todayIso();
-        const fresh = await load(
+        let fresh = await load(
           db,
           openExercise.current,
           deep,
           request,
           openLoaded.current?.today.date ?? null,
         );
+        // A load that straddles midnight must not publish yesterday as today.
+        while (fresh.today.date !== todayIso()) {
+          fresh = await load(db, openExercise.current, true, request, fresh.today.date);
+        }
         // Aunque esta carga se tire por vieja, el trabajo de fondo ya quedo escrito.
         if (deep) settledOn.current = fresh.today.date;
         // Los avisos de los proximos dias se rehacen con lo que acaba de anotar. No se
@@ -455,12 +479,14 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         syncNudges(db, fresh.today.date);
         return fresh;
       },
-      (fresh) =>
+      (fresh) => {
+        setDataRevision((revision) => revision + 1);
         setState((current) => ({
           phase: 'ready',
           loaded: withFresh(current.phase === 'ready' ? current.loaded : null, fresh),
           problem: null,
-        })),
+        }));
+      },
       (error) => {
         console.error(error);
         const message = error instanceof Error ? error.message : String(error);
@@ -474,7 +500,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       // Las notas que rehizo ya estan guardadas; lo que leyo para la pantalla, no.
       (request) => ({ ...request, settle: false }),
     );
-    reloads.current({ settle, ...reread });
+    return reloads.current({ settle, ...reread });
   }, []);
 
   useEffect(() => {
@@ -715,7 +741,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   // la app.
   const waterTaps = useRef<{ date: IsoDate; taps: number[] } | null>(null);
 
-  const actions = useMemo<Omit<AppData, 'state' | 'exerciseId' | 'nudgeTarget'>>(() => {
+  const actions = useMemo<
+    Omit<AppData, 'state' | 'exerciseId' | 'nudgeTarget' | 'dataRevision'>
+  >(() => {
     const tapsToday = () => {
       const date = todayIso();
       if (waterTaps.current?.date !== date) {
@@ -746,6 +774,31 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     };
 
     return {
+      refreshData: () => {
+        if (manualRefresh.current) return manualRefresh.current;
+        manualRefresh.current = (async () => {
+          try {
+            const result = await refresh(false, REREAD_ALL);
+            if (!result.ok) throw result.error;
+          } finally {
+            manualRefresh.current = null;
+          }
+        })();
+        return manualRefresh.current;
+      },
+      saveScoreScale: async (scale) => {
+        const problem = scoreScaleProblem(scale);
+        if (problem) throw new Error(problem);
+        const value = JSON.stringify(scale);
+        const db = await openDatabase();
+        await inTransaction(db, () => writeSetting(db, 'score_scale', value));
+        patch((current) => withSetting(current, 'score_scale', value));
+      },
+      loadScoreDays: async (range) => {
+        const db = await openDatabase();
+        await whenIdle(db);
+        return (await loadScorePeriod(db, range)).days;
+      },
       selectExercise,
       saveSetting: (key, val) => {
         patch((loaded) => withSetting(loaded, key, val));
@@ -1219,8 +1272,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   ]);
 
   const value: AppData = useMemo(
-    () => ({ state, exerciseId, nudgeTarget, ...actions }),
-    [state, exerciseId, nudgeTarget, actions],
+    () => ({ state, exerciseId, nudgeTarget, dataRevision, ...actions }),
+    [state, exerciseId, nudgeTarget, dataRevision, actions],
   );
 
   return <Context.Provider value={value}>{children}</Context.Provider>;

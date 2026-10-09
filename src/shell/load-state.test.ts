@@ -132,3 +132,66 @@ test('lo que leia una carga tirada lo vuelve a leer la siguiente', async () => {
 
   assert.deepEqual(started[1].ask, { deals: true });
 });
+
+test('refresh completion waits for the replacement read when its first result becomes stale', async () => {
+  const complete: (() => void)[] = [];
+  const painted: string[] = [];
+  const queue = reloadQueue(
+    () => new Promise<string>((resolve) => complete.push(() => resolve('fresh'))),
+    (value) => {
+      painted.push(value);
+    },
+    () => assert.fail('unexpected failure'),
+    () => false,
+    () => false,
+  );
+  let done = 0;
+  const first = queue(false).then((result) => {
+    assert.equal(result.ok, true);
+    done++;
+  });
+  const second = queue(false).then((result) => {
+    assert.equal(result.ok, true);
+    done++;
+  });
+  complete[0]();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(done, 0);
+  assert.deepEqual(painted, []);
+  complete[1]();
+  await Promise.all([first, second]);
+  assert.equal(done, 2);
+  assert.deepEqual(painted, ['fresh']);
+});
+
+test('a failed refresh reports failure without completing a newer pending refresh', async () => {
+  let refuse!: (error: Error) => void;
+  let finish!: () => void;
+  let calls = 0;
+  const error = new Error('database unavailable');
+  const queue = reloadQueue(
+    () =>
+      ++calls === 1
+        ? new Promise<void>((_resolve, reject) => {
+            refuse = reject;
+          })
+        : new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+    () => {},
+    () => {},
+    () => false,
+    () => false,
+  );
+  const first = queue(false);
+  let done = false;
+  const second = queue(false).then((result) => {
+    done = true;
+    return result;
+  });
+  refuse(error);
+  assert.deepEqual(await first, { ok: false, error });
+  assert.equal(done, false);
+  finish();
+  assert.deepEqual(await second, { ok: true });
+});

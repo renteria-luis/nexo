@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { todayIso } from '../../core/dates.ts';
+import { scoreScaleFrom, type ScoreScaleOptions } from '../../core/palettes.ts';
 import { type NudgeKind } from '../../core/nudges.ts';
-import type { PaletteId } from '../../core/palettes.ts';
 import { exportNote } from '../../shell/backup-file.ts';
 import {
   nudgesEnabled,
@@ -22,7 +22,7 @@ import { ChevronRight, Eye, EyeOff } from '../icons.ts';
 import { IconButton } from '../IconButton.tsx';
 import { NumericField } from '../NumericField.tsx';
 import { TextField } from '../TextField.tsx';
-import { PalettePicker } from '../PalettePicker.tsx';
+import { ScoreScale } from '../ScoreScale.tsx';
 import { Toggle } from '../Toggle.tsx';
 import { font, sheet, shape } from '../theme.ts';
 
@@ -73,10 +73,9 @@ export type SettingsScreenProps = {
   /** Null cuando cierra el selector sin elegir. Rechaza con el motivo si el archivo no sirve. */
   onImport: () => Promise<{ tables: number; rows: number; skipped: string[] } | null>;
   settings: Settings;
-  palette: PaletteId;
+  onSaveScoreScale: (scale: ScoreScaleOptions) => Promise<void>;
   onSaveSetting: (key: SettingKey, value: string) => void;
   onClearSetting: (key: SettingKey) => void;
-  onSelectPalette: (palette: PaletteId) => void;
   /** Llevan a las dos pantallas donde edita los catalogos. */
   onOpenExercises: () => void;
   onOpenFoods: () => void;
@@ -128,10 +127,9 @@ export function SettingsScreen({
   onExport,
   onImport,
   settings,
-  palette,
+  onSaveScoreScale,
   onSaveSetting,
   onClearSetting,
-  onSelectPalette,
   onOpenExercises,
   onOpenFoods,
 }: SettingsScreenProps) {
@@ -434,10 +432,7 @@ export function SettingsScreen({
         />
       </Card>
 
-      {/* Sin cartilla alrededor: cada paleta ya es una, y una cartilla dentro de otra
-          se lee como un error de dibujo. */}
-      <Text style={styles.heading}>Paleta</Text>
-      <PalettePicker selected={palette} onSelect={onSelectPalette} />
+      <ScoreScale value={scoreScaleFrom(settings.get('score_scale'))} onSave={onSaveScoreScale} />
 
       <Card title="Respaldo">
         <View style={styles.options}>

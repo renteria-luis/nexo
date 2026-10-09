@@ -415,3 +415,15 @@ test('un respaldo de una version anterior no se escribe sin una base aparte dond
   await assert.rejects(() => importBackup(phone.db, backup), /base aparte/);
   assert.deepEqual(dump(phone.raw), before);
 });
+
+test('custom score palette and limits travel in backups without changing stored scores', async () => {
+  const { writeSetting, readSettings } = await import('./settings.ts');
+  const { scoreScaleFrom } = await import('./palettes.ts');
+  const scale = { palette: 'black', lowMax: 20, mediumMax: 60, topMin: 90 };
+  const source = fresh();
+  await writeSetting(source.db, 'score_scale', JSON.stringify(scale));
+  const backup = await exportBackup(source.db);
+  const target = fresh();
+  await importBackup(target.db, parseBackup(JSON.parse(JSON.stringify(backup))));
+  assert.deepEqual(scoreScaleFrom((await readSettings(target.db)).get('score_scale')), scale);
+});

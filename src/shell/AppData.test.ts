@@ -27,20 +27,42 @@ function providerFixture() {
     },
   };
   let loads = 0;
+  let appStateListener: (state: string) => void = () => {};
+  const requests: { settle: boolean; reread: unknown }[] = [];
   const screen = renderModule('src/shell/AppData.tsx', {
+    'react-native': {
+      AppState: {
+        currentState: 'active',
+        addEventListener: (_event: string, listener: (state: string) => void) => {
+          appStateListener = listener;
+          return { remove() {} };
+        },
+      },
+    },
     '../db/index.ts': { openDatabase: async () => db },
     './backup-file.ts': {},
     './location.ts': {},
-    './notifications.ts': { listenToNudges: () => () => {}, syncNudges() {} },
+    './notifications.ts': { listenToNudges: () => () => {}, syncNudges() {}, flushNudges() {} },
     './deals.ts': { dealsDue: () => false },
     './load.ts': {
       REREAD_NOTHING: { deals: false, foods: false },
-      load: async () => {
+      REREAD_ALL: { deals: true, foods: true },
+      load: async (_db: unknown, _exercise: unknown, settle: boolean, reread: unknown) => {
         loads += 1;
+        requests.push({ settle, reread });
         const session =
           raw.prepare('SELECT * FROM training_session ORDER BY start_time DESC LIMIT 1;').get() ??
           null;
-        return { today: { date: todayIso(), session }, settings: new Map(), dealSources: [] };
+        return {
+          today: { date: todayIso(), session },
+          settings: new Map(
+            raw
+              .prepare('SELECT key,value FROM core_setting')
+              .all()
+              .map((row) => [row.key, row.value]),
+          ),
+          dealSources: [],
+        };
       },
       withFresh: (_current: unknown, fresh: unknown) => fresh,
     },
@@ -49,7 +71,15 @@ function providerFixture() {
     const tree = await screen.settle();
     return nodes(tree).find((node) => node.type === 'Provider')!.props.value;
   };
-  return { raw, db, screen, actions, loads: () => loads };
+  return {
+    raw,
+    db,
+    screen,
+    actions,
+    loads: () => loads,
+    requests,
+    appState: (state: string) => appStateListener(state),
+  };
 }
 
 test('pantry and recipe actions await their writes without reloading unrelated data', async () => {
@@ -188,4 +218,44 @@ test('routine, finish and reopen failures reach the caller without painting a fa
   raw.exec('DROP TRIGGER reject_reopen;');
   await app.reopenSession();
   assert.equal(raw.prepare('SELECT end_time FROM training_session;').get()!.end_time, null);
+});
+
+test('custom scale saving survives rereading and failures preserve the last saved palette', async () => {
+  const { raw, actions, loads } = providerFixture();
+  const app = await actions();
+  const baseline = loads();
+  const scale = { palette: 'blue', lowMax: 20, mediumMax: 60, topMin: 90 };
+  await app.saveScoreScale(scale);
+  assert.equal(loads(), baseline, 'presentation changes do not reload or rescore days');
+  assert.deepEqual(JSON.parse((await actions()).state.loaded.settings.get('score_scale')), scale);
+  assert.deepEqual(
+    JSON.parse(
+      String(raw.prepare("SELECT value FROM core_setting WHERE key = 'score_scale'").get()!.value),
+    ),
+    scale,
+  );
+  await app.refreshData();
+  assert.deepEqual(JSON.parse((await actions()).state.loaded.settings.get('score_scale')), scale);
+  raw.exec(
+    "CREATE TRIGGER reject_color BEFORE INSERT ON core_setting WHEN NEW.key = 'score_scale' BEGIN SELECT RAISE(ABORT, 'storage failure'); END;",
+  );
+  await assert.rejects(app.saveScoreScale({ ...scale, palette: 'pink' }), /storage failure/);
+  assert.deepEqual(JSON.parse((await actions()).state.loaded.settings.get('score_scale')), scale);
+  await assert.rejects(app.saveScoreScale({ ...scale, lowMax: 80 }), /orden/);
+});
+
+test('manual refresh shares one read, skips settled history and keeps provider actions stable', async () => {
+  const { actions, loads, requests } = providerFixture();
+  const app = await actions();
+  const baseline = loads();
+  const first = app.refreshData();
+  assert.equal(first, app.refreshData());
+  await first;
+  const fresh = await actions();
+  assert.equal(loads(), baseline + 1);
+  assert.equal(requests.at(-1)!.settle, false);
+  assert.deepEqual(requests.at(-1)!.reread, { settle: false, foods: true, deals: true });
+  assert.equal(fresh.refreshData, app.refreshData);
+  assert.equal(fresh.loadScoreDays, app.loadScoreDays);
+  assert.equal(fresh.dataRevision, app.dataRevision + 1);
 });

@@ -48,6 +48,11 @@ export function todayIso(now: Date = new Date()): IsoDate {
   return `${year}-${month}-${day}`;
 }
 
+export function millisecondsToLocalMidnight(now = new Date()): number {
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  return Math.max(1, next.getTime() - now.getTime());
+}
+
 /** Los tres primeros meses en espanol, que es como los lee de un vistazo. */
 const MONTHS_ES = [
   'ene',
@@ -82,6 +87,12 @@ const MONTH_NAMES_ES = [
 const WEEKDAYS_ES = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
 
 const WEEKDAY_NAMES_ES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+
+export function shortMonth(date: IsoDate): string {
+  const month = MONTHS_ES[Number(date.split('-')[1]) - 1];
+  if (!month) throw new Error(`${date} is not a date`);
+  return month[0].toUpperCase() + month.slice(1);
+}
 
 /**
  * 2026-08-08 se lee "sáb, 08-ago-2026": sin ambiguedad entre dia y mes, y con el dia de

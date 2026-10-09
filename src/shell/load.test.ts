@@ -267,11 +267,32 @@ test('food alone stores a score and colors today and past grid cells', async () 
     assert.ok(cell?.hasData);
     assert.equal(cell.score, stored.score);
     assert.equal(averageScore(fresh.days), stored.score);
-    const grid = buildGrid(fresh.days, { from: date, to: today }, 'deutan');
+    const grid = buildGrid(fresh.days, { from: date, to: today });
     assert.equal(
       grid.flatMap((week) => week.cells).find((day) => day.date === date)?.score,
       stored.score,
     );
     if (date !== today) assert.equal(fresh.today.result?.score ?? null, null);
   }
+});
+
+test('historical browsing reads only the selected period in two queries and leaves scores untouched', async () => {
+  const { loadScorePeriod } = await import('./score-days.ts');
+  const { db, reads } = fixture();
+  for (const date of ['2024-12-31', '2025-01-01', '2025-03-23', '2025-03-24']) {
+    await upsertDailyLog(db, { date, steps: 0 });
+    await storeScore(db, date, 80);
+  }
+  reads.length = 0;
+  const { days } = await loadScorePeriod(db, { from: '2025-01-01', to: '2025-03-23' });
+  assert.deepEqual(days, [
+    { date: '2025-01-01', score: 80, hasData: true },
+    { date: '2025-03-23', score: 80, hasData: true },
+  ]);
+  assert.equal(reads.length, 2);
+  assert.equal(
+    reads.reduce((total, read) => total + read.rows, 0),
+    2,
+  );
+  assert.equal((await readDailyLog(db, '2024-12-31'))?.score, 80);
 });

@@ -17,12 +17,12 @@ import {
 import type { LastWeight } from '../core/daily-log.ts';
 import { addDays, todayIso, trailingDays, weekStart, type IsoDate } from '../core/dates.ts';
 import type { ScoredDay } from '../core/heatmap.ts';
+import { GRID_VISIBLE_WEEKS } from '../core/grid-history.ts';
+import { loadScorePeriod } from './score-days.ts';
 import type { StreakDay } from '../core/discipline.ts';
-import type { PaletteId } from '../core/palettes.ts';
 import { reEntryBanner, startsOnItsOwn, type ReEntryBanner } from '../core/re-entry.ts';
 import {
   dealBlocklistFrom,
-  paletteFrom,
   stepsAdviceDeclinedFrom,
   stepsTargetFrom,
   profileFrom,
@@ -90,7 +90,7 @@ import {
 } from './day.ts';
 import { rescoreMissing, rescoreSettling } from './records.ts';
 
-export const WEEKS_SHOWN = 12;
+export const WEEKS_SHOWN = GRID_VISIBLE_WEEKS;
 
 export type OpenBatch = {
   batch: NutritionBatchRow;
@@ -103,7 +103,6 @@ export type Loaded = {
   days: ScoredDay[];
   scoreHistory: StreakDay[];
   settings: Settings;
-  palette: PaletteId;
   unit: WeightUnit;
   readapting: ReEntryBanner | null;
   today: AssembledDay;
@@ -237,9 +236,9 @@ export async function load(
     await rescoreSettling(db, today);
   }
 
-  const [logs, scoreHistory, containers, exercise, change, openBatches, routines, plan] =
+  const [{ days, logs }, scoreHistory, containers, exercise, change, openBatches, routines, plan] =
     await Promise.all([
-      listDailyLogs(db, { from, to: today }),
+      loadScorePeriod(db, { from, to: today }),
       listScoreHistory(db, today),
       listContainers(db),
       exerciseContext(db, assembled, exerciseId),
@@ -256,7 +255,6 @@ export async function load(
 
   const gyms = await listGyms(db);
   const lastWeight = await readLastWeight(db);
-  const trainedDates = new Set(await listSessionDates(db, { from, to: today }));
   const dealSlice: DealSlice | null =
     everything || reread.deals
       ? {
@@ -275,20 +273,8 @@ export async function load(
 
   return {
     scoreHistory,
-    days: (() => {
-      const byDate = new Map(logs.map((log) => [log.date, log]));
-      const dates = [...new Set([...byDate.keys(), ...trainedDates])].sort();
-      return dates.map((date) => {
-        const log = byDate.get(date);
-        return {
-          date,
-          score: log?.score ?? null,
-          hasData: log?.score != null || log?.has_data === 1 || trainedDates.has(date),
-        };
-      });
-    })(),
+    days,
     settings,
-    palette: paletteFrom(settings),
     unit: weightUnitFrom(settings),
     readapting: reEntryBanner(reEntryFrom(settings), today),
     today: assembled,

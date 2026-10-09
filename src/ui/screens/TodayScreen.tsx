@@ -6,10 +6,9 @@ import { useAppData } from '../../shell/AppData.tsx';
 import { sourceStatus } from '../../shell/deals.ts';
 import { WEEKS_SHOWN } from '../../shell/load.ts';
 import { parseWaterTaps } from '../../core/water-taps.ts';
-import { addDays, todayIso, weekStart } from '../../core/dates.ts';
 import { scoreText } from '../../core/day-report.ts';
 import { currentStreak, longestStreak } from '../../core/discipline.ts';
-import { averageScore, buildGrid } from '../../core/heatmap.ts';
+import { scoreScaleFrom } from '../../core/palettes.ts';
 import type { TargetChange } from '../../core/snapshots.ts';
 import { proteinBand } from '../../core/targets.ts';
 import { settingDefault } from '../../core/settings.ts';
@@ -122,6 +121,8 @@ export function TodayScreen({
 }) {
   const {
     state,
+    dataRevision,
+    loadScoreDays,
     logDay,
     addToDay,
     tapWater,
@@ -138,21 +139,19 @@ export function TodayScreen({
   // despues queda a un toque en su cartilla.
   const [deals, setDeals] = useState<'closed' | 'open'>('closed');
   const [announced, setAnnounced] = useState(false);
-  // Doce semanas son ochenta y cuatro cuadritos, y armarlos son unos cuantos cientos
-  // de elementos. Se rehacen solo cuando cambia alguna nota, no cada vez que la app
-  // recarga: cada dato anotado trae una lista de dias nueva con el mismo contenido, y
-  // por eso se compara por lo que dice y no por ser el mismo objeto.
+  // Unrelated writes may reload the same scores; retain their identity for the grid.
   const days = state.phase === 'ready' ? state.loaded.days : null;
-  const palette = state.phase === 'ready' ? state.loaded.palette : null;
   const signature =
-    days === null ? '' : days.map((day) => `${day.date}:${day.score ?? ''}`).join('|');
-  const weeks = useMemo(() => {
-    if (days === null || palette === null) return [];
-    const to = todayIso();
-    return buildGrid(days, { from: weekStart(addDays(to, -(WEEKS_SHOWN - 1) * 7)), to }, palette);
-    // La firma es la dependencia de verdad; la lista entra por ella.
+    days === null
+      ? ''
+      : days.map((day) => `${day.date}:${day.score ?? ''}:${day.hasData}`).join('|');
+  const gridDays = useMemo(
+    () => days ?? [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature, palette]);
+    [signature],
+  );
+  const rawScale = state.phase === 'ready' ? state.loaded.settings.get('score_scale') : undefined;
+  const scale = useMemo(() => scoreScaleFrom(rawScale), [rawScale]);
 
   // La cuadricula memoizada solo se salta su redibujo si el gesto es siempre la misma
   // funcion. Una nueva en cada render la rearmaba entera, los ochenta y cuatro cuadritos
@@ -183,6 +182,7 @@ export function TodayScreen({
     },
     [],
   );
+  const hideDay = useCallback(() => latest.current.info.hide(), []);
 
   if (state.phase !== 'ready') return <Screen title="Hoy">{null}</Screen>;
 
@@ -211,8 +211,7 @@ export function TodayScreen({
     setDeals('closed');
     if (collected !== null) saveSetting('deals_seen_at', String(collected));
   };
-  const today = todayIso();
-  const average = averageScore(loaded.days);
+  const today = loaded.today.date;
   const score = loaded.today.result?.score ?? null;
   const pending = loaded.today.result?.pointsWithoutData ?? 100;
 
@@ -307,11 +306,7 @@ export function TodayScreen({
         </Card>
       )}
 
-      {/* No horizontal scroller around it: twelve weeks fit across a phone, and a
-          scroller here would swallow the swipe between tabs. */}
-      {/* Tocar el papel de la cartilla, entre los cuadritos o al lado, abre la lista:
-          los cuadritos se quedan con su propio toque antes de llegar aqui. */}
-      <Card onPress={() => onOpen('Registros')} accessibilityLabel="Ver todos los registros">
+      <Card>
         <View style={styles.gridHead}>
           <Text style={styles.gridTitle}>{WEEKS_SHOWN} semanas</Text>
           <Button
@@ -322,10 +317,17 @@ export function TodayScreen({
             onPress={() => onOpen('Registros')}
           />
         </View>
-        <DisciplineGrid weeks={weeks} onOpenDay={peek} />
+        <DisciplineGrid
+          days={gridDays}
+          today={today}
+          scale={scale}
+          revision={dataRevision}
+          loadDays={loadScoreDays}
+          onOpenDay={peek}
+          onScrollStart={hideDay}
+        />
         <Text style={styles.gridFoot}>
-          Máxima {longestStreak(loaded.scoreHistory, today)} días · promedio{' '}
-          {average === null ? '—' : Math.round(average)}
+          Máxima histórica: {longestStreak(loaded.scoreHistory, today)} días
         </Text>
       </Card>
 

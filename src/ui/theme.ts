@@ -9,8 +9,7 @@
 // se esta terminando. Volveria como una segunda Palette y un cambio dentro de este
 // archivo, sin tocar ninguna pantalla.
 //
-// Las paletas de spec 4.5 no viven aqui: son solo para los cuadritos de la cuadricula
-// y estan en core/palettes.ts.
+// The fixed contribution scale lives in core/palettes.ts, independently of this theme.
 
 import { StyleSheet } from 'react-native';
 

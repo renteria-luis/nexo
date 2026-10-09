@@ -144,7 +144,15 @@ function TabsScreen() {
 }
 
 function SettingsRoute() {
-  const { state, saveSetting, removeSetting, resetDatabase, exportData, importData } = useAppData();
+  const {
+    state,
+    saveSetting,
+    saveScoreScale,
+    removeSetting,
+    resetDatabase,
+    exportData,
+    importData,
+  } = useAppData();
   const navigation = useNavigation<{ navigate: (name: string) => void }>();
   if (state.phase !== 'ready') return null;
 
@@ -153,10 +161,9 @@ function SettingsRoute() {
       onOpenExercises={() => navigation.navigate('Ejercicios')}
       onOpenFoods={() => navigation.navigate('Alimentos')}
       settings={state.loaded.settings}
-      palette={state.loaded.palette}
+      onSaveScoreScale={saveScoreScale}
       onSaveSetting={saveSetting}
       onClearSetting={removeSetting}
-      onSelectPalette={(next) => saveSetting('palette', next)}
       onResetDatabase={resetDatabase}
       onExport={exportData}
       onImport={importData}

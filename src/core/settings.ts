@@ -8,12 +8,13 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { isRealDate, todayIso, type IsoDate } from './dates.ts';
-import type { PaletteId } from './palettes.ts';
+import { scoreScaleProblem, type PaletteId } from './palettes.ts';
 import type { WeightUnit } from './units.ts';
 import type { Phase, TargetProfile } from './targets.ts';
 
 export type SettingKey =
   | 'palette'
+  | 'score_scale'
   | 'height_cm'
   | 'birth_date'
   | 'activity_factor'
@@ -210,6 +211,12 @@ export function settingProblem(
   if (trimmed === '') return 'no puede quedar vacío';
 
   switch (key) {
+    case 'score_scale':
+      try {
+        return scoreScaleProblem(JSON.parse(value));
+      } catch {
+        return 'La escala no es válida.';
+      }
     case 'palette':
       return PALETTES.has(trimmed) ? null : 'no es una de las tres paletas';
     case 'weight_unit':
