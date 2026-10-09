@@ -27,10 +27,12 @@ test('experiments expose their stated scale and highlight the saved reading', as
       '../../shell/AppData.tsx': {
         useAppData: () => ({
           loadExperiments: async () => [item],
-        logExperimentReading: async (_id: string, _day: string, next: number) => {
-          written = next;
-        },
-        finishExperiment: async () => { finished += 1; },
+          logExperimentReading: async (_id: string, _day: string, next: number) => {
+            written = next;
+          },
+          finishExperiment: async () => {
+            finished += 1;
+          },
         }),
       },
       '../Card.tsx': { Card: 'Card' },

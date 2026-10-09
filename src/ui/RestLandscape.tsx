@@ -32,7 +32,9 @@ export function RestLandscape({
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={[styles.frame, { paddingLeft: insets.left + 24, paddingRight: insets.right + 24 }]}>
+    <View
+      style={[styles.frame, { paddingLeft: insets.left + 24, paddingRight: insets.right + 24 }]}
+    >
       <View style={styles.side}>
         <Text style={styles.exercise} numberOfLines={3}>
           {exerciseName}

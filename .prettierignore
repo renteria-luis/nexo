@@ -6,3 +6,6 @@ package-lock.json
 
 # Prose docs are hand written; reformatting them only creates diff noise.
 *.md
+
+# Written every day by the offers bot; reformatting it here would fight the next run.
+deals/flipp.json
