@@ -228,7 +228,7 @@ export function DealsScreen() {
           });
 
   return (
-    <Screen title="Ofertas">
+    <Screen title="Ofertas" refreshable>
       <View style={styles.chips}>
         {GROUPS.map((option) => (
           <Chip

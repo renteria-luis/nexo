@@ -111,3 +111,17 @@ test('un dia de una lista va sin ano, que se da por supuesto', () => {
   assert.equal(shortDay('2026-09-27'), 'dom 27-sep');
   assert.equal(shortDay('2026-01-01'), 'jue 01-ene');
 });
+
+test('local midnight scheduling handles both daylight saving transitions', async () => {
+  const { millisecondsToLocalMidnight } = await import('./dates.ts');
+  const previous = process.env.TZ;
+  process.env.TZ = 'America/Toronto';
+  try {
+    assert.equal(millisecondsToLocalMidnight(new Date(2026, 2, 8)), 23 * 60 * 60 * 1000);
+    assert.equal(millisecondsToLocalMidnight(new Date(2026, 10, 1)), 25 * 60 * 60 * 1000);
+    assert.equal(millisecondsToLocalMidnight(new Date(2026, 9, 8, 23, 59, 59, 999)), 1);
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
+});

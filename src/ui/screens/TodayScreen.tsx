@@ -222,6 +222,7 @@ export function TodayScreen({
   return (
     <Screen
       title="Hoy"
+      refreshable
       onOverlayDismiss={deals === 'open' ? closeDeals : undefined}
       overlay={
         deals === 'open' ? (

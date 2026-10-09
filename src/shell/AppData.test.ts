@@ -259,3 +259,17 @@ test('manual refresh shares one read, skips settled history and keeps provider a
   assert.equal(fresh.loadScoreDays, app.loadScoreDays);
   assert.equal(fresh.dataRevision, app.dataRevision + 1);
 });
+
+test('an active midnight updates an empty day; background time waits until resume', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: new Date(2026, 9, 8, 23, 59, 59) });
+  const { actions, appState, loads } = providerFixture();
+  assert.equal((await actions()).state.loaded.today.date, '2026-10-08');
+  t.mock.timers.tick(1000);
+  assert.equal((await actions()).state.loaded.today.date, '2026-10-09');
+  const baseline = loads();
+  appState('background');
+  t.mock.timers.tick(24 * 60 * 60 * 1000);
+  assert.equal(loads(), baseline);
+  appState('active');
+  assert.equal((await actions()).state.loaded.today.date, '2026-10-10');
+});

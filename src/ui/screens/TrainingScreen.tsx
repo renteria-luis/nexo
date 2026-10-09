@@ -336,7 +336,7 @@ export function TrainingScreen() {
       {/* La pantalla de pie se queda montada debajo, escondida. Cambiarla por la de lado la
           desmontaba, y lo que habia escrito para la siguiente serie se perdia al volver. */}
       <View style={resting ? styles.hidden : styles.page}>
-        <Screen title="Entreno" scrollEnabled={!dragging}>
+        <Screen title="Entreno" scrollEnabled={!dragging} refreshable>
           {session === null ? (
             <SessionPlanner
               routines={loaded.routines}

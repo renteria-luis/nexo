@@ -15,6 +15,7 @@ import {
   Keyboard,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -74,6 +75,7 @@ export function Screen({
   overlay,
   onOverlayDismiss,
   scrollEnabled = true,
+  refreshable = false,
 }: {
   title?: string;
   /** En lugar del titulo, cuando la pantalla necesita algo mas que una palabra. */
@@ -93,8 +95,26 @@ export function Screen({
    * escuchar.
    */
   scrollEnabled?: boolean;
+  refreshable?: boolean;
 }) {
-  const { state, resetDatabase, retry, exportData } = useAppData();
+  const { state, resetDatabase, retry, exportData, refreshData } = useAppData();
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshProblem, setRefreshProblem] = useState<string | null>(null);
+  const refreshingRef = useRef(false);
+  const refresh = useCallback(async () => {
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
+    setRefreshing(true);
+    setRefreshProblem(null);
+    try {
+      await refreshData();
+    } catch (error) {
+      setRefreshProblem(error instanceof Error ? error.message : String(error));
+    } finally {
+      refreshingRef.current = false;
+      setRefreshing(false);
+    }
+  }, [refreshData]);
   // En las pestanas la barra de abajo flota encima del contenido: lo ultimo de la
   // pantalla necesita ese hueco para poder subir por encima de ella.
   const barSpace = useContext(FloatingBarSpace);
@@ -222,6 +242,11 @@ export function Screen({
     <ScrollView
       ref={list}
       scrollEnabled={scrollEnabled}
+      refreshControl={
+        refreshable && scrollEnabled && !overlay && state.phase === 'ready' ? (
+          <RefreshControl refreshing={refreshing} onRefresh={refresh} />
+        ) : undefined
+      }
       onScroll={(event) => (offset.current = event.nativeEvent.contentOffset.y)}
       scrollEventThrottle={32}
       // Un toque en un boton con el teclado abierto lo pulsa a la primera; uno en
@@ -241,6 +266,12 @@ export function Screen({
       ]}
     >
       {header ?? (title ? <Text style={styles.title}>{title}</Text> : null)}
+      {refreshProblem && state.phase === 'ready' && state.problem === null && (
+        <View style={styles.problem}>
+          <Text style={styles.error}>No se pudo actualizar: {refreshProblem}</Text>
+          <Button label="Reintentar actualización" onPress={refresh} disabled={refreshing} />
+        </View>
+      )}
 
       {state.phase === 'opening' && <ActivityIndicator accessibilityLabel="Abriendo la base" />}
 

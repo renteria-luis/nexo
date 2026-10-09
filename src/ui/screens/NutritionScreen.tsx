@@ -38,7 +38,7 @@ export function NutritionScreen() {
   const targets = loaded.today.targets;
 
   return (
-    <Screen title="Comida">
+    <Screen title="Comida" refreshable>
       <FoodLog
         foods={loaded.foods}
         portions={loaded.today.portions}

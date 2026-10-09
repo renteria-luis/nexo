@@ -727,13 +727,37 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   // Volver a la app no recargaba nada, y despues de una noche dormida en memoria todo lo
   // cargado era de ayer. Y al irse, el plan de avisos tiene que quedar con lo ultimo.
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let dayReload: string | null = null;
+    let active = Lifecycle.currentState == null || Lifecycle.currentState === 'active';
+    const checkDate = () => {
+      if (timer) clearTimeout(timer);
+      if (!active) return;
+      const date = todayIso();
+      if (showsAnotherDay(openLoaded.current, date) && dayReload !== date) {
+        dayReload = date;
+        void refresh().then(() => {
+          dayReload = null;
+        });
+      }
+      // The minute check also catches manual clock/timezone changes without UI ticks.
+      timer = setTimeout(checkDate, Math.min(60_000, millisecondsToLocalMidnight()));
+      timer.unref?.();
+    };
+    checkDate();
     const subscription = Lifecycle.addEventListener('change', (next) => {
       if (next === 'background') flushNudges();
-      if (next !== 'active') return;
-      if (showsAnotherDay(openLoaded.current, todayIso())) refresh();
+      active = next === 'active';
+      if (timer) clearTimeout(timer);
+      if (!active) return;
+      checkDate();
       fetchDeals();
     });
-    return () => subscription.remove();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+      subscription.remove();
+    };
   }, [refresh, fetchDeals]);
 
   // Los toques de agua de hoy, del primero al ultimo. Viven aqui para que dos toques en el
