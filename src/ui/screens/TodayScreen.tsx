@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Text, View } from 'react-native';
+import { Linking, Text, View } from 'react-native';
 
 import { liveDeals, newestFetch, watchedDeals, watchWords } from '../../deals/index.ts';
 import { useAppData } from '../../shell/AppData.tsx';
@@ -7,6 +7,7 @@ import { sourceStatus } from '../../shell/deals.ts';
 import { WEEKS_SHOWN } from '../../shell/load.ts';
 import { parseWaterTaps } from '../../core/water-taps.ts';
 import { scoreText } from '../../core/day-report.ts';
+import { HEALTH_SHORTCUT_URL } from '../../core/health-import.ts';
 import { currentStreak, longestStreak } from '../../core/discipline.ts';
 import { scoreScaleFrom } from '../../core/palettes.ts';
 import type { TargetChange } from '../../core/snapshots.ts';
@@ -111,6 +112,11 @@ function TargetChangeCard({ change, onDismiss }: { change: TargetChange; onDismi
       <Button label="Entendido" accessibilityLabel="Entendido" onPress={onDismiss} />
     </Card>
   );
+}
+
+/** Abre Atajos con el de Salud; el Atajo vuelve solo a la app con lo que leyo. */
+function pullHealth(): Promise<void> {
+  return Linking.openURL(HEALTH_SHORTCUT_URL);
 }
 
 export function TodayScreen({
@@ -421,6 +427,7 @@ export function TodayScreen({
           onAdd={addToDay}
           onTapWater={tapWater}
           onUndoWater={undoWater}
+          onPullHealth={pullHealth}
           canUndoWater={
             parseWaterTaps(loaded.settings.get('water_taps'), loaded.today.date).length > 0
           }

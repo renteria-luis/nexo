@@ -43,6 +43,13 @@ export type HealthReading = {
 
 export type HealthLink = { ok: true; readings: HealthReading[] } | { ok: false; problem: string };
 
+/**
+ * Lo que abre el boton de Hoy: Atajos corre el que lee AutoSleep y Salud, y ese vuelve
+ * solo con el enlace de arriba. Va por nombre, asi que en el telefono tiene que llamarse
+ * asi; si no, Atajos dice que no lo encuentra.
+ */
+export const HEALTH_SHORTCUT_URL = `shortcuts://run-shortcut?name=${encodeURIComponent('Nexo Salud')}`;
+
 export const HEALTH_SOURCE_LABEL: Record<HealthSource, string> = {
   autosleep: 'AutoSleep',
   apple_health: 'Salud',

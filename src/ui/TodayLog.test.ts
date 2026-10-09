@@ -46,11 +46,15 @@ const IMPORTS = [
 
 function todayLog(props: Record<string, unknown>) {
   return renderModule('src/ui/TodayLog.tsx', {
+    './Button.tsx': { Button: 'Button' },
     './Chip.tsx': { Chip: 'Chip' },
     './NumericField.tsx': { NumericField: 'NumericField' },
     './Toggle.tsx': { Toggle: 'Toggle' },
     './icons.ts': Object.fromEntries(
-      ['Droplets', 'Footprints', 'Moon', 'Pill', 'Scale', 'Wine'].map((name) => [name, name]),
+      ['Droplets', 'Footprints', 'Moon', 'Pill', 'RefreshCw', 'Scale', 'Wine'].map((name) => [
+        name,
+        name,
+      ]),
     ),
   }).mount('TodayLog', {
     log: LOG,
@@ -99,4 +103,29 @@ test('writing sleep has no source chips and saves what he types as his own', asy
   tree = await view.settle();
   field().onCommit();
   assert.deepEqual(logged, [{ sleepMinutes: 525, sleepSource: 'manual' }]);
+});
+
+test('only Hoy offers to bring sleep and steps, and says when Shortcuts does not open', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const pull = (tree: unknown) =>
+    nodes(tree).find((node) => node.props.label === 'Traer de Salud')?.props;
+  assert.equal(pull(await todayLog({ editing: true }).settle()), undefined);
+
+  let runs = 0;
+  const view = todayLog({
+    editing: true,
+    onPullHealth: async () => {
+      runs += 1;
+      if (runs === 2) throw new Error('no hay app para shortcuts://');
+    },
+  });
+  let tree = await view.settle();
+  pull(tree)!.onPress();
+  tree = await view.settle();
+  assert.equal(runs, 1);
+  assert.ok(!textOf(tree).includes('No se pudo abrir Atajos'));
+  pull(tree)!.onPress();
+  tree = await view.settle();
+  assert.equal(runs, 2);
+  assert.ok(textOf(tree).includes('No se pudo abrir Atajos: no hay app para shortcuts://'));
 });

@@ -8,6 +8,7 @@ import { migrations } from '../db/migrations/index.ts';
 
 import { readDailyLog, upsertDailyLog } from './daily-log.ts';
 import {
+  HEALTH_SHORTCUT_URL,
   listHealthImports,
   originOf,
   parseHealthLink,
@@ -256,4 +257,8 @@ test('a day without the value has no origin, and imports of another day do not c
   const other = await listHealthImports(db, '2026-10-08');
   assert.equal(originOf(log, other, 'steps')?.kind, 'manual');
   assert.equal(originOf(log, other, 'sleep'), null);
+});
+
+test('the button runs the Shortcut by the exact name it has on the phone', () => {
+  assert.equal(HEALTH_SHORTCUT_URL, 'shortcuts://run-shortcut?name=Nexo%20Salud');
 });

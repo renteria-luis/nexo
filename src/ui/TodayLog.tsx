@@ -18,8 +18,18 @@ import type {
   NutritionContainerRow,
 } from '../db/types.ts';
 
+import { Button } from './Button.tsx';
 import { Chip } from './Chip.tsx';
-import { Droplets, Footprints, Moon, Pill, Scale, Wine, type LucideIcon } from './icons.ts';
+import {
+  Droplets,
+  Footprints,
+  Moon,
+  Pill,
+  RefreshCw,
+  Scale,
+  Wine,
+  type LucideIcon,
+} from './icons.ts';
 import { NumericField } from './NumericField.tsx';
 import { Toggle } from './Toggle.tsx';
 import { font, sheet, shape, theme } from './theme.ts';
@@ -51,11 +61,14 @@ function Field({
   title,
   icon: Icon,
   first = false,
+  action,
   children,
 }: {
   title: string;
   icon: LucideIcon;
   first?: boolean;
+  /** Un boton a la derecha del titulo, para lo que se hace con ese dato. */
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -65,6 +78,7 @@ function Field({
           <Icon size={15} color={theme.text} strokeWidth={2.5} />
         </View>
         <Text style={styles.title}>{title}</Text>
+        {action}
       </View>
       {children}
     </View>
@@ -86,6 +100,11 @@ export type TodayLogProps = {
   onAdd: (increment: DailyLogIncrement) => void;
   /** Un toque a un boton de agua, que se puede deshacer. */
   onTapWater: (ml: number) => void;
+  /**
+   * Corre el Atajo que trae el sueno y los pasos. Solo en Hoy: el Atajo trae los de hoy,
+   * no los del dia que este abierto.
+   */
+  onPullHealth?: () => Promise<void>;
   /** Quita el ultimo toque de agua; apagado cuando no queda ninguno. */
   onUndoWater: () => void;
   canUndoWater: boolean;
@@ -187,6 +206,7 @@ export function TodayLog({
   onTapWater,
   onUndoWater,
   canUndoWater,
+  onPullHealth,
 }: TodayLogProps) {
   // Dos casillas porque asi lo dice en voz alta: siete y media, o ciento treinta
   // minutos. Cualquiera de las dos sola vale, y 7.5 en horas tambien.
@@ -206,6 +226,9 @@ export function TodayLog({
   // Los campos en los que esta escribiendo, desde la primera tecla hasta que lo suelta.
   // Solo esos guardan, y solo esos se quedan con lo suyo si lo guardado cambia mientras.
   const [typed, setTyped] = useState<Typed>({ sleep: false, steps: false, weight: false });
+  // Si Atajos no se pudo abrir. Lo que pase dentro del Atajo vuelve con su enlace y se
+  // cuenta arriba, en Hoy.
+  const [pullProblem, setPullProblem] = useState<string | null>(null);
   const typing = (field: keyof Typed) =>
     setTyped((current) => (current[field] ? current : { ...current, [field]: true }));
   const done = (field: keyof Typed) => setTyped((current) => ({ ...current, [field]: false }));
@@ -318,7 +341,30 @@ export function TodayLog({
         </View>
       </Field>
 
-      <Field title="Sueño" icon={Moon}>
+      <Field
+        title="Sueño"
+        icon={Moon}
+        action={
+          onPullHealth && (
+            <Button
+              label="Traer de Salud"
+              icon={RefreshCw}
+              variant="ghost"
+              accessibilityLabel="Traer el sueño y los pasos de Salud con el Atajo"
+              onPress={() => {
+                setPullProblem(null);
+                onPullHealth().catch((error: unknown) => {
+                  console.error(error);
+                  const reason = error instanceof Error ? error.message : String(error);
+                  setPullProblem(`No se pudo abrir Atajos: ${reason}`);
+                });
+              }}
+              style={styles.pull}
+            />
+          )
+        }
+      >
+        {pullProblem && <Text style={styles.problem}>{pullProblem}</Text>}
         {/* La casilla es la noche anterior, y decirlo evita anotar la de anteanoche
             el dia que se levanta tarde. Se puntua en este dia porque es la noche que
             sostiene lo que haga hoy. */}
@@ -467,6 +513,17 @@ const styles = sheet((theme) => ({
     fontSize: 12,
     color: theme.textFaint,
     fontFamily: font.regular,
+  },
+  // A la derecha del titulo, y metido en el relleno para no hacer mas alto este dato que
+  // los demas sin quitarle area de toque.
+  pull: {
+    marginLeft: 'auto',
+    marginVertical: -7,
+  },
+  problem: {
+    fontSize: 12,
+    fontFamily: font.bold,
+    color: theme.danger,
   },
   switchRow: {
     flexDirection: 'row',

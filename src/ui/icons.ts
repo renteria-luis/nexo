@@ -53,6 +53,7 @@ export { default as Pill } from 'lucide-react-native/icons/pill';
 export { default as Play } from 'lucide-react-native/icons/play';
 export { default as Plus } from 'lucide-react-native/icons/plus';
 export { default as Refrigerator } from 'lucide-react-native/icons/refrigerator';
+export { default as RefreshCw } from 'lucide-react-native/icons/refresh-cw';
 export { default as RotateCcw } from 'lucide-react-native/icons/rotate-ccw';
 export { default as Scale } from 'lucide-react-native/icons/scale';
 export { default as Search } from 'lucide-react-native/icons/search';
