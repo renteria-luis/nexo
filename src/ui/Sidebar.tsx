@@ -39,6 +39,7 @@ import {
 } from './icons.ts';
 import { font, hardShadow, sheet, shape, theme } from './theme.ts';
 import { goTo, type Navigate } from './navigation.ts';
+import { useSwipeLock } from './SwipeLock.tsx';
 
 /**
  * El menu lateral: todo lo que la app sabe hacer, ordenado, sin gastar sitio abajo.
@@ -160,6 +161,7 @@ export function SidebarProvider({
   const [here, setHere] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
+  const { isLocked } = useSwipeLock();
 
   const close = useCallback(() => {
     Animated.timing(slide, {
@@ -194,6 +196,7 @@ export function SidebarProvider({
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponderCapture: (_event, gesture) =>
+          !isLocked() &&
           !shown &&
           navigation.isReady() &&
           navigation.getCurrentRoute()?.name === 'Hoy' &&
@@ -202,7 +205,7 @@ export function SidebarProvider({
           Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
         onPanResponderGrant: () => open(),
       }),
-    [navigation, open, shown, width],
+    [isLocked, navigation, open, shown, width],
   );
 
   // Deslizar el panel hacia la izquierda lo cierra, que es el gesto que ya espera

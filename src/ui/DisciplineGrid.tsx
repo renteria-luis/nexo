@@ -272,9 +272,6 @@ export const DisciplineGrid = memo(function DisciplineGrid({
   );
   return (
     <View style={styles.wrapper} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
-      <Text style={styles.range} accessibilityLabel={`Período visible: ${historyRangeLabel(visible)}`}>
-        {historyRangeLabel(visible)}
-      </Text>
       <View style={[styles.monthViewport, { marginLeft: GUTTER }]} pointerEvents="none">
         <Animated.View
           style={{
@@ -306,6 +303,7 @@ export const DisciplineGrid = memo(function DisciplineGrid({
           <Animated.FlatList
             ref={list}
             accessibilityLabel="Historial de cumplimiento"
+            accessibilityHint={`Período visible: ${historyRangeLabel(visible)}`}
             horizontal
             data={weeks}
             renderItem={renderWeek}
@@ -375,7 +373,6 @@ function WeekGap() {
 const styles = sheet((theme) => ({
   wrapper: { alignSelf: 'stretch', gap: 8 },
   grid: { alignSelf: 'stretch', flexDirection: 'row' },
-  range: { fontSize: 11, fontFamily: font.bold, color: theme.textDim },
   monthViewport: { overflow: 'hidden', height: 18, marginBottom: -6 },
   month: {
     position: 'absolute',
