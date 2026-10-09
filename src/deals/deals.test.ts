@@ -6,7 +6,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { migrations } from '../db/migrations/index.ts';
 
-import { listDeals, listSources } from './queries.ts';
+import { answerDealMatch, listDeals, listSources } from './queries.ts';
 import { applySnapshot, parseSnapshot, recordFailure, type SnapshotDeal } from './snapshot.ts';
 
 type SqlValue = string | number | null;
@@ -208,4 +208,45 @@ test('a source that failed says so and keeps the reason', async () => {
   const [source] = await listSources(db);
   assert.equal(source.health, 'down');
   assert.equal(source.last_error, 'la respuesta no era JSON');
+});
+
+test('one tap says whether a deal is the food, and the answer outlives the next collection', async () => {
+  const db = fresh();
+  const collect = (title: string) =>
+    applySnapshot(
+      db,
+      parseSnapshot(
+        JSON.stringify(
+          snapshot([
+            snapshotDeal({ title, category: 'chicken breast', foodId: 'chicken-breast-kirkland' }),
+          ]),
+        ),
+      ),
+    );
+  const only = async () => (await listDeals(db, '2026-09-20'))[0];
+
+  await collect('Breaded chicken breast nuggets');
+  let item = await only();
+  assert.equal(item.candidate?.id, 'chicken-breast-kirkland');
+  assert.equal(item.confirmed, null);
+  assert.equal(item.food?.id, 'chicken-breast-kirkland');
+
+  await answerDealMatch(db, item.deal.title, 'chicken-breast-kirkland', false, 1000);
+  item = await only();
+  assert.equal(item.confirmed, false);
+  assert.equal(item.food, null);
+  assert.equal(item.candidate?.id, 'chicken-breast-kirkland');
+
+  // Tomorrow's collection replaces every deal; the same text arrives already answered,
+  // whatever its case or accents.
+  await collect('BREADED CHICKEN BREAST NUGGETS');
+  assert.equal((await only()).food, null);
+
+  await answerDealMatch(db, item.deal.title, 'chicken-breast-kirkland', true, 2000);
+  item = await only();
+  assert.equal(item.confirmed, true);
+  assert.equal(item.food?.id, 'chicken-breast-kirkland');
+
+  await answerDealMatch(db, item.deal.title, 'chicken-breast-kirkland', null, 3000);
+  assert.equal((await only()).confirmed, null);
 });

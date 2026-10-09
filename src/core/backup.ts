@@ -27,9 +27,11 @@ const MIGRATION_TABLE = 'core_migration';
  *
  * Son una copia de lo que publica Flipp, se vuelven a bajar solas y cada una guarda
  * la respuesta cruda del buscador entera: doscientas ofertas pesaban mas que todo lo
- * que el ha registrado en su vida. El respaldo es de sus datos.
+ * que el ha registrado en su vida. El respaldo es de sus datos, y lo que el contesto
+ * sobre una oferta (spec 16.5) si lo es.
  */
 function isHisData(table: string): boolean {
+  if (table === 'deals_match_verdict') return true;
   return table !== MIGRATION_TABLE && !table.startsWith('deals_');
 }
 

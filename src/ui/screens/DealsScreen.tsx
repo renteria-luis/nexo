@@ -74,12 +74,14 @@ function DealRow({
   item,
   discounts,
   showStore,
+  onAnswer,
 }: {
   item: DealWithContext;
   discounts: DealsDiscountRow[];
   showStore: boolean;
+  onAnswer: (item: DealWithContext, confirmed: boolean | null) => void;
 }) {
-  const { deal, source, retailer, food, stale } = item;
+  const { deal, source, retailer, food, candidate, confirmed, stale } = item;
   const chain = retailer?.chain ?? null;
   const value = food ? proteinPerDollar(deal, food, discounts, chain, todayIso()) : null;
   const versusUsual = food ? comparedToUsual(deal, food, discounts, chain, todayIso()) : null;
@@ -127,6 +129,40 @@ function DealRow({
         )}
       </View>
 
+      {/* Spec 16.5: que el titulo nombre el alimento no prueba que lo sea (pechuga
+          empanizada). Un toque lo decide, y vale para las ofertas con el mismo texto. */}
+      {candidate && (
+        <View style={styles.answer}>
+          <Text style={styles.meta}>
+            {confirmed === null
+              ? `¿Es ${candidate.name}?`
+              : confirmed
+                ? `Es ${candidate.name}`
+                : `No es ${candidate.name}`}
+          </Text>
+          {confirmed === null ? (
+            <>
+              <Chip
+                label="Sí"
+                accessibilityLabel={`Sí, es ${candidate.name}`}
+                onPress={() => onAnswer(item, true)}
+              />
+              <Chip
+                label="No"
+                accessibilityLabel={`No es ${candidate.name}`}
+                onPress={() => onAnswer(item, false)}
+              />
+            </>
+          ) : (
+            <Chip
+              label="Deshacer"
+              accessibilityLabel={`Deshacer la respuesta sobre ${candidate.name}`}
+              onPress={() => onAnswer(item, null)}
+            />
+          )}
+        </View>
+      )}
+
       <View style={styles.marks}>
         {deal.staple === 1 && <Text style={styles.mark}>de tu lista</Text>}
         {stale && <Text style={styles.markWarn}>posiblemente vencido</Text>}
@@ -148,7 +184,7 @@ function SourceLine({ status }: { status: { line: string; silent: boolean } }) {
  * silently claims everything on it is fresh.
  */
 export function DealsScreen() {
-  const { state, refreshDeals } = useAppData();
+  const { state, refreshDeals, answerDealMatch } = useAppData();
   const now = useNow();
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -314,6 +350,7 @@ export function DealsScreen() {
                   item={item}
                   discounts={discounts}
                   showStore={group !== 'store'}
+                  onAnswer={answerDealMatch}
                 />
               ))}
           </Card>
@@ -450,6 +487,12 @@ const styles = sheet((theme) => ({
   marks: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: 8,
+  },
+  answer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
     gap: 8,
   },
   mark: {

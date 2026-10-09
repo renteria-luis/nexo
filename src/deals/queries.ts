@@ -17,8 +17,15 @@ export type DealWithContext = {
   deal: ListedDeal;
   source: DealsSourceRow;
   retailer: DealsRetailerRow | null;
-  /** The food it was found for, when the catalogue has it. */
+  /**
+   * The food its figures are computed for: the one it was found for, unless he said it
+   * is not that food.
+   */
   food: NutritionFoodRow | null;
+  /** The food it was found for and that its title names, before he answers anything. */
+  candidate: NutritionFoodRow | null;
+  /** Spec 16.5: his answer about the candidate; null while he has not answered. */
+  confirmed: boolean | null;
   /**
    * Spec 16.3 rule 7: past its validity is shown greyed as possibly expired, never
    * hidden. Hiding it would suggest everything on screen is fresh.
@@ -47,12 +54,45 @@ export async function listDiscounts(db: SQLiteDatabase): Promise<DealsDiscountRo
  * arriba de la lista: la mitad de esas cifras eran de otra cosa. Hace falta que el titulo
  * nombre lo que se busco y que no traiga ninguna de las palabras que el excluyo. Lo que
  * nombra el alimento sin serlo (pechuga empanizada) todavia pasa: eso lo resuelve el toque
- * de confirmar de spec 16.5, que no existe todavia.
+ * de confirmar de spec 16.5, abajo.
  */
 function namesTheFood(deal: ListedDeal, blocked: readonly string[]): boolean {
   if (deal.category === null) return false;
   const title = fold(deal.title);
   return title.includes(fold(deal.category)) && !blocked.some((word) => title.includes(word));
+}
+
+/** El texto de una oferta como se recuerda una respuesta: sin mayusculas ni tildes. */
+export function verdictKey(title: string): string {
+  return fold(title);
+}
+
+/**
+ * Spec 16.5: un toque confirma o descarta que la oferta sea ese alimento, y vale para las
+ * ofertas que vengan con el mismo texto. Null borra la respuesta.
+ */
+export async function answerDealMatch(
+  db: SQLiteDatabase,
+  title: string,
+  foodId: string,
+  confirmed: boolean | null,
+  answeredAt: number,
+): Promise<void> {
+  if (confirmed === null) {
+    await db.runAsync('DELETE FROM deals_match_verdict WHERE title_key = ? AND food_id = ?;', [
+      verdictKey(title),
+      foodId,
+    ]);
+    return;
+  }
+  await db.runAsync(
+    `INSERT INTO deals_match_verdict (title_key, food_id, confirmed, answered_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT (title_key, food_id) DO UPDATE SET
+       confirmed = excluded.confirmed,
+       answered_at = excluded.answered_at;`,
+    [verdictKey(title), foodId, confirmed ? 1 : 0, answeredAt],
+  );
 }
 
 /**
@@ -67,7 +107,7 @@ export async function listDeals(
   onDate: IsoDate,
   blocked: readonly string[] = [],
 ): Promise<DealWithContext[]> {
-  const [rows, sources, foods] = await Promise.all([
+  const [rows, sources, foods, verdicts] = await Promise.all([
     db.getAllAsync<JoinedRow>(
       `SELECT d.id, d.source_id, d.retailer_id, d.title, d.description, d.price_cents,
               d.original_price_cents, d.savings_pct, d.unit, d.grams, d.pack_ml, d.pack_count,
@@ -82,7 +122,13 @@ export async function listDeals(
     ),
     listSources(db),
     db.getAllAsync<NutritionFoodRow>('SELECT * FROM nutrition_food;'),
+    db.getAllAsync<{ title_key: string; food_id: string; confirmed: 0 | 1 }>(
+      'SELECT title_key, food_id, confirmed FROM deals_match_verdict;',
+    ),
   ]);
+  const answers = new Map(
+    verdicts.map((row) => [`${row.title_key}\n${row.food_id}`, row.confirmed === 1]),
+  );
 
   const sourceById = new Map(sources.map((source) => [source.id, source]));
   const foodById = new Map(foods.map((food) => [food.id, food]));
@@ -94,6 +140,12 @@ export async function listDeals(
     if (!source) throw new Error(`deal ${row.id} came from ${row.source_id}, which is gone`);
 
     const { retailer_name, retailer_chain, food_id, ...deal } = row;
+    const candidate =
+      food_id === null || !namesTheFood(deal, blocked) ? null : (foodById.get(food_id) ?? null);
+    const confirmed =
+      candidate === null
+        ? null
+        : (answers.get(`${verdictKey(deal.title)}\n${candidate.id}`) ?? null);
     return {
       deal,
       source,
@@ -110,8 +162,9 @@ export async function listDeals(
               province: null,
               city: null,
             } satisfies DealsRetailerRow),
-      food:
-        food_id === null || !namesTheFood(deal, blocked) ? null : (foodById.get(food_id) ?? null),
+      food: confirmed === false ? null : candidate,
+      candidate,
+      confirmed,
       stale: deal.valid_to !== null && deal.valid_to < onDate,
     };
   });

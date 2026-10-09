@@ -157,9 +157,10 @@ test('el respaldo es de sus datos: las ofertas no entran', async () => {
 
   assert.equal(backup.tables.deals_deal, undefined);
   assert.equal(backup.tables.deals_source, undefined);
-  // Lo suyo sigue estando entero.
+  // Lo suyo sigue estando entero, y lo que contesto sobre una oferta tambien es suyo.
   assert.ok(backup.tables.core_daily_log);
   assert.ok(backup.tables.training_set_entry);
+  assert.ok(backup.tables.deals_match_verdict);
 
   // Y restaurar no borra las ofertas que el telefono ya tenga.
   await importBackup(db, backup);

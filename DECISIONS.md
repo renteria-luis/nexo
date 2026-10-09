@@ -905,6 +905,11 @@ Context: Spec 4.4 asks for a training streak, consecutive weeks hitting five ses
 Decision: Count Monday-to-Sunday weeks with at least five training days (days with a working set), walking back from the current week. The current week adds once it reaches five and never breaks the streak before it ends, like today in the day streak. Marked rest days are not sessions. The whole history is read in one query per load, and the line sits in the Hoy score card under the day's note, above the grid.
 Rejected: Rolling seven-day windows, counting rest days as sessions, and another line in the grid header right after its height was reduced.
 
+## 2026-10-09 — Confirm deal matches with one tap
+Context: Spec 16.5. The October 3 entry still gave protein per dollar to products whose title names the food without being it, such as breaded chicken.
+Decision: A deal whose title names the food it was found for asks "¿Es …?" with Sí and No; once answered it says "Es …" or "No es …" with Deshacer. No removes protein per dollar and the comparison with his usual price from that deal. Answers live in deals_match_verdict (migration 060), keyed by the deal title without case or accents and the food, so they survive every collection and apply to every deal with the same text. Unlike the rest of the deals tables they are his data and go into backups. The answer paints at once and the write follows; a failed write rereads the deals.
+Rejected: Keeping answers in deals_match, which each collection rebuilds, asking about deals whose title does not name the food, and leaving answers out of backups.
+
 ## 2026-10-09 — Say how much evidence a training estimate rests on
 Context: Training finding 9: a learned pace can come from a single interval, and the estimate read the same either way. The owner asked for it now rather than after weeks of data.
 Decision: The remaining-time estimate reports, among pending exercises with a learned pace, the fewest measured workouts behind any of them, today included once it has an interval. Below five, the same threshold the interval review uses, it says the estimate still rests on little data; from five it states that minimum. Ranges and calibration against actual finish times wait for real data.

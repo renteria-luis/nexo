@@ -65,7 +65,14 @@ import {
   type ExperimentWithReadings,
   type NewExperiment,
 } from '../core/experiments.ts';
-import { listDeals, listSources, watchWords } from '../deals/index.ts';
+import {
+  answerDealMatch as saveDealAnswer,
+  listDeals,
+  listSources,
+  verdictKey,
+  watchWords,
+  type DealWithContext,
+} from '../deals/index.ts';
 import {
   cookRecipe,
   listPantry,
@@ -271,6 +278,11 @@ export type AppData = {
   state: AppState;
   dataRevision: number;
   healthArrival: HealthArrival | null;
+  /**
+   * Spec 16.5: si la oferta es de verdad el alimento con que se encontro. Vale para todas
+   * las del mismo texto; null borra la respuesta. Se pinta ya y se guarda detras.
+   */
+  answerDealMatch: (item: DealWithContext, confirmed: boolean | null) => void;
   /** Ante lo que escribio a mano: true usa lo que llego del Atajo, false deja lo suyo. */
   answerHealthConflict: (metric: HealthMetric, replace: boolean) => Promise<void>;
   dismissHealthArrival: () => void;
@@ -999,6 +1011,26 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         );
       },
       dismissHealthArrival: () => setHealthArrival(null),
+      answerDealMatch: (item, confirmed) => {
+        const candidate = item.candidate;
+        if (candidate === null) return;
+        const key = verdictKey(item.deal.title);
+        patch((current) => ({
+          ...current,
+          deals: current.deals.map((other) =>
+            other.candidate?.id === candidate.id && verdictKey(other.deal.title) === key
+              ? { ...other, confirmed, food: confirmed === false ? null : other.candidate }
+              : other,
+          ),
+        }));
+        openDatabase()
+          .then((db) => saveDealAnswer(db, item.deal.title, candidate.id, confirmed, Date.now()))
+          .catch((error: unknown) => {
+            console.error(error);
+            // Lo pintado tiene que volver a lo que dice la base.
+            refresh(false, REREAD_DEALS);
+          });
+      },
       editFood: (id, food) =>
         write(
           async (db) => {
