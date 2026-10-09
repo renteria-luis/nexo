@@ -471,3 +471,48 @@ test('interpreted questions preserve an explicit date that the model drops or ch
     assert.equal(requests.at(-1)?.date, 'ayer');
   }
 });
+
+const EGGS = {
+  id: 'huevos',
+  name: 'Huevos',
+  kind: 'counted',
+  quantity: 12,
+  unit: 'unidad',
+  state: null,
+  hasIt: null,
+  foodId: null,
+};
+
+test('a typed pantry change is written at once; one that cannot fit is refused first', async () => {
+  const changes: unknown[] = [];
+  const { screen, calls } = chatFixture({
+    loadPantry: async () => [EGGS],
+    changePantry: async (command: unknown) => {
+      changes.push(command);
+      return 'Huevos: +18, ahora 30.';
+    },
+  });
+  await submitChat(screen, 'compré 18 huevos');
+  assert.equal(calls.at(-1), 'Huevos: +18, ahora 30.');
+  assert.equal(changes.length, 1);
+
+  await submitChat(screen, 'se acabó la leche');
+  assert.match(calls.at(-1)!, /No tengo "leche"/);
+  await submitChat(screen, 'queda poco huevos');
+  assert.match(calls.at(-1)!, /Cuánto queda/);
+  assert.equal(changes.length, 1);
+});
+
+test('a pantry change the model understood is confirmed with what the pantry says now', async () => {
+  const { screen, calls } = chatFixture(
+    { loadPantry: async () => [EGGS], changePantry: async () => 'Huevos: se acabó, en 0.' },
+    {
+      modelReady: () => true,
+      askModel: async () => ({ tipo: 'anotar', comando: 'se acabo huevos' }),
+    },
+  );
+  await submitChat(screen, 'ya no me quedan huevos');
+  assert.match(calls.at(-1)!, /se acabo huevos/);
+  assert.match(calls.at(-1)!, /Ahora dice Huevos: 12\./);
+  assert.match(calls.at(-1)!, /¿Lo escribo/);
+});

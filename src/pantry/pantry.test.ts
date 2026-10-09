@@ -12,17 +12,30 @@ import {
   getFood,
   listFoods,
   listOpenBatches,
+  createBatch,
+  lastBatchOf,
   listPortions,
   updateFood,
 } from '../nutrition/queries.ts';
 
-import { potOf } from './cook.ts';
-import { cookableNow, missingFor, type PantryItem, type Recipe } from './pantry.ts';
+import { portionOf, potOf } from './cook.ts';
+import { parseCommand, type PantryCommand } from '../core/commands.ts';
+
+import {
+  changePantryItem,
+  cookableNow,
+  findPantryItem,
+  missingFor,
+  type PantryItem,
+  type Recipe,
+} from './pantry.ts';
 import {
   cookRecipe,
   listPantry,
   listRecipes,
+  previewRecipePots,
   removePantryItem,
+  runPantryCommand,
   savePantryItem,
   saveRecipe,
 } from './queries.ts';
@@ -502,4 +515,139 @@ test('la olla sin lote dice que ficha necesita peso, y con el peso puesto ya dej
   const second = await cookRecipe(db, recipe, '2026-10-02');
   assert.ok(second.batchId !== null);
   assert.deepEqual(second.needsWeight, []);
+});
+
+test('una receta dice lo que da cada porcion antes de cocinarla, igual que la olla que deja', async () => {
+  const db = fresh();
+  const pollo = await savePantryItem(db, {
+    name: 'Hamburguesas',
+    kind: 'counted',
+    quantity: 8,
+    unit: 'unidad',
+    state: null,
+    hasIt: null,
+    foodId: 'chicken-burger',
+  });
+  const recipe = await saveRecipe(db, {
+    name: 'Hamburguesas al horno',
+    steps: '',
+    portions: 3,
+    ingredients: [{ itemId: pollo, amount: 3 }],
+  });
+
+  const preview = (await previewRecipePots(db)).get(recipe);
+  assert.ok(preview?.ok);
+  const portion = portionOf(preview.pot, 3);
+  // Lo que se ve antes es justo lo que se come despues: la porcion de la olla cocinada.
+  const cooked = await cookRecipe(db, recipe, '2026-09-30');
+  const food = await db.getFirstAsync<{ protein_g: number; kcal: number }>(
+    'SELECT f.protein_g, f.kcal FROM nutrition_batch b JOIN nutrition_food f ON f.id = b.food_id WHERE b.id = ?;',
+    [cooked.batchId!],
+  );
+  assert.ok(Math.abs((food!.protein_g * preview.pot.grams) / 3 - portion.proteinG) < 1e-9);
+  assert.ok(Math.abs((food!.kcal * preview.pot.grams) / 3 - portion.kcal) < 1e-9);
+
+  // Sin hamburguesas en la despensa la cuenta sigue: es lo que daria si las tuviera.
+  await savePantryItem(db, {
+    id: pollo,
+    name: 'Hamburguesas',
+    kind: 'counted',
+    quantity: 0,
+    unit: 'unidad',
+    state: null,
+    hasIt: null,
+    foodId: 'chicken-burger',
+  });
+  assert.ok((await previewRecipePots(db)).get(recipe)?.ok);
+});
+
+test('la ultima tanda de un alimento es la que se propone para la siguiente', async () => {
+  const db = fresh();
+  assert.equal(await lastBatchOf(db, 'chicken-burger'), null);
+  await createBatch(db, {
+    foodId: 'chicken-burger',
+    rawWeightG: 568,
+    portionsCount: 4,
+    cookedDate: '2026-09-20',
+    fatDrained: false,
+  });
+  await createBatch(db, {
+    foodId: 'chicken-burger',
+    rawWeightG: 426,
+    portionsCount: 3,
+    cookedDate: '2026-09-27',
+    fatDrained: false,
+  });
+  assert.deepEqual(await lastBatchOf(db, 'chicken-burger'), { rawWeightG: 426, portionsCount: 3 });
+});
+
+function said(line: string): PantryCommand {
+  const parsed = parseCommand(line, '2026-10-09');
+  assert.ok(parsed.ok && parsed.command.kind === 'pantry', line);
+  return parsed.command as PantryCommand;
+}
+
+const STOCK = [
+  item({ id: 'huevos', name: 'Huevos', kind: 'counted', quantity: 12, unit: 'unidad' }),
+  item({ id: 'arroz', name: 'Arroz blanco', kind: 'weighed', quantity: 500, unit: 'g' }),
+  item({ id: 'leche-1', name: 'Leche 1%', kind: 'weighed', quantity: 2000, unit: 'ml' }),
+  item({ id: 'leche-a', name: 'Leche de almendra', kind: 'weighed', quantity: 0, unit: 'ml' }),
+  item({ id: 'whey', name: 'Whey Gold Standard', kind: 'durable', state: 'hay' }),
+  item({ id: 'sal', name: 'Sal', kind: 'spice', hasIt: true }),
+];
+
+test('the item he names is found by its name, singular or plural, or asked about', () => {
+  const name = (said: string) => {
+    const found = findPantryItem(STOCK, said);
+    return typeof found === 'string' ? found : found.id;
+  };
+  assert.equal(name('huevos'), 'huevos');
+  assert.equal(name('huevo'), 'huevos');
+  assert.equal(name('arroz'), 'arroz');
+  assert.equal(name('whey'), 'whey');
+  assert.equal(name('leche 1%'), 'leche-1');
+  assert.match(name('leche'), /Leche 1%, Leche de almendra/);
+  assert.match(name('mantequilla'), /No tengo "mantequilla"/);
+});
+
+test('each kind of item takes only the changes that make sense for it', () => {
+  const apply = (line: string) => {
+    const command = said(line);
+    const found = findPantryItem(STOCK, command.item);
+    assert.ok(typeof found !== 'string', line);
+    const change = changePantryItem(found, command);
+    return typeof change === 'string' ? change : change.reply;
+  };
+  assert.equal(apply('compre 18 huevos'), 'Huevos: +18, ahora 30.');
+  assert.equal(apply('quedan 6 huevos'), 'Huevos: ahora 6.');
+  assert.equal(apply('se acabaron los huevos'), 'Huevos: se acabó, en 0.');
+  assert.equal(apply('compre 2 kg arroz'), 'Arroz blanco: +2000 g, ahora 2500 g.');
+  assert.equal(apply('queda poca whey'), 'Whey Gold Standard: poco.');
+  assert.equal(apply('se acabo la whey'), 'Whey Gold Standard: no hay.');
+  assert.equal(apply('se acabo la sal'), 'Sal: no hay.');
+  // What does not fit the item changes nothing and says why.
+  assert.match(apply('compre 2 l arroz'), /va en g, no en l/);
+  assert.match(apply('compre 1.5 huevos'), /entero/);
+  assert.match(apply('compre huevos'), /Cuánto compraste/);
+  assert.match(apply('queda poco arroz'), /Cuánto queda/);
+  assert.match(apply('quedan 2 whey'), /no se cuenta/);
+  assert.match(apply('queda poca sal'), /se tiene o no/);
+});
+
+test('a pantry change from the assistant is saved and answers what is left', async () => {
+  const db = fresh();
+  await savePantryItem(db, {
+    name: 'Huevos',
+    kind: 'counted',
+    quantity: 12,
+    unit: 'unidad',
+    state: null,
+    hasIt: null,
+    foodId: null,
+  });
+  assert.equal(await runPantryCommand(db, said('compre 18 huevos')), 'Huevos: +18, ahora 30.');
+  assert.equal((await listPantry(db))[0].quantity, 30);
+  assert.match(await runPantryCommand(db, said('se acabo la leche')), /No tengo "leche"/);
+  assert.match(await runPantryCommand(db, said('queda poco huevos')), /Cuánto queda/);
+  assert.equal((await listPantry(db))[0].quantity, 30);
 });

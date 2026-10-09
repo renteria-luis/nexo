@@ -1,4 +1,10 @@
-import { parseCommand, type Command, type ParsedCommand } from './commands.ts';
+import {
+  parseCommand,
+  plain,
+  type Command,
+  type PantryCommand,
+  type ParsedCommand,
+} from './commands.ts';
 import type { IsoDate } from './dates.ts';
 import { extractQuestionDate, resolveQuestionDates } from './questions.ts';
 import { fold } from '../nutrition/picker.ts';
@@ -112,6 +118,11 @@ export function interpretedCommand(
 ): ParsedCommand {
   const parsed = parseCommand(line, today);
   if (!parsed.ok) return parsed;
+  // La despensa es de ahora (spec 21.5): "ayer compre huevos" los deja en la despensa hoy.
+  if (parsed.command.kind === 'pantry') {
+    const reason = validateInterpretedWrite(message, parsed, today, unit);
+    return reason === null ? parsed : { ok: false, reason };
+  }
   const dates = resolveQuestionDates(extractQuestionDate(message, today), today);
   if (dates === null || dates.from !== dates.to) {
     return { ok: false, reason: 'Dime un día concreto para anotar ese dato.' };
@@ -138,7 +149,53 @@ export function commandLine(command: Command): string {
       return `serie ${command.weight}x${command.reps}${command.rpe === null ? '' : ` rpe${command.rpe}`}`;
     case 'help':
       return 'ayuda';
+    case 'pantry': {
+      const amount =
+        command.amount === null
+          ? ''
+          : `${command.amount}${command.unit === null ? '' : ` ${command.unit}`} `;
+      switch (command.action) {
+        case 'add':
+          return `compre ${amount}${command.item}`;
+        case 'set':
+          return `quedan ${amount}${command.item}`;
+        case 'out':
+          return `se acabo ${command.item}`;
+        case 'low':
+          return `queda poco ${command.item}`;
+        case 'have':
+          return `hay ${command.item}`;
+      }
+    }
   }
+}
+
+/** Lo que tiene que haber dicho para cada cambio de la despensa. */
+const PANTRY_SAID: Record<PantryCommand['action'], RegExp> = {
+  add: /\b(compre|compramos|comprado|traje)\b/,
+  set: /\b(queda|quedan|tengo|hay)\b/,
+  out: /\b(acabo|acabaron|termine|termino|terminaron)\b|\bno (?:me |nos )?(?:hay|queda|quedan|tengo)\b/,
+  low: /\b(poc[oa]s?|poquit[oa]s?)\b/,
+  have: /\b(hay|tengo|compre)\b/,
+};
+
+/**
+ * Spec 21.5 con la regla de siempre (spec 20.4): lo que el modelo entendio de la despensa
+ * tiene que estar en lo que dijo, la cosa, lo que le paso y la cantidad si la hay.
+ */
+function pantryGrounded(original: string, command: PantryCommand): string | null {
+  const said = plain(original);
+  const named = command.item
+    .split(' ')
+    .every((word) => said.includes(word.length > 3 ? word.replace(/(es|s)$/, '') : word));
+  if (!named || !PANTRY_SAID[command.action].test(said)) {
+    return 'Lo interpretado no coincide con lo que dijiste de la despensa. No anoté nada.';
+  }
+  if (command.amount === null) return null;
+  const amount = command.amount;
+  return amounts(numericWords(original)).some((value) => close(value, amount))
+    ? null
+    : 'No puedo comprobar esa cantidad en lo que dijiste. Repite el dato con su número.';
 }
 
 export function validateInterpretedWrite(
@@ -160,12 +217,13 @@ export function validateInterpretedWrite(
   ) {
     return 'Eso parece una consulta. No voy a convertirlo en un registro.';
   }
+  if (command.kind === 'pantry') return pantryGrounded(message, command);
   const date = extractQuestionDate(message, today);
   const range = resolveQuestionDates(date, today);
   if (range === null || range.from !== parsed.date || range.to !== parsed.date) {
     return 'La fecha interpretada no coincide con lo que dijiste. Repite el día y el dato.';
   }
-  const relevant: Record<typeof command.kind, RegExp> = {
+  const relevant: Record<Exclude<typeof command.kind, 'pantry'>, RegExp> = {
     help: /\bayuda\b/,
     water: /\bagua\b/,
     weight: /\b(peso|pese|pesaba|pesando)\b/,

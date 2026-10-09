@@ -14,7 +14,22 @@
 import { isBodyWeightKg } from './daily-log.ts';
 import { addDays, isRealDate, todayIso, type IsoDate } from './dates.ts';
 
+/**
+ * Lo que cambia en la despensa (spec 21.5): compro, quedan tantos, se acabo, queda poco o
+ * hay. Que articulo es y si eso le cabe lo decide la despensa, no el parser.
+ */
+export type PantryAction = 'add' | 'set' | 'out' | 'low' | 'have';
+export type PantryUnit = 'g' | 'kg' | 'ml' | 'l';
+export type PantryCommand = {
+  kind: 'pantry';
+  action: PantryAction;
+  item: string;
+  amount: number | null;
+  unit: PantryUnit | null;
+};
+
 export type Command =
+  | PantryCommand
   | { kind: 'water'; ml: number }
   | { kind: 'weight'; value: number }
   | { kind: 'steps'; steps: number }
@@ -34,6 +49,9 @@ export const COMMAND_HELP = [
   'sueno 7.5h      tambien sueno 130m',
   'creatina        o creatina no',
   '25 set pasos 5000   otro dia: ayer, 25 set, 25/09',
+  'compre 18 huevos    o compre 2 kg arroz',
+  'quedan 6 huevos     lo que hay ahora',
+  'se acabo la leche   o queda poca whey, hay sal',
   'ayuda           esta lista',
 ];
 
@@ -240,11 +258,98 @@ function bad(reason: string): ParsedCommand {
   return { ok: false, reason };
 }
 
+const PANTRY_UNITS: Record<string, PantryUnit> = {
+  g: 'g',
+  gr: 'g',
+  gramos: 'g',
+  kg: 'kg',
+  kilo: 'kg',
+  kilos: 'kg',
+  ml: 'ml',
+  l: 'l',
+  litro: 'l',
+  litros: 'l',
+};
+const ARTICLES = new Set(['la', 'el', 'los', 'las', 'un', 'una', 'unos', 'unas', 'de', 'del']);
+const LITTLE = new Set(['poco', 'poca', 'pocos', 'pocas']);
+
+/** El verbo de la despensa al principio de la linea, y cuantas palabras ocupa. */
+function pantryVerb(words: readonly string[]): { action: PantryAction; used: number } | null {
+  const [first, second] = words;
+  if (first === 'compre') return { action: 'add', used: 1 };
+  if (first === 'se' && (second === 'acabo' || second === 'acabaron')) {
+    return { action: 'out', used: 2 };
+  }
+  if (first === 'no' && (second === 'hay' || second === 'queda' || second === 'quedan')) {
+    return { action: 'out', used: 2 };
+  }
+  if (first === 'queda' || first === 'quedan' || first === 'hay') {
+    if (LITTLE.has(second ?? '')) return { action: 'low', used: 2 };
+    return { action: first === 'hay' && !/^[0-9]/.test(second ?? '') ? 'have' : 'set', used: 1 };
+  }
+  return null;
+}
+
+/**
+ * Spec 21.5: "compre 18 huevos", "quedan 500 g arroz", "se acabo la leche", "queda poca
+ * whey", "hay sal". La cantidad va antes de la cosa, con su unidad si la tiene.
+ */
+function pantryCommand(words: readonly string[]): ParsedCommand | null {
+  const verb = pantryVerb(words);
+  if (verb === null) return null;
+  let rest = words.slice(verb.used);
+
+  let amount: number | null = null;
+  let unit: PantryUnit | null = null;
+  const counted = /^([0-9]+(?:[.,][0-9]+)?)([a-z]*)$/.exec(rest[0] ?? '');
+  if (counted) {
+    amount = number(counted[1]);
+    if (counted[2] !== '') {
+      unit = PANTRY_UNITS[counted[2]] ?? null;
+      if (unit === null) return bad(`No conozco la unidad "${counted[2]}": g, kg, ml o l.`);
+    }
+    rest = rest.slice(1);
+    if (unit === null && PANTRY_UNITS[rest[0] ?? ''] !== undefined) {
+      unit = PANTRY_UNITS[rest[0]];
+      rest = rest.slice(1);
+    }
+  }
+  while (rest.length > 0 && ARTICLES.has(rest[0])) rest = rest.slice(1);
+  const item = rest.join(' ');
+
+  if (item === '') return bad('Que cosa: "compre 18 huevos", "se acabo la leche".');
+  if (amount !== null && amount <= 0) return bad('Una cantidad de cero no cambia nada.');
+  if (verb.action === 'set' && amount === null) {
+    return bad(`Cuanto queda: "quedan 6 ${item}".`);
+  }
+  if (
+    (verb.action === 'out' || verb.action === 'low' || verb.action === 'have') &&
+    amount !== null
+  ) {
+    return bad(
+      `Sin cantidad: "${verb.action === 'low' ? 'queda poco' : verb.action === 'out' ? 'se acabo' : 'hay'} ${item}", o "quedan ${amount} ${item}".`,
+    );
+  }
+  return {
+    ok: true,
+    command: { kind: 'pantry', action: verb.action, item, amount, unit },
+    date: todayIso(),
+  };
+}
+
 export function parseCommand(input: string, today: IsoDate = todayIso()): ParsedCommand {
   const words = plain(input).split(/\s+/).filter(Boolean);
   if (words.length === 0) return bad('Escribe algo. "ayuda" lista los comandos.');
 
+  // La despensa no va por dias y se lee antes de buscar una fecha: "compre 1 mayo" es
+  // mayonesa, no el primero de mayo.
+  const pantry = pantryCommand(words);
+  if (pantry !== null) return pantry.ok ? { ...pantry, date: today } : pantry;
+
   const { date, rest: parts } = splitDate(words, today);
+  if (pantryVerb(parts) !== null) {
+    return bad('La despensa dice lo que hay ahora, no en un dia: escribelo sin fecha.');
+  }
   const [verb, ...rest] = parts;
 
   // Lo que sobra despues de lo que el comando espera no se tira: guardar 7 h de "sueno 7h

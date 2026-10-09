@@ -4,6 +4,7 @@
 // porcion no descuenta nada por su cuenta. Cocina de paquetes que la app no vio, y una
 // existencia que se descuenta sola acaba en ficcion en una semana (spec 21.5).
 
+import { plain, type PantryCommand } from '../core/commands.ts';
 import type {
   PantryItemRow,
   PantryRecipeIngredientRow,
@@ -128,4 +129,102 @@ export function cookableNow(recipes: readonly Recipe[], stock: readonly PantryIt
       if (a.short.length !== b.short.length) return a.short.length - b.short.length;
       return a.recipe.name.localeCompare(b.recipe.name);
     });
+}
+
+/** Singular y plural son la misma cosa: "huevo" y "huevos", "lata" y "latas". */
+function stem(text: string): string[] {
+  return plain(text)
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => (word.length > 3 ? word.replace(/(es|s)$/, '') : word));
+}
+
+/**
+ * El articulo que nombra, o por que no se sabe cual. Primero el nombre tal cual; si no,
+ * los que empiezan con lo que dijo ("leche" es "Leche 1%"). Si son varios, no se elige
+ * uno a ojo: se dicen todos.
+ */
+export function findPantryItem(items: readonly PantryItem[], name: string): PantryItem | string {
+  const said = stem(name);
+  const same = items.filter((item) => stem(item.name).join(' ') === said.join(' '));
+  const found =
+    same.length > 0
+      ? same
+      : items.filter((item) => {
+          const words = stem(item.name);
+          return said.every((word, index) => words[index]?.startsWith(word));
+        });
+  if (found.length === 1) return found[0];
+  if (found.length === 0) {
+    return `No tengo "${name}" en la despensa. Agrégalo primero en Despensa, con su forma de contarse.`;
+  }
+  return `"${name}" puede ser ${found.map((item) => item.name).join(', ')}. Dime cuál.`;
+}
+
+/** Lo que hay de un articulo, dicho como lo diria el. */
+export function stockOf(item: PantryItem): string {
+  if (item.kind === 'durable') return item.state ?? 'hay';
+  if (item.kind === 'spice') return item.hasIt ? 'hay' : 'no hay';
+  const quantity = item.quantity ?? 0;
+  return item.kind === 'weighed' ? `${quantity} ${item.unit ?? ''}`.trim() : String(quantity);
+}
+
+/** La cantidad dicha en la unidad del articulo, o por que no se puede convertir. */
+function inItemUnit(item: PantryItem, command: PantryCommand): number | string {
+  const amount = command.amount ?? 0;
+  if (command.unit === null) return amount;
+  if (item.kind === 'counted')
+    return `${item.name} se cuenta por ${item.unit ?? 'unidad'}, sin ${command.unit}.`;
+  const base = command.unit === 'kg' || command.unit === 'g' ? 'g' : 'ml';
+  if (item.unit !== base) return `${item.name} va en ${item.unit}, no en ${command.unit}.`;
+  return command.unit === 'kg' || command.unit === 'l' ? amount * 1000 : amount;
+}
+
+export type PantryChange = { item: PantryItem; reply: string };
+
+/**
+ * Lo que queda del articulo despues de lo que dijo (spec 21.5), o por que no le cabe. Lo
+ * contado y lo pesado llevan cantidad; lo duradero solo hay, poco o no hay; una especia se
+ * tiene o no (spec 21.1). Nada se adivina: un comando que no le cabe no cambia nada.
+ */
+export function changePantryItem(item: PantryItem, command: PantryCommand): PantryChange | string {
+  const { action } = command;
+  if (item.kind === 'durable' || item.kind === 'spice') {
+    if (action === 'set') {
+      return `${item.name} no se cuenta: di "queda poco ${command.item}", "se acabo ${command.item}" o "hay ${command.item}".`;
+    }
+    if (item.kind === 'spice' && action === 'low') {
+      return `${item.name} se tiene o no: "hay ${command.item}" o "se acabo ${command.item}".`;
+    }
+    const next: PantryItem =
+      item.kind === 'durable'
+        ? { ...item, state: action === 'out' ? 'no hay' : action === 'low' ? 'poco' : 'hay' }
+        : { ...item, hasIt: action !== 'out' };
+    const unmeasured = command.amount !== null ? ' No se mide, así que no guardé la cantidad.' : '';
+    return { item: next, reply: `${item.name}: ${stockOf(next)}.${unmeasured}` };
+  }
+
+  if (action === 'low' || action === 'have') {
+    return `Cuánto queda de ${item.name}: "quedan 6 ${command.item}".`;
+  }
+  if (action === 'out') {
+    const next = { ...item, quantity: 0 };
+    return { item: next, reply: `${item.name}: se acabó, en ${stockOf(next)}.` };
+  }
+  if (command.amount === null) return `Cuánto compraste: "compre 12 ${command.item}".`;
+  const amount = inItemUnit(item, command);
+  if (typeof amount === 'string') return amount;
+  if (item.kind === 'counted' && !Number.isInteger(amount)) {
+    return `${item.name} se cuenta entero: ${amount} no es una cantidad.`;
+  }
+  const quantity = action === 'add' ? (item.quantity ?? 0) + amount : amount;
+  const next = { ...item, quantity };
+  const unit = item.kind === 'weighed' ? ` ${item.unit ?? ''}` : '';
+  return {
+    item: next,
+    reply:
+      action === 'add'
+        ? `${item.name}: +${amount}${unit}, ahora ${stockOf(next)}.`
+        : `${item.name}: ahora ${stockOf(next)}.`,
+  };
 }

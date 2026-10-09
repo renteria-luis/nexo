@@ -533,6 +533,22 @@ export type NewBatch = {
 };
 
 /** Spec 7.3: one weighing per batch. Refuses a food the per-gram arithmetic cannot run on. */
+/** Lo que tuvo la ultima tanda de un alimento, para proponerlo en la siguiente. */
+export type LastBatch = { rawWeightG: number; portionsCount: number };
+
+/**
+ * Spec 7.3: el arroz es siempre la misma tanda con el mismo numero de porciones, y
+ * escribirlo cada vez es lo que el patron quiere ahorrar. La ultima vale como propuesta.
+ */
+export async function lastBatchOf(db: SQLiteDatabase, foodId: string): Promise<LastBatch | null> {
+  const row = await db.getFirstAsync<{ raw_weight_g: number; portions_count: number }>(
+    `SELECT raw_weight_g, portions_count FROM nutrition_batch
+      WHERE food_id = ? ORDER BY cooked_date DESC, id DESC LIMIT 1;`,
+    [foodId],
+  );
+  return row === null ? null : { rawWeightG: row.raw_weight_g, portionsCount: row.portions_count };
+}
+
 export async function createBatch(db: SQLiteDatabase, batch: NewBatch): Promise<string> {
   if (!(batch.rawWeightG > 0)) throw new Error(`a batch of ${batch.rawWeightG} g weighs nothing`);
   if (!Number.isInteger(batch.portionsCount) || batch.portionsCount < 1) {

@@ -110,3 +110,8 @@ export function perGram(pot: Pot): Omit<Pot, 'grams'> {
     sodiumMg: share(pot.sodiumMg),
   };
 }
+
+/** Una porcion de la olla, que es como se come: la olla se reparte en partes iguales. */
+export function portionOf(pot: Pot, portions: number): { proteinG: number; kcal: number } {
+  return { proteinG: pot.proteinG / portions, kcal: pot.kcal / portions };
+}

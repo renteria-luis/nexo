@@ -13,6 +13,7 @@ import {
 } from '../core/questions.ts';
 import { toKg, type WeightUnit } from '../core/units.ts';
 import { commandLine, interpretedCommand } from '../core/write-intent.ts';
+import { changePantryItem, findPantryItem, stockOf } from '../pantry/index.ts';
 import { useAppData } from '../shell/AppData.tsx';
 import { askModel, modelStatus } from '../shell/model.ts';
 import { publicRecipeUrl, suggestRecipe } from '../shell/recipes.ts';
@@ -79,6 +80,7 @@ export function Chat({ onClose }: { onClose: () => void }) {
     loadDay,
     askLocal,
     loadPantry,
+    changePantry,
     loadChat,
     loadChats,
     lastChatId,
@@ -244,12 +246,18 @@ export function Chat({ onClose }: { onClose: () => void }) {
         await logSet(toKg(command.weight, now.unit), command.reps, { rpe: command.rpe });
         return setLoggedReply(command.weight, now.unit, command.reps, now.name);
       }
+      case 'pantry':
+        return changePantry(command);
     }
   };
 
   const already = async ({ command, date, target: confirmed }: Pending): Promise<string> => {
     if (command.kind === 'set')
       return ` Va a ${confirmed?.name ?? target.current.name}, en ${confirmed?.unit ?? target.current.unit}.`;
+    if (command.kind === 'pantry') {
+      const item = findPantryItem(await loadPantry(), command.item);
+      return typeof item === 'string' ? '' : ` Ahora dice ${item.name}: ${stockOf(item)}.`;
+    }
     const log = (await loadDay(date)).day.log;
     if (command.kind === 'water')
       return log?.water_ml == null
@@ -314,6 +322,16 @@ export function Chat({ onClose }: { onClose: () => void }) {
     if (command.kind === 'set' && date !== todayIso()) {
       await say(request, 'app', await run(entry, request), into);
       return;
+    }
+    // Lo que no se puede escribir se dice antes de preguntar si se escribe.
+    if (command.kind === 'pantry') {
+      const item = findPantryItem(await loadPantry(), command.item);
+      if (!valid(request)) return;
+      const change = typeof item === 'string' ? item : changePantryItem(item, command);
+      if (typeof change === 'string') {
+        await say(request, 'app', change, into);
+        return;
+      }
     }
     if (command.kind !== 'help' && (interpreted !== undefined || date !== todayIso())) {
       const note = await already(entry);

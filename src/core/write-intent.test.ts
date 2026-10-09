@@ -91,3 +91,21 @@ test('the original date controls a model proposal that omits or changes it', () 
     false,
   );
 });
+
+test('a pantry change the model understood must name the thing, what happened and the amount', () => {
+  assert.equal(validate('se me acabó la leche', 'se acabo leche'), null);
+  assert.equal(validate('ya no hay leche', 'se acabo leche'), null);
+  assert.equal(validate('compré dieciocho huevos', 'compre 18 huevos'), null);
+  assert.equal(validate('queda poquita whey, casi nada', 'queda poco whey'), null);
+  assert.notEqual(validate('se me acabó la leche', 'se acabo huevos'), null);
+  assert.notEqual(validate('compré huevos', 'compre 18 huevos'), null);
+  assert.notEqual(validate('se acabó la leche', 'compre 2 l leche'), null);
+  assert.notEqual(validate('¿queda leche?', 'hay leche'), null);
+});
+
+test('a pantry change stays in the pantry now, whatever day the sentence mentions', () => {
+  const parsed = interpretedCommand('ayer compré 12 huevos', 'compre 12 huevos', today, 'lb');
+  assert.ok(parsed.ok);
+  assert.equal(parsed.date, today);
+  assert.equal(commandLine(parsed.command), 'compre 12 huevos');
+});

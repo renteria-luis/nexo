@@ -77,7 +77,9 @@ import {
   cookRecipe,
   listPantry,
   listRecipes,
+  previewRecipePots,
   removePantryItem,
+  runPantryCommand,
   removeRecipe,
   savePantryItem,
   saveRecipe,
@@ -86,9 +88,11 @@ import {
   type NewRecipe,
   type PantryItem,
   type PantryRemoval,
+  type PotOutcome,
   type Recipe,
 } from '../pantry/index.ts';
 import { listStudies } from '../core/studies.ts';
+import type { PantryCommand } from '../core/commands.ts';
 import type { ImportResult } from '../core/backup.ts';
 import { implementFromDraft, serializeDraft, type SessionDraft } from '../core/session-draft.ts';
 import { parseWaterTaps, serializeWaterTaps, undoLastTap } from '../core/water-taps.ts';
@@ -108,9 +112,11 @@ import {
   repeatMealOn,
   deleteFoodEntry,
   discardBatch,
+  lastBatchOf,
   listFoods,
   withPortionTaken,
   type LabelFood,
+  type LastBatch,
   type FoodEdit,
   type FoodRemoval,
   type LastMeal,
@@ -435,7 +441,13 @@ export type AppData = {
   savePantryItem: (item: NewPantryItem) => Promise<void>;
   /** Rechaza con el motivo; si una receta lo usa, lo deja vacio y dice cuales. */
   removePantryItem: (id: string) => Promise<PantryRemoval>;
+  /** Lo que dijo en el asistente sobre la despensa; contesta lo que quedo o por que no. */
+  changePantry: (command: PantryCommand) => Promise<string>;
   loadRecipes: () => Promise<Recipe[]>;
+  /** Lo que daria cada receta cocinada ahora, por id: las mismas cuentas que cocinar. */
+  loadRecipePots: () => Promise<Map<string, PotOutcome>>;
+  /** La ultima tanda de un alimento, para proponer su peso y sus porciones. */
+  loadLastBatch: (foodId: string) => Promise<LastBatch | null>;
   saveRecipe: (recipe: NewRecipe) => Promise<void>;
   removeRecipe: (id: string) => Promise<void>;
   /** Descuenta lo que se uso y deja la olla como lote, o dice que se lo impidio. */
@@ -662,6 +674,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   const loadPantry = useCallback(() => openDatabase().then(listPantry), []);
   const loadRecipes = useCallback(() => openDatabase().then(listRecipes), []);
+  const loadRecipePots = useCallback(() => openDatabase().then(previewRecipePots), []);
+  const loadLastBatch = useCallback(
+    (foodId: string) => openDatabase().then((db) => lastBatchOf(db, foodId)),
+    [],
+  );
 
   const loadChats = useCallback(() => openDatabase().then((db) => listChats(db)), []);
   const lastChatId = useCallback(() => openDatabase().then(lastChat), []);
@@ -1351,10 +1368,14 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         write((db) => setSessionMinutes(db, sessionId, minutes), false),
       loadPantry,
       loadRecipes,
+      loadRecipePots,
+      loadLastBatch,
       savePantryItem: async (item) => {
         await savePantryItem(await openDatabase(), item);
       },
       removePantryItem: (id) => openDatabase().then((db) => removePantryItem(db, id)),
+      // La despensa no puntua nada: no recarga el resto (spec 21.5).
+      changePantry: (command) => openDatabase().then((db) => runPantryCommand(db, command)),
       saveRecipe: async (recipe) => {
         await saveRecipe(await openDatabase(), recipe);
       },
@@ -1437,6 +1458,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     loadStudies,
     loadPantry,
     loadRecipes,
+    loadRecipePots,
+    loadLastBatch,
     loadChats,
     lastChatId,
     loadChat,

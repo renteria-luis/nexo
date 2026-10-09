@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Text, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../db/types.ts';
-import { roundAmount } from '../nutrition/index.ts';
+import { roundAmount, type LastBatch } from '../nutrition/index.ts';
 import type { BatchStart } from '../shell/AppData.tsx';
 import type { OpenBatch } from '../shell/load.ts';
 
@@ -85,9 +85,11 @@ function BatchCard({
       })
       .finally(() => setEating(false));
   };
+  // Spec 7.3: la olla se reparte a ojo, asi que las calorias de una porcion son aproximadas,
+  // y la proteina, que es la cifra que se sigue, no.
   const kcal =
     macros.kcal !== null
-      ? `${Math.round(macros.kcal)} kcal`
+      ? `unas ${Math.round(macros.kcal)} kcal`
       : macros.kcalRange
         ? `entre ${Math.round(macros.kcalRange.from)} y ${Math.round(macros.kcalRange.to)} kcal, grasa escurrida`
         : macros.fatDrained
@@ -149,6 +151,8 @@ export type BatchPanelProps = {
   onThrowAway: (batchId: string) => void;
   /** El espacio elegido arriba, en Anotar: uno solo para las dos cartillas. */
   slot: string;
+  /** La ultima tanda de un alimento del catalogo, para proponer la siguiente igual. */
+  onLoadLast: (foodId: string) => Promise<LastBatch | null>;
 };
 
 /**
@@ -156,7 +160,15 @@ export type BatchPanelProps = {
  * one portion. The foods the pattern is really for, chicken breast, ground beef and
  * rice, are not in the seeded catalogue, so a batch can start from a package label.
  */
-export function BatchPanel({ batches, foods, onStart, onEat, onThrowAway, slot }: BatchPanelProps) {
+export function BatchPanel({
+  batches,
+  foods,
+  onStart,
+  onEat,
+  onThrowAway,
+  slot,
+  onLoadLast,
+}: BatchPanelProps) {
   const [creating, setCreating] = useState(false);
   const [source, setSource] = useState<'catalog' | 'label'>('label');
   const [foodId, setFoodId] = useState<string | null>(null);
@@ -170,6 +182,23 @@ export function BatchPanel({ batches, foods, onStart, onEat, onThrowAway, slot }
   const [portions, setPortions] = useState('');
   const [drained, setDrained] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  // Lo que se propuso de la ultima tanda, para decir de donde salen esos numeros.
+  const [proposed, setProposed] = useState<string | null>(null);
+
+  // Spec 7.3: la siguiente tanda de lo mismo suele ser igual, asi que se propone la
+  // ultima en lo que todavia esta vacio. Lo que ya escribio no se toca.
+  const choose = (food: NutritionFoodRow) => {
+    setFoodId(food.id);
+    setProposed(null);
+    onLoadLast(food.id)
+      .then((last) => {
+        if (last === null) return;
+        setRawWeight((current) => (current === '' ? String(last.rawWeightG) : current));
+        setPortions((current) => (current === '' ? String(last.portionsCount) : current));
+        setProposed(`Como la última vez: ${last.rawWeightG} g en ${last.portionsCount} porciones.`);
+      })
+      .catch((error: unknown) => console.error(error));
+  };
 
   const batchable = foods.filter((food) => food.base_unit_g !== null);
 
@@ -194,6 +223,7 @@ export function BatchPanel({ batches, foods, onStart, onEat, onThrowAway, slot }
     setPortions('');
     setDrained(false);
     setProblem(null);
+    setProposed(null);
   };
 
   const save = () => {
@@ -272,7 +302,7 @@ export function BatchPanel({ batches, foods, onStart, onEat, onThrowAway, slot }
                   key={food.id}
                   label={food.name}
                   selected={food.id === foodId}
-                  onPress={() => setFoodId(food.id)}
+                  onPress={() => choose(food)}
                 />
               ))}
             </View>
@@ -312,6 +342,7 @@ export function BatchPanel({ batches, foods, onStart, onEat, onThrowAway, slot }
             />
             <Field label="Porciones" value={portions} onChange={setPortions} placeholder="8" />
           </View>
+          {proposed && <Text style={styles.hint}>{proposed}</Text>}
 
           <View style={styles.switchRow}>
             <View style={styles.switchText}>

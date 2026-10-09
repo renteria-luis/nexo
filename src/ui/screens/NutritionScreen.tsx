@@ -14,8 +14,16 @@ import { ChevronRight } from '../icons.ts';
 import { Screen } from './Screen.tsx';
 
 export function NutritionScreen() {
-  const { state, addFood, repeatMeal, removeFood, startBatch, eatBatchPortion, throwAwayBatch } =
-    useAppData();
+  const {
+    state,
+    addFood,
+    repeatMeal,
+    removeFood,
+    startBatch,
+    eatBatchPortion,
+    throwAwayBatch,
+    loadLastBatch,
+  } = useAppData();
   const navigation = useNavigation<{ navigate: (name: string) => void }>();
   // Una sola fila de espacios para anotar y para las tandas. Lo elegido a mano dura hasta
   // que anota algo; si no, manda el reloj, que se vuelve a mirar al volver a la app (la
@@ -64,6 +72,7 @@ export function NutritionScreen() {
         }
         onThrowAway={throwAwayBatch}
         slot={slot}
+        onLoadLast={loadLastBatch}
       />
 
       {/* Spec 7.5 punto 3: la pregunta de los lacteos se contesta en su propia piel. */}

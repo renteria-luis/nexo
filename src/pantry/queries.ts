@@ -12,8 +12,17 @@ import type {
 import { inTransaction } from '../db/transaction.ts';
 import { createBatch } from '../nutrition/queries.ts';
 
-import { perGram, potOf, type NeedsWeight } from './cook.ts';
-import { toItem, toRecipe, type PantryItem, type Recipe } from './pantry.ts';
+import { perGram, potOf, type NeedsWeight, type PotOutcome } from './cook.ts';
+import type { PantryCommand } from '../core/commands.ts';
+
+import {
+  changePantryItem,
+  findPantryItem,
+  toItem,
+  toRecipe,
+  type PantryItem,
+  type Recipe,
+} from './pantry.ts';
 
 function newId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
@@ -96,6 +105,23 @@ export type PantryRemoval = { outcome: 'borrado' } | { outcome: 'vaciado'; recip
  * borrado: en cero, en "no hay" o sin tener, segun como se tenga, y la receta lo marca
  * como faltante por su nombre hasta que lo vuelva a tener.
  */
+/**
+ * Lo que dijo en el asistente sobre la despensa (spec 21.5). Contesta lo que quedo, o por
+ * que no cambio nada: un articulo que no esta o una cantidad que no le cabe se dicen, no
+ * se adivinan.
+ */
+export async function runPantryCommand(
+  db: SQLiteDatabase,
+  command: PantryCommand,
+): Promise<string> {
+  const found = findPantryItem(await listPantry(db), command.item);
+  if (typeof found === 'string') return found;
+  const change = changePantryItem(found, command);
+  if (typeof change === 'string') return change;
+  await savePantryItem(db, change.item);
+  return change.reply;
+}
+
 export async function removePantryItem(db: SQLiteDatabase, id: string): Promise<PantryRemoval> {
   const used = await db.getAllAsync<{ name: string }>(
     `SELECT r.name FROM pantry_recipe_ingredient i
@@ -177,6 +203,24 @@ export type Cooked = {
   needsWeight: NeedsWeight[];
 };
 
+/** Lo que entra en las cuentas de una olla: las recetas, lo que hay y todo el catalogo. */
+function kitchen(db: SQLiteDatabase) {
+  return Promise.all([
+    listRecipes(db),
+    listPantry(db),
+    db.getAllAsync<NutritionFoodRow>('SELECT * FROM nutrition_food;'),
+  ]);
+}
+
+/**
+ * Lo que daria cada receta si se cocinara ahora, con las mismas cuentas que cocinar (spec
+ * 21.3): asi se ve lo que deja una porcion antes de gastar los ingredientes.
+ */
+export async function previewRecipePots(db: SQLiteDatabase): Promise<Map<string, PotOutcome>> {
+  const [recipes, items, foods] = await kitchen(db);
+  return new Map(recipes.map((recipe) => [recipe.id, potOf(recipe.ingredients, items, foods)]));
+}
+
 /**
  * Cocinar: descuenta lo que se uso y deja la olla como un lote (spec 21.4).
  *
@@ -189,11 +233,7 @@ export async function cookRecipe(
   recipeId: string,
   today: IsoDate,
 ): Promise<Cooked> {
-  const [recipes, items, foods] = await Promise.all([
-    listRecipes(db),
-    listPantry(db),
-    db.getAllAsync<NutritionFoodRow>('SELECT * FROM nutrition_food;'),
-  ]);
+  const [recipes, items, foods] = await kitchen(db);
 
   const recipe = recipes.find((one) => one.id === recipeId);
   if (recipe === undefined) throw new Error(`there is no recipe called ${recipeId}`);

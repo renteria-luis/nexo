@@ -142,3 +142,39 @@ test('la serie anotada por el asistente dice en que ejercicio cayo', () => {
     'Serie de 65 lb por 8 anotada en Elevaciones laterales',
   );
 });
+
+test('the pantry changes he says out loud parse as he says them, with no date', () => {
+  const pantry = (input: string) => {
+    const command = ok(input);
+    assert.equal(command.kind, 'pantry', input);
+    assert.equal(on(input), TODAY, input);
+    return command.kind === 'pantry'
+      ? [command.action, command.amount, command.unit, command.item]
+      : null;
+  };
+  assert.deepEqual(pantry('compré 18 huevos'), ['add', 18, null, 'huevos']);
+  assert.deepEqual(pantry('compre 2 kg de arroz'), ['add', 2, 'kg', 'arroz']);
+  assert.deepEqual(pantry('compre 1,5l leche'), ['add', 1.5, 'l', 'leche']);
+  assert.deepEqual(pantry('quedan 6 huevos'), ['set', 6, null, 'huevos']);
+  assert.deepEqual(pantry('hay 3 latas de atún'), ['set', 3, null, 'latas de atun']);
+  assert.deepEqual(pantry('se acabó la leche'), ['out', null, null, 'leche']);
+  assert.deepEqual(pantry('no hay aceite de oliva'), ['out', null, null, 'aceite de oliva']);
+  assert.deepEqual(pantry('queda poca whey'), ['low', null, null, 'whey']);
+  assert.deepEqual(pantry('hay sal'), ['have', null, null, 'sal']);
+  // A pantry item is never read as a date: this is mayonnaise, not the first of May.
+  assert.deepEqual(pantry('compre 1 mayo'), ['add', 1, null, 'mayo']);
+});
+
+test('a pantry change that cannot be written says why', () => {
+  const reason = (input: string) => {
+    const parsed = parseCommand(input, TODAY);
+    assert.ok(!parsed.ok, `"${input}" should be refused`);
+    return parsed.reason;
+  };
+  assert.match(reason('quedan huevos'), /Cuanto queda/);
+  assert.match(reason('compre'), /Que cosa/);
+  assert.match(reason('compre 0 huevos'), /cero/);
+  assert.match(reason('queda poca 3 whey'), /Sin cantidad/);
+  assert.match(reason('compre 2tz arroz'), /No conozco la unidad "tz"/);
+  assert.match(reason('ayer compre 18 huevos'), /sin fecha/);
+});
