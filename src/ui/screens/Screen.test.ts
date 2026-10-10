@@ -86,6 +86,10 @@ test('a failed pull stops the spinner and exposes retry without removing data', 
   f.props.overlay = 'editing overlay';
   assert.equal((await f.scroll()).refreshControl, undefined);
   f.props.overlay = undefined;
+  // A drag inside turns scrolling off mid-touch; removing the control then hung the
+  // screen on the iPhone, so it stays mounted and only scrolling stops.
   f.props.scrollEnabled = false;
-  assert.equal((await f.scroll()).refreshControl, undefined);
+  const dragging = await f.scroll();
+  assert.equal(dragging.scrollEnabled, false);
+  assert.ok(dragging.refreshControl);
 });

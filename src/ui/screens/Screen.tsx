@@ -242,8 +242,11 @@ export function Screen({
     <ScrollView
       ref={list}
       scrollEnabled={scrollEnabled}
+      // Se queda puesto mientras se arrastra algo de dentro: con el desplazamiento apagado
+      // ya no se puede jalar, y quitarlo con el dedo encima descuadraba la pantalla en el
+      // iPhone y la dejaba colgada.
       refreshControl={
-        refreshable && scrollEnabled && !overlay && state.phase === 'ready' ? (
+        refreshable && !overlay && state.phase === 'ready' ? (
           <RefreshControl refreshing={refreshing} onRefresh={refresh} />
         ) : undefined
       }
