@@ -20,21 +20,30 @@ import {
  * (el carrusel de pestanas) no se ven entre si.
  */
 type SwipeLock = {
-  locked: boolean;
   isLocked: () => boolean;
   setLocked: (locked: boolean) => void;
   acquire: () => () => void;
 };
 
-const Context = createContext<SwipeLock>({
-  locked: false,
+const Actions = createContext<SwipeLock>({
   isLocked: () => false,
   setLocked: () => undefined,
   acquire: () => () => undefined,
 });
 
+/**
+ * Apagado o no, aparte de las funciones: solo el carrusel lo lee. Juntos, cada vez que una
+ * fila del orden de Entreno se despegaba se redibujaba todo lo que usa el interruptor, y
+ * despegarla tardaba (2026-10-10).
+ */
+const Locked = createContext(false);
+
 export function useSwipeLock(): SwipeLock {
-  return useContext(Context);
+  return useContext(Actions);
+}
+
+export function useSwipeLocked(): boolean {
+  return useContext(Locked);
 }
 
 export function SwipeLockProvider({ children }: { children: ReactNode }) {
@@ -56,10 +65,11 @@ export function SwipeLockProvider({ children }: { children: ReactNode }) {
       publish(legacy.current || owners.current.size > 0);
     };
   }, []);
-  const value = useMemo(
-    () => ({ locked, isLocked, setLocked, acquire }),
-    [locked, isLocked, setLocked, acquire],
-  );
+  const actions = useMemo(() => ({ isLocked, setLocked, acquire }), [isLocked, setLocked, acquire]);
 
-  return <Context.Provider value={value}>{children}</Context.Provider>;
+  return (
+    <Actions.Provider value={actions}>
+      <Locked.Provider value={locked}>{children}</Locked.Provider>
+    </Actions.Provider>
+  );
 }

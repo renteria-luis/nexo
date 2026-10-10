@@ -4,8 +4,13 @@ import { nodes, renderModule } from './test-render.ts';
 
 test('releasing the grid touch never unlocks another gesture and permits later tab swipes', async () => {
   const screen = renderModule('src/ui/SwipeLock.tsx').mount('SwipeLockProvider');
-  const value = async () =>
-    nodes(await screen.settle()).find((node) => node.type === 'Provider')!.props.value;
+  // The actions and the state come in two providers: only the tab pager reads the state.
+  const value = async () => {
+    const [actions, locked] = nodes(await screen.settle())
+      .filter((node) => node.type === 'Provider')
+      .map((node) => node.props.value);
+    return { ...actions, locked };
+  };
   const initial = await value();
   const releaseGrid = initial.acquire();
   assert.equal(initial.isLocked(), true, 'capture is blocked before the next render');

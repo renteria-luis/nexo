@@ -85,6 +85,12 @@ const TIER_ES: Record<number, string> = {
  */
 const ROW = 86;
 
+/** Lo que tarda una fila en correrse para abrir el hueco, o en caer en su sitio al soltar. */
+const SLIDE_MS = 150;
+
+/** Donde esta una fila del orden, de arriba abajo, y a donde va. */
+type Place = { y: Animated.Value; to: number };
+
 /** Lo que se corre una fila que no es la que se arrastra, para abrirle el hueco. */
 function shiftFor(index: number, from: number | null, to: number | null): number {
   // from menor que cero es "lo que se arrastraba ya no esta en la lista": sin esta
@@ -162,8 +168,7 @@ const OrderRow = memo(function OrderRow({
   exercise,
   index,
   lifted,
-  shift,
-  pan,
+  onPlace,
   onLift,
   onMove,
   onDrop,
@@ -172,13 +177,15 @@ const OrderRow = memo(function OrderRow({
   exercise: PlannedExercise;
   index: number;
   lifted: boolean;
-  shift: number;
-  pan: Animated.Value;
+  /** Le da al orden el sitio de la fila, para moverlo con el dedo o con una animacion. */
+  onPlace: (exerciseId: string, place: Place) => () => void;
   onLift: (exerciseId: string, index: number) => void;
   onMove: (dy: number) => void;
   onDrop: () => void;
   onOverride: (exerciseId: string, direction: 1 | -1) => void;
 }) {
+  const [place] = useState<Place>(() => ({ y: new Animated.Value(index * ROW), to: index * ROW }));
+  useEffect(() => onPlace(exercise.exerciseId, place), [exercise.exerciseId, place, onPlace]);
   const drag = useMemo(
     () =>
       PanResponder.create({
@@ -207,12 +214,7 @@ const OrderRow = memo(function OrderRow({
       // dura, que iOS recalcula en cada cuadro, es lo que hacia que el arrastre se
       // sintiera pesado.
       shouldRasterizeIOS={lifted}
-      style={[
-        styles.row,
-        index > 0 && styles.ruled,
-        lifted && styles.rowLifted,
-        { transform: [{ translateY: lifted ? pan : shift }] },
-      ]}
+      style={[styles.row, lifted && styles.rowLifted, { transform: [{ translateY: place.y }] }]}
     >
       {/* El asa, y lo unico que arrastra: el resto de la fila queda libre para leer,
           desplazar la pantalla y tocar los botones de series. */}
@@ -269,27 +271,61 @@ function Order({
   // llegaba un cuadro antes de apagar lo amarillo, lo amarillo le caia encima al que
   // acababa de ocupar ese sitio: el parpadeo que se veia al soltar.
   const [held, setHeld] = useState<string | null>(null);
-  const [target, setTarget] = useState<number | null>(null);
-  const [pan] = useState(() => new Animated.Value(0));
+  // Donde esta cada fila, por ejercicio, y a donde va. Las filas no se acomodan por el
+  // orden de la lista sino por este valor, asi que la que se corre para abrir el hueco
+  // se desliza en vez de saltar (2026-10-10), y el orden nuevo al soltar no mueve nada:
+  // cada una ya esta donde le toca.
+  const places = useRef(new Map<string, Place>());
+  const keep = useCallback((exerciseId: string, place: Place) => {
+    places.current.set(exerciseId, place);
+    return () => {
+      places.current.delete(exerciseId);
+    };
+  }, []);
   // Lo mismo en referencias: el gesto las lee fuera del render.
+  const order = useRef<string[]>([]);
   const holding = useRef<string | null>(null);
   const started = useRef<number | null>(null);
   const landing = useRef<number | null>(null);
+  // Y lo que pide la pantalla, leido al momento: despegar una fila la redibuja, y si con
+  // eso cambiaran las funciones del gesto, el gesto nuevo contaria desde cero a medio
+  // arrastre.
+  const parent = useRef({ onReorder, onDragging });
+  useEffect(() => {
+    parent.current = { onReorder, onDragging };
+  });
 
-  const lift = useCallback(
-    (exerciseId: string, index: number) => {
-      // En cero antes de empezar y no al soltar: asi soltar no depende de que un valor
-      // animado llegue a tiempo.
-      pan.setValue(0);
-      holding.current = exerciseId;
-      started.current = index;
-      landing.current = index;
-      setHeld(exerciseId);
-      setTarget(index);
-      onDragging(true);
-    },
-    [onDragging, pan],
-  );
+  const slide = useCallback((exerciseId: string, to: number, then?: () => void) => {
+    const found = places.current.get(exerciseId);
+    if (!found || found.to === to) {
+      then?.();
+      return;
+    }
+    found.to = to;
+    Animated.timing(found.y, { toValue: to, duration: SLIDE_MS, useNativeDriver: true }).start(
+      then,
+    );
+  }, []);
+
+  // Lo que cambie el plan por fuera (el tiempo que tiene, un ejercicio que sale) tambien
+  // se desliza. Mientras arrastra no: ahi manda el dedo.
+  useEffect(() => {
+    order.current = exercises.map((exercise) => exercise.exerciseId);
+    if (holding.current !== null) return;
+    order.current.forEach((exerciseId, index) => slide(exerciseId, index * ROW));
+  }, [exercises, slide]);
+
+  const lift = useCallback((exerciseId: string, index: number) => {
+    const found = places.current.get(exerciseId);
+    // Desde su sitio, aunque todavia venga deslizandose de un arrastre anterior.
+    found?.y.setValue(index * ROW);
+    if (found) found.to = index * ROW;
+    holding.current = exerciseId;
+    started.current = index;
+    landing.current = index;
+    setHeld(exerciseId);
+    parent.current.onDragging(true);
+  }, []);
 
   const stop = useCallback(
     (commit = true) => {
@@ -299,30 +335,35 @@ function Order({
       holding.current = null;
       started.current = null;
       landing.current = null;
+      // Un segundo aviso de soltar no hace nada: la fila ya va camino de su sitio.
+      if (id === null || from === null || to === null) return;
 
-      // Y el valor animado a cero tambien aqui, no solo al empezar. El ultimo
-      // movimiento puede llegar a la vista despues del render que la suelta, y entonces
-      // la fila se queda corrida encima de otra: por eso pasaba mas cuanto mas rapido
-      // se soltaba, que es cuando el movimiento y el soltar caen en el mismo cuadro.
-      pan.setValue(0);
-
-      // Se limpia siempre, haya habido arrastre o no. Si solo se limpiaba cuando lo
-      // habia, un segundo aviso de soltar podia dejar puesto lo despegado y las filas se
-      // quedaban corridas, montadas unas sobre otras.
-      setHeld(null);
-      setTarget(null);
-      if (id === null) return;
-
-      onDragging(false);
-      if (commit && from !== null && to !== null && to !== from) onReorder(from, to);
+      parent.current.onDragging(false);
+      const moved = commit && to !== from;
+      const ids = order.current.slice();
+      if (moved) ids.splice(to, 0, ...ids.splice(from, 1));
+      // Cada fila a su sitio del orden que queda: la que estaba en el dedo cae en el suyo
+      // desde donde la solto, y sigue amarilla y por encima hasta llegar; las corridas ya
+      // estan donde les toca, o vuelven si no hubo cambio.
+      ids.forEach((exerciseId, index) =>
+        slide(
+          exerciseId,
+          index * ROW,
+          exerciseId === id
+            ? () => setHeld((current) => (current === id ? null : current))
+            : undefined,
+        ),
+      );
+      if (moved) parent.current.onReorder(from, to);
     },
-    [onDragging, onReorder, pan],
+    [slide],
   );
 
   const move = useCallback(
     (dy: number) => {
+      const id = holding.current;
       const from = started.current;
-      if (from === null) return;
+      if (id === null || from === null) return;
 
       // Fuera de la lista se suelta solo y vuelve a su sitio, sin mover nada: sacar una
       // fila a la cartilla de arriba no significa nada, y dejarla ahi colgada menos.
@@ -331,30 +372,37 @@ function Order({
         return;
       }
 
-      pan.setValue(dy);
+      const lifted = places.current.get(id);
+      if (lifted) {
+        lifted.y.setValue(from * ROW + dy);
+        lifted.to = from * ROW + dy;
+      }
       // Medio renglon es el cambio: a partir de ahi la fila tapa mas de la mitad de la
       // de al lado, y soltarla ahi es cambiarlas de sitio.
       const to = Math.max(0, Math.min(count - 1, from + Math.round(dy / ROW)));
-      if (to !== landing.current) {
-        landing.current = to;
-        setTarget(to);
-      }
+      if (to === landing.current) return;
+      landing.current = to;
+      order.current.forEach((exerciseId, index) => {
+        if (exerciseId !== id) slide(exerciseId, index * ROW + shiftFor(index, from, to));
+      });
     },
-    [count, pan, stop],
+    [count, slide, stop],
   );
 
-  const from = held === null ? null : exercises.findIndex((item) => item.exerciseId === held);
-
   return (
-    <View>
+    <View style={{ height: count * ROW }}>
+      {/* Las rayas entre filas no se mueven: lo que se corre es el ejercicio, no el
+          renglon. Pegadas a cada fila se deslizaban con ella, y se veia feo (2026-10-10). */}
+      {Array.from({ length: Math.max(0, count - 1) }, (_, line) => (
+        <View key={line} style={[styles.divider, { top: (line + 1) * ROW }]} />
+      ))}
       {exercises.map((exercise, index) => (
         <OrderRow
           key={exercise.exerciseId}
           exercise={exercise}
           index={index}
           lifted={exercise.exerciseId === held}
-          shift={shiftFor(index, from, target)}
-          pan={pan}
+          onPlace={keep}
           onLift={lift}
           onMove={move}
           onDrop={stop}
@@ -837,17 +885,27 @@ const styles = sheet((theme) => ({
     color: theme.danger,
   },
   row: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     height: ROW,
+  },
+  divider: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: shape.border,
+    backgroundColor: theme.line,
   },
   // Despegada: amarilla, con mas sombra y por encima de las otras.
   rowLifted: {
     zIndex: 2,
     backgroundColor: theme.accent,
     borderRadius: shape.radiusSmall,
-    borderTopColor: theme.line,
     paddingHorizontal: 6,
     ...hardShadow(theme, 5),
   },

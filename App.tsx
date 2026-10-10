@@ -44,7 +44,7 @@ import { KeyboardBar } from './src/ui/KeyboardBar.tsx';
 import { Assistant } from './src/ui/Assistant.tsx';
 import { goTo, nudgeDestination, type Navigate } from './src/ui/navigation.ts';
 import { SidebarProvider, useSidebar } from './src/ui/Sidebar.tsx';
-import { SwipeLockProvider, useSwipeLock } from './src/ui/SwipeLock.tsx';
+import { SwipeLockProvider, useSwipeLocked } from './src/ui/SwipeLock.tsx';
 import { FloatingBarSpace, TabBar, tabBarSpace } from './src/ui/TabBar.tsx';
 import { TopBar } from './src/ui/TopBar.tsx';
 import { sheet, theme } from './src/ui/theme.ts';
@@ -105,11 +105,21 @@ function TodayTab() {
   );
 }
 
+/**
+ * Lo que va dentro de cada pestana, hecho una sola vez. El carrusel se redibuja cada vez
+ * que una pantalla apaga o enciende su deslizamiento, y con una pestana nueva en cada
+ * dibujo se redibujaban tambien las tres pantallas enteras: era lo que tardaba en
+ * despegarse una fila del orden de Entreno (2026-10-10).
+ */
+const TAB_CONTENT = new Map(
+  enabledTabs(registry).map((tab) => [tab.id, tab.id === 'today' ? <TodayTab /> : <tab.screen />]),
+);
+
 function TabsScreen() {
   const tabs = enabledTabs(registry);
   // Apagado mientras una pantalla arrastra algo: el gesto del carrusel es nativo y le
   // quita el toque a cualquier arrastre que no baje perfectamente recto.
-  const { locked } = useSwipeLock();
+  const locked = useSwipeLocked();
   // La barra de abajo flota encima de las paginas, asi que el hueco que tapa lo tiene
   // que dejar libre cada pantalla al final de su contenido.
   const insets = useSafeAreaInsets();
@@ -134,7 +144,7 @@ function TabsScreen() {
                 },
               }}
             >
-              {() => (tab.id === 'today' ? <TodayTab /> : <tab.screen />)}
+              {() => TAB_CONTENT.get(tab.id)}
             </Tabs.Screen>
           ))}
         </Tabs.Navigator>

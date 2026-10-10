@@ -43,6 +43,9 @@ export function renderModule(file: string, mocks: Record<string, any> = {}) {
       return state.value;
     },
     useCallback: (callback: unknown, deps: unknown[]) => react.useMemo(() => callback, deps),
+    useImperativeHandle: (ref: { current: unknown } | null, make: () => unknown) => {
+      if (ref) ref.current = make();
+    },
     useEffect: (effect: () => unknown, deps: unknown[]) => {
       const state = slot();
       // Like React, the previous run's cleanup goes first when the dependencies change.
@@ -68,6 +71,13 @@ export function renderModule(file: string, mocks: Record<string, any> = {}) {
     useWindowDimensions: () => ({ width: 400, height: 800 }),
     Animated: {
       View: 'Animated.View',
+      // No frames in between: an animation lands on its end at once.
+      timing: (value: { setValue: (next: number) => void }, config: { toValue: number }) => ({
+        start(done?: (result: { finished: boolean }) => void) {
+          value.setValue(config.toValue);
+          done?.({ finished: true });
+        },
+      }),
       Value: class {
         value: number;
         constructor(value: number) {
@@ -78,7 +88,8 @@ export function renderModule(file: string, mocks: Record<string, any> = {}) {
         }
       },
     },
-    PanResponder: { create: () => ({ panHandlers: {} }) },
+    // The handlers are the gesture's callbacks, so a test can drive a drag by hand.
+    PanResponder: { create: (config: object) => ({ panHandlers: config }) },
   };
   const modules = new Map<string, { exports: Record<string, any> }>();
   const load = (path: string): Record<string, any> => {

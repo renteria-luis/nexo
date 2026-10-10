@@ -226,6 +226,60 @@ const press = (tree: unknown, label: string) =>
     .find((node) => (node.props.accessibilityLabel ?? node.props.label) === label)!
     .props.onPress();
 
+test('a dragged row lands in its new place and the one it passes slides out of the way', async () => {
+  const dragging: boolean[] = [];
+  const planner = plannerWith({
+    draft: freshPlannerDraft('2026-10-09', 'fanshawe'),
+    onSaveDraft: async () => {},
+    onDragging: (held: boolean) => dragging.push(held),
+  });
+  let tree = await planner.settle();
+  nodes(tree)
+    .find((node) => node.props.label === 'Legs')!
+    .props.onPress();
+  tree = await planner.settle();
+  const handle = (name: string) =>
+    nodes(tree).find((node) => node.props.accessibilityLabel === `Mover ${name} de sitio`)!.props;
+  // Where a row is drawn: its own animated value, not its place in the list.
+  const y = (name: string) =>
+    nodes(tree)
+      .find(
+        (node) =>
+          node.type === 'Animated.View' &&
+          nodes(node.props.children).some(
+            (child) => child.props.accessibilityLabel === `Mover ${name} de sitio`,
+          ),
+      )!
+      .props.style.at(-1).transform[0].translateY.value;
+  assert.deepEqual([y('hack'), y('curl')], [0, 86]);
+  // The line between the two rows is drawn apart from them, where it always is.
+  const lines = () =>
+    nodes(tree)
+      .filter((node) => Array.isArray(node.props.style) && node.props.style[1]?.top !== undefined)
+      .map((node) => node.props.style[1].top);
+  assert.deepEqual(lines(), [86]);
+
+  handle('hack').onPanResponderGrant();
+  tree = await planner.settle();
+  handle('hack').onPanResponderMove({}, { dy: 50 });
+  // Past half a row the one below slides up into the gap, and the dragged one follows the finger.
+  assert.deepEqual([y('hack'), y('curl')], [50, 0]);
+  assert.deepEqual(lines(), [86]);
+
+  handle('hack').onPanResponderRelease();
+  // It lands in its new place. Read before the list redraws: this renderer keeps state by
+  // position and not by key, so after a reorder it would read one row's value for another.
+  assert.deepEqual([y('hack'), y('curl')], [86, 0]);
+  tree = await planner.settle();
+  assert.deepEqual(
+    nodes(tree)
+      .filter((node) => node.props.accessibilityLabel?.startsWith('Mover '))
+      .map((node) => node.props.accessibilityLabel),
+    ['Mover curl de sitio', 'Mover hack de sitio'],
+  );
+  assert.deepEqual(dragging, [true, false]);
+});
+
 test('Solo starts selected and stays selected when tapped again', async () => {
   const saves: PlannerDraft[] = [];
   const calls: unknown[][] = [];

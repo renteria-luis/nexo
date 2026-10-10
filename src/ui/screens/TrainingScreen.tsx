@@ -1,6 +1,15 @@
 import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import { AppState, Text, useWindowDimensions, View } from 'react-native';
 
 import { useAppData, type AppData } from '../../shell/AppData.tsx';
@@ -29,6 +38,24 @@ type SessionAction = {
   error: string;
   work: () => Promise<void>;
 };
+
+type ScreenHold = { hold: (held: boolean) => void };
+
+/**
+ * La pantalla de Entreno, con su desplazamiento apagable mientras se arrastra una fila.
+ * El interruptor vive aqui y no en la pantalla: alli, despegar una fila la redibujaba
+ * entera y la fila tardaba en levantarse (2026-10-10). Aqui solo se redibuja el marco, y
+ * lo de dentro llega ya hecho.
+ */
+function HoldableScreen({ ref, children }: { ref: Ref<ScreenHold>; children: ReactNode }) {
+  const [held, setHeld] = useState(false);
+  useImperativeHandle(ref, () => ({ hold: setHeld }), []);
+  return (
+    <Screen title="Entreno" scrollEnabled={!held} refreshable>
+      {children}
+    </Screen>
+  );
+}
 
 export function TrainingScreen() {
   const {
@@ -93,11 +120,11 @@ export function TrainingScreen() {
   }, []);
   // Mientras arrastra una fila del orden, ni la pantalla se desplaza ni se pasa de
   // pestana: los dos gestos son nativos y se llevan el toque aunque este tomado.
-  const [dragging, setDragging] = useState(false);
+  const screen = useRef<ScreenHold>(null);
   const { setLocked } = useSwipeLock();
   const holdScreen = useCallback(
     (held: boolean) => {
-      setDragging(held);
+      screen.current?.hold(held);
       setLocked(held);
     },
     [setLocked],
@@ -349,7 +376,7 @@ export function TrainingScreen() {
       {/* La pantalla de pie se queda montada debajo, escondida. Cambiarla por la de lado la
           desmontaba, y lo que habia escrito para la siguiente serie se perdia al volver. */}
       <View style={resting ? styles.hidden : styles.page}>
-        <Screen title="Entreno" scrollEnabled={!dragging} refreshable>
+        <HoldableScreen ref={screen}>
           {session === null ? (
             <SessionPlanner
               // Un dia nuevo empieza de cero: vuelve la rutina que toca y lo de ayer se va.
@@ -529,7 +556,7 @@ export function TrainingScreen() {
             }
             style={styles.notesLink}
           />
-        </Screen>
+        </HoldableScreen>
       </View>
     </>
   );
