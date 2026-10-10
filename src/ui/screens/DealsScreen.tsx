@@ -16,7 +16,8 @@ import { ago, sourceStatus } from '../../shell/deals.ts';
 import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
 import { Chip } from '../Chip.tsx';
-import { ChevronDown, ChevronUp, RotateCcw } from '../icons.ts';
+import { IconButton } from '../IconButton.tsx';
+import { ChevronDown, ChevronUp, Pencil, RotateCcw } from '../icons.ts';
 import { font, sheet, shape, theme } from '../theme.ts';
 
 import { useNow } from '../useNow.ts';
@@ -74,11 +75,14 @@ function DealRow({
   item,
   discounts,
   showStore,
+  answering,
   onAnswer,
 }: {
   item: DealWithContext;
   discounts: DealsDiscountRow[];
   showStore: boolean;
+  /** Con el lapiz prendido: solo entonces se pregunta si es su alimento. */
+  answering: boolean;
   onAnswer: (item: DealWithContext, confirmed: boolean | null) => void;
 }) {
   const { deal, source, retailer, food, candidate, confirmed, stale } = item;
@@ -131,7 +135,7 @@ function DealRow({
 
       {/* Spec 16.5: que el titulo nombre el alimento no prueba que lo sea (pechuga
           empanizada). Un toque lo decide, y vale para las ofertas con el mismo texto. */}
-      {candidate && (
+      {answering && candidate && (
         <View style={styles.answer}>
           <Text style={styles.meta}>
             {confirmed === null
@@ -189,6 +193,8 @@ export function DealsScreen() {
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [group, setGroup] = useState<Group>('product');
+  // Las preguntas de "¿Es …?" solo con el lapiz: cada oferta con sus botones era mucho.
+  const [answering, setAnswering] = useState(false);
   // Los grupos abiertos. Cerrados de entrada: con veinte productos, la lista entera
   // desplegada obliga a deslizar media pantalla para llegar al siguiente.
   const [open_, setOpen] = useState<string[]>([]);
@@ -264,7 +270,20 @@ export function DealsScreen() {
           });
 
   return (
-    <Screen title="Ofertas" refreshable>
+    <Screen
+      title="Ofertas"
+      refreshable
+      action={
+        <IconButton
+          icon={Pencil}
+          selected={answering}
+          accessibilityLabel={
+            answering ? 'Dejar de revisar las ofertas' : 'Revisar si cada oferta es tu alimento'
+          }
+          onPress={() => setAnswering((on) => !on)}
+        />
+      }
+    >
       <View style={styles.chips}>
         {GROUPS.map((option) => (
           <Chip
@@ -350,6 +369,7 @@ export function DealsScreen() {
                   item={item}
                   discounts={discounts}
                   showStore={group !== 'store'}
+                  answering={answering}
                   onAnswer={answerDealMatch}
                 />
               ))}

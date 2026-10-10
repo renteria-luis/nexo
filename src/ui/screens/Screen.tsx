@@ -71,6 +71,7 @@ export function useReveal(): Reveal {
 export function Screen({
   title,
   header,
+  action,
   children,
   overlay,
   onOverlayDismiss,
@@ -80,6 +81,8 @@ export function Screen({
   title?: string;
   /** En lugar del titulo, cuando la pantalla necesita algo mas que una palabra. */
   header?: ReactNode;
+  /** Un boton a la derecha del titulo, para lo que se hace con toda la pantalla. */
+  action?: ReactNode;
   children: ReactNode;
   /** Lo que va encima de la pantalla entera, fuera del scroll y sin ser un modal. */
   overlay?: ReactNode;
@@ -268,7 +271,13 @@ export function Screen({
         { paddingBottom: CONTENT_BOTTOM + (keyboard > 0 ? keyboard : barSpace) },
       ]}
     >
-      {header ?? (title ? <Text style={styles.title}>{title}</Text> : null)}
+      {header ??
+        (title ? (
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>{title}</Text>
+            {action}
+          </View>
+        ) : null)}
       {refreshProblem && state.phase === 'ready' && state.problem === null && (
         <View style={styles.problem}>
           <Text style={styles.error}>No se pudo actualizar: {refreshProblem}</Text>
@@ -442,6 +451,12 @@ const styles = sheet((theme) => ({
     paddingTop: 14,
     paddingBottom: CONTENT_BOTTOM,
     gap: 12,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
   },
   title: {
     fontSize: 27,
