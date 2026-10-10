@@ -76,9 +76,6 @@ export function MuscleBars({ bars, band }: { bars: MuscleBar[]; band: Band }) {
           </Pressable>
         );
       })}
-      <Text style={styles.footer}>
-        Banda útil: {band.from} a {band.to} series directas por semana.
-      </Text>
     </View>
   );
 }
@@ -153,12 +150,6 @@ const styles = sheet((theme) => ({
     color: theme.textFaint,
     fontFamily: font.regular,
     fontVariant: ['tabular-nums'],
-  },
-  footer: {
-    fontSize: 12,
-    color: theme.textFaint,
-    fontFamily: font.regular,
-    marginTop: 2,
   },
   empty: {
     fontSize: 13,

@@ -27,7 +27,7 @@ export function Bubble({
   return (
     <View style={[styles.bubble, { left, width }]}>
       <Text style={styles.date}>{date}</Text>
-      <Text style={styles.value}>{value}</Text>
+      {value !== '' && <Text style={styles.value}>{value}</Text>}
       {note ? <Text style={styles.note}>{note}</Text> : null}
       {onOpenDay && (
         <Pressable

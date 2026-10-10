@@ -28,6 +28,8 @@ export type SettingKey =
   | 'steps_advice_declined'
   | 'session_draft'
   | 'planner_draft'
+  | 'chart_ranges'
+  | 'chart_gaps_hidden'
   | 'nudges_enabled'
   | 'nudges_off'
   | 'deal_watchlist'
@@ -259,6 +261,10 @@ export function settingProblem(
     case 'session_draft':
     // Y lo que eligio antes de empezar, para que cerrar la app no se lo quite.
     case 'planner_draft':
+    // Y el rango de cada grafica, que lo elige tocando sus circulitos, y las que
+    // esconden sus dias vacios, con el ojo.
+    case 'chart_ranges':
+    case 'chart_gaps_hidden':
       return null;
   }
 }

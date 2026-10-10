@@ -30,7 +30,7 @@
 // suponer que si la tomo, y entonces el numero que le promete el efecto sale de dias que
 // nadie registro.
 
-import { addDays, type IsoDate } from './dates.ts';
+import { addDays, shortDay, type IsoDate } from './dates.ts';
 
 /** Hultman 1996: 3 g al dia llenan el deposito en 28 dias. */
 export const FILL_DAYS = 28;
@@ -47,6 +47,12 @@ const EDGE = 0.05;
 const UP = 1 - EDGE ** (1 / FILL_DAYS);
 /** Vaciando: cada dia se pierde esto del deposito entero, pase lo que pase. */
 const DOWN = 1 / EMPTY_DAYS;
+
+/**
+ * Lleno en pantalla: la franja de arriba de la grafica, desde donde la tarjeta dice
+ * "llena". La curva nunca toca el 100% porque se frena a medida que se llena.
+ */
+export const FULL_LEVEL = 0.9;
 
 /**
  * Desde donde se empieza a contar cuando no hay nada anotado antes: vacio. Es lo mismo
@@ -85,45 +91,46 @@ export function saturationSeries(
   return series;
 }
 
+/**
+ * Como seguiria el deposito tomandola a diario desde el dia siguiente al ultimo de la
+ * serie, hasta llegar a lleno. Vacio si no hay serie o ya esta lleno.
+ */
+export function fillProjection(series: readonly Saturation[]): Saturation[] {
+  const last = series.at(-1);
+  if (last === undefined) return [];
+  const projection: Saturation[] = [];
+  let { date, value: level } = last;
+  while (level < FULL_LEVEL) {
+    date = addDays(date, 1);
+    level += (1 - level) * UP;
+    projection.push({ date, value: level });
+  }
+  return projection;
+}
+
 export type CreatineReading = {
   /** De 0 a 1, lo que lleva dentro hoy. */
   level: number;
-  /** Lo que ha hecho en la ultima semana, que es lo que dice si va bien o mal. */
-  trend: 'subiendo' | 'bajando' | 'estable';
-  /** Cuantos dias seguidos lleva tomandola, o sin tomarla si es negativo. */
-  streak: number;
+  /** El dia en que se estima lleno tomandola a diario, o null si ya lo esta. */
+  fullOn: IsoDate | null;
 };
 
-export function readSaturation(
-  series: readonly Saturation[],
-  days: readonly CreatineDay[],
-): CreatineReading | null {
-  if (series.length === 0) return null;
-
-  const level = series[series.length - 1].value;
-  const before = series[Math.max(0, series.length - 8)].value;
-  const change = level - before;
-
-  const taken = new Map(days.map((day) => [day.date, day.taken === true]));
-  let streak = 0;
-  const last = taken.get(series[series.length - 1].date) === true;
-  for (let index = series.length - 1; index >= 0; index -= 1) {
-    if ((taken.get(series[index].date) === true) !== last) break;
-    streak += 1;
-  }
-
-  return {
-    level,
-    trend: change > 0.01 ? 'subiendo' : change < -0.01 ? 'bajando' : 'estable',
-    streak: last ? streak : -streak,
-  };
+export function readSaturation(series: readonly Saturation[]): CreatineReading | null {
+  const last = series.at(-1);
+  if (last === undefined) return null;
+  return { level: last.value, fullOn: fillProjection(series).at(-1)?.date ?? null };
 }
 
-/** Lo que significa ese numero, dicho en una linea. */
-export function sayLevel(level: number): string {
-  if (level >= 0.9) return 'llena: la creatina ya está haciendo todo lo que puede hacer';
-  if (level >= 0.7) return 'casi llena: te falta poco para el efecto completo';
-  if (level >= 0.4) return 'a medio llenar: sigue tomándola a diario';
-  if (level >= 0.15) return 'baja: a este nivel apenas aporta';
-  return 'vacía: como si no la tomaras';
+/** Lo que significa ese numero, dicho en una linea, con el dia en que se llena. */
+export function sayLevel(level: number, fullOn: IsoDate | null): string {
+  if (level >= FULL_LEVEL) return 'llena: la creatina ya está haciendo todo lo que puede hacer';
+  const name =
+    level >= 0.7
+      ? 'casi llena'
+      : level >= 0.4
+        ? 'a medio llenar'
+        : level >= 0.15
+          ? 'baja'
+          : 'vacía';
+  return fullOn === null ? name : `${name}: se estima llena el ${shortDay(fullOn)}`;
 }

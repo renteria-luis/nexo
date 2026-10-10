@@ -2,17 +2,19 @@ import { useNavigation } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
 import { Text, useWindowDimensions, View } from 'react-native';
 
-import { sayLevel } from '../../core/creatine.ts';
+import { FULL_LEVEL, sayLevel } from '../../core/creatine.ts';
+import { daysBetween, todayIso } from '../../core/dates.ts';
 import { hoursAndMinutes, scoreText, thousands } from '../../core/day-report.ts';
+import { GRID_HISTORY_START } from '../../core/grid-history.ts';
 import { fromKg } from '../../core/units.ts';
 import { useAppData } from '../../shell/AppData.tsx';
-import type { ChartsData } from '../../shell/charts.ts';
+import type { ChartsData, Point } from '../../shell/charts.ts';
 
 import { Card } from '../Card.tsx';
 import { DayBars } from '../charts/DayBars.tsx';
 import { LineChart } from '../charts/LineChart.tsx';
 import { MuscleBars } from '../charts/MuscleBars.tsx';
-import { Chip } from '../Chip.tsx';
+import { GapsEye, RangeDots } from '../charts/RangeDots.tsx';
 import { clockFace } from '../../training/pace.ts';
 import { Combobox } from '../Combobox.tsx';
 import { font, sheet, theme } from '../theme.ts';
@@ -23,12 +25,43 @@ import { Screen } from './Screen.tsx';
 const SCREEN_PADDING = 20;
 const CARD_PADDING = 14;
 
-const WINDOWS: { days: number; label: string }[] = [
-  { days: 7, label: '7 días' },
-  { days: 30, label: '30 días' },
-  { days: 90, label: '90 días' },
-  { days: 365, label: 'un año' },
-];
+/** El rango de una grafica que todavia no tiene uno elegido: el trimestre. */
+const DEFAULT_RANGE = 90;
+/** Lo que el filtro del tiempo en el gym muestra de entrada: todas las rutinas. */
+const ALL_ROUTINES = 'Todo';
+
+/**
+ * Dos sesiones el mismo dia comparten su hueco: el tiempo se suma y el globito
+ * nombra las dos.
+ */
+function perDay(points: readonly Point[]): Point[] {
+  const byDate = new Map<string, Point>();
+  for (const point of points) {
+    const before = byDate.get(point.date);
+    byDate.set(
+      point.date,
+      before
+        ? {
+            date: point.date,
+            value: before.value + point.value,
+            note: [before.note, point.note].filter(Boolean).join(' + '),
+          }
+        : point,
+    );
+  }
+  return [...byDate.values()];
+}
+
+/** Lo que la pantalla guarda de sus graficas. Un ajuste roto vale como ninguno elegido. */
+function chartSetting<T extends object>(raw: string | undefined, none: T): T {
+  if (!raw) return none;
+  try {
+    const value: unknown = JSON.parse(raw);
+    return typeof value === 'object' && value !== null ? (value as T) : none;
+  } catch {
+    return none;
+  }
+}
 
 /**
  * Las graficas de todo lo que guarda.
@@ -48,54 +81,48 @@ const MEASURES = [
     id: 'volume',
     label: 'Volumen',
     inKg: true,
-    note: 'Todo lo que moviste ese día: peso por repeticiones, sumando las series. Las mancuernas cuentan las dos.',
   },
   {
     id: 'topWeight',
     label: 'Peso máximo',
     inKg: true,
-    note: 'El peso más alto que cargaste ese día, tal como lo escribiste. Con mancuernas, el de una.',
   },
   {
     id: 'e1rm',
     label: '1RM estimado',
     inKg: true,
-    note: 'Lo que levantarías una sola vez, calculado sobre tu mejor serie. Sirve para comparar días con repeticiones distintas.',
   },
   {
     id: 'intensity',
     label: 'Peso medio por repetición',
     inKg: true,
-    note: 'El volumen entre las repeticiones. Dice si el día fue pesado o largo, que no es lo mismo.',
   },
   {
     id: 'reps',
     label: 'Repeticiones',
     inKg: false,
-    note: 'Cuántas repeticiones hiciste en total ese día.',
   },
   {
     id: 'sets',
     label: 'Series',
     inKg: false,
-    note: 'Cuántas series le dedicaste. Es la medida con la que se cuenta el volumen semanal por músculo.',
   },
 ] as const;
 
 type MeasureId = (typeof MEASURES)[number]['id'];
 
 export function ChartsScreen() {
-  const { state, loadCharts } = useAppData();
+  const { state, loadCharts, saveSetting } = useAppData();
   const navigation = useNavigation<{
     navigate: (name: string, params?: { date: string }) => void;
   }>();
   // Un solo globito abierto en toda la pantalla: tocar una barra de otra grafica
   // cierra el anterior, y tocar fuera los cierra todos.
   const [open, setOpen] = useState<{ chart: string; index: number } | null>(null);
-  const [days, setDays] = useState(90);
   const [data, setData] = useState<ChartsData | null>(null);
   const [exercise, setExercise] = useState<string | null>(null);
   const [measureId, setMeasure] = useState<MeasureId>('volume');
+  const [gymRoutine, setGymRoutine] = useState<string>(ALL_ROUTINES);
   const measure = MEASURES.find((one) => one.id === measureId) ?? MEASURES[0];
   const creatine = data?.creatineReading ?? null;
   const [problem, setProblem] = useState<string | null>(null);
@@ -104,18 +131,65 @@ export function ChartsScreen() {
   const width = useWindowDimensions().width - SCREEN_PADDING * 2 - CARD_PADDING * 2;
 
   const reload = useCallback(() => {
-    loadCharts(days)
+    // Toda la historia, desde donde empieza la de la cuadricula, de una vez: cada grafica
+    // se desliza por ella, y leer mas dias no cuesta mas consultas.
+    loadCharts(daysBetween(GRID_HISTORY_START, todayIso()) + 1)
       .then(setData)
       .catch((error: unknown) => {
         console.error(error);
         setProblem(error instanceof Error ? error.message : String(error));
       });
-  }, [loadCharts, days]);
+  }, [loadCharts]);
 
   useEffect(reload, [reload]);
 
   if (state.phase !== 'ready') return <Screen title="Gráficas">{null}</Screen>;
   const unit = state.loaded.unit;
+
+  // Cada grafica con su propio rango, guardado: unas se miran por semana y otras por anio.
+  const ranges = chartSetting<Record<string, number>>(
+    state.loaded.settings.get('chart_ranges'),
+    {},
+  );
+  const rangeOf = (chart: string) => ranges[chart] ?? DEFAULT_RANGE;
+  const dots = (chart: string, title: string) => (
+    <RangeDots
+      chart={title}
+      days={rangeOf(chart)}
+      onChange={(next) => {
+        setOpen(null);
+        saveSetting('chart_ranges', JSON.stringify({ ...ranges, [chart]: next }));
+      }}
+    />
+  );
+  // El tiempo en el gym y el progreso por ejercicio pueden esconder sus dias vacios con
+  // el ojo: entrena unos dias por semana, y la semana se ve mas hueco que barra.
+  const hidden = chartSetting<string[]>(state.loaded.settings.get('chart_gaps_hidden'), []);
+  const gapsOf = (chart: string) => !hidden.includes(chart);
+  const tools = (chart: string, title: string) => (
+    <View style={styles.tools}>
+      <GapsEye
+        chart={title}
+        shown={gapsOf(chart)}
+        onChange={(shown) => {
+          setOpen(null);
+          saveSetting(
+            'chart_gaps_hidden',
+            JSON.stringify(shown ? hidden.filter((one) => one !== chart) : [...hidden, chart]),
+          );
+        }}
+      />
+      {dots(chart, title)}
+    </View>
+  );
+  const routines = [
+    ALL_ROUTINES,
+    ...new Set(
+      (data?.gymMinutes ?? [])
+        .map((point) => point.routine)
+        .filter((name): name is string => name !== null),
+    ),
+  ];
 
   const trend =
     data?.trends.find((item) => item.exerciseId === exercise) ?? data?.trends[0] ?? null;
@@ -136,29 +210,18 @@ export function ChartsScreen() {
         onStartShouldSetResponder={open === null ? undefined : () => true}
         onResponderRelease={open === null ? undefined : () => setOpen(null)}
       >
-        <View style={styles.chips}>
-          {WINDOWS.map((option) => (
-            <Chip
-              key={option.days}
-              label={option.label}
-              accessibilityLabel={`Ver ${option.label}`}
-              selected={option.days === days}
-              onPress={() => setDays(option.days)}
-            />
-          ))}
-        </View>
-
         {problem && <Text style={styles.problem}>{problem}</Text>}
         {data === null && <Text style={styles.loading}>Leyendo tus datos…</Text>}
 
         {data && (
           <>
-            <Card title="Nota del día">
-              <Text style={styles.note}>
-                Cada barra es un día puntuado. Tócala para ver cuál fue.
-              </Text>
+            <Card title="Nota del día" action={dots('score', 'Nota del día')}>
               <DayBars
+                // Con otro rango es otra grafica: vuelve a abrir en hoy.
+                key={rangeOf('score')}
                 points={data.score}
+                days={rangeOf('score')}
+                to={data.to}
                 width={width}
                 band={{ from: 70, to: 100 }}
                 max={100}
@@ -167,13 +230,12 @@ export function ChartsScreen() {
               />
             </Card>
 
-            <Card title="Sueño">
-              <Text style={styles.note}>
-                La franja va de tu meta a las ocho horas, que es donde la nota llega a sus veinte
-                puntos.
-              </Text>
+            <Card title="Sueño" action={dots('sleep', 'Sueño')}>
               <DayBars
+                key={rangeOf('sleep')}
                 points={data.sleep}
+                days={rangeOf('sleep')}
+                to={data.to}
                 width={width}
                 band={data.sleepBand}
                 format={(value) => hoursAndMinutes(value)}
@@ -181,12 +243,12 @@ export function ChartsScreen() {
               />
             </Card>
 
-            <Card title="Proteína por día">
-              <Text style={styles.note}>
-                Verde, dentro de tu banda. Gris, fuera. La banda sale de tu peso.
-              </Text>
+            <Card title="Proteína por día" action={dots('protein', 'Proteína por día')}>
               <DayBars
+                key={rangeOf('protein')}
                 points={data.protein}
+                days={rangeOf('protein')}
+                to={data.to}
                 width={width}
                 band={data.proteinBand}
                 format={(value) => `${Math.round(value)} g`}
@@ -194,12 +256,12 @@ export function ChartsScreen() {
               />
             </Card>
 
-            <Card title="Calorías por día">
-              <Text style={styles.note}>
-                La banda es tu objetivo con el margen que la app considera dentro.
-              </Text>
+            <Card title="Calorías por día" action={dots('kcal', 'Calorías por día')}>
               <DayBars
+                key={rangeOf('kcal')}
                 points={data.kcal}
+                days={rangeOf('kcal')}
+                to={data.to}
                 width={width}
                 band={data.kcalBand}
                 format={(value) => `${Math.round(value)} kcal`}
@@ -207,10 +269,12 @@ export function ChartsScreen() {
               />
             </Card>
 
-            <Card title="Pasos">
-              <Text style={styles.note}>De tu meta para arriba está bien; debajo, no.</Text>
+            <Card title="Pasos" action={dots('steps', 'Pasos')}>
               <DayBars
+                key={rangeOf('steps')}
                 points={data.steps}
+                days={rangeOf('steps')}
+                to={data.to}
                 width={width}
                 band={data.stepsBand}
                 format={(value) => thousands(value)}
@@ -218,15 +282,11 @@ export function ChartsScreen() {
               />
             </Card>
 
-            <Card title="Series por músculo">
-              <Text style={styles.note}>
-                Últimos siete días, solo las directas. Toca un músculo para ver de qué ejercicios
-                salieron.
-              </Text>
+            <Card title="Series por músculo, últimos 7 días">
               <MuscleBars bars={data.muscles} band={data.setBand} />
             </Card>
 
-            <Card title="Progreso por ejercicio">
+            <Card title="Progreso por ejercicio" action={tools('trend', 'Progreso por ejercicio')}>
               <Combobox
                 options={data.trends.map((item) => ({ id: item.exerciseId, label: item.name }))}
                 value={trend?.exerciseId ?? null}
@@ -241,10 +301,14 @@ export function ChartsScreen() {
                 placeholder="Qué quieres ver"
                 accessibilityLabel="Elegir qué se mide"
               />
-              <Text style={styles.note}>{measure.note}</Text>
               {trend ? (
                 <DayBars
+                  // Otro ejercicio u otra medida es otra historia: vuelve a abrir en hoy.
+                  key={`${rangeOf('trend')}-${gapsOf('trend')}-${trend.exerciseId}-${measure.id}`}
                   points={trend[measure.id]}
+                  days={rangeOf('trend')}
+                  to={data.to}
+                  gaps={gapsOf('trend')}
                   width={width}
                   format={(value) =>
                     measure.inKg
@@ -261,13 +325,27 @@ export function ChartsScreen() {
             </Card>
 
             {/* El tiempo que pasa dentro, que es lo que de verdad le cuesta un entreno. */}
-            <Card title="Tiempo en el gym">
-              <Text style={styles.note}>
-                Solo los días cuyo tiempo marcaste como preciso, en el registro de ese día. Toca una
-                barra para ver de qué fue.
-              </Text>
+            <Card title="Tiempo en el gym" action={tools('gym-minutes', 'Tiempo en el gym')}>
+              <Combobox
+                options={routines.map((name) => ({ id: name, label: name }))}
+                value={gymRoutine}
+                onChange={(id) => {
+                  setOpen(null);
+                  setGymRoutine(id ?? ALL_ROUTINES);
+                }}
+                placeholder={ALL_ROUTINES}
+                accessibilityLabel="Elegir la rutina"
+              />
               <DayBars
-                points={data.gymMinutes}
+                key={`${rangeOf('gym-minutes')}-${gapsOf('gym-minutes')}-${gymRoutine}`}
+                points={perDay(
+                  data.gymMinutes.filter(
+                    (point) => gymRoutine === ALL_ROUTINES || point.routine === gymRoutine,
+                  ),
+                )}
+                days={rangeOf('gym-minutes')}
+                to={data.to}
+                gaps={gapsOf('gym-minutes')}
                 width={width}
                 format={(value) => clockFace(value)}
                 {...bubble('gym-minutes')}
@@ -276,7 +354,7 @@ export function ChartsScreen() {
 
             {/* La creatina no se nota el dia que se toma, asi que un si o un no por dia no
                 dice nada: lo que dice algo es el deposito. */}
-            <Card title="Creatina">
+            <Card title="Creatina" action={dots('creatine', 'Creatina')}>
               {creatine === null ? (
                 <Text style={styles.note}>
                   Anota la creatina unos días y aquí verás cuánta llevas dentro.
@@ -286,38 +364,33 @@ export function ChartsScreen() {
                   <View style={styles.creatineHead}>
                     <Text style={styles.creatineValue}>{Math.round(creatine.level * 100)}%</Text>
                     <Text style={styles.creatineNote}>
-                      {sayLevel(creatine.level)}
-                      {'\n'}
-                      {creatine.streak > 0
-                        ? `${creatine.streak} ${creatine.streak === 1 ? 'día' : 'días'} seguidos tomándola`
-                        : `${-creatine.streak} ${creatine.streak === -1 ? 'día' : 'días'} sin tomarla`}
-                      {creatine.trend === 'estable' ? '' : ` · ${creatine.trend}`}
+                      {sayLevel(creatine.level, creatine.fullOn)}
                     </Text>
                   </View>
                   <DayBars
+                    key={rangeOf('creatine')}
                     points={data.creatine}
+                    days={rangeOf('creatine')}
+                    to={data.to}
+                    projected={data.creatineProjection}
                     width={width}
-                    band={{ from: 90, to: 100 }}
+                    band={{ from: FULL_LEVEL * 100, to: 100 }}
                     max={100}
-                    format={(value) => `${Math.round(value)}% del depósito`}
+                    // Al tocar una barra importa si la tomo ese dia, no el porcentaje.
+                    format={() => ''}
                     {...bubble('creatine')}
                   />
-                  <Text style={styles.note}>
-                    Estimado: tomándola a diario se llena en 28 días, y dejándola se vacía en 30
-                    (Hultman 1996, en Lecturas). Un día sin anotar cuenta como no tomada.
-                  </Text>
                 </>
               )}
             </Card>
 
             {/* El peso al final: cambia poco y se pesa poco, asi que no tiene por que
                 abrir la pantalla. */}
-            <Card title="Peso corporal">
-              <Text style={styles.note}>
-                El punto es cada pesada y la línea amarilla es la media de siete días, que es la que
-                manda.
-              </Text>
+            <Card title="Peso corporal" action={dots('weight', 'Peso corporal')}>
               <LineChart
+                key={rangeOf('weight')}
+                days={rangeOf('weight')}
+                to={data.to}
                 width={width}
                 format={(value) => `${value.toFixed(1)} kg`}
                 series={[
@@ -356,10 +429,9 @@ const styles = sheet((theme) => ({
   sheet: {
     gap: 12,
   },
-  chips: {
+  tools: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    gap: 4,
   },
   note: {
     fontSize: 12,

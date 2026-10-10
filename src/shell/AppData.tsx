@@ -259,6 +259,8 @@ const LOOK_ONLY: ReadonlySet<SettingKey> = new Set([
   'weight_unit',
   'deal_watchlist',
   'deals_seen_at',
+  'chart_ranges',
+  'chart_gaps_hidden',
 ]);
 
 /**

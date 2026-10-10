@@ -5,7 +5,8 @@ import { test } from 'node:test';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { storeScore, upsertDailyLog } from '../core/daily-log.ts';
-import { addDays } from '../core/dates.ts';
+import { addDays, daysBetween } from '../core/dates.ts';
+import { GRID_HISTORY_START } from '../core/grid-history.ts';
 import { migrations } from '../db/migrations/index.ts';
 import { computeTargets } from '../core/targets.ts';
 import {
@@ -337,6 +338,25 @@ test('las graficas leen lo mismo que el resto de la app', async () => {
   assert.deepEqual(scored.score, [{ date: '2026-09-22', value: 68 }]);
 });
 
+test('charts read the whole history for the same statements as a month', async () => {
+  const raw = new DatabaseSync(':memory:');
+  raw.exec('PRAGMA foreign_keys = ON;');
+  for (const migration of migrations) raw.exec(migration.sql);
+  const { db, count } = counting(raw);
+  await upsertDailyLog(db, { date: '2025-03-01', weightKg: 74 });
+  await upsertDailyLog(db, { date: '2026-09-21', weightKg: 73, creatineTaken: true });
+  const session = await startSession(db, { date: '2026-09-22', timeBudget: 'completo' });
+  await addSet(db, { sessionId: session, exerciseId: 'peck-deck', weightKg: 50, reps: 10 });
+
+  let before = count();
+  await loadCharts(db, TODAY, 30);
+  const month = count() - before;
+  before = count();
+  const all = await loadCharts(db, TODAY, daysBetween(GRID_HISTORY_START, TODAY) + 1);
+  assert.equal(count() - before, month);
+  assert.equal(all.weight[0].date, '2025-03-01');
+});
+
 test('un dia de puro entreno y comida tambien recibe su nota', async () => {
   const db = fresh();
 
@@ -577,26 +597,31 @@ test('borrar lo que comio un dia pasado rehace la nota de ese dia', async () => 
   assert.notEqual(stored('2026-09-08'), before);
 });
 
-test('la tarjeta de creatina cuenta los dias que la tomo, no adivina por las barras', async () => {
+test('a full tank has nothing left to estimate, even before logging today', async () => {
   const db = fresh();
-  // Todos los dias desde el 25 de agosto hasta ayer: el deposito ya esta lleno, y lleno una
-  // toma sube menos de un punto, que es justo cuando la tarjeta decia "dias sin tomarla".
-  let date = '2026-08-25';
-  for (; date < TODAY; date = addDays(date, 1)) {
+  for (let date = '2026-08-25'; date < TODAY; date = addDays(date, 1)) {
     await upsertDailyLog(db, { date, creatineTaken: true });
   }
+  const charts = await loadCharts(db, TODAY, 30);
+  assert.ok((charts.creatineReading?.level ?? 0) > 0.9);
+  assert.equal(charts.creatineReading?.fullOn, null);
+  assert.deepEqual(charts.creatineProjection, []);
+});
 
-  // Por la manana, antes de anotar la de hoy: la racha llega hasta ayer.
-  const morning = await loadCharts(db, TODAY, 30);
-  assert.equal(morning.creatineReading?.streak, 29);
-  assert.ok((morning.creatineReading?.level ?? 0) > 0.9);
-
-  await upsertDailyLog(db, { date: TODAY, creatineTaken: true });
-  assert.equal((await loadCharts(db, TODAY, 30)).creatineReading?.streak, 30);
-
-  // Y un dia sin tomarla de verdad si lo dice.
-  await upsertDailyLog(db, { date: TODAY, creatineTaken: false });
-  assert.equal((await loadCharts(db, TODAY, 30)).creatineReading?.streak, -1);
+test('a filling tank is projected, taking it daily from today, until the full band', async () => {
+  const db = fresh();
+  for (let date = addDays(TODAY, -6); date < TODAY; date = addDays(date, 1)) {
+    await upsertDailyLog(db, { date, creatineTaken: true });
+  }
+  const charts = await loadCharts(db, TODAY, 30);
+  const projection = charts.creatineProjection;
+  // Today is not logged yet, so the series ends yesterday and the estimate starts today.
+  assert.equal(projection[0].date, TODAY);
+  assert.ok(projection.at(-1)!.value >= 90);
+  assert.ok(projection.slice(0, -1).every((point) => point.value <= 90));
+  assert.equal(charts.creatineReading?.fullOn, projection.at(-1)!.date);
+  // Each real bar says whether it was taken, for the bubble; nothing logged says so too.
+  assert.equal(charts.creatine.at(-1)?.note, 'Creatina tomada');
 });
 
 test('una nota con decimal se guarda igual, y volver a puntuar no la reescribe', async () => {

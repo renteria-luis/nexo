@@ -21,7 +21,12 @@ import {
   setLoad,
 } from '../training/index.ts';
 
-import { readSaturation, saturationSeries, type CreatineReading } from '../core/creatine.ts';
+import {
+  fillProjection,
+  readSaturation,
+  saturationSeries,
+  type CreatineReading,
+} from '../core/creatine.ts';
 
 import { SET_BAND } from './week.ts';
 
@@ -107,20 +112,18 @@ export type ChartsData = {
    * (migracion 050). Sin ese filtro la grafica mide cuando se acordo de cerrar el
    * entreno, no cuanto entreno.
    */
-  gymMinutes: Point[];
+  gymMinutes: (Point & { routine: string | null })[];
   /**
    * Cuanta creatina lleva el musculo, de 0 a 100, estimada dia a dia (`core/creatine.ts`).
    * Se calcula desde el primer dia que la anoto y no desde el principio de la ventana:
-   * el deposito que tiene hoy viene de las semanas de antes.
+   * el deposito que tiene hoy viene de las semanas de antes. La nota de cada dia dice si
+   * la tomo, que es lo que importa al tocar una barra.
    */
   creatine: Point[];
-  /**
-   * Lo que dice la tarjeta: el nivel de hoy, hacia donde va y cuantos dias seguidos la
-   * toma. Sale de lo que anoto y de la serie sin redondear; la pantalla lo adivinaba por
-   * si la barra subia, y lleno el deposito una toma sube menos de un punto, asi que decia
-   * "dias sin tomarla" a quien la tomaba todos los dias.
-   */
+  /** Lo que dice la tarjeta: el nivel de hoy y el dia en que se estima lleno. */
   creatineReading: CreatineReading | null;
+  /** Como seguiria el deposito tomandola a diario hasta llenarse, para pintarlo estimado. */
+  creatineProjection: Point[];
   /** Series directas por musculo en los ultimos siete dias. */
   muscles: MuscleBar[];
   setBand: Band;
@@ -281,11 +284,12 @@ export async function loadCharts(
   }
   trends.sort((a, b) => b.sets.length - a.sets.length);
 
-  const gymMinutes: Point[] = times
+  const gymMinutes: ChartsData['gymMinutes'] = times
     .filter((session) => session.trusted && session.minutes > 0 && isWithin(session.date, range))
     .map((session) => ({
       date: session.date,
       value: session.minutes,
+      routine: session.routineName,
       note: [session.routineName ?? 'sin rutina', BUDGET_ES[session.budget] ?? session.budget]
         .filter(Boolean)
         .join(' · '),
@@ -299,15 +303,30 @@ export async function loadCharts(
   // la ultima barra bajaba cada manana y la tarjeta decia "1 dia sin tomarla".
   const loggedToday = creatineDays.some((day) => day.date === today);
   const saturation = saturationSeries(creatineDays, loggedToday ? today : addDays(today, -1));
+  const takenOn = new Map(creatineDays.map((day) => [day.date, day.taken]));
   const creatine = saturation
     .filter((day) => isWithin(day.date, range))
-    .map((day) => ({ date: day.date, value: Math.round(day.value * 100) }));
+    .map((day) => ({
+      date: day.date,
+      value: Math.round(day.value * 100),
+      note:
+        takenOn.get(day.date) === undefined
+          ? 'Sin anotar'
+          : takenOn.get(day.date)
+            ? 'Creatina tomada'
+            : 'No la tomó',
+    }));
 
   return {
     from: range.from,
     to: range.to,
     creatine,
-    creatineReading: readSaturation(saturation, creatineDays),
+    creatineReading: readSaturation(saturation),
+    creatineProjection: fillProjection(saturation).map((day) => ({
+      date: day.date,
+      value: Math.round(day.value * 100),
+      note: 'Estimado, tomándola a diario',
+    })),
     gymMinutes,
     weight,
     weightAverage,

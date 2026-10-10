@@ -16,6 +16,8 @@ export type CardTone = 'paper' | 'accent' | 'ok' | 'warn' | 'info' | 'danger';
 export type CardProps = {
   children: ReactNode;
   title?: string;
+  /** Algo pequeno pegado a la derecha del titulo, como el rango de una grafica. */
+  action?: ReactNode;
   /**
    * El color de la hoja, plano y saturado como manda el estilo. Sobre cualquiera que
    * no sea papel la tinta es negra en los dos modos, porque el color es el mismo.
@@ -31,6 +33,7 @@ export type CardProps = {
 export function Card({
   children,
   title,
+  action,
   tone = 'paper',
   raised = true,
   onPress,
@@ -39,7 +42,14 @@ export function Card({
 }: CardProps) {
   const inside = (
     <>
-      {title ? (
+      {title && action ? (
+        <View style={styles.head}>
+          <Text style={[styles.title, styles.grow, tone !== 'paper' && styles.titleOnColor]}>
+            {title}
+          </Text>
+          {action}
+        </View>
+      ) : title ? (
         <Text style={[styles.title, tone !== 'paper' && styles.titleOnColor]}>{title}</Text>
       ) : null}
       {children}
@@ -92,6 +102,14 @@ const styles = sheet((theme) => ({
   pressed: pressedInto(),
   pressedFlat: {
     opacity: 0.75,
+  },
+  head: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  grow: {
+    flex: 1,
   },
   title: {
     fontSize: 16,

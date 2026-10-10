@@ -61,7 +61,7 @@ export function renderModule(file: string, mocks: Record<string, any> = {}) {
     Pressable: 'Pressable',
     ScrollView: 'ScrollView',
     Keyboard: { dismiss() {} },
-    StyleSheet: { create: (value: unknown) => value },
+    StyleSheet: { create: (value: unknown) => value, hairlineWidth: 1 / 3 },
     AppState: { addEventListener: () => ({ remove() {} }) },
     Linking: { getInitialURL: async () => null, addEventListener: () => ({ remove() {} }) },
     Platform: { OS: 'web' },
