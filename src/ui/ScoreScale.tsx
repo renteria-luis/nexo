@@ -161,9 +161,11 @@ const styles = sheet((theme) => ({
   name: { flex: 1, fontSize: 13, fontFamily: font.bold, color: theme.text },
   label: { flex: 1, fontSize: 12, fontFamily: font.bold, color: theme.textDim },
   labelUnit: { fontSize: 12, fontFamily: font.bold, color: theme.textDim },
+  // Lo justo para el numero: a 44 de alto los tres limites ocupaban media pantalla.
   input: {
     minWidth: 65,
-    minHeight: 44,
+    minHeight: 32,
+    paddingVertical: 4,
     borderWidth: 1,
     borderColor: theme.lineSoft,
     borderRadius: shape.radiusSmall,
