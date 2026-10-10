@@ -925,3 +925,63 @@ Context: Training finding 9: a learned pace can come from a single interval, and
 Decision: The remaining-time estimate reports, among pending exercises with a learned pace, the fewest measured workouts behind any of them, today included once it has an interval. Below five, the same threshold the interval review uses, it says the estimate still rests on little data; from five it states that minimum. Ranges and calibration against actual finish times wait for real data.
 Rejected: Showing a time range before measuring forecast error, and treating the plan-only estimate as evidence.
 
+## 2026-10-09 — Less on screen: deal answers behind a pencil, no chart captions, no Repetir
+Context: The owner found Ofertas, Gráficas, Comida and the score settings crowded.
+Decision: Ofertas gets a pencil beside its title; the "¿Es …?" question with Sí, No and Deshacer appears only while it is on. The captions that explained each chart are removed; empty-state messages stay, and the muscle chart keeps its seven-day window in its title. Comida loses "Repetir" along with the code that only served it: the last meal per slot, the repeat query and the provider action. The boundary fields in the score settings shrink to 32 points, enough for the number.
+Rejected: Keeping the captions behind an info button, and hiding Repetir instead of removing it.
+
+## 2026-10-09 — Project the creatine tank to full
+Context: The owner wants the creatine card to say when the tank is estimated to be full instead of a generic phrase, and dropped the days-in-a-row count and trend.
+Decision: From the last day of the series, the tank is projected taking creatine daily with the same filling rule until it reaches the full band at 90%, drawn as dashed estimated bars after the real ones. The card states the level and "se estima llena el <día>"; a full tank keeps "llena: …". The streak and trend are removed. The curve never touches 100% because filling slows as the tank fills, so full means the band the chart already showed.
+Rejected: Projecting to a literal 100%, which the model only approaches, and keeping the streak line.
+
+## 2026-10-10 — Fewer food suggestions in Comida
+Context: The owner found the picker's suggestion lists too long.
+Decision: "de siempre en <espacio>" shows at most two foods and "recientes" at most three; everything else stays one tap away in the full list.
+Rejected: Removing either list, which is what makes logging the usual meal two taps.
+
+## 2026-10-10 — Meal slots as icons, the chosen one named
+Context: The five meal slot chips in Comida did not fit one line and "cena" wrapped. The owner picked the recommended option.
+Decision: Each slot is an icon that follows the day (sunrise, coffee, sun, sunset, moon); only the selected chip also writes its name, and every chip keeps its full name for VoiceOver. The slot chips sit 4 points apart with less padding, so all five fit one line from 375 points wide, the narrowest iPhone that runs the app, even with "media mañana" selected.
+Rejected: Icons alone, which make sunrise and sunset easy to confuse; abbreviations; a segmented bar with two-line labels; and a sideways-scrolling row, which fights the tab swipe.
+
+## 2026-10-10 — Each chart picks its own range; gym time by routine
+Context: The owner wants to read some charts by week and others by month or year, to see gym time per routine, and to learn from a creatine bar whether it was taken that day.
+Decision: Every chart except the seven-day muscle sets carries S, M, T and A circles (week, month, quarter, year) at the right of its title; the screen reads a year once and each chart shows its own slice. Choices are saved per chart in the `chart_ranges` setting and default to the quarter. The single range row above all charts is removed. Gym time has a routine filter, "Todo" by default, listing the routines present. Touching a creatine bar shows the date, "Creatina tomada", "No la tomó" or "Sin anotar", and the details button, not the tank percentage. The "banda … a …" line under charts and the muscle chart's band footer are removed; the bands themselves stay drawn.
+Rejected: Keeping one shared range, which forces every chart to the same period, and a range on the muscle sets, whose band is defined per week.
+
+## 2026-10-10 — Bar charts keep a slot for every day, starting at the first data
+Context: With the week range, days without data simply vanished, so four bars stretched across the card and it was not clear which days were missing.
+Decision: A bar chart draws one slot per calendar day of its range, and a day with no value is an empty slot with nothing drawn and nothing to touch. Nothing is stored or turned into a zero; only the drawing changes. The range starts at the first data of that chart when that is more recent than the range's edge, so the year view of three months of data shows three months. Two gym sessions on one day share the slot: minutes add up and the bubble names both.
+Rejected: Writing zeros for missing days, which would read as a measured zero; and always drawing the full range, which shows months of empty slots before the app was in use.
+
+## 2026-10-10 — Charts slide through the whole history, day by day
+Context: The owner wants to see any window of a chart's range, days 1 to 7 or 3 to 9, any thirty days, and not only the one that ends today.
+Decision: Gráficas reads the whole history once, from 1 January 2025 like the grid, which costs the same statements as a month. Every chart with range circles starts at its own first data and slides through it with the phone's native scroll, only inside the rectangle of the bars or the weight line; outside it, swiping does the usual, which on iOS 26 is going back. Letting go snaps to whole days: with the finger still, a day more than half visible stays in; letting go while moving carries on to the next whole day in that direction, as native snapping does. A chart opens on the window ending today and opens there again when its range, routine, exercise or measure changes. The vertical scale comes from the whole history, so bars keep their height while sliding. Only the pages near the window are drawn. The creatine estimate waits to the right of today. The weight line puts each weigh-in on its own day, so a gap keeps its width. When the whole history fits the range, the bars fill the card and a swipe inside them still answers, with the end bounce and nowhere to go (changed the same day at the owner's request; the scroll content is one device pixel wider than the card because iOS 26 only lets a scroll view win over the back swipe when its content is wider than its frame).
+Rejected: A drag handled in JavaScript or a gesture library, which is less smooth and, for the libraries, pulls in Reanimated, which crashed the app; one drawing as wide as the history, which in the weekly view of a year does not fit in memory; a scale per visible window, which resizes the bars under the finger.
+
+## 2026-10-10 — Gym time and exercise progress can hide their empty days
+Context: He trains a few days a week, so in those two charts the empty days take most of the width.
+Decision: An eye, the same size as the range circles and to the left of S, toggles the empty days of Tiempo en el gym and Progreso por ejercicio only. Open eye, the default: every day keeps its slot. Closed eye: only the days with data, one after another, and as many fit at once as the chosen range holds up to today (a week with three sessions shows three bars); sliding then moves one data day at a time. The choice is saved per chart in the `chart_gaps_hidden` setting, like the ranges, and toggling it reopens the chart on today.
+Rejected: Counting the range in bars when the eye is closed (the week view would show seven sessions, not a week), and changing how many bars fit while sliding, which a native scroll cannot do smoothly.
+
+## 2026-10-10 — A meal slot picked by hand stays until the clock moves on
+Context: At dinner time he logged two things he forgot from lunch; after the first one the chip went back to "cena".
+Decision: The slot he picks stays after logging, after eating a batch portion and after coming back from another app. It lets go, and the chip follows the clock again, as soon as the clock's own slot changes or the day changes, so the next morning opens on "desayuno" even if he left "mediodía" picked.
+Rejected: Resetting to the clock after every log, the old behaviour, which made him pick the slot again for each forgotten item.
+
+## 2026-10-10 — One food summary card, with calories and protein first and in colour
+Context: The top of Comida had a whole card for calories and protein, with the number in poster type and a star, and a second card for the rest; he found it loud.
+Decision: One card, "Lo que llevas". Calories alone on the first line, on blue; protein on red, next to carbs, on the second; fat and sodium on the third; glycemic load after them when there is one. Calories and protein are larger than the rest and say, in small type, what is missing for the band or the floor ("faltan 18 para el piso", "piso de 130 cumplido"). The same card serves a past day opened from Registros. Dairy is no longer shown and its daily total is no longer computed; each food keeps its dairy mark, so nothing he recorded is lost. This contradicts SPEC section 7.5 point 2, which asks for a daily dairy total; the spec is unchanged until he says otherwise.
+Rejected: Keeping the dairy total computed with nothing showing it, which would be dead code.
+
+## 2026-10-10 — Plan rows slide while reordering
+Context: Dragging an exercise in Entreno, the row it passed jumped into the free place in one frame.
+Decision: Each row of the order is drawn where its own animated value says, not where the list puts it. While dragging, the rows the finger passes slide in 150 ms to open the gap, on the native driver; on release the dragged row glides from the finger into its place and stays yellow and on top until it lands. The new order is written after every row is already where it belongs, so committing it moves nothing. The lines between rows are drawn apart from them and never move; only the exercise, with its buttons, slides (changed the same day at his request). Changes from outside the drag, like an exercise dropped by the time budget, slide the same way.
+Rejected: LayoutAnimation, which animates the list's layout but not the offsets the drag uses, so releasing would jump; and a drag library, which pulls in Reanimated, the cause of the September crash.
+
+## 2026-10-10 — Lifting a plan row redraws only what changes
+Context: Touching the grip of a plan row took a moment to lift it. Measured in the browser: about 40 ms from the touch to the yellow row, against 2 ms for the row alone. Turning off the tab swipe redrew the three tab screens (about 30 ms), and turning off the screen's scroll redrew the whole Entreno screen (about 8 ms).
+Decision: The swipe lock keeps its state in its own context, read only by the tab pager; the screens that turn it on and off get functions that never change. Each tab's content is built once, so the pager redrawing itself does not redraw the screens. Entreno's scroll switch lives in a small frame around its screen, which redraws alone. The lift now takes about 6 ms in the same measurement.
+Rejected: Delaying the locks until after the lift is drawn, which leaves a frame where the native scroll or the tab swipe can take the finger.
+
