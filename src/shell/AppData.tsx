@@ -109,7 +109,6 @@ import {
   updateFood,
   consumeBatchPortion,
   createBatch,
-  repeatMealOn,
   deleteFoodEntry,
   discardBatch,
   lastBatchOf,
@@ -119,7 +118,6 @@ import {
   type LastBatch,
   type FoodEdit,
   type FoodRemoval,
-  type LastMeal,
   type NewFood,
   type NewFoodEntry,
 } from '../nutrition/index.ts';
@@ -319,12 +317,6 @@ export type AppData = {
   /** El aviso que acaba de abrir la app, para llevarlo a la pantalla que le toca. */
   nudgeTarget: NudgeKind | null;
   clearNudgeTarget: () => void;
-  /**
-   * Vuelve a anotar una comida entera de otro dia, en el espacio que se elija. Lo que fue
-   * una porcion de olla sale otra vez de su olla; devuelve cuantas no se anotaron porque
-   * esa olla ya se acabo.
-   */
-  repeatMeal: (meal: LastMeal, mealSlot: string) => Promise<number>;
   removeFood: (entryId: string) => Promise<void>;
   beginSession: (
     routineId: string,
@@ -1059,17 +1051,6 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           true,
           REREAD_FOODS,
         ),
-      repeatMeal: async (meal, mealSlot) => {
-        let skipped = 0;
-        await write(
-          async (db) => {
-            skipped = await repeatMealOn(db, meal, todayIso(), mealSlot);
-          },
-          false,
-          REREAD_FOODS,
-        );
-        return skipped;
-      },
       // Se puede esperar: la pantalla de un dia pasado tiene que volver a leerlo en
       // cuanto el borrado esta escrito, y antes lo adivinaba con un temporizador.
       // Sin el trabajo de fondo, pero rehaciendo el dia de esa porcion: si era de un dia

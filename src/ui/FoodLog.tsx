@@ -1,20 +1,19 @@
 import { useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 
-import { shortDate } from '../core/dates.ts';
-import { fatAgainstBand, kcalAgainstBand } from '../core/targets.ts';
+import { fatAgainstBand, kcalAgainstBand, proteinAgainstBand } from '../core/targets.ts';
 import type { NutritionFoodRow } from '../db/types.ts';
 import {
   MEAL_SLOTS,
   SODIUM_FLAG_MG,
+  chooseSlot,
   currentSlot,
   portionLabel,
   quickAmountsFor,
-  repeatableMeal,
   roundAmount,
   unitLabel,
+  type ChosenSlot,
   type FoodHistory,
-  type LastMeal,
   type LoggedPortion,
   type NewFoodEntry,
   type NutritionTotals,
@@ -25,12 +24,31 @@ import { Card } from './Card.tsx';
 import { Chip } from './Chip.tsx';
 import { FoodPicker } from './FoodPicker.tsx';
 import { ConfirmButton, InfoDot } from './InfoBubble.tsx';
-import { Pencil, Plus, RotateCcw, Trash, TriangleAlert } from './icons.ts';
+import {
+  Coffee,
+  Moon,
+  Pencil,
+  Plus,
+  Sun,
+  Sunrise,
+  Sunset,
+  Trash,
+  TriangleAlert,
+  type LucideIcon,
+} from './icons.ts';
 import { IconButton } from './IconButton.tsx';
 import { NumericField } from './NumericField.tsx';
 import { PortionMacros } from './PortionMacros.tsx';
-import { Star } from './Star.tsx';
 import { font, sheet, shape, theme } from './theme.ts';
+
+/** El espacio de comida por su hora del dia: amanecer, cafe, sol, atardecer y luna. */
+const SLOT_ICONS: Record<string, LucideIcon> = {
+  desayuno: Sunrise,
+  'media mañana': Coffee,
+  mediodía: Sun,
+  tarde: Sunset,
+  cena: Moon,
+};
 
 /** Un macro del dia en su cuadrito: el nombre arriba, el numero grande debajo. */
 function Stat({
@@ -38,16 +56,29 @@ function Stat({
   value,
   note,
   alert = false,
+  tint,
+  wide = false,
 }: {
   label: string;
   value: string;
   note?: string;
   alert?: boolean;
+  /** Las dos metas del dia, calorias y proteina, van grandes y con su color. */
+  tint?: string;
+  /** Sola en su linea. */
+  wide?: boolean;
 }) {
   return (
-    <View style={[styles.stat, alert && styles.statAlert]}>
+    <View
+      style={[
+        styles.stat,
+        wide && styles.statWide,
+        tint !== undefined && { backgroundColor: tint },
+        alert && styles.statAlert,
+      ]}
+    >
       <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{value}</Text>
+      <Text style={[styles.statValue, tint !== undefined && styles.statValueBig]}>{value}</Text>
       {note ? <Text style={styles.statNote}>{note}</Text> : null}
     </View>
   );
@@ -67,11 +98,6 @@ export type FoodLogProps = {
   onOpenCatalogue: () => void;
   /** Lo que ya anoto, que es lo que decide el orden de la lista. */
   history: FoodHistory;
-  /** Sin esto no se ofrece repetir: solo tiene sentido sobre el dia de hoy. */
-  /** Devuelve cuantas porciones de olla no entraron porque la olla ya se acabo. */
-  onRepeatMeal?: (meal: LastMeal, slot: string) => Promise<number>;
-  /** "Comida de hoy" salvo cuando el dia no es hoy. */
-  heading?: string;
   /**
    * Un dia que abrio desde Registros, que se mira mucho mas de lo que se corrige: una
    * sola cartilla, compacta, y los botones detras del lapiz. Hoy no, porque hoy lo
@@ -83,8 +109,8 @@ export type FoodLogProps = {
    * Comida). Sin esto lleva el suyo, que sigue el reloj.
    */
   slot?: string;
-  /** Lo que eligio a mano; null vuelve al del reloj, como despues de anotar. */
-  onPickSlot?: (slot: string | null) => void;
+  /** Lo que eligio a mano. */
+  onPickSlot?: (slot: string) => void;
 };
 
 /** Los que salen arriba con su total: son los unicos que pueden mostrar un hueco. */
@@ -112,25 +138,27 @@ function NutritionStats({
   );
 
   const kcal = Math.round(totals.kcal);
+  const protein = Math.round(totals.proteinG);
   const fat = fatBand === null ? null : fatAgainstBand(totals.fatG, fatBand, record);
 
   return (
     <>
+      {/* Las calorias solas en la primera linea y la proteina al frente de la segunda,
+          grandes y con su color: son las dos metas del dia (2026-10-10). */}
       <View style={styles.stats}>
-        {record && (
-          <>
-            <Stat
-              label="Calorías"
-              value={`${kcal}${mark('kcal')}`}
-              note={kcalBand === null ? undefined : kcalAgainstBand(kcal, kcalBand)}
-            />
-            <Stat
-              label="Proteína"
-              value={`${Math.round(totals.proteinG)}${mark('protein_g')} g`}
-              note={proteinBand ? `meta ${proteinBand.from} o más` : undefined}
-            />
-          </>
-        )}
+        <Stat
+          label="Calorías"
+          value={`${kcal}${mark('kcal')}`}
+          note={kcalBand === null ? undefined : kcalAgainstBand(kcal, kcalBand)}
+          tint={theme.info}
+          wide
+        />
+        <Stat
+          label="Proteína"
+          value={`${protein}${mark('protein_g')} g`}
+          note={proteinBand === null ? undefined : proteinAgainstBand(protein, proteinBand)}
+          tint={theme.danger}
+        />
         <Stat
           label="Carbos"
           value={`${roundAmount(totals.carbsG)}${mark('carbs_g')} g`}
@@ -148,22 +176,7 @@ function NutritionStats({
           note={totals.sodiumOverLimit ? `sobre ${SODIUM_FLAG_MG}` : undefined}
           alert={totals.sodiumOverLimit}
         />
-        {/* Spec 7.5: show dairy without subtracting it; glycemic load needs an index. */}
-        {totals.dairy.portions > 0 && (
-          <Stat
-            label="Lácteos"
-            value={
-              totals.dairy.millilitresG > 0
-                ? `${roundAmount(totals.dairy.millilitresG)} ml`
-                : `${totals.dairy.portions}`
-            }
-            note={
-              totals.dairy.millilitresG > 0
-                ? `${roundAmount(totals.dairy.proteinG)} g de proteína`
-                : 'porciones'
-            }
-          />
-        )}
+        {/* Spec 7.5: glycemic load needs an index. */}
         {totals.glycemicLoad !== null && (
           <Stat
             label="Carga glucémica"
@@ -196,8 +209,6 @@ export function FoodLog({
   onRemove,
   onOpenCatalogue,
   history,
-  onRepeatMeal,
-  heading = 'Comida de hoy',
   record = false,
   slot: sharedSlot,
   onPickSlot,
@@ -208,13 +219,9 @@ export function FoodLog({
   const [quantity, setQuantity] = useState('1');
   // El espacio de comida en el que esta el reloj, salvo que elija otro: a las tres de la
   // tarde no esta anotando el desayuno.
-  const [ownChosen, setOwnChosen] = useState<string | null>(null);
+  const [ownChosen, setOwnChosen] = useState<ChosenSlot | null>(null);
   const slot = sharedSlot ?? currentSlot(ownChosen, new Date());
-  const pickSlot = onPickSlot ?? setOwnChosen;
-  const repeatable = repeatableMeal(history, slot);
-  // Mientras se anota no acepta otro toque: el segundo anotaba la comida entera otra vez.
-  const [repeating, setRepeating] = useState(false);
-  const [repeatNote, setRepeatNote] = useState<string | null>(null);
+  const pickSlot = onPickSlot ?? ((name: string) => setOwnChosen(chooseSlot(name, new Date())));
   // Una burbuja abierta a la vez: la de otra porcion se cierra sola.
   // La cantidad no sirve sin la unidad y el boton de al lado, asi que lo que se sube
   // por encima del teclado es la fila entera.
@@ -223,9 +230,6 @@ export function FoodLog({
   const selected = foods.find((food) => food.id === foodId) ?? null;
   const parsed = Number(quantity);
   const canAdd = selected !== null && Number.isFinite(parsed) && parsed > 0;
-
-  const mark = (nutrient: string) => totalMark(totals, nutrient);
-  const kcal = totals === null ? null : Math.round(totals.kcal);
 
   // Lo mismo en las dos formas: la lista de lo anotado y lo que hace falta para anotar.
   const shown = !record || writing;
@@ -262,47 +266,21 @@ export function FoodLog({
 
   const picker = (
     <>
-      <View style={styles.chips}>
+      <View style={[styles.chips, styles.slots]}>
+        {/* Iconos que siguen el dia y el nombre solo en el elegido: con los cinco nombres
+            escritos, "cena" bajaba a otra fila (decision 2026-10-10). */}
         {MEAL_SLOTS.map((name) => (
-          <Chip key={name} label={name} selected={name === slot} onPress={() => pickSlot(name)} />
+          <Chip
+            key={name}
+            label={name === slot ? name : ''}
+            icon={SLOT_ICONS[name]}
+            accessibilityLabel={name}
+            selected={name === slot}
+            onPress={() => pickSlot(name)}
+            style={styles.slot}
+          />
         ))}
       </View>
-
-      {repeatable && onRepeatMeal && (
-        <Button
-          label={`Repetir ${slot} del ${shortDate(repeatable.date)} · ${
-            repeatable.entries.length
-          } ${repeatable.entries.length === 1 ? 'cosa' : 'cosas'}`}
-          accessibilityLabel={`Repetir ${slot} del ${shortDate(repeatable.date)}`}
-          icon={RotateCcw}
-          block
-          loading={repeating}
-          onPress={() => {
-            if (repeating) return;
-            setRepeating(true);
-            setRepeatNote(null);
-            onRepeatMeal(repeatable, slot)
-              .then((skipped) => {
-                pickSlot(null);
-                if (skipped > 0) {
-                  setRepeatNote(
-                    skipped === 1
-                      ? 'Una porción de olla no se anotó: esa olla ya se acabó.'
-                      : `${skipped} porciones de olla no se anotaron: esas ollas ya se acabaron.`,
-                  );
-                }
-              })
-              .catch((error: unknown) => {
-                console.error(error);
-                setRepeatNote(
-                  `No se repitió: ${error instanceof Error ? error.message : String(error)}`,
-                );
-              })
-              .finally(() => setRepeating(false));
-          }}
-        />
-      )}
-      {repeatNote && <Text style={styles.repeatNote}>{repeatNote}</Text>}
 
       <FoodPicker
         foods={foods}
@@ -365,9 +343,8 @@ export function FoodLog({
                 mealSlot: slot,
               });
               // Anotado es terminado: se suelta el alimento y vuelve la lista, que es lo
-              // que hace falta para anotar lo siguiente, y el espacio vuelve al del reloj.
+              // que hace falta para anotar lo siguiente. El espacio se queda.
               setFoodId(null);
-              pickSlot(null);
             }}
           />
         </View>
@@ -418,41 +395,8 @@ export function FoodLog({
       onStartShouldSetResponder={foodId === null ? undefined : () => true}
       onResponderRelease={foodId === null ? undefined : () => setFoodId(null)}
     >
-      {/* Las calorias son el numero grande y la proteina va en la estrella: la meta de
-          proteina es la que decide si el dia de comida cuenta, y es la que tiene que
-          verse sin leer nada. El titulo de la cartilla de metas tambien dice
-          "Calorias" y "Proteina"; el rotulo de aqui es lo que separa lo comido de lo
-          que toca comer. */}
-      <Card tone="info">
-        <View style={styles.heroRow}>
-          <View style={styles.heroSide}>
-            <Text style={styles.heroEyebrow}>{heading.toUpperCase()}</Text>
-            <Text style={styles.heroValue}>
-              {kcal === null ? '—' : kcal}
-              {kcal === null ? '' : mark('kcal')}
-            </Text>
-            <Text style={styles.heroNote}>
-              {kcal === null
-                ? 'Todavía no anotaste nada'
-                : kcalBand === null
-                  ? 'kcal · sin metas todavía'
-                  : `kcal · ${kcalAgainstBand(kcal, kcalBand)}`}
-            </Text>
-          </View>
-          <View style={styles.heroStar}>
-            <Star size={78} color={theme.surface} style={styles.star}>
-              <Text style={styles.starValue}>
-                {totals === null ? '—' : Math.round(totals.proteinG)}
-              </Text>
-            </Star>
-            <Text style={styles.starLabel}>g de proteína{mark('protein_g')}</Text>
-            {proteinBand && <Text style={styles.starLabel}>meta {proteinBand.from} o más</Text>}
-          </View>
-        </View>
-      </Card>
-
-      {totals && (
-        <Card title="Lo que llevas">
+      <Card title="Lo que llevas">
+        {totals ? (
           <NutritionStats
             totals={totals}
             proteinBand={proteinBand}
@@ -460,8 +404,10 @@ export function FoodLog({
             fatBand={fatBand}
             record={record}
           />
-        </Card>
-      )}
+        ) : (
+          <Text style={styles.empty}>Todavía no anotaste nada.</Text>
+        )}
+      </Card>
 
       <Card title="Lo anotado">{eaten}</Card>
 
@@ -471,10 +417,13 @@ export function FoodLog({
 }
 
 const styles = sheet((theme) => ({
-  repeatNote: {
-    fontSize: 13,
-    fontFamily: font.bold,
-    color: theme.text,
+  // Mas juntos que los demas chips: los cinco caben en una fila desde 375 puntos de ancho,
+  // tambien con "media mañana" escrito.
+  slots: {
+    gap: 4,
+  },
+  slot: {
+    paddingHorizontal: 9,
   },
   cardHead: {
     flexDirection: 'row',
@@ -499,52 +448,6 @@ const styles = sheet((theme) => ({
     alignSelf: 'stretch',
     gap: 12,
   },
-  heroRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  heroSide: {
-    flexShrink: 1,
-  },
-  heroEyebrow: {
-    fontSize: 11,
-    fontFamily: font.black,
-    letterSpacing: 1.2,
-    color: theme.accentInkSoft,
-  },
-  heroValue: {
-    fontSize: 48,
-    lineHeight: 54,
-    fontFamily: font.display,
-    color: theme.accentInk,
-    fontVariant: ['tabular-nums'],
-  },
-  heroNote: {
-    fontSize: 12,
-    fontFamily: font.bold,
-    color: theme.accentInk,
-  },
-  heroStar: {
-    alignItems: 'center',
-    gap: 2,
-  },
-  star: {
-    // Pegada un poco torcida: es un sticker, no un icono alineado a la rejilla.
-    transform: [{ rotate: '-8deg' }],
-  },
-  starValue: {
-    fontSize: 26,
-    fontFamily: font.black,
-    color: theme.text,
-    fontVariant: ['tabular-nums'],
-  },
-  starLabel: {
-    fontSize: 11,
-    fontFamily: font.bold,
-    color: theme.accentInkSoft,
-  },
   stats: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -552,7 +455,8 @@ const styles = sheet((theme) => ({
   },
   stat: {
     flexGrow: 1,
-    flexBasis: '28%',
+    // Dos por linea: proteina y carbos, grasa y sodio.
+    flexBasis: '40%',
     borderWidth: shape.border,
     borderColor: theme.line,
     borderRadius: shape.radiusSmall,
@@ -560,6 +464,9 @@ const styles = sheet((theme) => ({
     paddingHorizontal: 8,
     paddingVertical: 7,
     gap: 1,
+  },
+  statWide: {
+    flexBasis: '100%',
   },
   statAlert: {
     backgroundColor: theme.warnBg,
@@ -576,6 +483,10 @@ const styles = sheet((theme) => ({
     fontFamily: font.black,
     color: theme.text,
     fontVariant: ['tabular-nums'],
+  },
+  statValueBig: {
+    fontSize: 28,
+    lineHeight: 34,
   },
   statNote: {
     fontSize: 10,

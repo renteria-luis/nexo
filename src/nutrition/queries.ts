@@ -9,7 +9,6 @@ import type {
 } from '../db/types.ts';
 import { inTransaction } from '../db/transaction.ts';
 
-import type { LastMeal } from './picker.ts';
 import type { LoggedPortion } from './totals.ts';
 import { MEAL_SLOTS, parseQuickAmounts } from './units.ts';
 
@@ -593,34 +592,6 @@ export async function discardBatch(db: SQLiteDatabase, batchId: string): Promise
  * and the remaining count drops in the same transaction. An empty batch refuses
  * instead of going negative.
  */
-/**
- * Vuelve a anotar una comida entera en ese dia y ese espacio. Lo que fue una porcion de
- * olla sale otra vez de su olla: repetida como gramos sueltos no bajaba la olla, y la
- * tarjeta seguia ofreciendo una porcion que ya se comio. Devuelve cuantas no se anotaron
- * porque esa olla ya se acabo.
- */
-export async function repeatMealOn(
-  db: SQLiteDatabase,
-  meal: LastMeal,
-  date: IsoDate,
-  mealSlot: string,
-): Promise<number> {
-  let skipped = 0;
-  for (const { batchId, ...portion } of meal.entries) {
-    if (batchId === null) {
-      await addFoodEntry(db, { ...portion, date, mealSlot });
-      continue;
-    }
-    const batch = await db.getFirstAsync<{ portions_remaining: number }>(
-      'SELECT portions_remaining FROM nutrition_batch WHERE id = ?;',
-      [batchId],
-    );
-    if (batch === null || batch.portions_remaining <= 0) skipped += 1;
-    else await consumeBatchPortion(db, batchId, date, mealSlot);
-  }
-  return skipped;
-}
-
 export async function consumeBatchPortion(
   db: SQLiteDatabase,
   batchId: string,

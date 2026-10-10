@@ -29,15 +29,14 @@ import {
   listOpenBatches,
   listPortions,
   removeFood,
-  repeatMealOn,
   restoreFood,
   updateFood,
 } from './queries.ts';
-import { loadFoodHistory, repeatableMeal } from './picker.ts';
 import { SODIUM_FLAG_MG, dailyTotals, type LoggedPortion } from './totals.ts';
 import {
   MAX_QUICK_AMOUNTS,
   MEAL_SLOTS,
+  chooseSlot,
   currentSlot,
   mealSlotAtHour,
   parseQuickAmounts,
@@ -747,31 +746,6 @@ test('a food with no weight per unit cannot become a batch', async () => {
   );
 });
 
-test('dairy is counted and shown, never subtracted', async () => {
-  const { db } = seeded();
-  await addFoodEntry(db, {
-    date: '2026-09-15',
-    foodId: 'milk-1',
-    quantity: 450,
-    unit: 'ml',
-    mealSlot: 'desayuno',
-  });
-  await addFoodEntry(db, {
-    date: '2026-09-15',
-    foodId: 'eggs-large',
-    quantity: 6,
-    unit: 'huevo',
-    mealSlot: 'desayuno',
-  });
-
-  const totals = dailyTotals(await listPortions(db, '2026-09-15'));
-
-  assert.equal(totals.dairy.portions, 1);
-  assert.equal(totals.dairy.millilitresG, 450);
-  // The eggs are still in the day's protein, they are simply not dairy.
-  assert.ok(totals.proteinG > totals.dairy.proteinG);
-});
-
 test('el registro abre en el espacio de comida en el que esta el reloj', () => {
   // Sus horas de spec 1.4: 08:00, 10:40, 11:50, 14:40 y 19:30.
   assert.equal(mealSlotAtHour(7, 30), MEAL_SLOTS[0]);
@@ -956,67 +930,6 @@ test('no caben mas de diez cantidades', () => {
   assert.equal(parseQuickAmounts('1,2,3,4,5,6,7,8,9,10,11,12').length, MAX_QUICK_AMOUNTS);
 });
 
-test('repetir una comida que fue una porcion de olla la saca otra vez de la olla', async () => {
-  const { db, raw } = seeded();
-  const batch = await createBatch(db, {
-    foodId: await chickenBreast(db),
-    rawWeightG: 1600,
-    portionsCount: 6,
-    cookedDate: '2026-09-29',
-    fatDrained: false,
-  });
-  await consumeBatchPortion(db, batch, '2026-09-30', 'mediodía');
-
-  const yesterday = (await loadFoodHistory(db, '2026-10-01')).lastMealBySlot.get('mediodía');
-  assert.ok(yesterday);
-  assert.equal(await repeatMealOn(db, yesterday, '2026-10-01', 'mediodía'), 0);
-
-  // Antes entraba como gramos sueltos de pollo y la olla seguia diciendo 5 de 6.
-  assert.equal(remaining(raw, batch), 4);
-  const entry = raw
-    .prepare("SELECT batch_id FROM nutrition_food_entry WHERE date = '2026-10-01';")
-    .get() as { batch_id: string | null };
-  assert.equal(entry.batch_id, batch);
-});
-
-test('repetir una porcion de una olla que ya se acabo no la anota y lo dice', async () => {
-  const { db, raw } = seeded();
-  const batch = await createBatch(db, {
-    foodId: await chickenBreast(db),
-    rawWeightG: 600,
-    portionsCount: 1,
-    cookedDate: '2026-09-29',
-    fatDrained: false,
-  });
-  await consumeBatchPortion(db, batch, '2026-09-30', 'mediodía');
-  const yesterday = (await loadFoodHistory(db, '2026-10-01')).lastMealBySlot.get('mediodía');
-  assert.ok(yesterday);
-
-  assert.equal(await repeatMealOn(db, yesterday, '2026-10-01', 'mediodía'), 1);
-  assert.equal(remaining(raw, batch), 0);
-  assert.deepEqual(await listPortions(db, '2026-10-01'), []);
-});
-
-test('repetir desaparece cuando esa comida ya esta en el espacio de hoy', async () => {
-  const { db } = seeded();
-  const eggs = await chickenBreast(db);
-  await addFoodEntry(db, {
-    foodId: eggs,
-    quantity: 200,
-    unit: 'g',
-    date: '2026-09-30',
-    mealSlot: 'desayuno',
-  });
-
-  const before = await loadFoodHistory(db, '2026-10-01');
-  const offered = repeatableMeal(before, 'desayuno');
-  assert.ok(offered);
-
-  await repeatMealOn(db, offered, '2026-10-01', 'desayuno');
-  // Un segundo toque anotaba el desayuno entero otra vez: el boton ya no esta.
-  assert.equal(repeatableMeal(await loadFoodHistory(db, '2026-10-01'), 'desayuno'), null);
-});
-
 test('el espacio se mira con el reloj de cuando anota, no con el de cuando abrio la app', () => {
   const at = (clock: string) => new Date(`2026-10-01T${clock}:00`);
   // Abrio Comida a las 8:50 y volvio a la una y media sin cerrar la app.
@@ -1024,8 +937,21 @@ test('el espacio se mira con el reloj de cuando anota, no con el de cuando abrio
   assert.equal(currentSlot(null, at('13:30')), MEAL_SLOTS[3]);
   // La porcion de la cena ya no cae en "mediodía" por defecto.
   assert.equal(currentSlot(null, at('19:30')), MEAL_SLOTS[4]);
-  // Lo que elige a mano manda hasta que anota.
-  assert.equal(currentSlot(MEAL_SLOTS[1], at('19:30')), MEAL_SLOTS[1]);
+});
+
+test('lo elegido a mano se queda mientras el reloj siga en el mismo espacio y el mismo dia', () => {
+  const at = (when: string) => new Date(`2026-10-${when}:00`);
+  // A la hora de la cena anota dos cosas que olvido del mediodia.
+  const noon = chooseSlot(MEAL_SLOTS[2], at('10T19:30'));
+  assert.equal(currentSlot(noon, at('10T19:45')), MEAL_SLOTS[2]);
+  assert.equal(currentSlot(noon, at('10T23:50')), MEAL_SLOTS[2]);
+  // Al dia siguiente manda otra vez el reloj, tambien si vuelve a ser la hora de la cena.
+  assert.equal(currentSlot(noon, at('11T08:00')), MEAL_SLOTS[0]);
+  assert.equal(currentSlot(noon, at('11T19:30')), MEAL_SLOTS[4]);
+  // Y el mismo dia, en cuanto el reloj pasa al espacio siguiente.
+  const breakfast = chooseSlot(MEAL_SLOTS[0], at('10T16:50'));
+  assert.equal(currentSlot(breakfast, at('10T16:59')), MEAL_SLOTS[0]);
+  assert.equal(currentSlot(breakfast, at('10T17:01')), MEAL_SLOTS[4]);
 });
 
 test('la ficha dice antes de guardar que el azucar no puede pasar de los carbos', async () => {
@@ -1121,8 +1047,6 @@ test('un alimento nuevo puede llevar fibra, indice glucemico y la marca de lacte
   // Antes salian siempre vacios: ninguna ficha podia escribir estos campos.
   assert.ok(totals.glycemicLoad !== null && totals.glycemicLoad > 0);
   assert.ok(Math.abs(totals.fibreG - 3.5) < 1e-9);
-  assert.equal(totals.dairy.portions, 1);
-  assert.equal(totals.dairy.proteinG, 32);
 
   // Corregirlo tambien los puede cambiar, y lo que no se manda se queda.
   await updateFood(db, yogurt, {

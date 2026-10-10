@@ -16,14 +16,8 @@ import {
 } from './picker.ts';
 import { addFoodEntry } from './queries.ts';
 
-function entry(
-  foodId: string,
-  mealSlot: string,
-  timestamp: number,
-  quantity = 1,
-  date = '2026-09-20',
-): FoodEntryTrace {
-  return { foodId, mealSlot, quantity, unit: 'unidad', date, timestamp, batchId: null };
+function entry(foodId: string, mealSlot: string, timestamp: number, quantity = 1): FoodEntryTrace {
+  return { foodId, mealSlot, quantity, timestamp };
 }
 
 test('el historial sale de la base tal cual lo anoto', async () => {
@@ -129,47 +123,4 @@ test('buscar no se tropieza con las tildes ni con las mayusculas', () => {
   assert.equal(matchesSearch(eggs, '  '), true);
 
   assert.equal(matchesSearch(['Sopa instantanea vegetal', null], 'sopá'), true);
-});
-
-test('la ultima vez que lleno un espacio de comida se puede repetir entera', () => {
-  const history = summarizeFoodHistory(
-    [
-      entry('huevos', 'desayuno', 10, 6, '2026-09-21'),
-      entry('cafe', 'desayuno', 20, 1, '2026-09-21'),
-      entry('barra', 'desayuno', 30, 1, '2026-09-22'),
-      entry('pollo', 'mediodía', 40, 200, '2026-09-22'),
-      // Lo de hoy no cuenta: repetir hoy sobre hoy no es repetir nada.
-      entry('avena', 'desayuno', 50, 60, '2026-09-23'),
-    ],
-    '2026-09-23',
-  );
-
-  const breakfast = history.lastMealBySlot.get('desayuno');
-  assert.equal(breakfast?.date, '2026-09-22');
-  assert.deepEqual(breakfast?.entries, [
-    { foodId: 'barra', quantity: 1, unit: 'unidad', batchId: null },
-  ]);
-
-  const lunch = history.lastMealBySlot.get('mediodía');
-  assert.equal(lunch?.date, '2026-09-22');
-  assert.equal(lunch?.entries.length, 1);
-
-  // Un espacio que nunca lleno no tiene nada que repetir.
-  assert.equal(history.lastMealBySlot.get('cena'), undefined);
-});
-
-test('una comida de varias cosas se repite completa', () => {
-  const history = summarizeFoodHistory(
-    [
-      entry('huevos', 'desayuno', 10, 6, '2026-09-21'),
-      entry('cafe', 'desayuno', 20, 1, '2026-09-21'),
-      entry('pan', 'desayuno', 30, 2, '2026-09-21'),
-    ],
-    '2026-09-23',
-  );
-
-  assert.deepEqual(
-    history.lastMealBySlot.get('desayuno')?.entries.map((portion) => portion.foodId),
-    ['huevos', 'cafe', 'pan'],
-  );
 });

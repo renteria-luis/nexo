@@ -132,6 +132,16 @@ export function kcalAgainstBand(kcal: number, band: { from: number; to: number }
 }
 
 /**
+ * La proteina contra su piso, el de abajo de su banda (spec 3.6): pasarse no es un
+ * problema, asi que arriba no hay techo que avisar.
+ */
+export function proteinAgainstBand(proteinG: number, band: { from: number; to: number }): string {
+  return proteinG < band.from
+    ? `faltan ${band.from - proteinG} para el piso`
+    : `piso de ${band.from} cumplido`;
+}
+
+/**
  * Spec 3.3: la grasa contra su banda y su piso duro de 0.8 g por kilo. `finished` es un
  * dia que ya termino: ahi quedarse bajo el piso es una alerta; hoy, a media manana, es
  * solo lo que falta.

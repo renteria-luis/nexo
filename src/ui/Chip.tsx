@@ -48,7 +48,8 @@ export function Chip({
     >
       <View style={styles.inner}>
         {Icon ? <Icon size={14} color={tint} strokeWidth={2.5} /> : null}
-        <Text style={[styles.label, { color: tint }]}>{label}</Text>
+        {/* Un chip que es solo un icono no lleva texto vacio: dejaria el hueco a su lado. */}
+        {label !== '' && <Text style={[styles.label, { color: tint }]}>{label}</Text>}
       </View>
     </Pressable>
   );

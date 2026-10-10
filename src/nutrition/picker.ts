@@ -17,16 +17,7 @@ export type FoodEntryTrace = {
   foodId: string;
   mealSlot: string;
   quantity: number;
-  unit: string;
-  date: IsoDate;
   timestamp: number;
-  /** La olla de la que salio, si salio de una. */
-  batchId: string | null;
-};
-
-export type LastMeal = {
-  date: IsoDate;
-  entries: { foodId: string; quantity: number; unit: string; batchId: string | null }[];
 };
 
 export type FoodHistory = {
@@ -36,39 +27,17 @@ export type FoodHistory = {
   recent: string[];
   /** Cuanto puso la ultima vez, para no volver a teclearlo. */
   lastQuantity: Map<string, number>;
-  /** La ultima vez que lleno cada espacio de comida, para repetirla entera. */
-  lastMealBySlot: Map<string, LastMeal>;
-  /** Lo que ya anoto hoy en cada espacio, que es lo que decide si "Repetir" sigue ahi. */
-  todayBySlot: Map<string, Set<string>>;
 };
 
 /** Tres meses: suficiente para que una comida de temporada no mande para siempre. */
 export const PICKER_HISTORY_DAYS = 90;
 
-export function summarizeFoodHistory(
-  entries: readonly FoodEntryTrace[],
-  /** Desde este dia en adelante no cuenta para repetir: hoy no se repite a si mismo. */
-  before?: IsoDate,
-): FoodHistory {
+export function summarizeFoodHistory(entries: readonly FoodEntryTrace[]): FoodHistory {
   const counts = new Map<string, Map<string, number>>();
   const lastSeen = new Map<string, number>();
   const lastQuantity = new Map<string, number>();
-  const lastMealBySlot = new Map<string, LastMeal>();
-  const todayBySlot = new Map<string, Set<string>>();
 
   for (const entry of entries) {
-    if (before !== undefined && entry.date >= before) {
-      const today = todayBySlot.get(entry.mealSlot) ?? new Set<string>();
-      today.add(entry.foodId);
-      todayBySlot.set(entry.mealSlot, today);
-    }
-    if (before === undefined || entry.date < before) {
-      const meal = lastMealBySlot.get(entry.mealSlot);
-      if (meal === undefined || entry.date > meal.date) {
-        lastMealBySlot.set(entry.mealSlot, { date: entry.date, entries: [] });
-      }
-    }
-
     const bySlot = counts.get(entry.mealSlot) ?? new Map<string, number>();
     bySlot.set(entry.foodId, (bySlot.get(entry.foodId) ?? 0) + 1);
     counts.set(entry.mealSlot, bySlot);
@@ -91,36 +60,9 @@ export function summarizeFoodHistory(
     usualBySlot.set(slot, ordered);
   }
 
-  // Las porciones de esa ultima comida, ya sabiendo de que dia es cada espacio.
-  for (const entry of entries) {
-    const meal = lastMealBySlot.get(entry.mealSlot);
-    if (meal === undefined || entry.date !== meal.date) continue;
-    meal.entries.push({
-      foodId: entry.foodId,
-      quantity: entry.quantity,
-      unit: entry.unit,
-      batchId: entry.batchId,
-    });
-  }
-
   const recent = [...lastSeen.keys()].sort((a, b) => newest(b) - newest(a));
 
-  return { usualBySlot, recent, lastQuantity, lastMealBySlot, todayBySlot };
-}
-
-/**
- * La comida que ofrece "Repetir" en ese espacio, o null si ya no toca (decision 2026-10-02).
- *
- * Hoy no se repite a si mismo, asi que despues de repetir el desayuno el boton seguia
- * ofreciendo el de ayer, y un segundo toque lo anotaba otra vez entero. Cuando todo lo de
- * esa comida ya esta en el espacio de hoy, por el boton o a mano, se va hasta manana.
- */
-export function repeatableMeal(history: FoodHistory, slot: string): LastMeal | null {
-  const meal = history.lastMealBySlot.get(slot);
-  if (meal === undefined) return null;
-  const today = history.todayBySlot.get(slot);
-  if (today !== undefined && meal.entries.every((entry) => today.has(entry.foodId))) return null;
-  return meal;
+  return { usualBySlot, recent, lastQuantity };
 }
 
 export async function loadFoodHistory(
@@ -129,14 +71,13 @@ export async function loadFoodHistory(
   days = PICKER_HISTORY_DAYS,
 ): Promise<FoodHistory> {
   const rows = await db.getAllAsync<FoodEntryTrace>(
-    `SELECT food_id AS foodId, meal_slot AS mealSlot, quantity, unit, date, timestamp,
-            batch_id AS batchId
+    `SELECT food_id AS foodId, meal_slot AS mealSlot, quantity, timestamp
        FROM nutrition_food_entry
       WHERE date BETWEEN ? AND ?
    ORDER BY timestamp;`,
     [addDays(today, -(days - 1)), today],
   );
-  return summarizeFoodHistory(rows, today);
+  return summarizeFoodHistory(rows);
 }
 
 const ACCENTS: Record<string, string> = {

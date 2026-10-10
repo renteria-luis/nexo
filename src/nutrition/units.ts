@@ -1,6 +1,7 @@
 // How a food's unit behaves when he enters and reads an amount. Nutrition domain,
 // not layout, which is why it lives here and can be tested.
 
+import { todayIso, type IsoDate } from '../core/dates.ts';
 import type { NutritionFoodRow, UnitKind } from '../db/types.ts';
 
 export function roundAmount(value: number): string {
@@ -88,13 +89,25 @@ export function mealSlotAtHour(hour: number, minute = 0): string {
   return MEAL_SLOTS[4];
 }
 
+/** Lo que eligio a mano, con el espacio en el que estaba el reloj ese dia al elegirlo. */
+export type ChosenSlot = { slot: string; clock: string; date: IsoDate };
+
+export function chooseSlot(slot: string, now: Date): ChosenSlot {
+  return { slot, clock: mealSlotAtHour(now.getHours(), now.getMinutes()), date: todayIso(now) };
+}
+
 /**
  * El espacio en el que se anota ahora: el que eligio a mano, o el del reloj.
  *
  * Se elegia una vez, al montar la pantalla, y la pestana de Comida se queda montada
  * mientras la app vive: abierta antes de las nueve, el almuerzo y la cena salian en
- * "desayuno". Se mira el reloj cada vez, y lo elegido a mano dura hasta que anota algo.
+ * "desayuno". Se mira el reloj cada vez. Lo elegido a mano se queda despues de anotar,
+ * porque lo que olvido del mediodia suele ser mas de una cosa, y se suelta en cuanto el
+ * reloj pasa a otro espacio o a otro dia (2026-10-10).
  */
-export function currentSlot(chosen: string | null, now: Date): string {
-  return chosen ?? mealSlotAtHour(now.getHours(), now.getMinutes());
+export function currentSlot(chosen: ChosenSlot | null, now: Date): string {
+  const clock = mealSlotAtHour(now.getHours(), now.getMinutes());
+  return chosen !== null && chosen.clock === clock && chosen.date === todayIso(now)
+    ? chosen.slot
+    : clock;
 }

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 
 import { fatBand, kcalBand, proteinBand } from '../../core/targets.ts';
-import { currentSlot } from '../../nutrition/index.ts';
+import { chooseSlot, currentSlot, type ChosenSlot } from '../../nutrition/index.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 
 import { BatchPanel } from '../BatchPanel.tsx';
@@ -14,27 +14,18 @@ import { ChevronRight } from '../icons.ts';
 import { Screen } from './Screen.tsx';
 
 export function NutritionScreen() {
-  const {
-    state,
-    addFood,
-    repeatMeal,
-    removeFood,
-    startBatch,
-    eatBatchPortion,
-    throwAwayBatch,
-    loadLastBatch,
-  } = useAppData();
+  const { state, addFood, removeFood, startBatch, eatBatchPortion, throwAwayBatch, loadLastBatch } =
+    useAppData();
   const navigation = useNavigation<{ navigate: (name: string) => void }>();
-  // Una sola fila de espacios para anotar y para las tandas. Lo elegido a mano dura hasta
-  // que anota algo; si no, manda el reloj, que se vuelve a mirar al volver a la app (la
-  // pestana se queda montada y sin esto seguia en el espacio de cuando se abrio).
-  const [chosen, setChosen] = useState<string | null>(null);
+  // Una sola fila de espacios para anotar y para las tandas. Lo elegido a mano dura
+  // mientras el reloj siga en el mismo espacio; despues manda el reloj, que se vuelve a
+  // mirar al volver a la app (la pestana se queda montada y sin esto seguia en el
+  // espacio de cuando se abrio).
+  const [chosen, setChosen] = useState<ChosenSlot | null>(null);
   const [, setWoke] = useState(0);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (next) => {
-      if (next !== 'active') return;
-      setChosen(null);
-      setWoke(Date.now());
+      if (next === 'active') setWoke(Date.now());
     });
     return () => subscription.remove();
   }, []);
@@ -58,18 +49,15 @@ export function NutritionScreen() {
         onRemove={removeFood}
         onOpenCatalogue={() => navigation.navigate('Alimentos')}
         history={loaded.foodHistory}
-        onRepeatMeal={repeatMeal}
         slot={slot}
-        onPickSlot={setChosen}
+        onPickSlot={(name) => setChosen(chooseSlot(name, new Date()))}
       />
 
       <BatchPanel
         batches={loaded.batches}
         foods={loaded.foods}
         onStart={startBatch}
-        onEat={(batchId, mealSlot) =>
-          eatBatchPortion(batchId, mealSlot).then(() => setChosen(null))
-        }
+        onEat={eatBatchPortion}
         onThrowAway={throwAwayBatch}
         slot={slot}
         onLoadLast={loadLastBatch}

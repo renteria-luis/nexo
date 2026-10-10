@@ -34,8 +34,9 @@ export type FoodPickerProps = {
   onOpenCatalogue: () => void;
 };
 
-/** Cuantos caben arriba sin que la pantalla se vuelva otra lista larga. */
-const SUGGESTIONS = 5;
+/** Cuantos salen arriba sin que la pantalla se vuelva otra lista larga (decision 2026-10-10). */
+const USUAL_SHOWN = 2;
+const RECENT_SHOWN = 3;
 
 /** Los macros por unidad contable, o por cien gramos o mililitros. */
 function macros(food: NutritionFoodRow): string {
@@ -91,21 +92,25 @@ export function FoodPicker({
     matchesSearch([food.name, food.brand, food.store, food.keywords], search),
   );
 
-  const pick = (ids: readonly string[], already: Set<string>): NutritionFoodRow[] => {
+  const pick = (
+    ids: readonly string[],
+    already: Set<string>,
+    limit: number,
+  ): NutritionFoodRow[] => {
     const rows: NutritionFoodRow[] = [];
     for (const id of ids) {
       const food = byId.get(id);
       if (!food || already.has(id)) continue;
       already.add(id);
       rows.push(food);
-      if (rows.length === SUGGESTIONS) break;
+      if (rows.length === limit) break;
     }
     return rows;
   };
 
   const taken = new Set<string>();
-  const usual = pick(history.usualBySlot.get(slot) ?? [], taken);
-  const recent = pick(history.recent, taken);
+  const usual = pick(history.usualBySlot.get(slot) ?? [], taken, USUAL_SHOWN);
+  const recent = pick(history.recent, taken, RECENT_SHOWN);
   const rest = foods.filter((food) => !taken.has(food.id));
 
   // Por tienda cuando se abre la lista entera: es como estan en su cabeza cuando

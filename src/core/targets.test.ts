@@ -7,6 +7,7 @@ import {
   fatAgainstBand,
   fatBand,
   kcalAgainstBand,
+  proteinAgainstBand,
   kcalBand,
   needsRecalculation,
   proteinBand,
@@ -171,6 +172,13 @@ test('las calorias de Comida se dicen contra la banda, no contra la meta pelada'
   assert.equal(kcalAgainstBand(2600, band), 'en banda (2250 a 2950)');
   assert.equal(kcalAgainstBand(2000, band), 'faltan 250 para la banda');
   assert.equal(kcalAgainstBand(3000, band), '50 sobre la banda');
+});
+
+test('protein is told against its floor, with no ceiling to warn about', () => {
+  const band = { from: 130, to: 160 };
+  assert.equal(proteinAgainstBand(112, band), 'faltan 18 para el piso');
+  assert.equal(proteinAgainstBand(130, band), 'piso de 130 cumplido');
+  assert.equal(proteinAgainstBand(190, band), 'piso de 130 cumplido');
 });
 
 test('la grasa bajo el piso duro es una alerta en un dia terminado, y hoy es lo que falta', () => {
