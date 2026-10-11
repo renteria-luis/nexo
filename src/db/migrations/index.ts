@@ -58,6 +58,7 @@ import { sql as multiSessionScore } from './057_multi_session_score.ts';
 import { sql as exerciseCatalog } from './058_exercise_catalog.ts';
 import { sql as healthImport } from './059_health_import.ts';
 import { sql as dealMatchVerdict } from './060_deal_match_verdict.ts';
+import { sql as setVariants } from './061_set_variants.ts';
 
 export type Migration = {
   id: string;
@@ -127,4 +128,5 @@ export const migrations: Migration[] = [
   { id: '058_exercise_catalog', sql: exerciseCatalog },
   { id: '059_health_import', sql: healthImport },
   { id: '060_deal_match_verdict', sql: dealMatchVerdict },
+  { id: '061_set_variants', sql: setVariants },
 ];

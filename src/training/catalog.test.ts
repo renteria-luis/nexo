@@ -18,7 +18,8 @@ import {
   setRoutineTier,
   updateExercise,
 } from './catalog.ts';
-import { loadRoutine, loadRoutinePlan } from './routines.ts';
+import { loadRoutine, loadRoutinePlan, loadSessionPlan } from './routines.ts';
+import { lastSessionSets } from './sessions.ts';
 
 type SqlValue = string | number | null;
 
@@ -287,5 +288,110 @@ test('migration preserves customized notes, names, and every historical set whil
   assert.equal(
     (await loadExerciseCard(db, 'lateral-raise-machine')).notes[''],
     'My machine explanation',
+  );
+});
+
+/** A database one step before the sets moved, with a past session holding these sets. */
+async function beforeSetVariants(sets: string): Promise<SQLiteDatabase> {
+  const db = fresh('060_deal_match_verdict');
+  await db.execAsync(`INSERT INTO training_session (id, date, start_time, end_time, time_budget)
+    VALUES ('past', '2026-10-01', 1, 1000000, 'completo');
+    INSERT INTO training_set_entry
+      (id, session_id, exercise_id, set_index, weight_kg, reps, timestamp, implement)
+    VALUES ${sets};`);
+  return db;
+}
+
+const setVariants = migrations.find((migration) => migration.id === '061_set_variants')!.sql;
+const rows = async (db: SQLiteDatabase) =>
+  (
+    await db.getAllAsync<{ id: string; exercise_id: string; set_index: number }>(
+      'SELECT id, exercise_id, set_index FROM training_set_entry ORDER BY id;',
+    )
+  ).map((row) => ({ ...row }));
+
+test('old sets marked with dumbbells leave the cable hammer curl, and its plan goes with them', async () => {
+  const db = await beforeSetVariants(`
+    ('h1', 'past', 'hammer-curl', 1, 11.34, 12, 100, 'dumbbell'),
+    ('h2', 'past', 'hammer-curl', 2, 11.34, 10, 200, 'dumbbell'),
+    ('h3', 'past', 'hammer-curl', 3, 11.34, 9, 300, 'dumbbell')`);
+  await db.execAsync(`INSERT INTO training_session_plan
+    (session_id, exercise_id, position, sets_planned, rest_seconds)
+    VALUES ('past', 'hammer-curl', 1, 3, 120);
+    INSERT INTO training_exercise_time
+      (session_id, exercise_id, implement, set_count, sample_count, flagged_count, minutes)
+    VALUES ('past', 'hammer-curl', 'dumbbell', 3, 2, 0, 6);`);
+  await db.execAsync(setVariants);
+
+  assert.deepEqual(await lastSessionSets(db, 'hammer-curl', null), []);
+  const moved = await lastSessionSets(db, 'hammer-curl-variant-dumbbell', null);
+  assert.deepEqual(
+    moved.map((set) => [set.setIndex, set.reps, set.loadFactor]),
+    [
+      [1, 12, 2],
+      [2, 10, 2],
+      [3, 9, 2],
+    ],
+  );
+  assert.deepEqual(
+    (await loadSessionPlan(db, 'past')).map((entry) => [entry.exerciseId, entry.sets]),
+    [['hammer-curl-variant-dumbbell', 3]],
+  );
+  // The pace learned from that session was filed under the old exercise: it is rebuilt.
+  assert.deepEqual(await db.getAllAsync('SELECT * FROM training_exercise_time;'), []);
+});
+
+test('a session that mixed both keeps each set with its own, numbered by time', async () => {
+  const db = await beforeSetVariants(`
+    ('h1', 'past', 'hammer-curl', 1, 11.34, 12, 100, 'dumbbell'),
+    ('h2', 'past', 'hammer-curl', 2, 11.34, 10, 200, 'dumbbell'),
+    ('h3', 'past', 'hammer-curl', 3, 22.68, 12, 300, 'cable'),
+    ('n1', 'past', 'hammer-curl', 4, 22.68, 12, 400, NULL)`);
+  await db.execAsync(`INSERT INTO training_session_plan
+    (session_id, exercise_id, position, sets_planned, rest_seconds)
+    VALUES ('past', 'hammer-curl', 1, 4, 120);`);
+  await db.execAsync(setVariants);
+
+  assert.deepEqual(await rows(db), [
+    { id: 'h1', exercise_id: 'hammer-curl-variant-dumbbell', set_index: 1 },
+    { id: 'h2', exercise_id: 'hammer-curl-variant-dumbbell', set_index: 2 },
+    { id: 'h3', exercise_id: 'hammer-curl', set_index: 1 },
+    { id: 'n1', exercise_id: 'hammer-curl', set_index: 2 },
+  ]);
+  // Something stayed behind, so the plan does not move.
+  assert.deepEqual(
+    (await loadSessionPlan(db, 'past')).map((entry) => entry.exerciseId),
+    ['hammer-curl'],
+  );
+});
+
+test('sets joining a variant that already had sets that day fall in line by time', async () => {
+  const db = await beforeSetVariants(`
+    ('l1', 'past', 'lateral-raise', 1, 9.07, 12, 100, 'cable'),
+    ('c1', 'past', 'lateral-raise-cable', 1, 4.54, 12, 200, NULL),
+    ('l2', 'past', 'lateral-raise', 2, 9.07, 12, 300, 'cable'),
+    ('m1', 'past', 'lateral-raise', 3, 20, 12, 400, 'machine'),
+    ('b1', 'past', 'lateral-raise', 4, 20, 12, 500, 'barbell'),
+    ('d1', 'past', 'lateral-raise', 5, 6.8, 12, 600, 'dumbbell')`);
+  await db.execAsync(`INSERT INTO training_session_plan
+    (session_id, exercise_id, position, sets_planned, rest_seconds)
+    VALUES ('past', 'lateral-raise', 1, 3, 120), ('past', 'lateral-raise-cable', 2, 1, 120);`);
+  await db.execAsync(setVariants);
+
+  assert.deepEqual(await rows(db), [
+    // No barbell lateral raise exists, so that set stays where it was.
+    { id: 'b1', exercise_id: 'lateral-raise', set_index: 1 },
+    { id: 'c1', exercise_id: 'lateral-raise-cable', set_index: 2 },
+    { id: 'd1', exercise_id: 'lateral-raise', set_index: 2 },
+    { id: 'l1', exercise_id: 'lateral-raise-cable', set_index: 1 },
+    { id: 'l2', exercise_id: 'lateral-raise-cable', set_index: 3 },
+    { id: 'm1', exercise_id: 'lateral-raise-machine', set_index: 1 },
+  ]);
+  assert.deepEqual(
+    (await loadSessionPlan(db, 'past')).map((entry) => [entry.exerciseId, entry.sets]),
+    [
+      ['lateral-raise', 3],
+      ['lateral-raise-cable', 1],
+    ],
   );
 });
