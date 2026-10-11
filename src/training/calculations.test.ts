@@ -182,6 +182,12 @@ test('a heavier set at fewer reps can beat a lighter set at more', () => {
   assert.equal(marks.best.set.setIndex, 1);
 });
 
+test('a dumbbell mark is one dumbbell, the number he writes', () => {
+  const marks = bestAndWorstE1rm([set({ weightKg: 11.34, reps: 10, loadFactor: 2 })]);
+  assert.ok(marks);
+  close(marks.best.e1rm, 15.12);
+});
+
 function restSet(setIndex: number, reps: number, restBeforeSeconds: number | null): LoggedSet {
   return {
     sessionId: 's1',

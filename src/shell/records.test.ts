@@ -338,6 +338,30 @@ test('las graficas leen lo mismo que el resto de la app', async () => {
   assert.deepEqual(scored.score, [{ date: '2026-09-22', value: 68 }]);
 });
 
+test('dumbbell weights read per dumbbell in every chart but the volume', async () => {
+  const db = fresh();
+  const first = await startSession(db, { date: '2026-09-21', timeBudget: 'completo' });
+  const hammer = 'hammer-curl-variant-dumbbell';
+  await addSet(db, { sessionId: first, exerciseId: hammer, weightKg: 11.34, reps: 10 });
+  await addSet(db, { sessionId: first, exerciseId: hammer, weightKg: 9.07, reps: 10 });
+  const later = await startSession(db, { date: '2026-09-22', timeBudget: 'completo' });
+  await addSet(db, { sessionId: later, exerciseId: hammer, weightKg: 11.34, reps: 12 });
+  await addSet(db, { sessionId: later, exerciseId: 'peck-deck', weightKg: 50, reps: 10 });
+  const other = await startSession(db, { date: '2026-09-23', timeBudget: 'completo' });
+  await addSet(db, { sessionId: other, exerciseId: 'peck-deck', weightKg: 50, reps: 10 });
+
+  const charts = await loadCharts(db, TODAY, 30);
+  const trend = charts.trends.find((one) => one.exerciseId === hammer)!;
+  const day = (points: { value: number }[]) => Number(points[0].value.toFixed(3));
+  assert.equal(trend.perSide, true);
+  assert.equal(day(trend.topWeight), 11.34);
+  // The mean of one dumbbell cannot pass the heaviest one, which counting two did.
+  assert.equal(day(trend.intensity), 10.205);
+  assert.equal(day(trend.e1rm), 15.12);
+  assert.equal(day(trend.volume), 408.2);
+  assert.equal(charts.trends.find((one) => one.exerciseId === 'peck-deck')?.perSide, false);
+});
+
 test('charts read the whole history for the same statements as a month', async () => {
   const raw = new DatabaseSync(':memory:');
   raw.exec('PRAGMA foreign_keys = ON;');

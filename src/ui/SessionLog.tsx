@@ -610,7 +610,11 @@ export const SessionLog = memo(function SessionLog({
                  aproximacion, asi que se lee redondo. */
                 <Text style={styles.marks}>
                   1RM estimado · mejor {Math.round(fromKg(marks.best.e1rm, unit))} · peor{' '}
-                  {Math.round(fromKg(marks.worst.e1rm, unit))} {unit} · 8 semanas
+                  {Math.round(fromKg(marks.worst.e1rm, unit))} {unit}
+                  {(marks.best.set.loadFactor ?? 1) > 1 && (marks.worst.set.loadFactor ?? 1) > 1
+                    ? ' c/u'
+                    : ''}{' '}
+                  · 8 semanas
                 </Text>
               )}
 

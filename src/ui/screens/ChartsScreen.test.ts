@@ -167,3 +167,34 @@ test('the eye hides the empty days of gym time and exercise progress only, and i
   assert.deepEqual(saved.at(-1), ['chart_gaps_hidden', '[]']);
   assert.equal(bars('Tiempo en el gym').props.gaps, true);
 });
+
+test('dumbbell weights say they are one dumbbell, and the volume does not', async () => {
+  const trend = (exerciseId: string, perSide: boolean) => ({
+    exerciseId,
+    name: exerciseId,
+    perSide,
+    volume: [{ date: '2026-10-05', value: 500 }],
+    topWeight: [{ date: '2026-10-05', value: 11.34 }],
+    e1rm: [],
+    intensity: [],
+    reps: [],
+    sets: [],
+  });
+  const { screen } = chartsFixture({
+    trends: [trend('hammer-curl-variant-dumbbell', true), trend('peck-deck', false)],
+  });
+  let tree = await screen.settle();
+  const progress = () => card(tree, 'Progreso por ejercicio');
+  const bars = () => nodes(progress()).find((node) => node.type === 'DayBars')!.props;
+  const pick = (label: string) =>
+    nodes(progress()).find(
+      (node) => node.type === 'Combobox' && node.props.accessibilityLabel === label,
+    )!.props.onChange;
+  assert.equal(bars().format(453.59237), '1000 lb');
+  pick('Elegir qué se mide')('topWeight');
+  tree = await screen.settle();
+  assert.equal(bars().format(11.34), '25 lb c/u');
+  pick('Elegir el ejercicio')('peck-deck');
+  tree = await screen.settle();
+  assert.equal(bars().format(11.34), '25 lb');
+});

@@ -45,6 +45,15 @@ export function setLoad(set: LoggedSet): number {
   return set.weightKg * (set.loadFactor ?? 1) + (set.bodyWeightKg ?? 0);
 }
 
+/**
+ * El peso tal como lo escribio, con su cuerpo cuando cuelga de una barra: con mancuernas,
+ * el de una. Contra esto se miden el peso maximo, el medio y el 1RM, para que los tres
+ * hablen de la mancuerna que lee en el rack; el doble se queda en el volumen.
+ */
+export function loggedLoad(set: LoggedSet): number {
+  return set.weightKg + (set.bodyWeightKg ?? 0);
+}
+
 /** How much one set of an exercise counts towards a muscle: 1.0 primary, 0.5 secondary. */
 export type MuscleShare = {
   muscle: string;
@@ -251,9 +260,9 @@ export function bestAndWorstE1rm(
   let worst: E1rmMark | null = null;
 
   for (const set of sets) {
-    // El mismo peso efectivo que el volumen: un 1RM de dominadas calculado sobre el
-    // lastre da cero y no dice nada.
-    const e1rm = epleyE1rm(setLoad(set), set.reps);
+    // Con su cuerpo, porque un 1RM de dominadas calculado sobre el lastre da cero y no
+    // dice nada.
+    const e1rm = epleyE1rm(loggedLoad(set), set.reps);
     if (e1rm === null) continue;
     if (!best || e1rm > best.e1rm) best = { set, e1rm };
     if (!worst || e1rm < worst.e1rm) worst = { set, e1rm };

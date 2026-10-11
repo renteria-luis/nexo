@@ -13,12 +13,13 @@ import { targetsInForceOn } from '../core/snapshots.ts';
 import { kcalBand, proteinBand, rollingWeightAverage } from '../core/targets.ts';
 import { dailyTotals, listPortionsBetween } from '../nutrition/index.ts';
 import {
-  epleyE1rm,
   listSessionTimes,
   listWorkingSets,
   loadExerciseMuscles,
+  loggedLoad,
   setCountsByMuscle,
   setLoad,
+  topSetE1rm,
 } from '../training/index.ts';
 
 import {
@@ -70,14 +71,18 @@ export type MuscleBar = {
  *   de una. Es lo que contesta "¿ya subi de 90 a 95?".
  * - `e1rm` es lo que levantaria una sola vez, estimado sobre su mejor serie: compara
  *   dias con repeticiones distintas, que el peso suelto no puede.
- * - `intensity` es el peso medio por repeticion (volumen entre repeticiones): dice si el
- *   dia fue pesado o largo, que es la diferencia entre fuerza e hipertrofia.
+ * - `intensity` es el peso medio por repeticion: dice si el dia fue pesado o largo, que
+ *   es la diferencia entre fuerza e hipertrofia.
+ *
+ * Los tres pesos son el de una mancuerna, como lo escribe; solo el volumen cuenta las dos.
  * - `reps` y `sets` son el trabajo contado, que es como se mide el volumen semanal por
  *   musculo en spec 13.2.
  */
 export type ExerciseTrend = {
   exerciseId: string;
   name: string;
+  /** Todas sus series son con mancuernas, asi que los pesos llevan "c/u". */
+  perSide: boolean;
   volume: Point[];
   topWeight: Point[];
   e1rm: Point[];
@@ -129,19 +134,6 @@ export type ChartsData = {
   setBand: Band;
   trends: ExerciseTrend[];
 };
-
-/** Spec 6.2: por encima de doce repeticiones la formula infla y deja de servir. */
-function bestE1rmOfDay(
-  sets: { weightKg: number; reps: number; loadFactor?: number; bodyWeightKg?: number | null }[],
-): number | null {
-  let best: number | null = null;
-  for (const set of sets) {
-    const e1rm = epleyE1rm(setLoad(set as never), set.reps);
-    if (e1rm === null) continue;
-    if (best === null || e1rm > best) best = e1rm;
-  }
-  return best;
-}
 
 export async function loadCharts(
   db: SQLiteDatabase,
@@ -248,7 +240,7 @@ export async function loadCharts(
 
   const trends: ExerciseTrend[] = [];
   for (const [exerciseId, byDate] of byExercise) {
-    const trend: Omit<ExerciseTrend, 'exerciseId' | 'name'> = {
+    const trend: Omit<ExerciseTrend, 'exerciseId' | 'name' | 'perSide'> = {
       volume: [],
       topWeight: [],
       e1rm: [],
@@ -260,18 +252,19 @@ export async function loadCharts(
     for (const [date, daySets] of [...byDate.entries()].sort()) {
       const totalReps = daySets.reduce((total, set) => total + set.reps, 0);
       // El volumen cuenta las dos mancuernas (`setLoad`), que es la convencion de toda
-      // la app; el peso maximo es el numero que el escribio, que es el que lee en el
-      // disco o en la maquina.
-      const moved = daySets.reduce((total, set) => total + setLoad(set as never) * set.reps, 0);
+      // la app; los pesos son el numero que el escribio, que es el que lee en el disco o
+      // en la maquina.
+      const moved = daySets.reduce((total, set) => total + setLoad(set) * set.reps, 0);
+      const lifted = daySets.reduce((total, set) => total + loggedLoad(set) * set.reps, 0);
       const heaviest = Math.max(...daySets.map((set) => set.weightKg));
       const note = `${daySets.length} ${daySets.length === 1 ? 'serie' : 'series'} · ${totalReps} reps`;
 
-      const best = bestE1rmOfDay(daySets);
+      const best = topSetE1rm(daySets);
       if (best !== null) trend.e1rm.push({ date, value: best, note });
       if (moved > 0) trend.volume.push({ date, value: moved, note });
       if (heaviest > 0) trend.topWeight.push({ date, value: heaviest, note });
-      if (moved > 0 && totalReps > 0) {
-        trend.intensity.push({ date, value: moved / totalReps, note });
+      if (lifted > 0 && totalReps > 0) {
+        trend.intensity.push({ date, value: lifted / totalReps, note });
       }
       trend.reps.push({ date, value: totalReps, note });
       trend.sets.push({ date, value: daySets.length, note });
@@ -279,7 +272,14 @@ export async function loadCharts(
 
     // Un solo punto no es una tendencia, es un punto.
     if (trend.sets.length >= 2) {
-      trends.push({ exerciseId, name: nameOf.get(exerciseId) ?? exerciseId, ...trend });
+      trends.push({
+        exerciseId,
+        name: nameOf.get(exerciseId) ?? exerciseId,
+        perSide: [...byDate.values()].every((daySets) =>
+          daySets.every((set) => (set.loadFactor ?? 1) > 1),
+        ),
+        ...trend,
+      });
     }
   }
   trends.sort((a, b) => b.sets.length - a.sets.length);

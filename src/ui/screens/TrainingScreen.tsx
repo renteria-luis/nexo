@@ -369,7 +369,7 @@ export function TrainingScreen() {
           lastSet={
             previous === null
               ? null
-              : `${formatWeight(previous.weightKg, loaded.unit)} ${loaded.unit} × ${previous.reps}`
+              : `${formatWeight(previous.weightKg, loaded.unit)} ${loaded.unit}${(previous.loadFactor ?? 1) > 1 ? ' c/u' : ''} × ${previous.reps}`
           }
         />
       )}

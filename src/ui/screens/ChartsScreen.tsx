@@ -310,9 +310,10 @@ export function ChartsScreen() {
                   to={data.to}
                   gaps={gapsOf('trend')}
                   width={width}
+                  // Los pesos son los de una mancuerna; el volumen ya cuenta las dos.
                   format={(value) =>
                     measure.inKg
-                      ? `${Math.round(fromKg(value, unit))} ${unit}`
+                      ? `${Math.round(fromKg(value, unit))} ${unit}${trend.perSide && measure.id !== 'volume' ? ' c/u' : ''}`
                       : `${Math.round(value)}`
                   }
                   {...bubble(`trend-${trend.exerciseId}-${measure.id}`)}
