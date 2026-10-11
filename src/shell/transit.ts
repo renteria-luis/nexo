@@ -1,0 +1,53 @@
+import * as Crypto from 'expo-crypto';
+import * as Location from 'expo-location';
+import type { SQLiteDatabase } from 'expo-sqlite';
+
+import { openDatabase } from '../db/index.ts';
+import { readSchedule, replaceSchedule, type CachedSchedule } from '../transit/store.ts';
+import { syncSchedule } from '../transit/sync.ts';
+import { READING_MAX_ERROR_M, type Coordinates } from '../core/geo.ts';
+
+const digest = (content: string) =>
+  Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, content);
+
+export async function loadTransit() {
+  const db = await openDatabase();
+  let cache = await readSchedule(db);
+  if (!cache) {
+    // Deferred so unused Transit does not parse the citywide schedule at app startup.
+    const bundled = require('../../transit/schedule.json');
+    const content = JSON.stringify(bundled);
+    cache = await replaceSchedule(db, content, await digest(content));
+    // Bootstrap does not claim that the phone has checked the remote publisher.
+    await db.runAsync('UPDATE transit_schedule_cache SET checked_at = NULL WHERE id = 1;');
+    cache.checked_at = null;
+  }
+  return { db, cache };
+}
+
+export async function refreshTransit(db: SQLiteDatabase, cache: CachedSchedule) {
+  return syncSchedule(db, cache, { fetch, digest });
+}
+
+let locating: Promise<Coordinates> | null = null;
+
+export function transitLocation(): Promise<Coordinates> {
+  if (locating) return locating;
+  locating = (async () => {
+    const permission = await Location.requestForegroundPermissionsAsync();
+    if (permission.status !== 'granted')
+      throw new Error('Sin permiso de ubicación. Puedes usar el mapa o escribir las coordenadas.');
+    const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+    if (
+      position.coords.accuracy === null ||
+      position.coords.accuracy > READING_MAX_ERROR_M ||
+      Date.now() - position.timestamp > 60_000
+    ) {
+      throw new Error('La ubicación no tiene suficiente precisión. Usa el mapa o las coordenadas.');
+    }
+    return { lat: position.coords.latitude, lng: position.coords.longitude };
+  })().finally(() => {
+    locating = null;
+  });
+  return locating;
+}

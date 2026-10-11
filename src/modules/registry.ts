@@ -8,7 +8,7 @@
 
 import type { ComponentType } from 'react';
 
-export type ModuleId = 'today' | 'training' | 'nutrition' | 'deals' | 'finance';
+export type ModuleId = 'today' | 'training' | 'nutrition' | 'deals' | 'finance' | 'transit';
 
 export type ModuleTab = {
   id: ModuleId;

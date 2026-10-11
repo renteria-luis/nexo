@@ -8,7 +8,8 @@ module.exports = defineConfig([
   // Last: turns off the stylistic rules Prettier already owns.
   prettierConfig,
   {
-    ignores: ['dist/*'],
+    // transit-live is its own Node project, checked by its own install, types and tests.
+    ignores: ['dist/*', 'transit-live/**'],
   },
   {
     // Los scripts sueltos corren en node, no en el telefono: ahi Buffer existe y la

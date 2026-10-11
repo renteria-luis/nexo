@@ -29,7 +29,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "nexo lee tu ubicacion una vez al abrir Entreno, o cuando tocas la flecha, para saber en que gimnasio estas. Nunca la sigue."
+          "locationWhenInUsePermission": "nexo lee tu ubicacion una vez al abrir Entreno o tocar la flecha para reconocer el gimnasio, o cuando usas tu ubicacion al guardar un lugar en Transit. Nunca la sigue."
         }
       ],
       "expo-sharing",

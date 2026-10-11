@@ -1,0 +1,23 @@
+{
+  "name": "nexo-transit-live",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "prepare:data": "node scripts/prepare.mjs",
+    "build": "npm run prepare:data && tsc --noEmit",
+    "test": "npm run prepare:data && node --test src/*.test.ts",
+    "measure": "npm run prepare:data && node scripts/measure.ts"
+  },
+  "dependencies": {
+    "@vercel/functions": "3.9.11",
+    "gtfs-realtime-bindings": "2.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.0",
+    "typescript": "5.9.3"
+  }
+}

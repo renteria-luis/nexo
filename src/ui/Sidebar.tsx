@@ -31,6 +31,7 @@ import {
   Refrigerator,
   Lightbulb,
   List,
+  MapPin,
   Settings,
   Tag,
   Utensils,
@@ -40,6 +41,7 @@ import {
 import { font, hardShadow, sheet, shape, theme } from './theme.ts';
 import { goTo, type Navigate } from './navigation.ts';
 import { useSwipeLock } from './SwipeLock.tsx';
+import { TRANSIT_ENABLED } from '../transit/index.ts';
 
 /**
  * El menu lateral: todo lo que la app sabe hacer, ordenado, sin gastar sitio abajo.
@@ -79,6 +81,7 @@ const SECTIONS: Section[] = [
       { label: 'Hoy', icon: LayoutGrid, route: 'Hoy', tab: true },
       { label: 'Entreno', icon: Dumbbell, route: 'Entreno', tab: true },
       { label: 'Comida', icon: Utensils, route: 'Comida', tab: true },
+      ...(TRANSIT_ENABLED ? [{ label: 'Transit', icon: MapPin, route: 'Transit' }] : []),
     ],
   },
   {

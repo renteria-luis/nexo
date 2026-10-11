@@ -32,7 +32,9 @@ const MIGRATION_TABLE = 'core_migration';
  */
 function isHisData(table: string): boolean {
   if (table === 'deals_match_verdict') return true;
-  return table !== MIGRATION_TABLE && !table.startsWith('deals_');
+  return (
+    table !== MIGRATION_TABLE && table !== 'transit_schedule_cache' && !table.startsWith('deals_')
+  );
 }
 
 /** Lo que hay que saber para leer el archivo sin tener el codigo al lado. */
