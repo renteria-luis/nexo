@@ -9,3 +9,8 @@ package-lock.json
 
 # Written every day by the offers bot; reformatting it here would fight the next run.
 deals/flipp.json
+
+# Compact generated data; its exact bytes are signed by the Transit manifest.
+transit/schedule.json
+transit-live/generated/
+transit-live/package-lock.json

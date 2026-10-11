@@ -1,0 +1,38 @@
+name: transit schedules
+
+on:
+  schedule:
+    - cron: '17 10 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: transit-schedules
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate and prepare the official schedule
+        run: python3 scripts/prepare-transit.py
+      - name: Publish changed public data
+        run: |
+          set -euo pipefail
+          git add transit/schedule.json transit/manifest.json
+          if git diff --cached --quiet; then
+            echo "Official schedule unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(core): refresh transit schedules"
+          git pull --rebase origin main
+          git push origin HEAD:main
