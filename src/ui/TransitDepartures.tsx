@@ -1,16 +1,19 @@
-import { useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import {
   mergeLiveDeparture,
   tripLiveDetail,
   liveFreshness,
   type LiveDeparture,
+  type LiveDetailStop,
   type LiveSnapshot,
 } from '../transit/realtime.ts';
 import { agencyClock, type Departure, type Schedule } from '../transit/schedule.ts';
 import { Button } from './Button.tsx';
-import { font, sheet } from './theme.ts';
+import { Chip } from './Chip.tsx';
+import { Bus, ChevronDown, ChevronUp, TriangleAlert, X } from './icons.ts';
+import { font, shape, sheet, theme } from './theme.ts';
 
 const statusLabel: Record<string, string> = {
   live: 'En vivo LTC',
@@ -47,11 +50,13 @@ function measurement(at: number | null, now: number) {
     : `reporte ${agencyClock(at)} · hace ${Math.max(0, Math.floor((now - at) / 1000))} s`;
 }
 
+const sameDeparture = (a: Departure, b: Departure) =>
+  a.trip[0] === b.trip[0] && a.serviceDate === b.serviceDate && a.stopTime[1] === b.stopTime[1];
+
 export function TransitDepartures({
   schedule,
   departures,
   snapshot,
-  selected,
   current,
   active,
   onSelect,
@@ -59,10 +64,9 @@ export function TransitDepartures({
   schedule: Schedule;
   departures: Departure[];
   snapshot: LiveSnapshot | null;
-  selected: Departure | null;
   current: boolean;
   active: boolean;
-  onSelect: (departure: Departure | null) => void;
+  onSelect: (departure: Departure) => void;
 }) {
   const now = useLiveClock(active);
   const shown = departures
@@ -76,17 +80,13 @@ export function TransitDepartures({
   return (
     <View style={styles.list}>
       {shown.map(({ departure: d, live }) => {
-        const chosen =
-          selected?.trip[0] === d.trip[0] &&
-          selected.serviceDate === d.serviceDate &&
-          selected.stopTime[1] === d.stopTime[1];
         const destination = d.stopTime[7] || d.trip[3] || d.route[2];
         return (
           <View key={`${d.trip[0]}-${d.serviceDate}-${d.stopTime[1]}`}>
             <Button
               label={`${agencyClock(live.at)} · ${d.route[1]} → ${destination} · ${label(live)}${live.eventKind === 'arrival' ? ' · llegada' : ''}`}
-              variant={chosen ? 'primary' : 'ghost'}
-              onPress={() => onSelect(chosen ? null : d)}
+              variant="ghost"
+              onPress={() => onSelect(d)}
             />
             {live.reportedAt !== null && (
               <Text style={styles.note}>
@@ -112,60 +112,232 @@ export function TransitDepartures({
   );
 }
 
-export function TransitTripDetail({
+// Eight and a half rows: the half row says there is more to scroll inside the card.
+const ROW = 52;
+const SHOWN_ROWS = 8.5;
+const RAIL = 34;
+const BUS_SIZE = 26;
+
+function relative(at: number, now: number) {
+  const minutes = Math.round((at - now) / 60_000);
+  return minutes === 0 ? 'ahora' : minutes > 0 ? `en ${minutes} min` : `hace ${-minutes} min`;
+}
+
+function stopNote(s: LiveDetailStop, now: number) {
+  if (s.progress === 'passed') return 'Ya pasó';
+  const late = s.eventKind === 'departure' ? Math.round((s.at - s.scheduledAt) / 60_000) : null;
+  const main =
+    s.status === 'live'
+      ? `En vivo · ${relative(s.at, now)}${
+          late === null
+            ? ' · llegada'
+            : late === 0
+              ? ' · a tiempo'
+              : late > 0
+                ? ` · ${late} min tarde`
+                : ` · ${-late} min antes`
+        }`
+      : label(s);
+  const limits = [
+    s.stopTime[4] === 1 ? 'sin recogida' : s.stopTime[4] > 1 ? 'recogida condicionada' : '',
+    s.stopTime[5] === 1 ? 'sin bajada' : '',
+  ].filter(Boolean);
+  return [main, ...limits].join(' · ');
+}
+
+const TimelineRow = memo(function TimelineRow({
+  name,
+  time,
+  note,
+  live,
+  warning,
+  first,
+  last,
+  boarding,
+  fadedAbove,
+  fadedBelow,
+}: {
+  name: string;
+  time: string;
+  note: string;
+  live: boolean;
+  warning: boolean;
+  first: boolean;
+  last: boolean;
+  boarding: boolean;
+  fadedAbove: boolean;
+  fadedBelow: boolean;
+}) {
+  return (
+    <View style={styles.row} accessibilityLabel={`${name}, ${time}, ${note}`}>
+      <View style={styles.rail}>
+        <View style={[styles.segment, first && styles.hidden, fadedAbove && styles.faded]} />
+        <View style={[styles.segment, last && styles.hidden, fadedBelow && styles.faded]} />
+        <View style={[styles.dot, boarding && styles.dotBoarding]} />
+      </View>
+      <View style={styles.rowText}>
+        <View style={styles.rowLine}>
+          <Text style={[styles.stopName, boarding && styles.stopBoarding]} numberOfLines={1}>
+            {name}
+          </Text>
+          <Text style={[styles.stopTime, !live && styles.stopTimeFaint]}>{time}</Text>
+        </View>
+        <Text
+          style={[styles.stopNote, live && styles.stopNoteLive, warning && styles.stopNoteWarn]}
+          numberOfLines={1}
+        >
+          {note}
+        </Text>
+      </View>
+    </View>
+  );
+});
+
+export function TransitTripTimeline({
   schedule,
   departure,
+  choices,
   snapshot,
   active,
+  onSelect,
+  onClose,
 }: {
   schedule: Schedule;
   departure: Departure;
+  choices: Departure[];
   snapshot: LiveSnapshot | null;
   active: boolean;
+  onSelect: (departure: Departure) => void;
+  onClose: () => void;
 }) {
   const now = useLiveClock(active);
-  const detail = tripLiveDetail(schedule, departure, snapshot, now);
+  const detail = useMemo(
+    () => tripLiveDetail(schedule, departure, snapshot, now),
+    [schedule, departure, snapshot, now],
+  );
+  const times = useMemo(
+    () =>
+      choices
+        .map((d) => ({ d, at: mergeLiveDeparture(schedule, d, snapshot, now).at }))
+        .sort((a, b) => a.at - b.at),
+    [choices, schedule, snapshot, now],
+  );
+  const shownChoices = useMemo(() => {
+    const window = [
+      ...times.filter((t) => t.at < now - 60_000).slice(-1),
+      ...times.filter((t) => t.at >= now - 60_000).slice(0, 5),
+    ];
+    const chosen = times.find((t) => sameDeparture(t.d, departure));
+    return chosen && !window.includes(chosen)
+      ? [...window, chosen].sort((a, b) => a.at - b.at)
+      : window;
+  }, [times, now, departure]);
+  const boarding = detail.stops.findIndex((s) => s.stopTime[1] === departure.stopTime[1]);
+  const scroll = useRef<ScrollView>(null);
+  const placedFor = useRef<string | null>(null);
+  const key = `${departure.trip[0]}/${departure.serviceDate}/${departure.stopTime[1]}`;
+  const bus = detail.bus;
+  const busFresh = bus?.measured === true;
+  const assigned = detail.update?.vehicleId ?? null;
+  const busLine = bus?.vehicle
+    ? `Bus ${bus.vehicle.vehicleId ?? 'LTC'} · ${measurement(bus.vehicle.measuredAt, now)}${bus.measured ? '' : ' · ubicado por las predicciones'}`
+    : bus
+      ? `Bus ${assigned ?? 'LTC'} · ubicado por las predicciones`
+      : assigned
+        ? `Bus ${assigned} asignado · todavía no empieza este viaje`
+        : detail.update
+          ? 'Sin bus asignado todavía'
+          : 'Sin datos en vivo de este viaje';
   return (
-    <View style={styles.detail}>
-      <Text style={styles.body}>
-        Línea {departure.route[1]} · {departure.trip[3]} · servicio {departure.serviceDate}
-      </Text>
-      {detail.vehicles.map((vehicle) => (
-        <Text key={vehicle.entityId} style={styles.note}>
-          Bus {vehicle.vehicleId ?? 'sin número'} · {measurement(vehicle.measuredAt, now)}
+    <View style={styles.trip}>
+      <View style={styles.tripHead}>
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>{departure.route[1]}</Text>
+        </View>
+        <Text style={styles.headsign} numberOfLines={2}>
+          {departure.stopTime[7] || departure.trip[3] || departure.route[2]}
         </Text>
-      ))}
-      <Text style={styles.note}>
-        El avance corresponde al reporte del bus, sin movimiento simulado.
-      </Text>
-      {detail.stops.map((s) => (
-        <Text
-          key={s.stopTime[1]}
-          style={[styles.note, s.stopTime[1] === departure.stopTime[1] && styles.current]}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Cerrar el viaje y ver todas las salidas"
+          hitSlop={8}
+          onPress={onClose}
+          style={styles.close}
         >
-          {agencyClock(s.at)} · {s.stop[2]} · {label(s)}
-          {s.eventKind === 'arrival' ? ' · llegada' : ''}
-          {s.progress === 'previous'
-            ? ' · anterior'
-            : s.progress === 'current'
-              ? ' · parada reportada'
-              : s.progress === 'upcoming'
-                ? ' · próxima'
-                : ''}
-          {s.stopTime[4] === 1
-            ? ' · sin recogida'
-            : s.stopTime[4] > 1
-              ? ' · recogida condicionada'
-              : ''}
-          {s.stopTime[5] === 1 ? ' · sin bajada' : ''}
-        </Text>
-      ))}
+          <X size={18} color={theme.text} strokeWidth={2.5} />
+        </Pressable>
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.choices}
+      >
+        {shownChoices.map(({ d, at }) => (
+          <Chip
+            key={`${d.trip[0]}-${d.serviceDate}-${d.stopTime[1]}`}
+            label={agencyClock(at)}
+            accessibilityLabel={`Salida de las ${agencyClock(at)}`}
+            selected={sameDeparture(d, departure)}
+            onPress={() => onSelect(d)}
+          />
+        ))}
+      </ScrollView>
+      <Text style={styles.note}>{busLine}</Text>
+      <View style={styles.timeline}>
+        <ScrollView
+          ref={scroll}
+          style={{ height: ROW * SHOWN_ROWS }}
+          nestedScrollEnabled
+          onContentSizeChange={() => {
+            if (placedFor.current === key) return;
+            placedFor.current = key;
+            scroll.current?.scrollTo({ y: Math.max(0, (boarding - 2) * ROW), animated: false });
+          }}
+        >
+          <View>
+            {detail.stops.map((s, index) => (
+              <TimelineRow
+                key={s.stopTime[1]}
+                name={s.stop[2]}
+                time={agencyClock(s.progress === 'passed' ? s.scheduledAt : s.at)}
+                note={stopNote(s, now)}
+                live={s.status === 'live' && s.progress !== 'passed'}
+                warning={
+                  s.progress !== 'passed' && (s.status === 'skipped' || s.status === 'canceled')
+                }
+                first={index === 0}
+                last={index === detail.stops.length - 1}
+                boarding={index === boarding}
+                fadedAbove={index <= boarding}
+                fadedBelow={index < boarding}
+              />
+            ))}
+            {bus && (
+              <View
+                pointerEvents="none"
+                accessibilityLabel="Posición del bus"
+                style={[
+                  styles.bus,
+                  { top: (bus.after + 0.5 + bus.fraction) * ROW - BUS_SIZE / 2 },
+                  !busFresh && styles.busEstimated,
+                ]}
+              >
+                <Bus size={14} color={theme.text} strokeWidth={2.5} />
+              </View>
+            )}
+          </View>
+        </ScrollView>
+      </View>
+      <Text style={styles.note}>
+        El bus se dibuja donde lo reportó su GPS, sin movimiento simulado.
+      </Text>
     </View>
   );
 }
 
 export function TransitAlerts({ snapshot, active }: { snapshot: LiveSnapshot; active: boolean }) {
   const now = useLiveClock(active);
+  const [open, setOpen] = useState(false);
   const alerts = snapshot.alerts.filter(
     (alert) =>
       alert.activePeriods.length === 0 ||
@@ -177,19 +349,34 @@ export function TransitAlerts({ snapshot, active }: { snapshot: LiveSnapshot; ac
   );
   if (!alerts.length) return null;
   const fresh = liveFreshness(snapshot, 'alerts', snapshot.generatedAt, now);
+  const Chevron = open ? ChevronUp : ChevronDown;
   return (
     <View style={styles.detail}>
-      <Text style={styles.body}>Alertas LTC</Text>
-      <Text style={styles.note}>
-        {fresh ? 'Reportes vigentes' : 'Últimas alertas guardadas · sin confirmación actual'} ·{' '}
-        {measurement(fresh ? snapshot.generatedAt : snapshot.health.alerts.fetchedAt, now)}
-      </Text>
-      {alerts.map((alert) => (
-        <View key={alert.id}>
-          <Text style={styles.body}>{alert.header}</Text>
-          <Text style={styles.note}>{alert.description}</Text>
-        </View>
-      ))}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        accessibilityLabel={`Alertas LTC, ${alerts.length}`}
+        onPress={() => setOpen(!open)}
+        style={styles.alertsHead}
+      >
+        <TriangleAlert size={16} color={theme.text} strokeWidth={2.5} />
+        <Text style={[styles.body, styles.grow]}>Alertas LTC · {alerts.length}</Text>
+        <Chevron size={16} color={theme.text} strokeWidth={2.5} />
+      </Pressable>
+      {open && (
+        <>
+          <Text style={styles.note}>
+            {fresh ? 'Reportes vigentes' : 'Últimas alertas guardadas · sin confirmación actual'} ·{' '}
+            {measurement(fresh ? snapshot.generatedAt : snapshot.health.alerts.fetchedAt, now)}
+          </Text>
+          {alerts.map((alert) => (
+            <View key={alert.id}>
+              <Text style={styles.body}>{alert.header}</Text>
+              <Text style={styles.note}>{alert.description}</Text>
+            </View>
+          ))}
+        </>
+      )}
     </View>
   );
 }
@@ -199,5 +386,87 @@ const styles = sheet((theme) => ({
   body: { fontFamily: font.bold, fontSize: 14, color: theme.text },
   note: { fontFamily: font.regular, fontSize: 12, color: theme.textFaint },
   detail: { gap: 8, borderTopWidth: 1, borderTopColor: theme.lineSoft, paddingTop: 10 },
-  current: { fontFamily: font.black, color: theme.text },
+  grow: { flex: 1 },
+  alertsHead: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 36 },
+  trip: { gap: 10 },
+  tripHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  badge: {
+    minWidth: 40,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.info,
+    alignItems: 'center',
+  },
+  badgeText: { fontFamily: font.black, fontSize: 15, color: theme.accentInk },
+  headsign: { flex: 1, fontFamily: font.bold, fontSize: 15, color: theme.text },
+  close: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.surface,
+  },
+  choices: { gap: 8, paddingRight: 8 },
+  timeline: {
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radius,
+    backgroundColor: theme.surface,
+    overflow: 'hidden',
+  },
+  row: { height: ROW, flexDirection: 'row' },
+  rail: { width: RAIL, alignItems: 'center' },
+  segment: { width: 8, flex: 1, backgroundColor: theme.line },
+  faded: { backgroundColor: theme.lineSoft },
+  hidden: { backgroundColor: 'transparent' },
+  dot: {
+    position: 'absolute',
+    top: ROW / 2 - 3,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: theme.surface,
+  },
+  dotBoarding: {
+    top: ROW / 2 - 8,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 3,
+    borderColor: theme.line,
+  },
+  rowText: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingRight: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.lineSoft,
+  },
+  rowLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  stopName: { flex: 1, fontFamily: font.bold, fontSize: 13, color: theme.text },
+  stopBoarding: { fontFamily: font.black },
+  stopTime: { fontFamily: font.bold, fontSize: 13, color: theme.text },
+  stopTimeFaint: { fontFamily: font.regular, color: theme.textFaint },
+  stopNote: { fontFamily: font.regular, fontSize: 12, color: theme.textFaint },
+  stopNoteLive: { color: theme.text },
+  stopNoteWarn: { fontFamily: font.bold, color: theme.text },
+  bus: {
+    position: 'absolute',
+    left: (RAIL - BUS_SIZE) / 2,
+    width: BUS_SIZE,
+    height: BUS_SIZE,
+    borderRadius: BUS_SIZE / 2,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    backgroundColor: theme.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  busEstimated: { backgroundColor: theme.surface, borderColor: theme.textGhost },
 }));

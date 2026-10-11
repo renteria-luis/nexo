@@ -14,7 +14,13 @@ import {
   validateLiveSnapshot,
   type LiveSnapshot,
 } from './realtime.ts';
-import { buildStopIndex, departures, scheduledTime, type Schedule } from './schedule.ts';
+import {
+  buildStopIndex,
+  departures,
+  scheduledTime,
+  type Departure,
+  type Schedule,
+} from './schedule.ts';
 
 function snapshotFixture(schedule: Schedule, now: number): LiveSnapshot {
   return {
@@ -187,14 +193,21 @@ test('validated predictions keep the selected branch, repeated stop, and complet
   });
   const checked = validateLiveSnapshot(JSON.parse(JSON.stringify(snapshot)), schedule, query, now);
   const selections: unknown[] = [];
+  const icons = {
+    LoaderCircle: 'LoaderCircle',
+    Bus: 'Bus',
+    ChevronDown: 'ChevronDown',
+    ChevronUp: 'ChevronUp',
+    TriangleAlert: 'TriangleAlert',
+    X: 'X',
+  };
   const list = renderModule('src/ui/TransitDepartures.tsx', {
     '../transit/realtime.ts': realtime,
-    './icons.ts': { LoaderCircle: 'LoaderCircle' },
+    './icons.ts': icons,
   }).mount('TransitDepartures', {
     schedule,
     departures: rows,
     snapshot: checked,
-    selected,
     current: true,
     active: false,
     onSelect: (departure: unknown) => selections.push(departure),
@@ -208,22 +221,46 @@ test('validated predictions keep the selected branch, repeated stop, and complet
   );
   assert.ok(shortTurn);
   shortTurn.props.onPress();
-  assert.deepEqual(selections, [null], 'selecting the exact active loop occurrence closes it');
+  assert.deepEqual(selections, [selected], 'the exact loop occurrence opens');
 
-  const detail = renderModule('src/ui/TransitDepartures.tsx', {
+  let closed = 0;
+  const trip = renderModule('src/ui/TransitDepartures.tsx', {
     '../transit/realtime.ts': realtime,
-    './icons.ts': { LoaderCircle: 'LoaderCircle' },
-  }).mount('TransitTripDetail', {
+    './icons.ts': icons,
+  }).mount('TransitTripTimeline', {
     schedule,
     departure: selected,
+    choices: rows,
     snapshot: checked,
     active: false,
+    onSelect: (departure: Departure) => selections.push(departure),
+    onClose: () => closed++,
   });
-  const detailText = textOf(await detail.settle());
-  assert.match(detailText, /Línea 02 · 2B Terminal · servicio 2026-10-11/);
-  assert.match(detailText, /Road NB · En vivo LTC · anterior/);
-  assert.match(detailText, /Road SB · Horario · sin predicción · parada reportada/);
-  assert.match(detailText, /Road NB · No se detiene · próxima/);
+  const tripTree = await trip.settle();
+  const rowsText = nodes(tripTree)
+    .filter((node) => node.type === 'View' && typeof node.props.accessibilityLabel === 'string')
+    .map((node) => node.props.accessibilityLabel);
+  assert.deepEqual(rowsText, [
+    'Road NB, 08:00, Ya pasó',
+    'Road SB, 08:11, Horario · sin predicción · sin recogida',
+    'Road NB, 08:20, No se detiene · recogida condicionada',
+    'Posición del bus',
+  ]);
+  assert.match(textOf(tripTree), /Bus loop-bus · reporte \d{2}:\d{2} · hace 5 s/);
+  const chips = nodes(tripTree).filter((node) => node.props?.accessibilityRole === 'radio');
+  assert.deepEqual(
+    chips.map((chip) => [chip.props.accessibilityLabel, chip.props.accessibilityState.selected]),
+    [
+      ['Salida de las 08:05', false],
+      ['Salida de las 08:20', true],
+    ],
+  );
+  chips[0].props.onPress();
+  assert.equal(selections.at(-1), rows[0], 'another departure of the line opens from its tab');
+  nodes(tripTree)
+    .find((node) => node.props?.accessibilityLabel === 'Cerrar el viaje y ver todas las salidas')!
+    .props.onPress();
+  assert.equal(closed, 1);
 });
 
 test('retained cancellation evidence is labeled as an old report and arrival-only predictions stay explicit', async (t) => {
@@ -325,11 +362,24 @@ test('alert UI independently expires source freshness and filters future or fini
   const checked = validateLiveSnapshot(snapshot, schedule, query, now);
   const alerts = renderModule('src/ui/TransitDepartures.tsx', {
     '../transit/realtime.ts': realtime,
-    './icons.ts': { LoaderCircle: 'LoaderCircle' },
+    './icons.ts': {
+      LoaderCircle: 'LoaderCircle',
+      Bus: 'Bus',
+      ChevronDown: 'ChevronDown',
+      ChevronUp: 'ChevronUp',
+      TriangleAlert: 'TriangleAlert',
+      X: 'X',
+    },
   }).mount('TransitAlerts', {
     snapshot: checked,
     active: false,
   });
+  const folded = await alerts.settle();
+  assert.match(textOf(folded), /Alertas LTC · 1/);
+  assert.doesNotMatch(textOf(folded), /Active closure/, 'alerts stay folded until he opens them');
+  nodes(folded)
+    .find((node) => node.props?.accessibilityLabel === 'Alertas LTC, 1')!
+    .props.onPress();
   const alertText = textOf(await alerts.settle());
   assert.match(alertText, /Active closure/);
   assert.match(alertText, /Últimas alertas guardadas · sin confirmación actual/);

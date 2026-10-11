@@ -1,5 +1,6 @@
 import { addDays, isRealDate } from '../core/dates.ts';
 import type { CredentialStorage } from '../core/cloud-credentials.ts';
+import type { Coordinates } from '../core/geo.ts';
 import {
   activeServices,
   agencyDate,
@@ -696,12 +697,86 @@ export function relevantLiveAlerts(
 export type LiveDetailStop = LiveDeparture & {
   stop: Stop;
   stopTime: StopTime;
+  scheduledAt: number;
   arrivalAt: number;
   departureAt: number;
   arrivalSource: LiveDeparture['source'];
   departureSource: LiveDeparture['source'];
-  progress: 'previous' | 'current' | 'upcoming' | 'unknown';
+  progress: 'passed' | 'next' | 'upcoming' | 'unknown';
 };
+
+export type BusOnTrip = {
+  /** The last stop of the trip the bus has passed, as an index into its ordered stops. */
+  after: number;
+  /** How far it has gone towards the following stop, from 0 to 1. */
+  fraction: number;
+  /** Whether its reported position placed it, rather than the predictions alone. */
+  measured: boolean;
+  vehicle: LiveVehicle | null;
+};
+
+// A reported position further than this from every segment of the trip is not on it (a
+// detour, or a bus still on another trip), so it cannot say how far along the trip it is.
+const OFF_TRIP_M = 400;
+
+// LTC drops from a trip update the stops its bus has passed, so the first stop still
+// predicted ahead of now is the one it is heading to. Its vehicle feed's own stop number runs
+// one to seventeen stops ahead of the bus and is not used.
+function nextStopIndex(
+  schedule: Schedule,
+  departure: Departure,
+  update: LiveTripUpdate,
+  now: number,
+): number {
+  const pattern = schedule.patterns[departure.trip[6]];
+  for (let i = 0; i < pattern.length; i++) {
+    const stopTime = pattern[i];
+    const stop = update.stops.find((s) => s.stopSequence === stopTime[1]);
+    if (!stop || stop.relationship !== 'scheduled') continue;
+    const at =
+      prediction(
+        stop.departure,
+        scheduledTime(departure.serviceDate, departure.trip[7] + stopTime[3]),
+      ) ??
+      prediction(
+        stop.arrival,
+        scheduledTime(departure.serviceDate, departure.trip[7] + stopTime[2]),
+      );
+    if (at !== null && at >= now - 30_000) return i;
+  }
+  return pattern.length;
+}
+
+// The segment between two consecutive stops of the trip closest to a reported position, and
+// how far along it the position falls. `near` keeps the search around the stop the predictions
+// point at, so a route that returns along the same street cannot land on the other leg.
+function alongStops(
+  schedule: Schedule,
+  departure: Departure,
+  position: Coordinates,
+  near: number | null,
+): { after: number; fraction: number; distance: number } | null {
+  const pattern = schedule.patterns[departure.trip[6]];
+  if (pattern.length < 2) return null;
+  const metres = (stop: Stop) => ({
+    x: (stop[4] - position.lng) * 111_320 * Math.cos((position.lat * Math.PI) / 180),
+    y: (stop[3] - position.lat) * 110_540,
+  });
+  const first = near === null ? 0 : Math.max(0, near - 3);
+  const last = near === null ? pattern.length - 2 : Math.min(pattern.length - 2, near);
+  let best: { after: number; fraction: number; distance: number } | null = null;
+  for (let k = first; k <= last; k++) {
+    const a = metres(schedule.stops[pattern[k][0]]);
+    const b = metres(schedule.stops[pattern[k + 1][0]]);
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const length = dx * dx + dy * dy;
+    const fraction = length === 0 ? 0 : Math.min(1, Math.max(0, -(a.x * dx + a.y * dy) / length));
+    const distance = Math.hypot(a.x + fraction * dx, a.y + fraction * dy);
+    if (!best || distance < best.distance) best = { after: k, fraction, distance };
+  }
+  return best;
+}
 
 export function tripLiveDetail(
   schedule: Schedule,
@@ -713,18 +788,39 @@ export function tripLiveDetail(
   vehicles: LiveVehicle[];
   alerts: LiveAlert[];
   update: LiveTripUpdate | null;
+  bus: BusOnTrip | null;
 } {
   const usable = usableSnapshot(snapshot, schedule, now);
   const update = usable
     ? snapshot.tripUpdates.find((t) => sameTrip(t, departure, schedule))
     : undefined;
   const vehicles = usable ? snapshot.vehicles.filter((v) => sameTrip(v, departure, schedule)) : [];
-  const current = snapshot
-    ? vehicles.find(
-        (v) => v.stopSequence !== null && liveFreshness(snapshot, 'vehicles', v.measuredAt, now),
-      )
-    : undefined;
-  const stops = schedule.patterns[departure.trip[6]].map((stopTime) => {
+  const pattern = schedule.patterns[departure.trip[6]];
+  const vehicle =
+    (usable &&
+      vehicles.find(
+        (v) => v.position !== null && liveFreshness(snapshot, 'vehicles', v.measuredAt, now),
+      )) ||
+    null;
+  const next =
+    usable &&
+    update?.relationship === 'scheduled' &&
+    (vehicle !== null || update.vehicleId !== null) &&
+    liveFreshness(snapshot, 'trips', update.measuredAt, now)
+      ? nextStopIndex(schedule, departure, update, now)
+      : null;
+  const placed = vehicle?.position ? alongStops(schedule, departure, vehicle.position, next) : null;
+  const bus: BusOnTrip | null =
+    placed && placed.distance <= OFF_TRIP_M
+      ? { after: placed.after, fraction: placed.fraction, measured: true, vehicle }
+      : next === null || (next === 0 && vehicle === null)
+        ? null
+        : next === 0
+          ? { after: 0, fraction: 0, measured: false, vehicle }
+          : next >= pattern.length
+            ? { after: pattern.length - 1, fraction: 0, measured: false, vehicle }
+            : { after: next - 1, fraction: 0.5, measured: false, vehicle };
+  const stops = pattern.map((stopTime, index) => {
     const scheduledArrival = scheduledTime(departure.serviceDate, departure.trip[7] + stopTime[2]);
     const scheduledDeparture = scheduledTime(
       departure.serviceDate,
@@ -756,6 +852,7 @@ export function tripLiveDetail(
       ...merged,
       stop: schedule.stops[stopTime[0]],
       stopTime,
+      scheduledAt: scheduledDeparture,
       arrivalAt: arrival ?? scheduledArrival,
       departureAt: departurePrediction ?? scheduledDeparture,
       arrivalSource:
@@ -770,14 +867,15 @@ export function tripLiveDetail(
           : fresh
             ? ('official' as const)
             : ('last-known' as const),
-      progress:
-        current?.stopSequence == null
-          ? ('unknown' as const)
-          : stopTime[1] < current.stopSequence
-            ? ('previous' as const)
-            : stopTime[1] === current.stopSequence
-              ? ('current' as const)
-              : ('upcoming' as const),
+      progress: bus
+        ? index <= bus.after
+          ? ('passed' as const)
+          : index === bus.after + 1
+            ? ('next' as const)
+            : ('upcoming' as const)
+        : next === 0
+          ? ('upcoming' as const)
+          : ('unknown' as const),
     };
   });
   return {
@@ -785,6 +883,7 @@ export function tripLiveDetail(
     vehicles,
     alerts: relevantLiveAlerts(schedule, departure, snapshot, now, null),
     update: update ?? null,
+    bus,
   };
 }
 

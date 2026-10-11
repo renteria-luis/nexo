@@ -30,6 +30,10 @@ test('migration upgrades the existing gym identities and seeds six distinct exac
   assert.equal(places.find((p) => p.id === 'food-basics')?.lng, -81.20999778335016);
   assert.equal(places.find((p) => p.id === 'fanshawe-gym')?.gym_id, 'fanshawe');
   assert.equal(places.find((p) => p.id === 'fit4less')?.gym_id, 'fit4less-proudfoot');
+  assert.deepEqual(
+    places.map((p) => p.icon),
+    ['gym', 'gym', 'grocery', 'grocery', 'cinema', 'mall'],
+  );
   assert.notDeepEqual(
     places.find((p) => p.id === 'masonville-door'),
     places.find((p) => p.id === 'masonville-cinema'),
@@ -40,7 +44,14 @@ test('a seventh place can be edited without modifying the other six, and rejects
   const { db } = await database();
   const before = await listPlaces(db);
   const id = await savePlace(db, { name: 'New door', address: 'Front', lat: 43.01, lng: -81.25 });
+  assert.equal((await listPlaces(db)).at(-1)?.icon, 'pin');
+  await savePlace(db, { id, name: 'Door', address: 'Side', lat: 43.02, lng: -81.26, icon: 'home' });
   await savePlace(db, { id, name: 'Correct door', address: 'Side', lat: 43.02, lng: -81.26 });
+  assert.equal((await listPlaces(db)).at(-1)?.icon, 'home', 'an edit without an icon keeps it');
+  await assert.rejects(
+    savePlace(db, { id, name: 'Door', address: '', lat: 43, lng: -81, icon: 'rocket' as never }),
+    /íconos/,
+  );
   assert.deepEqual((await listPlaces(db)).slice(0, 6), before);
   assert.equal((await listPlaces(db)).at(-1)?.id, id);
   assert.equal((await listPlaces(db)).at(-1)?.lat, 43.02);
@@ -104,6 +115,7 @@ test('personal Transit data round-trips through backups without replaceable city
     address: 'Manual',
     lat: 43.01,
     lng: -81.2,
+    icon: 'work',
   });
   await saveWalkLink(source.db, {
     place_id: id,
@@ -133,6 +145,7 @@ test('pre-Transit backups gain the new seeds while retaining their historical gy
   const scratch = adapt(new DatabaseSync(':memory:'));
   await importBackup(target.db, backup, scratch);
   assert.equal((await listPlaces(target.db)).length, 6);
+  assert.equal((await listPlaces(target.db)).find((p) => p.id === 'costco')?.icon, 'grocery');
   assert.equal(
     target.raw.prepare("SELECT lat FROM training_gym WHERE id='fanshawe'").get()?.lat,
     43.014,

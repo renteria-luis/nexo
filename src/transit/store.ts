@@ -4,11 +4,36 @@ import type { Coordinates } from '../core/geo.ts';
 import { inTransaction, whenIdle } from '../db/transaction.ts';
 import { validateSchedule, validCoordinates, type Schedule } from './schedule.ts';
 
+export const PLACE_ICONS = [
+  'pin',
+  'home',
+  'work',
+  'gym',
+  'school',
+  'grocery',
+  'mall',
+  'store',
+  'cinema',
+  'food',
+  'coffee',
+  'love',
+  'hospital',
+  'pharmacy',
+  'park',
+  'library',
+  'church',
+  'friends',
+  'train',
+  'airport',
+] as const;
+export type PlaceIcon = (typeof PLACE_ICONS)[number];
+
 export type Place = Coordinates & {
   id: string;
   name: string;
   address: string;
   gym_id: string | null;
+  icon: PlaceIcon;
   updated_at: number;
 };
 export type WalkLink = {
@@ -34,8 +59,11 @@ export async function listPlaces(db: SQLiteDatabase): Promise<Place[]> {
 
 export async function savePlace(
   db: SQLiteDatabase,
-  input: { id?: string; name: string; address: string } & Coordinates,
+  input: { id?: string; name: string; address: string; icon?: PlaceIcon } & Coordinates,
 ): Promise<string> {
+  if (input.icon !== undefined && !PLACE_ICONS.includes(input.icon)) {
+    throw new Error('Elige uno de los íconos de la lista.');
+  }
   if (
     !input.name.trim() ||
     input.name.length > 120 ||
@@ -53,13 +81,29 @@ export async function savePlace(
       );
       if (!existing) throw new Error('Ese lugar ya no existe. Vuelve a abrir Transit.');
       await db.runAsync(
-        'UPDATE transit_place SET name = ?, address = ?, lat = ?, lng = ?, updated_at = ? WHERE id = ?;',
-        [input.name.trim(), input.address.trim(), input.lat, input.lng, Date.now(), id],
+        'UPDATE transit_place SET name = ?, address = ?, lat = ?, lng = ?, icon = COALESCE(?, icon), updated_at = ? WHERE id = ?;',
+        [
+          input.name.trim(),
+          input.address.trim(),
+          input.lat,
+          input.lng,
+          input.icon ?? null,
+          Date.now(),
+          id,
+        ],
       );
     } else {
       await db.runAsync(
-        'INSERT INTO transit_place (id, name, address, lat, lng, updated_at) VALUES (?, ?, ?, ?, ?, ?);',
-        [id, input.name.trim(), input.address.trim(), input.lat, input.lng, Date.now()],
+        'INSERT INTO transit_place (id, name, address, lat, lng, icon, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?);',
+        [
+          id,
+          input.name.trim(),
+          input.address.trim(),
+          input.lat,
+          input.lng,
+          input.icon ?? 'pin',
+          Date.now(),
+        ],
       );
     }
   });

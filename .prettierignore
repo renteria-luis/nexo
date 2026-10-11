@@ -13,4 +13,5 @@ deals/flipp.json
 # Compact generated data; its exact bytes are signed by the Transit manifest.
 transit/schedule.json
 transit-live/generated/
+transit-live/.vercel/
 transit-live/package-lock.json

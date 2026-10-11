@@ -3,6 +3,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Line, Polyline, Text as SvgText } from 'react-native-svg';
 
 import { agencyClock } from '../transit/schedule.ts';
+import { Bus } from './icons.ts';
+import { placeIcon } from './placeIcons.ts';
 import type { TransitMapProps } from './TransitMap.types.ts';
 import { font } from './theme.ts';
 import { useReportedBuses } from './useReportedBuses.ts';
@@ -98,7 +100,7 @@ export const TransitMap = memo(function TransitMap({
                 key={p.id}
                 cx={x(p.lng)}
                 cy={y(p.lat)}
-                r={p.id === selectedPlace ? 11 : 7}
+                r={p.id === selectedPlace ? 14 : 12}
                 fill={p.id === selectedPlace ? '#17683A' : '#3977A5'}
               />
             ))}
@@ -119,7 +121,7 @@ export const TransitMap = memo(function TransitMap({
                 key={`bus-${bus.id}`}
                 cx={x(bus.lng)}
                 cy={y(bus.lat)}
-                r={8}
+                r={12}
                 fill={bus.stale ? '#777777' : '#C34438'}
                 stroke="#FFFFFF"
                 strokeWidth={2}
@@ -146,17 +148,33 @@ export const TransitMap = memo(function TransitMap({
             ))}
           {places
             .filter((p) => visible(p.lat, p.lng))
-            .map((p) => (
-              <Pressable
-                key={p.id}
-                accessibilityRole="button"
-                accessibilityLabel={p.name}
-                style={[styles.marker, { left: x(p.lng) - 14, top: y(p.lat) - 14 }]}
-                onPress={(event) => {
-                  event.stopPropagation();
-                  onPlace(p.id);
-                }}
-              />
+            .map((p) => {
+              const Icon = placeIcon(p.icon);
+              return (
+                <Pressable
+                  key={p.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={p.name}
+                  style={[styles.marker, { left: x(p.lng) - 14, top: y(p.lat) - 14 }]}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    onPlace(p.id);
+                  }}
+                >
+                  <Icon size={14} color="#FFFFFF" strokeWidth={2.5} />
+                </Pressable>
+              );
+            })}
+          {reports
+            .filter((bus) => visible(bus.lat, bus.lng))
+            .map((bus) => (
+              <View
+                key={`bus-${bus.id}`}
+                pointerEvents="none"
+                style={[styles.marker, { left: x(bus.lng) - 14, top: y(bus.lat) - 14 }]}
+              >
+                <Bus size={14} color="#FFFFFF" strokeWidth={2.5} />
+              </View>
             ))}
         </View>
         <View style={styles.controls}>
@@ -209,7 +227,14 @@ const styles = StyleSheet.create({
     borderColor: '#46514B',
   },
   controlText: { fontFamily: font.bold, fontSize: 22, color: '#46514B' },
-  marker: { position: 'absolute', width: 28, height: 28, borderRadius: 14 },
+  marker: {
+    position: 'absolute',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   frame: { height: 250, backgroundColor: '#EEF2EF', borderRadius: 10, overflow: 'hidden' },
   caption: { fontFamily: font.regular, fontSize: 12, marginBottom: 6, color: '#46514B' },
 });

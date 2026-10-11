@@ -26,9 +26,11 @@ import {
   queryInstant,
   savePlace,
   saveWalkLink,
+  PLACE_ICONS,
   type CachedSchedule,
   type Departure,
   type Place,
+  type PlaceIcon,
   type WalkLink,
 } from '../../transit/index.ts';
 import { validCoordinates } from '../../transit/schedule.ts';
@@ -38,16 +40,24 @@ import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
 import { Chip } from '../Chip.tsx';
 import { Pencil, Plus, RefreshCw } from '../icons.ts';
+import { PLACE_ICON_VIEWS } from '../placeIcons.ts';
 import { TextField } from '../TextField.tsx';
 import { TransitMap } from '../TransitMap';
 import type { ReportedBus } from '../TransitMap.types.ts';
-import { TransitAlerts, TransitDepartures, TransitTripDetail } from '../TransitDepartures.tsx';
+import { TransitAlerts, TransitDepartures, TransitTripTimeline } from '../TransitDepartures.tsx';
 import { TransitLiveSettings } from '../TransitLiveSettings.tsx';
 import { useTransitLive } from '../useTransitLive.ts';
 import { font, sheet, shape } from '../theme.ts';
 import { Screen } from './Screen.tsx';
 
-type Draft = { id?: string; name: string; address: string; lat: string; lng: string };
+type Draft = {
+  id?: string;
+  name: string;
+  address: string;
+  lat: string;
+  lng: string;
+  icon: PlaceIcon;
+};
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 class TransitBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
@@ -253,6 +263,15 @@ function TransitContent() {
         : [],
     [schedule, index, stopIndex, effectiveFrom, liveMode],
   );
+  const choices = useMemo(
+    () =>
+      selectedDetail
+        ? departuresList.filter(
+            (d) => d.route[0] === selectedDetail.route[0] && d.trip[4] === selectedDetail.trip[4],
+          )
+        : [],
+    [departuresList, selectedDetail],
+  );
   const tripsById = useMemo(() => new Map(schedule?.trips.map((t) => [t[0], t]) ?? []), [schedule]);
   const buses = useMemo<ReportedBus[]>(() => {
     if (!schedule || !snapshot?.staticCompatible) return [];
@@ -384,7 +403,7 @@ function TransitContent() {
             variant="ghost"
             disabled={busy || !!draft}
             onPress={() => {
-              setDraft({ name: '', address: '', lat: '', lng: '' });
+              setDraft({ name: '', address: '', lat: '', lng: '', icon: 'pin' });
               setProblem(null);
             }}
           />
@@ -417,6 +436,7 @@ function TransitContent() {
               address: place.address,
               lat: String(place.lat),
               lng: String(place.lng),
+              icon: place.icon,
             })
           }
         />
@@ -456,6 +476,19 @@ function TransitContent() {
           <Text style={styles.note}>
             Escribe coordenadas, toca el mapa o usa tu ubicación. Se guarda al tocar Guardar.
           </Text>
+          <Text style={styles.note}>Ícono en el mapa: {PLACE_ICON_VIEWS[draft.icon].label}</Text>
+          <View style={styles.wrap}>
+            {PLACE_ICONS.map((icon) => (
+              <Chip
+                key={icon}
+                label=""
+                icon={PLACE_ICON_VIEWS[icon].icon}
+                accessibilityLabel={`Ícono ${PLACE_ICON_VIEWS[icon].label}`}
+                selected={draft.icon === icon}
+                onPress={() => setDraft((d) => d && { ...d, icon })}
+              />
+            ))}
+          </View>
           <Button
             label="Usar mi ubicación"
             loading={busy}
@@ -576,82 +609,87 @@ function TransitContent() {
               Sin datos frescos en alguna fuente. Se conserva el último reporte y el horario.
             </Text>
           )}
-          {snapshot && <TransitAlerts snapshot={snapshot} active={live.active} />}
-          <View style={styles.row}>
-            <TextField
-              accessibilityLabel="Fecha de horarios"
-              value={date}
-              onChange={setDate}
-              placeholder="AAAA-MM-DD"
-              style={[styles.input, styles.flex]}
-            />
-            <TextField
-              accessibilityLabel="Hora de horarios"
-              value={clock}
-              onChange={setClock}
-              placeholder="HH:MM"
-              style={[styles.input, styles.flex]}
-            />
-          </View>
-          <View style={styles.wrap}>
-            <Button
-              label="Ver horarios"
-              onPress={() => {
-                try {
-                  setFrom(queryInstant(date, clock));
-                  setLiveMode(false);
-                  setProblem(null);
-                } catch (error) {
-                  setProblem(message(error));
-                }
-              }}
-            />
-            <Button
-              label="Ahora"
-              variant="ghost"
-              onPress={() => {
-                const now = Date.now();
-                setDate(agencyDate(now));
-                setClock(agencyClock(now));
-                setFrom(now);
-                setLiveMode(true);
-                setProblem(null);
-              }}
-            />
-          </View>
-          <Text style={styles.note}>
-            Desde {agencyDate(from)} {agencyClock(from)}, hora de London. Próximas salidas dentro de
-            24 horas.
-          </Text>
-          {expired && (
-            <Text style={styles.error}>
-              El horario guardado venció el {schedule.validTo}. Actualiza antes de confiar en el
-              servicio.
-            </Text>
-          )}
-          {outsideDate && (
-            <Text style={styles.note}>
-              La fecha está fuera de vigencia. Solo pueden aparecer viajes que continúan desde un
-              día de servicio válido anterior.
-            </Text>
-          )}
-          <TransitDepartures
-            schedule={schedule}
-            departures={departuresList}
-            snapshot={snapshot}
-            selected={selectedDetail}
-            current={liveMode}
-            active={live.active}
-            onSelect={setDetail}
-          />
-          {selectedDetail && (
-            <TransitTripDetail
+          {selectedDetail ? (
+            <TransitTripTimeline
               schedule={schedule}
               departure={selectedDetail}
+              choices={choices}
               snapshot={snapshot}
               active={live.active}
+              onSelect={setDetail}
+              onClose={() => setDetail(null)}
             />
+          ) : (
+            <>
+              <View style={styles.row}>
+                <TextField
+                  accessibilityLabel="Fecha de horarios"
+                  value={date}
+                  onChange={setDate}
+                  placeholder="AAAA-MM-DD"
+                  style={[styles.input, styles.flex]}
+                />
+                <TextField
+                  accessibilityLabel="Hora de horarios"
+                  value={clock}
+                  onChange={setClock}
+                  placeholder="HH:MM"
+                  style={[styles.input, styles.flex]}
+                />
+              </View>
+              <View style={styles.wrap}>
+                <Button
+                  label="Ver horarios"
+                  onPress={() => {
+                    try {
+                      setFrom(queryInstant(date, clock));
+                      setLiveMode(false);
+                      setProblem(null);
+                    } catch (error) {
+                      setProblem(message(error));
+                    }
+                  }}
+                />
+                <Button
+                  label="Ahora"
+                  variant="ghost"
+                  onPress={() => {
+                    const now = Date.now();
+                    setDate(agencyDate(now));
+                    setClock(agencyClock(now));
+                    setFrom(now);
+                    setLiveMode(true);
+                    setProblem(null);
+                  }}
+                />
+              </View>
+              <Text style={styles.note}>
+                Desde {agencyDate(from)} {agencyClock(from)}, hora de London. Próximas salidas
+                dentro de 24 horas.
+              </Text>
+              {expired && (
+                <Text style={styles.error}>
+                  El horario guardado venció el {schedule.validTo}. Actualiza antes de confiar en el
+                  servicio.
+                </Text>
+              )}
+              {outsideDate && (
+                <Text style={styles.note}>
+                  La fecha está fuera de vigencia. Solo pueden aparecer viajes que continúan desde
+                  un día de servicio válido anterior.
+                </Text>
+              )}
+              <TransitDepartures
+                schedule={schedule}
+                departures={departuresList}
+                snapshot={snapshot}
+                current={liveMode}
+                active={live.active}
+                onSelect={setDetail}
+              />
+            </>
           )}
+          {snapshot && <TransitAlerts snapshot={snapshot} active={live.active} />}
         </Card>
       )}
       {stop && (

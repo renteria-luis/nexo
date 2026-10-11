@@ -288,9 +288,61 @@ test('arrival-only predictions are labeled arrival; detail keeps arrival/departu
   assert.equal(detail.stops[0].arrivalSource, 'official');
   assert.equal(detail.stops[0].departureSource, 'schedule');
   assert.equal(detail.stops[0].departureAt, departure.at);
-  assert.equal(detail.stops[1].progress, 'upcoming');
+  assert.deepEqual(
+    detail.stops.map((s) => s.progress),
+    ['passed', 'next'],
+  );
   snapshot.vehicles[0].measuredAt = NOW - 100_000;
-  assert.equal(tripLiveDetail(schedule, departure, snapshot, NOW).stops[0].progress, 'unknown');
+  const stale = tripLiveDetail(schedule, departure, snapshot, NOW);
+  assert.equal(stale.bus, null, 'an old position does not place the bus');
+  assert.deepEqual(
+    stale.stops.map((s) => s.progress),
+    ['upcoming', 'upcoming'],
+    'the predictions still say the assigned bus has not reached the first stop',
+  );
+});
+
+test('the bus sits where its GPS and the predictions put it, not at the stop number LTC reports', () => {
+  const { schedule, departure, snapshot } = fixture();
+  schedule.stops.push(['C', '12', 'Road far', 43.002, -81.002]);
+  schedule.patterns[0].push([2, 3, 1_200, 1_200, 0, 0, 1, '']);
+  const update = snapshot.tripUpdates[0];
+  update.stops = [
+    {
+      stopId: 'B',
+      stopSequence: 2,
+      relationship: 'scheduled',
+      arrival: null,
+      departure: { time: NOW + 120_000, delay: 30, uncertainty: null },
+    },
+    {
+      stopId: 'C',
+      stopSequence: 3,
+      relationship: 'scheduled',
+      arrival: null,
+      departure: { time: NOW + 600_000, delay: 30, uncertainty: null },
+    },
+  ];
+  const vehicle = snapshot.vehicles[0];
+  vehicle.stopId = 'C';
+  vehicle.stopSequence = 3;
+  vehicle.position = { lat: 43.00004, lng: -81.00004, bearing: null, speed: 8 };
+  const detail = tripLiveDetail(schedule, departure, snapshot, NOW);
+  assert.equal(detail.bus?.after, 0);
+  assert.equal(detail.bus?.measured, true);
+  assert.ok(detail.bus!.fraction > 0.3 && detail.bus!.fraction < 0.5);
+  assert.deepEqual(
+    detail.stops.map((s) => s.progress),
+    ['passed', 'next', 'upcoming'],
+  );
+  vehicle.position = { lat: 44, lng: -80, bearing: null, speed: 8 };
+  const off = tripLiveDetail(schedule, departure, snapshot, NOW);
+  assert.equal(off.bus?.measured, false, 'a position off the trip falls back to the predictions');
+  assert.equal(off.bus?.after, 0);
+  assert.deepEqual(
+    off.stops.map((s) => s.progress),
+    ['passed', 'next', 'upcoming'],
+  );
 });
 
 test('timestamp-absent cancellation uses current feed evidence without inventing an entity time', () => {

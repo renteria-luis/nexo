@@ -3,6 +3,8 @@ import { StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 
 import { agencyClock } from '../transit/schedule.ts';
+import { Bus } from './icons.ts';
+import { placeIcon } from './placeIcons.ts';
 import { useSwipeLock } from './SwipeLock.tsx';
 import { useReportedBuses } from './useReportedBuses.ts';
 import type { TransitMapProps } from './TransitMap.types.ts';
@@ -76,16 +78,23 @@ export const TransitMap = memo(function TransitMap({
             strokeWidth={4}
           />
         )}
-        {places.map((p) => (
-          <Marker
-            key={p.id}
-            identifier={p.id}
-            coordinate={{ latitude: p.lat, longitude: p.lng }}
-            title={p.name}
-            pinColor={p.id === selectedPlace ? '#17683A' : '#3977A5'}
-            onPress={() => onPlace(p.id)}
-          />
-        ))}
+        {places.map((p) => {
+          const Icon = placeIcon(p.icon);
+          return (
+            <Marker
+              key={p.id}
+              identifier={p.id}
+              coordinate={{ latitude: p.lat, longitude: p.lng }}
+              title={p.name}
+              anchor={{ x: 0.5, y: 0.5 }}
+              onPress={() => onPlace(p.id)}
+            >
+              <View style={[styles.place, p.id === selectedPlace && styles.placeChosen]}>
+                <Icon size={16} color="#FFFFFF" strokeWidth={2.5} />
+              </View>
+            </Marker>
+          );
+        })}
         {stops.map((s) => (
           <Marker
             key={s[0]}
@@ -111,13 +120,30 @@ export const TransitMap = memo(function TransitMap({
             coordinate={{ latitude: bus.lat, longitude: bus.lng }}
             title={bus.label}
             description={`${bus.stale ? 'Último reporte' : 'Posición reportada'} · ${bus.measuredAt === null ? 'sin hora de medición' : agencyClock(bus.measuredAt)}`}
-            pinColor={bus.stale ? '#777777' : '#C34438'}
+            anchor={{ x: 0.5, y: 0.5 }}
             zIndex={3}
-          />
+          >
+            <View style={[styles.bus, bus.stale && styles.busStale]}>
+              <Bus size={14} color="#FFFFFF" strokeWidth={2.5} />
+            </View>
+          </Marker>
         ))}
       </MapView>
     </View>
   );
 });
 
-const styles = StyleSheet.create({ frame: { height: 280, overflow: 'hidden', borderRadius: 10 } });
+const marker = {
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderWidth: 2,
+  borderColor: '#FFFFFF',
+} as const;
+
+const styles = StyleSheet.create({
+  frame: { height: 280, overflow: 'hidden', borderRadius: 10 },
+  place: { ...marker, width: 30, height: 30, borderRadius: 15, backgroundColor: '#3977A5' },
+  placeChosen: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#17683A' },
+  bus: { ...marker, width: 28, height: 28, borderRadius: 14, backgroundColor: '#C34438' },
+  busStale: { backgroundColor: '#777777' },
+});

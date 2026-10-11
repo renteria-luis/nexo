@@ -1,5 +1,5 @@
-export { listPlaces, savePlace, listWalkLinks, saveWalkLink } from './store.ts';
-export type { Place, WalkLink, CachedSchedule } from './store.ts';
+export { listPlaces, savePlace, listWalkLinks, saveWalkLink, PLACE_ICONS } from './store.ts';
+export type { Place, PlaceIcon, WalkLink, CachedSchedule } from './store.ts';
 export {
   nearbyStops,
   departures,

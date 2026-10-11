@@ -7,6 +7,8 @@ test('native map gestures retain the swipe lock for a full pinch and release on 
   const interaction: boolean[] = [];
   const screen = renderModule('src/ui/TransitMap.native.tsx', {
     'react-native-maps': { __esModule: true, default: 'MapView', Marker: 'Marker' },
+    './icons.ts': { Bus: 'Bus' },
+    './placeIcons.ts': { placeIcon: () => 'PlaceIcon' },
     './SwipeLock.tsx': {
       useSwipeLock: () => ({
         acquire: () => {
@@ -51,6 +53,8 @@ test('native markers select stable identifiers and only background map taps crea
   const points: { lat: number; lng: number }[] = [];
   const screen = renderModule('src/ui/TransitMap.native.tsx', {
     'react-native-maps': { __esModule: true, default: 'MapView', Marker: 'Marker' },
+    './icons.ts': { Bus: 'Bus' },
+    './placeIcons.ts': { placeIcon: () => 'PlaceIcon' },
     './SwipeLock.tsx': { useSwipeLock: () => ({ acquire: () => () => undefined }) },
   }).mount('TransitMap', {
     center: { lat: 43, lng: -81 },
@@ -65,6 +69,11 @@ test('native markers select stable identifiers and only background map taps crea
   });
   const tree = nodes(await screen.settle());
   const markers = tree.filter((n) => n.type === 'Marker');
+  assert.equal(nodes(markers[0].props.children)[0].type, 'View');
+  assert.ok(
+    nodes(markers[0].props.children).some((n) => n.type === 'PlaceIcon'),
+    'a place shows its own icon',
+  );
   markers[0].props.onPress();
   markers[1].props.onPress();
   assert.deepEqual(selected, ['door', 'STOP']);
@@ -85,6 +94,8 @@ test('native live map retains measured bus points and draws only the selected tr
       Marker: 'Marker',
       Polyline: 'Polyline',
     },
+    './icons.ts': { Bus: 'Bus' },
+    './placeIcons.ts': { placeIcon: () => 'PlaceIcon' },
     './SwipeLock.tsx': { useSwipeLock: () => ({ acquire: () => () => undefined }) },
   }).mount('TransitMap', {
     center: { lat: 43, lng: -81 },
@@ -114,6 +125,10 @@ test('native live map retains measured bus points and draws only the selected tr
   const bus = tree.find((n) => n.type === 'Marker')!;
   assert.deepEqual(bus.props.coordinate, { latitude: 43.01, longitude: -81.02 });
   assert.match(bus.props.description, /Último reporte/);
+  assert.ok(
+    nodes(bus.props.children).some((n) => n.type === 'Bus'),
+    'a bus is drawn as a bus',
+  );
   assert.match(bus.props.title, /Short turn/);
   assert.deepEqual(tree.find((n) => n.type === 'Polyline')!.props.coordinates, [
     { latitude: 43, longitude: -81 },
