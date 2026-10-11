@@ -1,6 +1,9 @@
 # Source of truth, kept local. Contains personal health data and must never be published.
 SPEC.md
 
+# Transit's plan, kept local. Holds his home, work and other private places.
+docs/transit-plan.md
+
 # Claude Code config. A global ignore excludes .claude/, but the secret-blocking hook
 # is enforcement and has to be versioned with the code it protects.
 !.claude/
