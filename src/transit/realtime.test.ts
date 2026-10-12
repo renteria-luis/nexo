@@ -3,7 +3,7 @@ import { setImmediate } from 'node:timers/promises';
 import { test } from 'node:test';
 
 import { scheduleFixture } from './fixtures.ts';
-import { scheduledTime, type Departure } from './schedule.ts';
+import { scheduledTime, type Departure, type Stop, type StopTime } from './schedule.ts';
 import {
   buildLiveQuery,
   createLiveClient,
@@ -288,17 +288,19 @@ test('arrival-only predictions are labeled arrival; detail keeps arrival/departu
   assert.equal(detail.stops[0].arrivalSource, 'official');
   assert.equal(detail.stops[0].departureSource, 'schedule');
   assert.equal(detail.stops[0].departureAt, departure.at);
+  assert.equal(detail.bus?.placedBy, 'gps');
   assert.deepEqual(
     detail.stops.map((s) => s.progress),
-    ['passed', 'next'],
+    ['next', 'upcoming'],
+    'a bus waiting at the first stop has passed nothing',
   );
   snapshot.vehicles[0].measuredAt = NOW - 100_000;
   const stale = tripLiveDetail(schedule, departure, snapshot, NOW);
-  assert.equal(stale.bus, null, 'an old position does not place the bus');
+  assert.equal(stale.bus?.placedBy, 'last-gps', 'an old position stays, as the last report');
+  assert.equal(stale.bus?.vehicle?.measuredAt, NOW - 100_000, 'with its own time');
   assert.deepEqual(
     stale.stops.map((s) => s.progress),
-    ['upcoming', 'upcoming'],
-    'the predictions still say the assigned bus has not reached the first stop',
+    ['next', 'upcoming'],
   );
 });
 
@@ -328,20 +330,23 @@ test('the bus sits where its GPS and the predictions put it, not at the stop num
   vehicle.stopSequence = 3;
   vehicle.position = { lat: 43.00004, lng: -81.00004, bearing: null, speed: 8 };
   const detail = tripLiveDetail(schedule, departure, snapshot, NOW);
-  assert.equal(detail.bus?.after, 0);
-  assert.equal(detail.bus?.measured, true);
-  assert.ok(detail.bus!.fraction > 0.3 && detail.bus!.fraction < 0.5);
+  assert.equal(detail.bus?.along?.after, 0);
+  assert.equal(detail.bus?.placedBy, 'gps');
+  assert.ok(detail.bus!.along!.fraction > 0.3 && detail.bus!.along!.fraction < 0.5);
+  assert.deepEqual(detail.bus?.point, { lat: 43.00004, lng: -81.00004 }, 'the map gets the report');
   assert.deepEqual(
     detail.stops.map((s) => s.progress),
     ['passed', 'next', 'upcoming'],
   );
   vehicle.position = { lat: 44, lng: -80, bearing: null, speed: 8 };
   const off = tripLiveDetail(schedule, departure, snapshot, NOW);
-  assert.equal(off.bus?.measured, false, 'a position off the trip falls back to the predictions');
-  assert.equal(off.bus?.after, 0);
+  assert.equal(off.bus?.why, 'off-trip', 'a position off the trip is not forced onto the line');
+  assert.equal(off.bus?.along, null);
+  assert.deepEqual(off.bus?.point, { lat: 44, lng: -80 }, 'the map still shows where it is');
   assert.deepEqual(
     off.stops.map((s) => s.progress),
     ['passed', 'next', 'upcoming'],
+    'the predictions still say how far the trip has gone',
   );
 });
 
@@ -591,6 +596,12 @@ test('opening a departure keeps the stop data and asks for the trip after five s
   client.setForeground(true);
   await flush();
   assert.equal(sent.length, 1);
+  const atB = { ...departure, stopTime: schedule.patterns[0][1] };
+  assert.equal(
+    mergeLiveDeparture(schedule, atB, client.getState().snapshot, Date.now()).status,
+    'schedule',
+    'a stop that reading did not ask about reads as schedule, not as missing a prediction',
+  );
   client.setQuery(query, { departureAt: departure.at });
   assert.ok(client.getState().snapshot, 'the stop data stays while the trip loads');
   t.mock.timers.tick(4_999);
@@ -601,7 +612,10 @@ test('opening a departure keeps the stop data and asks for the trip after five s
   assert.equal(sent.length, 2);
   assert.equal(sent[1].trips.length, 1);
   client.setQuery(buildLiveQuery(schedule, { stopIds: ['B'] }));
-  assert.equal(client.getState().snapshot, null, 'another stop starts without the old stop data');
+  assert.ok(
+    client.getState().snapshot,
+    'another stop keeps the last reading until its own arrives',
+  );
   client.dispose();
 });
 
@@ -695,5 +709,323 @@ test('partial source failure retains source evidence with stale health and old s
     mergeLiveDeparture(schedule, fixture().departure, latest, Date.now()).source,
     'last-known',
   );
+  client.dispose();
+});
+
+// Eight stops 300 m apart going north, two minutes apart, on a straight drawn path: the
+// weekend trip leaves S0 at 08:00 on 2026-10-11.
+function lineFixture() {
+  const schedule = scheduleFixture();
+  schedule.stops = Array.from({ length: 8 }, (_, i): Stop => [
+    `S${i}`,
+    String(i),
+    `Stop ${i}`,
+    43 + i * 0.0027,
+    -81,
+  ]);
+  schedule.patterns = [
+    schedule.stops.map((_, i): StopTime => [i, i + 1, i * 120, i * 120, 0, 0, 1, '']),
+  ];
+  schedule.shapes = { shape: schedule.stops.map((s, i) => [s[3], s[4], i + 1]) };
+  const trip = schedule.trips[1];
+  const day = '2026-10-11';
+  const at = (index: number) => scheduledTime(day, trip[7] + index * 120);
+  const departure: Departure = {
+    trip,
+    route: schedule.routes[0],
+    stopTime: schedule.patterns[0][0],
+    serviceDate: day,
+    at: at(0),
+  };
+  const identity = {
+    tripId: trip[0],
+    routeId: '02',
+    serviceDate: day,
+    directionId: null,
+    startTime: null,
+  };
+  const reading = (generatedAt: number): LiveSnapshot => {
+    const health = {
+      status: 'ok' as const,
+      feedTimestamp: generatedAt,
+      fetchedAt: generatedAt,
+      error: null,
+    };
+    return {
+      schema: 1,
+      generatedAt,
+      staticVersion: schedule.feedVersion,
+      staticSourceSha256: schedule.sourceSha256,
+      staticCompatible: true,
+      health: { trips: { ...health }, vehicles: { ...health }, alerts: { ...health } },
+      tripUpdates: [],
+      vehicles: [],
+      alerts: [],
+      issues: { unmatchedTrips: 0, ambiguousStops: 0, invalidEntities: 0, truncated: false },
+    };
+  };
+  const update = (measuredAt: number, times: Record<number, number>, vehicleId = 'bus-7') => ({
+    ...identity,
+    entityId: `update-${vehicleId}`,
+    vehicleId,
+    measuredAt,
+    relationship: 'scheduled' as const,
+    delay: null,
+    stops: Object.entries(times).map(([index, time]) => ({
+      stopId: `S${index}`,
+      stopSequence: Number(index) + 1,
+      relationship: 'scheduled' as const,
+      arrival: { time, delay: null, uncertainty: null },
+      departure: null,
+    })),
+  });
+  const vehicle = (measuredAt: number, lat: number, vehicleId = 'bus-7') => ({
+    ...identity,
+    entityId: `position-${vehicleId}`,
+    vehicleId,
+    measuredAt,
+    stopId: null,
+    stopSequence: null,
+    status: null,
+    position: { lat, lng: -81, bearing: null, speed: null },
+  });
+  return { schedule, departure, at, reading, update, vehicle, identity };
+}
+
+test('a reading stays current until the next one is due, then its reports turn into last reports', () => {
+  const { schedule, departure, at, reading, update, vehicle } = lineFixture();
+  const read = at(4) + 30_000;
+  const snapshot = reading(read);
+  // As LTC's files arrive: a GPS report about a minute old when the service answers.
+  snapshot.tripUpdates.push(update(read - 60_000, { 5: at(5), 6: at(6), 7: at(7) }));
+  snapshot.vehicles.push(vehicle(read - 60_000, 43 + 4.5 * 0.0027));
+  const boarding = { ...departure, stopTime: schedule.patterns[0][5], at: at(5) };
+  const due = read + 45_000;
+  assert.equal(mergeLiveDeparture(schedule, boarding, snapshot, due).status, 'live');
+  assert.equal(tripLiveDetail(schedule, departure, snapshot, due).bus?.placedBy, 'gps');
+  const missed = read + 91_000;
+  assert.equal(mergeLiveDeparture(schedule, boarding, snapshot, missed).status, 'stale');
+  const last = tripLiveDetail(schedule, departure, snapshot, missed);
+  assert.equal(last.bus?.placedBy, 'last-gps', 'two missed reads leave the last report, not a gap');
+  assert.equal(last.bus?.vehicle?.measuredAt, read - 60_000);
+  snapshot.vehicles[0].measuredAt = read - 91_000;
+  const old = tripLiveDetail(schedule, departure, snapshot, read).bus;
+  assert.equal(old?.placedBy, 'estimate', 'a report already old when read is never current');
+  assert.equal(old?.vehicle?.measuredAt, read - 91_000, 'the estimate still names that report');
+  assert.equal(
+    tripLiveDetail(schedule, departure, snapshot, read - 31_000).bus,
+    null,
+    'a reading from the future is not used at all',
+  );
+});
+
+test('a prediction LTC left on a passed stop does not pull the bus back to it', () => {
+  const { schedule, departure, at, reading, update, vehicle } = lineFixture();
+  const now = at(4) + 60_000;
+  const snapshot = reading(now);
+  // Stop 1 was passed long ago but LTC still lists it, at a time near now; stops 5 to 7 are
+  // where the bus is actually heading, as its GPS between stops 4 and 5 says.
+  snapshot.tripUpdates.push(update(now, { 1: now - 10_000, 5: at(5), 6: at(6), 7: at(7) }));
+  snapshot.vehicles.push(vehicle(now - 10_000, 43 + 4.5 * 0.0027));
+  const detail = tripLiveDetail(schedule, departure, snapshot, now);
+  assert.equal(detail.bus?.placedBy, 'gps');
+  assert.equal(detail.bus?.along?.after, 4);
+  assert.deepEqual(
+    detail.stops.map((s) => s.progress),
+    ['passed', 'passed', 'passed', 'passed', 'passed', 'next', 'upcoming', 'upcoming'],
+  );
+});
+
+test('without a current GPS the bus is estimated by the clock up to the next stop, and waits there', () => {
+  const { schedule, departure, at, reading, update } = lineFixture();
+  const read = at(4) + 60_000;
+  const snapshot = reading(read);
+  // No position for this bus; LTC predicts stop 5 half a minute early.
+  snapshot.tripUpdates.push(update(read, { 5: at(5) - 30_000, 6: at(6) - 30_000 }));
+  const place = (now: number) => tripLiveDetail(schedule, departure, snapshot, now).bus;
+  const now = place(read)!;
+  assert.equal(now.placedBy, 'estimate');
+  assert.deepEqual(now.along, { after: 4, fraction: 0.75 }, 'it left stop 4 half a minute early');
+  assert.ok(
+    Math.abs(now.point.lat - (43 + 4.75 * 0.0027)) < 1e-6,
+    'the map draws it on the trip path, at the same point as the line',
+  );
+  assert.equal(place(read + 15_000)!.along!.fraction, 0.875, 'it moves with the clock');
+  assert.deepEqual(
+    place(read + 45_000)!.along,
+    { after: 4, fraction: 1 },
+    'late, it waits at the stop',
+  );
+  assert.equal(place(read + 91_000), null, 'the estimate ends with the predictions');
+});
+
+test('a bus named for this trip while it finishes its previous one is shown there, not as under way', () => {
+  const { schedule, departure, at, reading, update, vehicle, identity } = lineFixture();
+  const now = at(0) - 5 * 60_000;
+  const snapshot = reading(now);
+  // The same physical bus runs the trip before, on the same line, and LTC already names it here.
+  snapshot.tripUpdates.push(update(now, { 0: at(0), 1: at(1) }, 'bus-9'));
+  snapshot.vehicles.push({
+    ...vehicle(now - 5_000, 43.01, 'bus-9'),
+    tripId: 'weekday-late',
+    entityId: 'position-previous',
+  });
+  const detail = tripLiveDetail(schedule, departure, snapshot, now);
+  assert.equal(detail.phase, 'not-started');
+  assert.equal(detail.bus?.why, 'other-trip');
+  assert.equal(detail.bus?.along, null, 'it is not drawn on this trip');
+  assert.deepEqual(detail.bus?.point, { lat: 43.01, lng: -81 });
+  assert.equal(identity.tripId, departure.trip[0]);
+});
+
+test('a route that comes back along its own street keeps the bus on the leg the timetable says', () => {
+  const { schedule, departure, at, reading, vehicle } = lineFixture();
+  // Out north to S3 and back south along the same street to S0's corner.
+  const pattern = schedule.patterns[0];
+  pattern.splice(
+    4,
+    4,
+    [2, 5, 480, 480, 0, 0, 1, ''],
+    [1, 6, 600, 600, 0, 0, 1, ''],
+    [0, 7, 720, 720, 0, 0, 1, ''],
+  );
+  const position = 43 + 0.5 * 0.0027;
+  // No current predictions: only the timetable tells the two legs apart.
+  const early = reading(at(0) + 60_000);
+  early.vehicles.push(vehicle(at(0) + 55_000, position));
+  assert.equal(tripLiveDetail(schedule, departure, early, at(0) + 60_000).bus?.along?.after, 0);
+  const late = reading(at(5) + 60_000);
+  late.vehicles.push(vehicle(at(5) + 55_000, position));
+  assert.equal(tripLiveDetail(schedule, departure, late, at(5) + 60_000).bus?.along?.after, 5);
+});
+
+test('a followed bus a new reading leaves out keeps its last report, not when its trip says otherwise', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: NOW });
+  const { schedule, departure, at, reading, update, vehicle } = lineFixture();
+  t.mock.timers.setTime(at(4));
+  const query = buildLiveQuery(schedule, {
+    stopIds: ['S0'],
+    trips: [{ tripId: departure.trip[0], serviceDate: departure.serviceDate }],
+  });
+  const answers: ((now: number) => LiveSnapshot)[] = [
+    (now) => {
+      const first = reading(now);
+      first.tripUpdates.push(update(now, { 5: at(5), 6: at(6) }));
+      first.vehicles.push(vehicle(now - 10_000, 43 + 4.2 * 0.0027));
+      return first;
+    },
+    // A healthy reading that has neither the bus nor its trip this time.
+    (now) => reading(now),
+    (now) => {
+      const canceled = reading(now);
+      canceled.tripUpdates.push({ ...update(now, {}), relationship: 'canceled' });
+      return canceled;
+    },
+  ];
+  const client = createLiveClient({
+    schedule,
+    config: CONFIG,
+    onState: () => {},
+    fetcher: (async () => response(answers.shift()!(Date.now()))) as typeof fetch,
+  });
+  client.setQuery(query, { departureAt: departure.at });
+  client.setForeground(true);
+  await flush();
+  const measured = client.getState().snapshot!.vehicles[0].measuredAt;
+  t.mock.timers.tick(45_000);
+  await flush();
+  const second = client.getState().snapshot!;
+  assert.equal(second.vehicles.length, 0);
+  assert.equal(second.retainedVehicles?.[0].measuredAt, measured, 'kept with its own time');
+  const shown = tripLiveDetail(schedule, departure, second, Date.now());
+  assert.equal(shown.bus?.placedBy, 'last-gps', 'shown as the last report, never as current');
+  t.mock.timers.tick(45_000);
+  await flush();
+  assert.deepEqual(client.getState().snapshot!.retainedVehicles, [], 'a cancellation wins');
+  client.dispose();
+});
+
+test('trouble in one LTC file keeps the pace; a failed connection backs off; a return retries at once unless paused', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: NOW });
+  const { schedule, query, snapshot } = fixture();
+  const answers: (() => Response)[] = [
+    () => {
+      const alertsDown = structuredClone(snapshot);
+      alertsDown.generatedAt = Date.now();
+      alertsDown.health.alerts = {
+        status: 'error',
+        feedTimestamp: null,
+        fetchedAt: null,
+        error: 'upstream_timeout',
+      };
+      return response(alertsDown);
+    },
+    () => {
+      throw new Error('offline');
+    },
+    () => new Response('{}', { status: 429, headers: { 'Retry-After': '120' } }),
+    () => response({ ...snapshot, generatedAt: Date.now() }),
+  ];
+  let calls = 0;
+  const client = createLiveClient({
+    schedule,
+    config: CONFIG,
+    onState: () => {},
+    fetcher: (async () => {
+      calls++;
+      return answers.shift()!();
+    }) as typeof fetch,
+  });
+  client.setQuery(query);
+  client.setForeground(true);
+  await flush();
+  assert.equal(client.getState().nextRefreshAt, NOW + 45_000, 'old alerts do not slow the buses');
+  t.mock.timers.tick(45_000);
+  await flush();
+  assert.equal(calls, 2);
+  assert.equal(client.getState().nextRefreshAt, NOW + 90_000, 'no connection: wait before trying');
+  client.setForeground(false);
+  t.mock.timers.tick(20_000);
+  client.setForeground(true);
+  await flush();
+  assert.equal(calls, 3, 'back from another app, it tries again at once');
+  client.setForeground(false);
+  t.mock.timers.tick(20_000);
+  client.setForeground(true);
+  await flush();
+  assert.equal(calls, 3, 'the service asked to wait two minutes, and that holds');
+  t.mock.timers.tick(100_000);
+  await flush();
+  assert.equal(calls, 4);
+  client.dispose();
+});
+
+test('reads continue while the followed trip runs and stop after it ends', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: NOW });
+  const { schedule, query, snapshot } = fixture();
+  let calls = 0;
+  const client = createLiveClient({
+    schedule,
+    config: CONFIG,
+    onState: () => {},
+    fetcher: (async () => {
+      calls++;
+      return response({ ...snapshot, generatedAt: Date.now() });
+    }) as typeof fetch,
+  });
+  // He boarded twenty minutes ago; the trip ends in ten.
+  client.setQuery(query, { departureAt: NOW - 20 * 60_000, endsAt: NOW + 10 * 60_000 });
+  client.setForeground(true);
+  await flush();
+  t.mock.timers.tick(45_000);
+  await flush();
+  assert.equal(calls, 2, 'still following the bus he is on');
+  t.mock.timers.tick(25 * 60_000);
+  await flush();
+  const stopped = calls;
+  t.mock.timers.tick(10 * 60_000);
+  await flush();
+  assert.equal(calls, stopped, 'nothing more once the trip is over');
+  assert.equal(client.getState().nextRefreshAt, null);
   client.dispose();
 });

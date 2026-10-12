@@ -67,6 +67,7 @@ import {
   relative,
   stopName,
   TransitTripTimeline,
+  useLiveClock,
 } from './TransitDepartures.tsx';
 import { RouteBadge, StatusIcons } from './TransitStatus.tsx';
 import { TransitWhen } from './TransitWhen.tsx';
@@ -114,6 +115,7 @@ export function TransitPlanner({
   today,
   walksVersion,
   onLive,
+  onFocusBus,
 }: {
   db: SQLiteDatabase;
   schedule: Schedule;
@@ -126,6 +128,8 @@ export function TransitPlanner({
   /** Changes when a walk is saved elsewhere on the screen. */
   walksVersion: number;
   onLive: (live: PlannerLive) => void;
+  /** Shows an opened bus on the screen's map. */
+  onFocusBus: (departure: Departure) => void;
 }) {
   const [originId, setOriginId] = useState(initialOrigin);
   const [targetId, setTargetId] = useState<string | null>(null);
@@ -390,6 +394,7 @@ export function TransitPlanner({
           onOpenRide={setOpenRide}
           onStale={refreshNow}
           onSaveWalk={saveWalk}
+          onFocusBus={onFocusBus}
         />
       )}
     </Card>
@@ -459,6 +464,7 @@ const PlanList = memo(function PlanList({
   onOpenRide,
   onStale,
   onSaveWalk,
+  onFocusBus,
 }: {
   schedule: Schedule;
   stopIndex: ReturnType<typeof buildStopIndex>;
@@ -472,26 +478,20 @@ const PlanList = memo(function PlanList({
   onOpenRide: (ride: { key: string; departure: Departure } | null) => void;
   onStale: () => void;
   onSaveWalk: (edit: WalkEdit, minutes: number) => Promise<void>;
+  onFocusBus: (departure: Departure) => void;
 }) {
-  const [now, setNow] = useState(Date.now);
+  // Read again on returning to the app and on each reading, like the trip cards.
+  const now = useLiveClock(active, snapshot);
   const [open, setOpen] = useState<string | null>(null);
   const [more, setMore] = useState(false);
-  useEffect(() => {
-    if (!active) return;
-    // Back from the background or another screen, the list catches up at once.
-    const first = setTimeout(() => setNow(Date.now()), 0);
-    const timer = setInterval(() => setNow(Date.now()), 30_000);
-    return () => {
-      clearTimeout(first);
-      clearInterval(timer);
-    };
-  }, [active]);
   const minute = Math.floor(now / 60_000) * 60_000;
   const stale = result.request.mode === 'now' && minute - result.request.at > STALE_NOW_MS;
   useEffect(() => {
     if (stale) onStale();
   }, [stale, onStale]);
-  const options = useMemo(() => liveOptions(result, snapshot, minute), [result, snapshot, minute]);
+  // Judged against the real time: a reading taken late in a minute is ahead of the minute's start
+  // by more than the 30 s that live data may be ahead, and read as old.
+  const options = useMemo(() => liveOptions(result, snapshot, now), [result, snapshot, now]);
   const count = more ? SHOWN * 2 : SHOWN;
   const shown = result.request.mode === 'arrive' ? options.slice(-count) : options.slice(0, count);
   const issue = issueText(result, originName, targetName);
@@ -520,6 +520,7 @@ const PlanList = memo(function PlanList({
               openRide={openRide}
               onOpenRide={onOpenRide}
               onSaveWalk={onSaveWalk}
+              onFocusBus={onFocusBus}
             />
           )}
         </PlanRow>
@@ -671,6 +672,7 @@ function PlanSteps({
   openRide,
   onOpenRide,
   onSaveWalk,
+  onFocusBus,
 }: {
   schedule: Schedule;
   stopIndex: ReturnType<typeof buildStopIndex>;
@@ -682,6 +684,7 @@ function PlanSteps({
   openRide: { key: string; departure: Departure } | null;
   onOpenRide: (ride: { key: string; departure: Departure } | null) => void;
   onSaveWalk: (edit: WalkEdit, minutes: number) => Promise<void>;
+  onFocusBus: (departure: Departure) => void;
 }) {
   const plan = option.itinerary;
   const stops = schedule.stops;
@@ -716,6 +719,7 @@ function PlanSteps({
         rideKey={`${option.scheduleKey}/0`}
         openRide={openRide}
         onOpenRide={onOpenRide}
+        onFocusBus={onFocusBus}
       />
       {second && plan.transfer && option.slack !== null && (
         <>
@@ -747,6 +751,7 @@ function PlanSteps({
             rideKey={`${option.scheduleKey}/1`}
             openRide={openRide}
             onOpenRide={onOpenRide}
+            onFocusBus={onFocusBus}
           />
         </>
       )}
@@ -860,6 +865,7 @@ function RideStep({
   rideKey,
   openRide,
   onOpenRide,
+  onFocusBus,
 }: {
   schedule: Schedule;
   stopIndex: ReturnType<typeof buildStopIndex>;
@@ -871,6 +877,7 @@ function RideStep({
   rideKey: string;
   openRide: { key: string; departure: Departure } | null;
   onOpenRide: (ride: { key: string; departure: Departure } | null) => void;
+  onFocusBus: (departure: Departure) => void;
 }) {
   const stops = schedule.stops;
   const where = destination(ride.departure);
@@ -937,6 +944,7 @@ function RideStep({
             active={active}
             onSelect={(departure) => onOpenRide({ key: rideKey, departure })}
             onClose={() => onOpenRide(null)}
+            onFocusBus={onFocusBus}
           />
         )}
       </View>

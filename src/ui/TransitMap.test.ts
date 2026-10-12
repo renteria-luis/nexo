@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { nodes, renderModule } from './test-render.ts';
+import { nodes, renderModule, textOf } from './test-render.ts';
 
 test('native map gestures retain the swipe lock for a full pinch and release on end or cancellation', async () => {
   let locks = 0;
@@ -136,4 +136,170 @@ test('native live map retains measured bus points and draws only the selected tr
   ]);
   tree = nodes(await screen.settle());
   assert.deepEqual(tree.find((n) => n.type === 'Marker')!.props.coordinate, bus.props.coordinate);
+});
+
+test('the followed bus is drawn apart, named, and the camera goes to it once per tap', async () => {
+  const moves: unknown[] = [];
+  let map: { props: Record<string, any> } | undefined;
+  const props: Record<string, any> = {
+    center: { lat: 43, lng: -81 },
+    places: [],
+    stops: [],
+    selectedPlace: null,
+    selectedStop: null,
+    draft: null,
+    onPlace: () => undefined,
+    onStop: () => undefined,
+    buses: [
+      { id: 'other', label: 'Bus 3667', lat: 43.01, lng: -81.02, measuredAt: 1, stale: false },
+    ],
+    followed: {
+      lat: 43.012,
+      lng: -81.19,
+      label: 'Bus 3511 · 17 → Argyle Mall · GPS',
+      tag: '3511 · GPS',
+      placedBy: 'gps',
+      measuredAt: 1,
+    },
+    focus: null,
+  };
+  const screen = renderModule('src/ui/TransitMap.native.tsx', {
+    'react-native-maps': {
+      __esModule: true,
+      // A stand-in that hands the component a camera to record.
+      default: (mapProps: Record<string, any>) => {
+        map = { props: mapProps };
+        mapProps.ref.current = { animateToRegion: (region: unknown) => moves.push(region) };
+        return { type: 'MapView', props: mapProps };
+      },
+      Marker: 'Marker',
+      Polyline: 'Polyline',
+    },
+    './icons.ts': { Bus: 'Bus' },
+    './placeIcons.ts': { placeIcon: () => 'PlaceIcon' },
+    './SwipeLock.tsx': { useSwipeLock: () => ({ acquire: () => () => undefined }) },
+  }).mount('TransitMap', props);
+  let tree = nodes(await screen.settle());
+  const followed = tree.find((n) => n.type === 'Marker' && n.props.identifier === 'followed')!;
+  assert.match(followed.props.title, /3511/);
+  assert.match(textOf(followed), /3511 · GPS/, 'its number is written under it');
+  assert.equal(
+    tree.filter((n) => n.type === 'Marker' && /^bus-/.test(n.props.identifier)).length,
+    1,
+    'the other buses stay as they were',
+  );
+  props.focus = { key: 1, point: { lat: 43.012, lng: -81.19 } };
+  await screen.settle();
+  const centred = moves.length;
+  map!.props.onMapReady();
+  await screen.settle();
+  assert.equal(moves.length, centred + 1, 'a tap before the map is ready waits for it');
+  assert.deepEqual(moves.at(-1), {
+    latitude: 43.012,
+    longitude: -81.19,
+    latitudeDelta: 0.008,
+    longitudeDelta: 0.008,
+  });
+  props.followed = { ...props.followed, lat: 43.013 };
+  await screen.settle();
+  assert.equal(moves.length, centred + 1, 'the camera does not chase the bus');
+  props.focus = { key: 2, point: { lat: 43.012, lng: -81.19 } };
+  await screen.settle();
+  assert.equal(moves.length, centred + 2, 'another tap at the same point moves it again');
+});
+
+test('the live map takes the followed bus from the trip evidence and leaves it out of the rest', async (t) => {
+  const { scheduleFixture } = await import('../transit/fixtures.ts');
+  const realtime = await import('../transit/realtime.ts');
+  const { scheduledTime } = await import('../transit/schedule.ts');
+  const schedule = scheduleFixture();
+  const trip = schedule.trips[1];
+  const departure = {
+    trip,
+    route: schedule.routes[0],
+    stopTime: schedule.patterns[0][0],
+    serviceDate: '2026-10-11',
+    at: scheduledTime('2026-10-11', trip[7]),
+  };
+  const now = departure.at + 180_000;
+  t.mock.method(Date, 'now', () => now);
+  const health = { status: 'ok' as const, feedTimestamp: now, fetchedAt: now, error: null };
+  const identity = {
+    tripId: trip[0],
+    serviceDate: departure.serviceDate,
+    routeId: '02',
+    directionId: null,
+    startTime: null,
+  };
+  const snapshot = {
+    schema: 1 as const,
+    generatedAt: now,
+    staticVersion: schedule.feedVersion,
+    staticSourceSha256: schedule.sourceSha256,
+    staticCompatible: true,
+    health: { trips: health, vehicles: health, alerts: health },
+    tripUpdates: [],
+    vehicles: [
+      {
+        ...identity,
+        entityId: 'followed',
+        vehicleId: '3511',
+        measuredAt: now - 10_000,
+        stopId: null,
+        stopSequence: null,
+        status: null,
+        position: { lat: 43.00005, lng: -81.00005, bearing: null, speed: null },
+      },
+      {
+        ...identity,
+        tripId: 'weekday-late',
+        entityId: 'other',
+        vehicleId: '3667',
+        measuredAt: now - 10_000,
+        stopId: null,
+        stopSequence: null,
+        status: null,
+        position: { lat: 43.01, lng: -81.01, bearing: null, speed: null },
+      },
+    ],
+    alerts: [],
+    issues: { unmatchedTrips: 0, ambiguousStops: 0, invalidEntities: 0, truncated: false },
+  };
+  const props: Record<string, any> = {
+    schedule,
+    snapshot,
+    active: false,
+    followed: departure,
+    focusKey: null,
+    center: { lat: 43, lng: -81 },
+    places: [],
+    stops: [],
+    selectedPlace: null,
+    selectedStop: null,
+    draft: null,
+    onPlace: () => undefined,
+    onStop: () => undefined,
+  };
+  const screen = renderModule('src/ui/TransitLiveMap.tsx', {
+    './TransitMap': { TransitMap: 'TransitMap' },
+    '../transit/realtime.ts': realtime,
+    './TransitDepartures.tsx': { useLiveClock: () => now },
+  }).mount('TransitLiveMap', props);
+  let map = nodes(await screen.settle()).find((n) => n.type === 'TransitMap')!;
+  const line = realtime.tripLiveDetail(schedule, departure, snapshot, now).bus!;
+  assert.deepEqual(
+    { lat: map.props.followed.lat, lng: map.props.followed.lng },
+    line.point,
+    'the map and the line show the same bus at the same point',
+  );
+  assert.equal(map.props.followed.tag, '3511 · GPS');
+  assert.deepEqual(
+    map.props.buses.map((b: { label: string }) => b.label),
+    ['Bus 3667 · 02 → 2A Downtown'],
+    'the followed bus is not drawn twice, and the others stay',
+  );
+  assert.equal(map.props.focus, null);
+  props.focusKey = 7;
+  map = nodes(await screen.settle()).find((n) => n.type === 'TransitMap')!;
+  assert.deepEqual(map.props.focus, { key: 7, point: line.point });
 });

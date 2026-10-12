@@ -252,7 +252,11 @@ test('validated predictions keep the selected branch, repeated stop, and complet
   });
   const tripTree = await trip.settle();
   const rowsText = nodes(tripTree)
-    .filter((node) => node.type === 'View' && typeof node.props.accessibilityLabel === 'string')
+    .filter(
+      (node) =>
+        (node.type === 'View' || node.type === 'Pressable') &&
+        typeof node.props.accessibilityLabel === 'string',
+    )
     .map((node) => node.props.accessibilityLabel)
     .filter((label) => /, \d{2}:\d{2}, /.test(label) || label === 'Posición del bus');
   assert.deepEqual(rowsText, [
@@ -261,7 +265,7 @@ test('validated predictions keep the selected branch, repeated stop, and complet
     'Road NB, 08:20, No se detiene · recogida condicionada',
     'Posición del bus',
   ]);
-  assert.match(textOf(tripTree), /Bus loop-bus · reporte \d{2}:\d{2} · hace 5 s/);
+  assert.match(textOf(tripTree), /Bus loop-bus · GPS \d{2}:\d{2} · hace 5 s/);
   const chips = nodes(tripTree).filter((node) => node.props?.accessibilityRole === 'radio');
   assert.deepEqual(
     chips.map((chip) => [chip.props.accessibilityLabel, chip.props.accessibilityState.selected]),
@@ -413,4 +417,158 @@ test('alert UI independently expires source freshness and filters future or fini
   assert.match(alertText, /Últimas alertas guardadas · sin confirmación actual/);
   assert.match(alertText, /hace 601 s/);
   assert.doesNotMatch(alertText, /Reportes vigentes|Future closure|Finished closure/);
+});
+
+function followedReading(schedule: Schedule, departure: Departure, generatedAt: number) {
+  const snapshot = snapshotFixture(schedule, generatedAt);
+  const identity = {
+    tripId: departure.trip[0],
+    serviceDate: departure.serviceDate,
+    routeId: '02',
+    directionId: null,
+    startTime: null,
+  };
+  snapshot.tripUpdates.push({
+    ...identity,
+    entityId: 'update',
+    vehicleId: 'bus-1',
+    measuredAt: generatedAt - 10_000,
+    relationship: 'scheduled',
+    delay: null,
+    stops: [
+      {
+        stopId: 'B',
+        stopSequence: 2,
+        relationship: 'scheduled',
+        arrival: { time: departure.at + 660_000, delay: null, uncertainty: null },
+        departure: null,
+      },
+    ],
+  });
+  snapshot.vehicles.push({
+    ...identity,
+    entityId: 'position',
+    vehicleId: 'bus-1',
+    measuredAt: generatedAt - 10_000,
+    stopId: null,
+    stopSequence: null,
+    status: null,
+    position: { lat: 43.00005, lng: -81.00005, bearing: null, speed: null },
+  });
+  return snapshot;
+}
+
+const busIcon = (tree: unknown) =>
+  nodes(tree).find((n) => /^Posición del bus/.test(n.props?.accessibilityLabel ?? ''));
+
+test('back from another app the bus keeps its last report, and a reading after the return is current before the next tick', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const schedule = scheduleFixture();
+  const trip = schedule.trips[1];
+  const departure: Departure = {
+    trip,
+    route: schedule.routes[0],
+    stopTime: schedule.patterns[0][0],
+    serviceDate: '2026-10-11',
+    at: scheduledTime('2026-10-11', trip[7]),
+  };
+  let now = departure.at + 180_000;
+  t.mock.method(Date, 'now', () => now);
+  const props = {
+    schedule,
+    departure,
+    choices: [departure],
+    snapshot: followedReading(schedule, departure, now),
+    active: true,
+    onSelect: () => undefined,
+    onClose: () => undefined,
+  };
+  const card = renderModule('src/ui/TransitDepartures.tsx', {
+    '../transit/realtime.ts': realtime,
+    './icons.ts': ICONS,
+  }).mount('TransitTripTimeline', props);
+  let tree = await card.settle();
+  assert.ok(busIcon(tree));
+  assert.match(textOf(tree), /Bus bus-1 · GPS \d{2}:\d{2} · hace 10 s/);
+
+  props.active = false;
+  await card.settle();
+  now += 120_000;
+  props.active = true;
+  await card.settle();
+  // On the phone the app's wake-up event reads the clock before the first frame; here the read
+  // that follows the first frame stands in for it.
+  t.mock.timers.tick(0);
+  tree = await card.settle();
+  assert.ok(busIcon(tree), 'the bus does not vanish while the new reading loads');
+  assert.match(textOf(tree), /último GPS \d{2}:\d{2} · hace 2 min/, 'and says how old it is');
+
+  props.snapshot = followedReading(schedule, departure, now);
+  tree = await card.settle();
+  assert.ok(busIcon(tree), 'a reading taken after the return is current at once');
+  assert.match(textOf(tree), /Bus bus-1 · GPS \d{2}:\d{2} · hace 10 s/);
+  assert.doesNotMatch(textOf(tree), /Última predicción|todavía no empieza/);
+});
+
+test('the bus on the line can be tapped to see it on the map, and its source shows in its shape', async (t) => {
+  const schedule = scheduleFixture();
+  const trip = schedule.trips[1];
+  const departure: Departure = {
+    trip,
+    route: schedule.routes[0],
+    stopTime: schedule.patterns[0][0],
+    serviceDate: '2026-10-11',
+    at: scheduledTime('2026-10-11', trip[7]),
+  };
+  const now = departure.at + 180_000;
+  t.mock.method(Date, 'now', () => now);
+  const focused: Departure[] = [];
+  const props = {
+    schedule,
+    departure,
+    choices: [departure],
+    snapshot: followedReading(schedule, departure, now),
+    active: false,
+    onSelect: () => undefined,
+    onClose: () => undefined,
+    onFocusBus: (d: Departure) => focused.push(d),
+  };
+  const card = renderModule('src/ui/TransitDepartures.tsx', {
+    '../transit/realtime.ts': realtime,
+    './icons.ts': ICONS,
+  }).mount('TransitTripTimeline', props);
+  let tree = await card.settle();
+  const icon = busIcon(tree)!;
+  assert.equal(icon.type, 'Pressable');
+  assert.equal(icon.props.accessibilityLabel, 'Posición del bus. Ver en el mapa');
+  assert.ok(icon.props.hitSlop >= 12, 'a touch area larger than the icon');
+  icon.props.onPress();
+  nodes(tree)
+    .find((n) => / · ver en el mapa$/.test(textOf(n)) && n.type === 'Pressable')!
+    .props.onPress();
+  assert.deepEqual(focused, [departure, departure]);
+  const shape = (node: { props: Record<string, any> }) =>
+    (node.props.style as unknown[]).filter(Boolean) as { borderStyle?: string }[];
+  assert.ok(!shape(icon).some((s) => s.borderStyle === 'dashed'), 'a current GPS report is solid');
+
+  props.snapshot = followedReading(schedule, departure, now - 100_000);
+  props.snapshot.tripUpdates = [];
+  tree = await card.settle();
+  assert.match(textOf(tree), /último GPS/);
+  assert.match(textOf(tree), /Es el último GPS recibido/);
+
+  props.snapshot = followedReading(schedule, departure, now);
+  props.snapshot.vehicles = [];
+  props.snapshot.tripUpdates[0].stops[0].arrival = {
+    time: now + 120_000,
+    delay: null,
+    uncertainty: null,
+  };
+  tree = await card.settle();
+  assert.ok(
+    shape(busIcon(tree)!).some((s) => s.borderStyle === 'dashed'),
+    'an estimate is drawn dashed',
+  );
+  assert.match(textOf(tree), /posición estimada con las predicciones de LTC · sin GPS/);
+  assert.match(textOf(tree), /Es una estimación, no un GPS/);
 });

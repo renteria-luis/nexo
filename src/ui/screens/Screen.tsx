@@ -68,6 +68,16 @@ export function useReveal(): Reveal {
   return useContext(RevealContext);
 }
 
+const ScrollIntoViewContext = createContext<Reveal>(() => undefined);
+
+/**
+ * Scrolls the screen, up or down, until a block sits at the top of what is visible. Transit uses
+ * it to bring the map into view when a bus is tapped further down.
+ */
+export function useScrollIntoView(): Reveal {
+  return useContext(ScrollIntoViewContext);
+}
+
 export function Screen({
   title,
   header,
@@ -195,6 +205,14 @@ export function Screen({
     },
     [overlay, raise],
   );
+
+  const scrollIntoView = useCallback<Reveal>((target) => {
+    target?.measureInWindow((_x, y) => {
+      frame.current?.measureInWindow((_frameX, frameY) => {
+        list.current?.scrollTo({ y: Math.max(0, offset.current + y - frameY - 8), animated: true });
+      });
+    });
+  }, []);
 
   useEffect(() => {
     // El sistema avisa antes de mover el teclado, y trae su alto y lo que va a tardar:
@@ -368,50 +386,52 @@ export function Screen({
 
   return (
     <RevealContext.Provider value={reveal}>
-      {/* El marco se mide para saber donde empieza el teclado en la pantalla. */}
-      <View
-        ref={frame}
-        collapsable={false}
-        onLayout={(event) => setFrameHeight(event.nativeEvent.layout.height)}
-        style={styles.stack}
-      >
-        {scroll}
-        {/* Con el teclado abierto la capa se encoge por arriba de el: si no, los
+      <ScrollIntoViewContext.Provider value={scrollIntoView}>
+        {/* El marco se mide para saber donde empieza el teclado en la pantalla. */}
+        <View
+          ref={frame}
+          collapsable={false}
+          onLayout={(event) => setFrameHeight(event.nativeEvent.layout.height)}
+          style={styles.stack}
+        >
+          {scroll}
+          {/* Con el teclado abierto la capa se encoge por arriba de el: si no, los
             botones de guardar y confirmar quedan justo debajo de las teclas. */}
-        {overlay ? (
-          <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-            {/* El oscurecido cubre la pantalla entera y no se encoge con el teclado: el
+          {overlay ? (
+            <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+              {/* El oscurecido cubre la pantalla entera y no se encoge con el teclado: el
                 hueco que se le hace abajo es parte del fondo, y sin esto se veia una
                 franja sin oscurecer mientras el teclado sube o baja. */}
-            {onOverlayDismiss ? (
-              <Pressable
-                accessibilityLabel="Cerrar"
-                onPress={() => {
-                  // El teclado se quedaria flotando sobre una pantalla en la que ya no
-                  // hay nada que escribir.
-                  Keyboard.dismiss();
-                  onOverlayDismiss();
-                }}
-                style={styles.scrim}
-              />
-            ) : (
-              <View style={styles.scrim} pointerEvents="none" />
-            )}
-            {/* La hoja se centra en lo que queda libre encima del teclado. El hueco se
+              {onOverlayDismiss ? (
+                <Pressable
+                  accessibilityLabel="Cerrar"
+                  onPress={() => {
+                    // El teclado se quedaria flotando sobre una pantalla en la que ya no
+                    // hay nada que escribir.
+                    Keyboard.dismiss();
+                    onOverlayDismiss();
+                  }}
+                  style={styles.scrim}
+                />
+              ) : (
+                <View style={styles.scrim} pointerEvents="none" />
+              )}
+              {/* La hoja se centra en lo que queda libre encima del teclado. El hueco se
                 hace de golpe, para que la hoja nunca mida mas de lo que cabe, y el
                 desplazamiento lo deshace: asi sube con la misma animacion del teclado en
                 vez de dar un salto. */}
-            <Animated.View
-              pointerEvents="box-none"
-              style={[styles.overlay, { transform: [{ translateY: lift }] }]}
-            >
-              <View onLayout={(event) => setSheetHeight(event.nativeEvent.layout.height)}>
-                {overlay}
-              </View>
-            </Animated.View>
-          </View>
-        ) : null}
-      </View>
+              <Animated.View
+                pointerEvents="box-none"
+                style={[styles.overlay, { transform: [{ translateY: lift }] }]}
+              >
+                <View onLayout={(event) => setSheetHeight(event.nativeEvent.layout.height)}>
+                  {overlay}
+                </View>
+              </Animated.View>
+            </View>
+          ) : null}
+        </View>
+      </ScrollIntoViewContext.Provider>
     </RevealContext.Provider>
   );
 }

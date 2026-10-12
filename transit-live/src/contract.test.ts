@@ -11,6 +11,7 @@ import {
 import {
   buildLiveQuery,
   mergeLiveDeparture,
+  tripLiveDetail,
   validateLiveSnapshot,
 } from '../../src/transit/realtime.ts';
 import { buildResponse } from './service.ts';
@@ -218,4 +219,54 @@ test('a realtime static-version mismatch isolates that source while the reported
   assert.equal(checked.vehicles.length, 1);
   assert.equal(checked.vehicles[0].serviceDate, '2026-11-01');
   assert.equal(mergeLiveDeparture(schedule, selected, checked, now).source, 'schedule');
+});
+
+test('a bus whose stop fields contradict its trip reaches the phone and is placed by its GPS', async () => {
+  const schedule = scheduleFixture();
+  const now = scheduledTime('2026-10-11', 8 * 3_600) + 5 * 60_000;
+  const selected = departures(schedule, buildStopIndex(schedule), 0, now - 10 * 60_000)[0];
+  const query = buildLiveQuery(schedule, {
+    stopIds: ['A'],
+    trips: [{ tripId: selected.trip[0], serviceDate: selected.serviceDate }],
+    routeIds: ['02'],
+  });
+  const header = { gtfsRealtimeVersion: '2.0', incrementality: 0, timestamp: now / 1_000 };
+  const encode = (entities: Bindings.transit_realtime.IFeedEntity[]) =>
+    Bindings.transit_realtime.FeedMessage.encode(
+      Bindings.transit_realtime.FeedMessage.fromObject({ header, entity: entities }),
+    ).finish();
+  const descriptor = { tripId: selected.trip[0], routeId: '02', startDate: '20261011' };
+  const binary: Record<string, Uint8Array> = {
+    [UPSTREAMS.trips]: encode([]),
+    // As bus 3511 on 2026-10-12: stop B with the sequence of stop A.
+    [UPSTREAMS.vehicles]: encode([
+      {
+        id: '511',
+        vehicle: {
+          trip: descriptor,
+          timestamp: now / 1_000 - 2,
+          vehicle: { id: '3511' },
+          position: { latitude: 43.00005, longitude: -81.00005, bearing: 156, speed: 1.8 },
+          stopId: 'B',
+          currentStopSequence: 1,
+        },
+      },
+    ]),
+    [UPSTREAMS.alerts]: encode([]),
+  };
+  const sources = new Sources(
+    { get: async () => null, set: async () => undefined },
+    async (input) => new Response(new Uint8Array(binary[String(input)])),
+    () => now,
+  );
+  const response = await buildResponse(schedule, sources, query, now);
+  const checked = validateLiveSnapshot(JSON.parse(JSON.stringify(response)), schedule, query, now);
+  assert.equal(checked.issues.ambiguousStops, 1);
+  assert.equal(checked.vehicles.length, 1, 'the bus is no longer dropped');
+  assert.equal(checked.vehicles[0].stopId, null);
+  assert.equal(checked.vehicles[0].stopSequence, null);
+  const bus = tripLiveDetail(schedule, selected, checked, now).bus;
+  assert.equal(bus?.placedBy, 'gps');
+  assert.equal(bus?.vehicle?.vehicleId, '3511');
+  assert.equal(bus?.along?.after, 0);
 });

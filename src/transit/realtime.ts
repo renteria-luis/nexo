@@ -29,7 +29,12 @@ import {
 } from './realtime-contract.ts';
 
 export type LiveQuery = RealtimeQuery;
-export type LiveSnapshot = RealtimeResponse;
+export type LiveSnapshot = RealtimeResponse & {
+  /** What the reading asked for: it says nothing about the other stops of a trip it did not follow. */
+  coverage?: { stopIds: string[]; trips: LiveTripRef[] };
+  /** Followed buses a newer reading left out, kept with their own report times, never as current. */
+  retainedVehicles?: LiveVehicle[];
+};
 export type TransitLiveConfig = { endpoint: string; credential: string };
 export const LIVE_LOCAL_MAX_BYTES = REALTIME_MAX_RESPONSE_BYTES + 8_000;
 export const LIVE_LOCAL_MAX_AGE_MS = 30 * 60_000;
@@ -38,6 +43,9 @@ export const LIVE_MANUAL_MIN_MS = 15_000;
 // rapid taps inside the service's twelve requests a minute.
 export const LIVE_CHANGE_MIN_MS = 5_000;
 const REFRESH_MS = 45_000;
+// Following a trip stays useful this long after its timetable end, the room LTC's delays usually
+// need; later, a read still happens on returning to the screen or on a tap.
+const FOLLOW_AFTER_END_MS = 15 * 60_000;
 const FUTURE_ALLOWANCE_MS = 30_000;
 
 function requireValid(condition: unknown, reason: string): asserts condition {
@@ -487,16 +495,34 @@ export function liveFreshness(
   const maximumAge = source === 'alerts' ? REALTIME_ALERT_FRESH_MS : REALTIME_FRESH_MS;
   // LTC rewrites its alert file only when an alert changes, so that time says nothing about whether
   // the alerts are current; the service confirms them on every read instead.
-  const times =
-    source === 'alerts'
-      ? [snapshot.generatedAt, measuredAt]
-      : [snapshot.generatedAt, health.feedTimestamp, measuredAt];
+  const reported = source === 'alerts' ? [measuredAt] : [health.feedTimestamp, measuredAt];
+  // LTC writes every 30 s, the service may reuse its copy for 30 s and the phone reads every 45 s,
+  // so a report two minutes old can be the newest there is. It counts as current while it was
+  // under the limit when read and that reading is under the limit itself; judging it by its age
+  // alone flipped buses to old reports every cycle with nothing wrong.
   return (
     snapshot.staticCompatible &&
     health.status === 'ok' &&
     health.feedTimestamp !== null &&
     measuredAt !== null &&
-    times.every((at) => at !== null && at <= now + FUTURE_ALLOWANCE_MS && now - at <= maximumAge)
+    snapshot.generatedAt <= now + FUTURE_ALLOWANCE_MS &&
+    now - snapshot.generatedAt <= maximumAge &&
+    reported.every(
+      (at) =>
+        at !== null && at <= now + FUTURE_ALLOWANCE_MS && snapshot.generatedAt - at <= maximumAge,
+    )
+  );
+}
+
+/** Whether a reading asked about this stop of this trip, so a missing prediction means LTC sent none. */
+function asked(snapshot: LiveSnapshot, departure: Departure, stopId: string): boolean {
+  const coverage = snapshot.coverage;
+  return (
+    !coverage ||
+    coverage.stopIds.includes(stopId) ||
+    coverage.trips.some(
+      (t) => t.tripId === departure.trip[0] && t.serviceDate === departure.serviceDate,
+    )
   );
 }
 
@@ -520,7 +546,9 @@ function usableSnapshot(
     snapshot.staticCompatible &&
     snapshot.staticVersion === schedule.feedVersion &&
     snapshot.staticSourceSha256 === schedule.sourceSha256 &&
-    snapshot.generatedAt >= now - LIVE_LOCAL_MAX_AGE_MS
+    snapshot.generatedAt >= now - LIVE_LOCAL_MAX_AGE_MS &&
+    // A reading from ahead of the phone's clock says the clock is wrong, not where buses are.
+    snapshot.generatedAt <= now + FUTURE_ALLOWANCE_MS
   );
 }
 
@@ -544,6 +572,41 @@ function preserveFailedSources(
     else result.alerts = previous.alerts;
   }
   return result;
+}
+
+// A followed bus that a new reading leaves out keeps its last report, with its own time, for
+// five minutes, and never counts as current. Not when the new reading cancels its trip, names
+// another bus for it, or reports this bus on another trip: those say it is no longer this one.
+function retainFollowed(
+  previous: LiveSnapshot | null,
+  incoming: LiveSnapshot,
+  query: LiveQuery,
+  schedule: Schedule,
+  now: number,
+): LiveVehicle[] {
+  if (!usableSnapshot(previous, schedule, now)) return [];
+  const kept = new Map<string, LiveVehicle>();
+  for (const vehicle of [...previous.vehicles, ...(previous.retainedVehicles ?? [])]) {
+    const trip = (v: { tripId: string; serviceDate: string }) =>
+      v.tripId === vehicle.tripId && v.serviceDate === vehicle.serviceDate;
+    if (
+      vehicle.position !== null &&
+      vehicle.measuredAt !== null &&
+      now - vehicle.measuredAt <= LAST_REPORT_MS &&
+      query.trips.some(trip) &&
+      !incoming.vehicles.some(
+        (v) => trip(v) || (vehicle.vehicleId !== null && v.vehicleId === vehicle.vehicleId),
+      ) &&
+      !incoming.tripUpdates.some(
+        (u) =>
+          trip(u) &&
+          (u.relationship === 'canceled' ||
+            (u.vehicleId !== null && u.vehicleId !== vehicle.vehicleId)),
+      )
+    )
+      kept.set(`${vehicle.tripId}/${vehicle.serviceDate}/${vehicle.entityId}`, vehicle);
+  }
+  return [...kept.values()];
 }
 
 export type LiveDeparture = {
@@ -578,6 +641,7 @@ function stopDeparture(
   scheduledArrival = scheduled,
   reportedAt: number | null = null,
   controlFresh = fresh,
+  askedStop = true,
 ): LiveDeparture {
   const fallback: LiveDeparture = {
     at: scheduled,
@@ -604,6 +668,7 @@ function stopDeparture(
       relationship,
     };
   }
+  if (!askedStop) return fallback;
   const departurePrediction = prediction(stop?.departure ?? null, scheduled);
   const arrivalPrediction = prediction(stop?.arrival ?? null, scheduledArrival);
   const at = departurePrediction ?? arrivalPrediction;
@@ -641,10 +706,9 @@ export function mergeLiveDeparture(
   const update = usableSnapshot(snapshot, schedule, now)
     ? snapshot.tripUpdates.find((t) => sameTrip(t, departure, schedule))
     : undefined;
+  const stopId = schedule.stops[departure.stopTime[0]][0];
   const stop = update?.stops.find(
-    (s) =>
-      s.stopSequence === departure.stopTime[1] &&
-      s.stopId === schedule.stops[departure.stopTime[0]][0],
+    (s) => s.stopSequence === departure.stopTime[1] && s.stopId === stopId,
   );
   return stopDeparture(
     update,
@@ -660,6 +724,7 @@ export function mergeLiveDeparture(
         update?.measuredAt ?? snapshot.health.trips.feedTimestamp,
         now,
       ),
+    !snapshot || asked(snapshot, departure, stopId),
   );
 }
 
@@ -705,23 +770,35 @@ export type LiveDetailStop = LiveDeparture & {
   progress: 'passed' | 'next' | 'upcoming' | 'unknown';
 };
 
-export type BusOnTrip = {
-  /** The last stop of the trip the bus has passed, as an index into its ordered stops. */
-  after: number;
-  /** How far it has gone towards the following stop, from 0 to 1. */
-  fraction: number;
-  /** Whether its reported position placed it, rather than the predictions alone. */
-  measured: boolean;
+/**
+ * The followed bus: where its line card and the map draw it, and what says so. Its GPS report
+ * while that is current; its last report, with its age, once it is not; or, without a current
+ * report, an estimate from LTC's predictions and the clock that never passes the next stop and
+ * ends with the predictions. `along` is missing when the report cannot place it on the trip.
+ */
+export type FollowedBus = {
+  placedBy: 'gps' | 'last-gps' | 'estimate';
+  /** The last stop it has passed, as an index into the trip's stops, and how far it is towards the next one. */
+  along: { after: number; fraction: number } | null;
+  /** Off the trip by more than 400 m, on it but not where LTC's predictions put it, or still on the trip before this one. */
+  why: 'off-trip' | 'disagrees' | 'other-trip' | null;
+  /** Where the map draws it: the reported position, or the estimate on the trip's path. */
+  point: Coordinates;
+  /** The report it comes from; for an estimate, the last one if there was any. */
   vehicle: LiveVehicle | null;
 };
 
 // A reported position further than this from every segment of the trip is not on it (a
 // detour, or a bus still on another trip), so it cannot say how far along the trip it is.
 const OFF_TRIP_M = 400;
+// A followed bus's last report stays on screen, with its age, this long after it was measured.
+export const LAST_REPORT_MS = 5 * 60_000;
 
-// LTC drops from a trip update the stops its bus has passed, so the first stop still
-// predicted ahead of now is the one it is heading to. Its vehicle feed's own stop number runs
-// one to seventeen stops ahead of the bus and is not used.
+// LTC drops from a trip update the stops its bus has passed, so the first stop still predicted
+// ahead of now is the one it is heading to. Its vehicle feed's own stop number runs one to
+// seventeen stops ahead of the bus and is not used. LTC can also leave a passed stop behind with
+// a time near now (a route 7 trip on 2026-10-12, 22 stops back): the next predicted stop then
+// comes sooner than a bus could cover a quarter of the timetable between them, so it is skipped.
 function nextStopIndex(
   schedule: Schedule,
   departure: Departure,
@@ -729,11 +806,10 @@ function nextStopIndex(
   now: number,
 ): number {
   const pattern = schedule.patterns[departure.trip[6]];
-  for (let i = 0; i < pattern.length; i++) {
-    const stopTime = pattern[i];
+  const times = pattern.map((stopTime) => {
     const stop = update.stops.find((s) => s.stopSequence === stopTime[1]);
-    if (!stop || stop.relationship !== 'scheduled') continue;
-    const at =
+    if (!stop || stop.relationship !== 'scheduled') return null;
+    return (
       prediction(
         stop.departure,
         scheduledTime(departure.serviceDate, departure.trip[7] + stopTime[3]),
@@ -741,20 +817,36 @@ function nextStopIndex(
       prediction(
         stop.arrival,
         scheduledTime(departure.serviceDate, departure.trip[7] + stopTime[2]),
-      );
-    if (at !== null && at >= now - 30_000) return i;
+      )
+    );
+  });
+  for (let i = 0; i < pattern.length; i++) {
+    const at = times[i];
+    if (at === null || at < now - 30_000) continue;
+    let j = i + 1;
+    while (j < pattern.length && times[j] === null) j++;
+    if (
+      j > i + 1 &&
+      j < pattern.length &&
+      times[j]! - at < ((pattern[j][2] - pattern[i][3]) * 1_000) / 4
+    )
+      continue;
+    return i;
   }
   return pattern.length;
 }
 
-// The segment between two consecutive stops of the trip closest to a reported position, and
-// how far along it the position falls. `near` keeps the search around the stop the predictions
-// point at, so a route that returns along the same street cannot land on the other leg.
+// The segment between two consecutive stops of the trip closest to a reported position, and how
+// far along it the position falls. `near` keeps the search around the stop the predictions point
+// at, so a route that returns along the same street cannot land on the other leg. Without it, the
+// candidates within reach are told apart by the timetable: each costs its distance plus 5 m for
+// every minute between its timetable time and now.
 function alongStops(
   schedule: Schedule,
   departure: Departure,
   position: Coordinates,
   near: number | null,
+  now: number,
 ): { after: number; fraction: number; distance: number } | null {
   const pattern = schedule.patterns[departure.trip[6]];
   if (pattern.length < 2) return null;
@@ -764,7 +856,7 @@ function alongStops(
   });
   const first = near === null ? 0 : Math.max(0, near - 3);
   const last = near === null ? pattern.length - 2 : Math.min(pattern.length - 2, near);
-  let best: { after: number; fraction: number; distance: number } | null = null;
+  let best: { after: number; fraction: number; distance: number; cost: number } | null = null;
   for (let k = first; k <= last; k++) {
     const a = metres(schedule.stops[pattern[k][0]]);
     const b = metres(schedule.stops[pattern[k + 1][0]]);
@@ -773,9 +865,118 @@ function alongStops(
     const length = dx * dx + dy * dy;
     const fraction = length === 0 ? 0 : Math.min(1, Math.max(0, -(a.x * dx + a.y * dy) / length));
     const distance = Math.hypot(a.x + fraction * dx, a.y + fraction * dy);
-    if (!best || distance < best.distance) best = { after: k, fraction, distance };
+    if (near === null && distance > OFF_TRIP_M) continue;
+    const cost =
+      near === null
+        ? distance +
+          Math.abs(
+            scheduledTime(
+              departure.serviceDate,
+              departure.trip[7] + pattern[k][3] + fraction * (pattern[k + 1][2] - pattern[k][3]),
+            ) - now,
+          ) /
+            12_000
+        : distance;
+    if (!best || cost < best.cost) best = { after: k, fraction, distance, cost };
   }
   return best;
+}
+
+type PathStops = { points: Coordinates[]; along: number[]; stops: number[] } | null;
+const paths = new WeakMap<Schedule, Map<string, PathStops>>();
+
+// How far along the trip's drawn path each of its stops sits, so an estimate is drawn on the
+// street the bus takes. Stops are matched in order, each at the first close pass after the one
+// before, so a loop that passes a stop twice keeps the right pass. Null when a stop is far from
+// the path; the estimate then runs straight between the two stops.
+function pathStops(schedule: Schedule, trip: Trip): PathStops {
+  const key = `${trip[6]}/${trip[5]}`;
+  let known = paths.get(schedule);
+  if (!known) paths.set(schedule, (known = new Map()));
+  if (known.has(key)) return known.get(key)!;
+  const shape = schedule.shapes[trip[5]] ?? [];
+  let result: PathStops = null;
+  if (shape.length >= 2) {
+    const cos = Math.cos((shape[0][0] * Math.PI) / 180);
+    const xy = (lat: number, lng: number) => ({ x: lng * 111_320 * cos, y: lat * 110_540 });
+    const points = shape.map((p) => xy(p[0], p[1]));
+    const along = [0];
+    for (let i = 1; i < points.length; i++)
+      along.push(
+        along[i - 1] + Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y),
+      );
+    const stops: number[] = [];
+    let from = 0;
+    for (const stopTime of schedule.patterns[trip[6]]) {
+      const stop = xy(schedule.stops[stopTime[0]][3], schedule.stops[stopTime[0]][4]);
+      let best: { k: number; distance: number; at: number } | null = null;
+      for (let k = from; k < points.length - 1; k++) {
+        const a = points[k];
+        const b = points[k + 1];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const length = dx * dx + dy * dy;
+        const f =
+          length === 0
+            ? 0
+            : Math.min(1, Math.max(0, ((stop.x - a.x) * dx + (stop.y - a.y) * dy) / length));
+        const distance = Math.hypot(a.x + f * dx - stop.x, a.y + f * dy - stop.y);
+        if (!best || distance < best.distance)
+          best = { k, distance, at: along[k] + f * (along[k + 1] - along[k]) };
+        else if (best.distance < 150 && distance > best.distance + 500) break;
+      }
+      if (!best || best.distance > 150) {
+        stops.length = 0;
+        break;
+      }
+      stops.push(Math.max(best.at, stops.at(-1) ?? 0));
+      from = best.k;
+    }
+    if (stops.length === schedule.patterns[trip[6]].length)
+      result = { points: shape.map((p) => ({ lat: p[0], lng: p[1] })), along, stops };
+  }
+  known.set(key, result);
+  return result;
+}
+
+function estimatedPoint(schedule: Schedule, trip: Trip, after: number, fraction: number) {
+  const pattern = schedule.patterns[trip[6]];
+  const path = pathStops(schedule, trip);
+  if (!path) {
+    const a = schedule.stops[pattern[after][0]];
+    const b = schedule.stops[pattern[Math.min(after + 1, pattern.length - 1)][0]];
+    return { lat: a[3] + fraction * (b[3] - a[3]), lng: a[4] + fraction * (b[4] - a[4]) };
+  }
+  const target = path.stops[after] + fraction * (path.stops[after + 1] - path.stops[after]);
+  let k = 0;
+  while (k < path.along.length - 2 && path.along[k + 1] < target) k++;
+  const span = path.along[k + 1] - path.along[k];
+  const f = span === 0 ? 0 : Math.min(1, Math.max(0, (target - path.along[k]) / span));
+  const a = path.points[k];
+  const b = path.points[k + 1];
+  return { lat: a.lat + f * (b.lat - a.lat), lng: a.lng + f * (b.lng - a.lng) };
+}
+
+// Between the stop it left and the one LTC predicts next, by the clock: it leaves with the delay
+// that prediction carries and gets there at the predicted time, and waits there if it is late.
+// Never past that stop, never from an old reading.
+function estimatedFraction(
+  schedule: Schedule,
+  departure: Departure,
+  update: LiveTripUpdate,
+  next: number,
+  now: number,
+): number {
+  const pattern = schedule.patterns[departure.trip[6]];
+  const at = (index: number, field: 2 | 3) =>
+    scheduledTime(departure.serviceDate, departure.trip[7] + pattern[index][field]);
+  const stop = update.stops.find((s) => s.stopSequence === pattern[next][1]);
+  const arrive =
+    (stop && (prediction(stop.arrival, at(next, 2)) ?? prediction(stop.departure, at(next, 3)))) ??
+    at(next, 2);
+  const leave = at(next - 1, 3) + (arrive - at(next, 2));
+  if (arrive <= leave) return now >= arrive ? 1 : 0;
+  return Math.min(1, Math.max(0, (now - leave) / (arrive - leave)));
 }
 
 export function tripLiveDetail(
@@ -788,7 +989,9 @@ export function tripLiveDetail(
   vehicles: LiveVehicle[];
   alerts: LiveAlert[];
   update: LiveTripUpdate | null;
-  bus: BusOnTrip | null;
+  bus: FollowedBus | null;
+  /** From the current predictions: not started, under way, or no stop left ahead. Null without them. */
+  phase: 'not-started' | 'under-way' | 'ended' | null;
 } {
   const usable = usableSnapshot(snapshot, schedule, now);
   const update = usable
@@ -796,40 +999,108 @@ export function tripLiveDetail(
     : undefined;
   const vehicles = usable ? snapshot.vehicles.filter((v) => sameTrip(v, departure, schedule)) : [];
   const pattern = schedule.patterns[departure.trip[6]];
-  const vehicle =
+  const followed =
+    usable &&
+    (!snapshot.coverage ||
+      snapshot.coverage.trips.some(
+        (t) => t.tripId === departure.trip[0] && t.serviceDate === departure.serviceDate,
+      ));
+  const recent = (v: LiveVehicle) =>
+    v.position !== null &&
+    v.measuredAt !== null &&
+    v.measuredAt <= now + FUTURE_ALLOWANCE_MS &&
+    now - v.measuredAt <= LAST_REPORT_MS;
+  const newest = (list: LiveVehicle[]) =>
+    list.filter(recent).sort((a, b) => b.measuredAt! - a.measuredAt!)[0] ?? null;
+  const current =
     (usable &&
       vehicles.find(
         (v) => v.position !== null && liveFreshness(snapshot, 'vehicles', v.measuredAt, now),
       )) ||
     null;
+  const last =
+    current ??
+    (usable
+      ? newest([
+          ...vehicles,
+          ...(snapshot.retainedVehicles ?? []).filter((v) => sameTrip(v, departure, schedule)),
+        ])
+      : null);
   const next =
-    usable &&
+    followed &&
     update?.relationship === 'scheduled' &&
-    (vehicle !== null || update.vehicleId !== null) &&
+    (last !== null || update.vehicleId !== null) &&
     liveFreshness(snapshot, 'trips', update.measuredAt, now)
       ? nextStopIndex(schedule, departure, update, now)
       : null;
-  const placed = vehicle?.position ? alongStops(schedule, departure, vehicle.position, next) : null;
-  const bus: BusOnTrip | null =
-    placed && placed.distance <= OFF_TRIP_M
-      ? { after: placed.after, fraction: placed.fraction, measured: true, vehicle }
-      : next === null || (next === 0 && vehicle === null)
-        ? null
-        : next === 0
-          ? { after: 0, fraction: 0, measured: false, vehicle }
-          : next >= pattern.length
-            ? { after: pattern.length - 1, fraction: 0, measured: false, vehicle }
-            : { after: next - 1, fraction: 0.5, measured: false, vehicle };
+  const reported = (vehicle: LiveVehicle, placedBy: 'gps' | 'last-gps'): FollowedBus => {
+    const position = vehicle.position!;
+    const point = { lat: position.lat, lng: position.lng };
+    const near = next !== null && next < pattern.length ? next : null;
+    const placed = alongStops(schedule, departure, point, near, now);
+    if (placed && placed.distance <= OFF_TRIP_M)
+      return {
+        placedBy,
+        along: { after: placed.after, fraction: placed.fraction },
+        why: null,
+        point,
+        vehicle,
+      };
+    const anywhere = near === null ? null : alongStops(schedule, departure, point, null, now);
+    return { placedBy, along: null, why: anywhere ? 'disagrees' : 'off-trip', point, vehicle };
+  };
+  let bus: FollowedBus | null = null;
+  if (current) bus = reported(current, 'gps');
+  else if (update && next !== null && next > 0 && next < pattern.length) {
+    const fraction = estimatedFraction(schedule, departure, update, next, now);
+    bus = {
+      placedBy: 'estimate',
+      along: { after: next - 1, fraction },
+      why: null,
+      point: estimatedPoint(schedule, departure.trip, next - 1, fraction),
+      vehicle: last,
+    };
+  } else if (last) bus = reported(last, 'last-gps');
+  else if (usable && update?.vehicleId && (next === null || next === 0)) {
+    // The same bus is often named on its next trip while it still runs the one before.
+    const elsewhere = newest(
+      [...snapshot.vehicles, ...(snapshot.retainedVehicles ?? [])].filter(
+        (v) => v.vehicleId === update.vehicleId && !sameTrip(v, departure, schedule),
+      ),
+    );
+    if (elsewhere)
+      bus = {
+        placedBy:
+          snapshot.vehicles.includes(elsewhere) &&
+          liveFreshness(snapshot, 'vehicles', elsewhere.measuredAt, now)
+            ? 'gps'
+            : 'last-gps',
+        along: null,
+        why: 'other-trip',
+        point: { lat: elsewhere.position!.lat, lng: elsewhere.position!.lng },
+        vehicle: elsewhere,
+      };
+  }
+  const along = bus?.along ?? null;
+  const reached = along ? along.after + (along.fraction > 0 ? 1 : 0) : next;
+  const fresh = !!snapshot && liveFreshness(snapshot, 'trips', update?.measuredAt ?? null, now);
+  const controlFresh =
+    !!snapshot &&
+    liveFreshness(
+      snapshot,
+      'trips',
+      update?.measuredAt ?? snapshot.health.trips.feedTimestamp,
+      now,
+    );
   const stops = pattern.map((stopTime, index) => {
     const scheduledArrival = scheduledTime(departure.serviceDate, departure.trip[7] + stopTime[2]);
     const scheduledDeparture = scheduledTime(
       departure.serviceDate,
       departure.trip[7] + stopTime[3],
     );
-    const stop = update?.stops.find(
-      (s) => s.stopSequence === stopTime[1] && s.stopId === schedule.stops[stopTime[0]][0],
-    );
-    const fresh = !!snapshot && liveFreshness(snapshot, 'trips', update?.measuredAt ?? null, now);
+    const stopId = schedule.stops[stopTime[0]][0];
+    const stop = update?.stops.find((s) => s.stopSequence === stopTime[1] && s.stopId === stopId);
+    const askedStop = !snapshot || asked(snapshot, departure, stopId);
     const merged = stopDeparture(
       update,
       stop,
@@ -837,15 +1108,11 @@ export function tripLiveDetail(
       fresh,
       scheduledArrival,
       snapshot?.health.trips.feedTimestamp ?? null,
-      !!snapshot &&
-        liveFreshness(
-          snapshot,
-          'trips',
-          update?.measuredAt ?? snapshot.health.trips.feedTimestamp,
-          now,
-        ),
+      controlFresh,
+      askedStop,
     );
-    const applicable = update?.relationship === 'scheduled' && stop?.relationship === 'scheduled';
+    const applicable =
+      askedStop && update?.relationship === 'scheduled' && stop?.relationship === 'scheduled';
     const arrival = applicable ? prediction(stop.arrival, scheduledArrival) : null;
     const departurePrediction = applicable ? prediction(stop.departure, scheduledDeparture) : null;
     return {
@@ -867,15 +1134,16 @@ export function tripLiveDetail(
           : fresh
             ? ('official' as const)
             : ('last-known' as const),
-      progress: bus
-        ? index <= bus.after
-          ? ('passed' as const)
-          : index === bus.after + 1
-            ? ('next' as const)
-            : ('upcoming' as const)
-        : next === 0
-          ? ('upcoming' as const)
-          : ('unknown' as const),
+      // A bus standing at a stop has not passed it yet. Without a placed bus, the current
+      // predictions say how far the trip has gone.
+      progress:
+        reached === null
+          ? ('unknown' as const)
+          : index < reached
+            ? ('passed' as const)
+            : index === reached && (along || next !== 0)
+              ? ('next' as const)
+              : ('upcoming' as const),
     };
   });
   return {
@@ -884,6 +1152,14 @@ export function tripLiveDetail(
     alerts: relevantLiveAlerts(schedule, departure, snapshot, now, null),
     update: update ?? null,
     bus,
+    phase:
+      next === null
+        ? null
+        : next === 0
+          ? 'not-started'
+          : next >= pattern.length
+            ? 'ended'
+            : 'under-way',
   };
 }
 
@@ -964,6 +1240,15 @@ async function boundedJson(
   }
 }
 
+/** The service asked to wait, at its limit or switched off, for as long as it said. */
+class LivePaused extends Error {
+  waitMs: number;
+  constructor(waitMs: number) {
+    super('La conexión en vivo está pausada o alcanzó su límite. Se conserva el horario.');
+    this.waitMs = waitMs;
+  }
+}
+
 export async function fetchLiveSnapshot(
   config: TransitLiveConfig,
   schedule: Schedule,
@@ -1020,10 +1305,10 @@ export async function fetchLiveSnapshot(
           throw new Error(
             'La clave de instalación de Transit no fue aceptada. Revisa la conexión.',
           );
-        if (response.status === 429 || response.status === 503)
-          throw new Error(
-            'La conexión en vivo está pausada o alcanzó su límite. Se conserva el horario.',
-          );
+        if (response.status === 429 || response.status === 503) {
+          const seconds = Number(response.headers.get('retry-after'));
+          throw new LivePaused(Number.isFinite(seconds) && seconds > 0 ? seconds * 1_000 : 0);
+        }
         if (!response.ok)
           throw new Error(
             `No hay datos en vivo ahora (HTTP ${response.status}). Se conserva el horario.`,
@@ -1064,12 +1349,15 @@ export function createLiveClient(options: LiveClientOptions) {
   let disposed = false;
   let generation = 0;
   let departureAt: number | undefined;
+  let endsAt: number | undefined;
   let request: AbortController | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let lastAttempt = -Infinity;
   let attemptedKey: string | null = null;
   let failures = 0;
   let retryAfter = 0;
+  // Until when the service itself asked to wait; that wait outlasts a trip to another app.
+  let pausedUntil = 0;
   const emit = (changes: Partial<TransitLiveState>) => {
     if (disposed) return;
     state = { ...state, ...changes };
@@ -1080,9 +1368,12 @@ export function createLiveClient(options: LiveClientOptions) {
     timer = null;
   };
   const useful = () => foreground && !!state.query && !!options.config && !disposed;
+  // From half an hour before the chosen departure until its trip is over: following a bus that
+  // left his stop ten minutes ago is still useful while it runs.
   const near = () =>
     departureAt === undefined ||
-    (departureAt >= now() - 10 * 60_000 && departureAt <= now() + 30 * 60_000);
+    (now() >= departureAt - 30 * 60_000 &&
+      now() <= Math.max(departureAt + 10 * 60_000, (endsAt ?? -Infinity) + FOLLOW_AFTER_END_MS));
   const schedule = (at: number, initialRead = false) => {
     clearTimer();
     if (!useful() || (!near() && !initialRead)) {
@@ -1126,20 +1417,37 @@ export function createLiveClient(options: LiveClientOptions) {
       });
       if (token !== generation || controller.signal.aborted || !useful()) return;
       const snapshot = preserveFailedSources(state.snapshot, received, options.schedule, now());
-      const sourceFailure = Object.values(snapshot.health).some((h) => h.status !== 'ok');
-      failures = sourceFailure ? failures + 1 : 0;
-      retryAfter = sourceFailure
-        ? now() + Math.min(5 * 60_000, REFRESH_MS * 2 ** Math.min(failures - 1, 4))
-        : 0;
+      // An answer arrived, so the connection works: an old or failing LTC file is shown as such
+      // and read again at the usual pace. Backing off for it, alerts included, kept healthy buses
+      // waiting up to five minutes; the service already limits its own retries to LTC.
+      failures = 0;
+      retryAfter = 0;
+      pausedUntil = 0;
+      const sourceFailure =
+        snapshot.health.trips.status !== 'ok' || snapshot.health.vehicles.status !== 'ok';
       emit({
-        snapshot,
+        snapshot: {
+          ...snapshot,
+          coverage:
+            snapshot.tripUpdates === received.tripUpdates
+              ? { stopIds: query.stopIds, trips: query.trips }
+              : state.snapshot?.coverage,
+          retainedVehicles: retainFollowed(
+            state.snapshot,
+            snapshot,
+            query,
+            options.schedule,
+            now(),
+          ),
+        },
         lastSuccessAt: now(),
         reason: sourceFailure
           ? 'Parte de la información en vivo no está disponible o es antigua. Se conserva el horario.'
           : null,
       });
       if (options.cache) {
-        const content = JSON.stringify({ schema: 1, query, snapshot, storedAt: now() });
+        // The answer itself: a source kept from an earlier reading may belong to another query.
+        const content = JSON.stringify({ schema: 1, query, snapshot: received, storedAt: now() });
         if (new TextEncoder().encode(content).byteLength <= LIVE_LOCAL_MAX_BYTES) {
           try {
             await options.cache.write(content);
@@ -1156,6 +1464,8 @@ export function createLiveClient(options: LiveClientOptions) {
       if (token !== generation || controller.signal.aborted || !useful()) return;
       failures += 1;
       retryAfter = now() + Math.min(5 * 60_000, REFRESH_MS * 2 ** Math.min(failures - 1, 4));
+      if (error instanceof LivePaused)
+        pausedUntil = retryAfter = Math.max(retryAfter, now() + Math.min(5 * 60_000, error.waitMs));
       emit({
         snapshot: usableSnapshot(state.snapshot, options.schedule, now()) ? state.snapshot : null,
         reason:
@@ -1193,7 +1503,10 @@ export function createLiveClient(options: LiveClientOptions) {
       );
       if (token === generation && !state.snapshot)
         emit({
-          snapshot,
+          snapshot: {
+            ...snapshot,
+            coverage: { stopIds: cachedQuery.stopIds, trips: cachedQuery.trips },
+          },
           lastSuccessAt: value.storedAt,
           reason:
             state.reason ?? 'Última lectura guardada. Las edades conservan la hora de la fuente.',
@@ -1210,10 +1523,14 @@ export function createLiveClient(options: LiveClientOptions) {
   };
   return {
     getState: () => state,
-    setQuery: (query: LiveQuery | null, selection: { departureAt?: number } = {}) => {
+    setQuery: (
+      query: LiveQuery | null,
+      selection: { departureAt?: number; endsAt?: number } = {},
+    ) => {
       if (disposed) return;
       if (query) validateLiveQuery(query, options.schedule);
       departureAt = selection.departureAt;
+      endsAt = selection.endsAt;
       if (
         (query ? liveQueryKey(query) : null) === (state.query ? liveQueryKey(state.query) : null)
       ) {
@@ -1224,14 +1541,11 @@ export function createLiveClient(options: LiveClientOptions) {
       request?.abort();
       request = null;
       clearTimer();
-      // Opening or closing a departure keeps the stop, so its live data stays on screen until the
-      // trip's own arrives.
-      const sameStop =
-        !!query && !!state.query && query.stopIds.join() === state.query.stopIds.join();
+      // The last reading stays on screen until the new one arrives: each report keeps its own trip
+      // and times, and a stop it did not ask about reads as schedule meanwhile. Clearing it on
+      // every change, such as the planner's stops moving, blanked the followed bus.
       emit({
         query,
-        snapshot: sameStop ? state.snapshot : null,
-        lastSuccessAt: sameStop ? state.lastSuccessAt : null,
         loading: false,
         nextRefreshAt: null,
         reason: options.config ? null : state.reason,
@@ -1250,7 +1564,13 @@ export function createLiveClient(options: LiveClientOptions) {
         request = null;
         clearTimer();
         emit({ loading: false, nextRefreshAt: null });
-      } else void refresh();
+        return;
+      }
+      // Back from another app it reads at once, within the usual 15 s between reads: a failure
+      // from before leaving, often the network dropping meanwhile, says little about now. A wait
+      // the service asked for still holds.
+      if (now() >= pausedUntil) retryAfter = 0;
+      void refresh();
     },
     refresh,
     dispose: () => {

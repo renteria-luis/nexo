@@ -7,7 +7,6 @@ import { Bus } from './icons.ts';
 import { placeIcon } from './placeIcons.ts';
 import type { TransitMapProps } from './TransitMap.types.ts';
 import { font } from './theme.ts';
-import { useReportedBuses } from './useReportedBuses.ts';
 
 export const TransitMap = memo(function TransitMap({
   center,
@@ -16,19 +15,32 @@ export const TransitMap = memo(function TransitMap({
   selectedPlace,
   selectedStop,
   draft,
-  buses,
+  buses = [],
+  followed,
+  focus,
   routePoints = [],
   routeColor = '#3977A5',
   onPlace,
   onStop,
   onPoint,
 }: TransitMapProps) {
-  const reports = useReportedBuses(buses);
   const [width, setWidth] = useState(320);
   const [zoom, setZoom] = useState(1);
+  // The diagram centres on the place, or once on a bus he tapped, until the place changes.
+  const [view, setView] = useState({
+    key: focus?.key ?? null,
+    at: focus?.point ?? center,
+    from: center,
+  });
+  let shown = view;
+  if (focus && focus.key !== view.key) shown = { key: focus.key, at: focus.point, from: center };
+  else if (view.from.lat !== center.lat || view.from.lng !== center.lng)
+    shown = { key: view.key, at: center, from: center };
+  if (shown !== view) setView(shown);
+  const middle = shown.at;
   const height = 250;
-  const x = (lng: number) => width / 2 + ((lng - center.lng) / 0.015) * width * zoom;
-  const y = (lat: number) => height / 2 - ((lat - center.lat) / 0.012) * height * zoom;
+  const x = (lng: number) => width / 2 + ((lng - middle.lng) / 0.015) * width * zoom;
+  const y = (lat: number) => height / 2 - ((lat - middle.lat) / 0.012) * height * zoom;
   const visible = (lat: number, lng: number) =>
     x(lng) >= 0 && x(lng) <= width && y(lat) >= 0 && y(lat) <= height;
   return (
@@ -48,9 +60,9 @@ export const TransitMap = memo(function TransitMap({
           const bounds = (e.currentTarget as unknown as HTMLElement).getBoundingClientRect();
           onPoint({
             lat:
-              center.lat - (((pointer.clientY - bounds.top - height / 2) / height) * 0.012) / zoom,
+              middle.lat - (((pointer.clientY - bounds.top - height / 2) / height) * 0.012) / zoom,
             lng:
-              center.lng + (((pointer.clientX - bounds.left - width / 2) / width) * 0.015) / zoom,
+              middle.lng + (((pointer.clientX - bounds.left - width / 2) / width) * 0.015) / zoom,
           });
         }}
       >
@@ -115,7 +127,7 @@ export const TransitMap = memo(function TransitMap({
               strokeWidth={2}
             />
           )}
-          {reports
+          {buses
             .filter((bus) => visible(bus.lat, bus.lng))
             .map((bus) => (
               <Circle
@@ -128,6 +140,17 @@ export const TransitMap = memo(function TransitMap({
                 strokeWidth={2}
               />
             ))}
+          {followed && visible(followed.lat, followed.lng) && (
+            <Circle
+              cx={x(followed.lng)}
+              cy={y(followed.lat)}
+              r={17}
+              fill="#FFFFFF"
+              stroke={followed.placedBy === 'last-gps' ? '#777777' : '#111111'}
+              strokeWidth={3}
+              strokeDasharray={followed.placedBy === 'estimate' ? '5 4' : undefined}
+            />
+          )}
           <SvgText x={8} y={height - 10} fontSize={11} fill="#46514B">
             N ↑ · puntos, sin calles ni recorridos a pie
           </SvgText>
@@ -166,7 +189,7 @@ export const TransitMap = memo(function TransitMap({
                 </Pressable>
               );
             })}
-          {reports
+          {buses
             .filter((bus) => visible(bus.lat, bus.lng))
             .map((bus) => (
               <View
@@ -177,6 +200,16 @@ export const TransitMap = memo(function TransitMap({
                 <Bus size={14} color="#FFFFFF" strokeWidth={2.5} />
               </View>
             ))}
+          {followed && visible(followed.lat, followed.lng) && (
+            <View
+              pointerEvents="none"
+              accessibilityLabel={followed.label}
+              style={[styles.followed, { left: x(followed.lng) - 56, top: y(followed.lat) - 14 }]}
+            >
+              <Bus size={16} color="#111111" strokeWidth={2.5} />
+              <Text style={styles.followedTag}>{followed.tag}</Text>
+            </View>
+          )}
         </View>
         <View style={styles.controls}>
           <Pressable
@@ -205,7 +238,8 @@ export const TransitMap = memo(function TransitMap({
           </Pressable>
         </View>
       </Pressable>
-      {reports.map((bus) => (
+      {followed && <Text style={styles.caption}>{followed.label}</Text>}
+      {buses.map((bus) => (
         <Text key={bus.id} style={styles.caption}>
           {bus.label} · {bus.stale ? 'último reporte' : 'posición reportada'} ·{' '}
           {bus.measuredAt === null ? 'sin hora de medición' : agencyClock(bus.measuredAt)}
@@ -235,6 +269,15 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  followed: { position: 'absolute', width: 112, alignItems: 'center' },
+  followedTag: {
+    marginTop: 6,
+    paddingHorizontal: 4,
+    fontFamily: font.bold,
+    fontSize: 11,
+    color: '#111111',
+    backgroundColor: '#FFFFFF',
   },
   frame: { height: 250, backgroundColor: '#EEF2EF', borderRadius: 10, overflow: 'hidden' },
   caption: { fontFamily: font.regular, fontSize: 12, marginBottom: 6, color: '#46514B' },

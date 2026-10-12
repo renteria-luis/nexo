@@ -26,6 +26,7 @@ import {
   queryInstant,
   savePlace,
   saveWalkLink,
+  scheduledTime,
   PLACE_ICONS,
   type CachedSchedule,
   type Departure,
@@ -43,8 +44,7 @@ import { Pencil, Plus, RefreshCw } from '../icons.ts';
 import { PLACE_ICON_VIEWS } from '../placeIcons.ts';
 import { routeColor } from '../routeColors.ts';
 import { TextField } from '../TextField.tsx';
-import { TransitMap } from '../TransitMap';
-import type { ReportedBus } from '../TransitMap.types.ts';
+import { TransitLiveMap } from '../TransitLiveMap.tsx';
 import {
   TransitAlerts,
   TransitStopDepartures,
@@ -57,7 +57,7 @@ import { TransitWhen } from '../TransitWhen.tsx';
 import { TransitLiveSettings } from '../TransitLiveSettings.tsx';
 import { useTransitLive } from '../useTransitLive.ts';
 import { font, sheet, shape, theme } from '../theme.ts';
-import { Screen } from './Screen.tsx';
+import { Screen, useScrollIntoView } from './Screen.tsx';
 
 type Draft = {
   id?: string;
@@ -68,6 +68,31 @@ type Draft = {
   icon: PlaceIcon;
 };
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+const sameTrip = (a: Departure | null, b: Departure | null) =>
+  !!a && !!b && a.trip[0] === b.trip[0] && a.serviceDate === b.serviceDate;
+
+/** The map's card. A tap on a bus further down scrolls the screen up to it. */
+function MapCard({
+  title,
+  reveal,
+  children,
+}: {
+  title: string;
+  reveal: number | null;
+  children: ReactNode;
+}) {
+  const scrollIntoView = useScrollIntoView();
+  const block = useRef<View>(null);
+  useEffect(() => {
+    if (reveal !== null) scrollIntoView(block.current);
+  }, [reveal, scrollIntoView]);
+  return (
+    <View ref={block} collapsable={false}>
+      <Card title={title}>{children}</Card>
+    </View>
+  );
+}
 
 class TransitBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
   state = { error: null as string | null };
@@ -124,6 +149,12 @@ function TransitContent() {
   const [detail, setDetail] = useState<Departure | null>(null);
   const [plannerLive, setPlannerLive] = useState<PlannerLive>({ stops: [], ride: null });
   const [walkEdits, setWalkEdits] = useState(0);
+  // The bus he last tapped on a trip card, and when, so the same tap again moves the map again.
+  const [focus, setFocus] = useState<{ departure: Departure; at: number } | null>(null);
+  const focusBus = useCallback(
+    (departure: Departure) => setFocus({ departure, at: Date.now() }),
+    [],
+  );
   const alive = useRef(true);
   const pending = useRef(false);
   const syncPending = useRef(false);
@@ -246,7 +277,6 @@ function TransitContent() {
   const selectedTripId = selectedDetail?.trip[0];
   const selectedServiceDate = selectedDetail?.serviceDate;
   const selectedRouteId = selectedDetail?.route[0];
-  const selectedShapeId = selectedDetail?.trip[5];
   const editingLive = draft !== null;
   const onPlannerLive = useCallback(
     (next: PlannerLive) =>
@@ -299,8 +329,29 @@ function TransitContent() {
     plannerRide,
     today,
   ]);
-  const live = useTransitLive(schedule, query, selectedDetail?.at ?? plannerRide?.at);
+  // Live reads follow the open trips until they are over, not only around his departure.
+  const following = [selectedDetail, plannerRide].filter((d): d is Departure => d !== null);
+  const live = useTransitLive(
+    schedule,
+    query,
+    following.length ? Math.min(...following.map((d) => d.at)) : undefined,
+    following.length && schedule
+      ? Math.max(
+          ...following.map((d) =>
+            scheduledTime(d.serviceDate, d.trip[7] + schedule.patterns[d.trip[6]].at(-1)![2]),
+          ),
+        )
+      : undefined,
+  );
   const snapshot = liveMode ? live.state.snapshot : null;
+  // The map shows the bus he tapped while its trip is open, otherwise the open Paradas trip, then
+  // the planner's.
+  const tapped =
+    focus && (sameTrip(focus.departure, selectedDetail) || sameTrip(focus.departure, plannerRide))
+      ? focus.departure
+      : null;
+  const followed = tapped ?? selectedDetail ?? plannerRide;
+  const followedShapeId = followed?.trip[5];
   const effectiveFrom = liveMode ? Math.max(from, live.state.lastSuccessAt ?? from) : from;
   const departuresList = useMemo(
     () =>
@@ -324,36 +375,12 @@ function TransitContent() {
         : [],
     [departuresList, selectedDetail],
   );
-  const tripsById = useMemo(() => new Map(schedule?.trips.map((t) => [t[0], t]) ?? []), [schedule]);
-  const buses = useMemo<ReportedBus[]>(() => {
-    if (!schedule || !snapshot?.staticCompatible) return [];
-    return snapshot.vehicles.flatMap((vehicle) => {
-      if (!vehicle.position) return [];
-      const trip = tripsById.get(vehicle.tripId);
-      if (!trip) return [];
-      return [
-        {
-          id: `${vehicle.entityId}-${vehicle.tripId}-${vehicle.serviceDate}`,
-          label: `Bus ${vehicle.vehicleId ?? 'LTC'} · ${schedule.routes[trip[1]][1]} → ${trip[3]}`,
-          lat: vehicle.position.lat,
-          lng: vehicle.position.lng,
-          measuredAt: vehicle.measuredAt,
-          freshnessAt: Math.min(
-            snapshot.generatedAt,
-            snapshot.health.vehicles.feedTimestamp ?? 0,
-            vehicle.measuredAt ?? 0,
-          ),
-          stale: vehicle.measuredAt === null || snapshot.health.vehicles.status !== 'ok',
-        },
-      ];
-    });
-  }, [snapshot, schedule, tripsById]);
   const routePoints = useMemo(
     () =>
-      selectedShapeId && schedule
-        ? (schedule.shapes[selectedShapeId] ?? []).map((p) => ({ lat: p[0], lng: p[1] }))
+      followedShapeId && schedule
+        ? (schedule.shapes[followedShapeId] ?? []).map((p) => ({ lat: p[0], lng: p[1] }))
         : [],
-    [selectedShapeId, schedule],
+    [followedShapeId, schedule],
   );
   const db = data?.db;
   const activePlaceId = place?.id;
@@ -612,10 +639,20 @@ function TransitContent() {
           today={today}
           walksVersion={walkEdits}
           onLive={onPlannerLive}
+          onFocusBus={focusBus}
         />
       )}
-      <Card title={draft ? 'Elige el punto exacto' : place.name}>
-        <TransitMap
+      <MapCard title={draft ? 'Elige el punto exacto' : place.name} reveal={focus?.at ?? null}>
+        <TransitLiveMap
+          schedule={schedule}
+          snapshot={
+            sameTrip(followed, plannerRide) && !sameTrip(followed, selectedDetail)
+              ? live.state.snapshot
+              : snapshot
+          }
+          active={live.active}
+          followed={followed}
+          focusKey={tapped ? focus!.at : null}
           center={center}
           places={places}
           stops={stops}
@@ -626,11 +663,10 @@ function TransitContent() {
           onStop={openStop}
           onPoint={draft && !busy ? pickPoint : undefined}
           onInteraction={setMapActive}
-          buses={buses}
           routePoints={routePoints}
-          routeColor={selectedDetail ? routeColor(selectedDetail.route[3]) : undefined}
+          routeColor={followed ? routeColor(followed.route[3]) : undefined}
         />
-      </Card>
+      </MapCard>
       <Card title="Paradas">
         <View style={styles.row}>
           <View style={styles.flex}>
@@ -722,6 +758,7 @@ function TransitContent() {
                     active={live.active}
                     onSelect={setDetail}
                     onClose={() => setDetail(null)}
+                    onFocusBus={focusBus}
                   />
                 ) : (
                   <TransitStopDepartures

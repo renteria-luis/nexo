@@ -25,6 +25,7 @@ export function useTransitLive(
   schedule: Schedule | undefined,
   query: LiveQuery | null,
   departureAt?: number,
+  endsAt?: number,
 ) {
   const focused = useIsFocused();
   const [active, setActive] = useState(AppState.currentState === 'active');
@@ -66,8 +67,8 @@ export function useTransitLive(
   }, [schedule, config, loaded]);
 
   useEffect(() => {
-    controller.current?.setQuery(query, { departureAt });
-  }, [schedule, config, loaded, query, departureAt]);
+    controller.current?.setQuery(query, { departureAt, endsAt });
+  }, [schedule, config, loaded, query, departureAt, endsAt]);
   useEffect(() => {
     controller.current?.setForeground(focused && active);
   }, [schedule, config, loaded, focused, active]);

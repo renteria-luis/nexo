@@ -1,10 +1,11 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { AppState, Pressable, ScrollView, Text, View } from 'react-native';
 
 import {
   mergeLiveDeparture,
   tripLiveDetail,
   liveFreshness,
+  type FollowedBus,
   type LiveDeparture,
   type LiveDetailStop,
   type LiveSnapshot,
@@ -43,13 +44,39 @@ function label(live: LiveDeparture) {
   return statusLabel[live.status];
 }
 
-function useLiveClock(active: boolean) {
+const TICK_MS = 15_000;
+
+/**
+ * The time live rows are judged against. Back from another app it is read in the same event that
+ * wakes the screen, so the first frame already judges the last reports by their real age: a clock
+ * stopped in the background made a reading taken after the return look like it came from the
+ * future, and the bus vanished until the next tick. A new reading, or the screen coming back into
+ * view, reads it again right after drawing. Ticks fall on the same quarter minutes everywhere, so
+ * the trip card and the map place an estimated bus at the same point.
+ */
+export function useLiveClock(active: boolean, data?: unknown) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'active') setNow(Date.now());
+    });
+    return () => subscription.remove();
+  }, []);
+  useEffect(() => {
     if (!active) return;
-    const timer = setInterval(() => setNow(Date.now()), 15_000);
-    return () => clearInterval(timer);
-  }, [active]);
+    const read = () => setNow(Date.now());
+    const soon = setTimeout(read, 0);
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      read();
+      timer = setTimeout(tick, TICK_MS - (Date.now() % TICK_MS));
+    };
+    timer = setTimeout(tick, TICK_MS - (Date.now() % TICK_MS));
+    return () => {
+      clearTimeout(soon);
+      clearTimeout(timer);
+    };
+  }, [active, data]);
   return now;
 }
 
@@ -207,7 +234,7 @@ export function TransitStopDepartures({
   active: boolean;
   onSelect: (departure: Departure) => void;
 }) {
-  const now = useLiveClock(active);
+  const now = useLiveClock(active, snapshot);
   const [opened, setOpened] = useState<string[]>([]);
   const groups = useMemo(() => {
     const byLine = new Map<string, DepartureLine[]>();
@@ -369,6 +396,40 @@ const TimelineRow = memo(function TimelineRow({
   );
 });
 
+/** What the card says about the followed bus, from the evidence that placed it. */
+function busText(detail: ReturnType<typeof tripLiveDetail>, now: number) {
+  const { bus, update, phase } = detail;
+  const assigned = update?.vehicleId ?? null;
+  const name = `Bus ${bus?.vehicle?.vehicleId ?? assigned ?? 'LTC'}`;
+  const gps = (at: number | null) =>
+    at === null ? 'GPS sin hora' : `GPS ${agencyClock(at)} · ${ago(at, now)}`;
+  if (bus?.why === 'other-trip')
+    return `${name} asignado · todavía hace su viaje anterior · ${gps(bus.vehicle!.measuredAt)}`;
+  if (bus?.why === 'off-trip')
+    return `${name} · su GPS está fuera del recorrido, quizá por un desvío · ${gps(bus.vehicle!.measuredAt)}`;
+  if (bus?.why === 'disagrees')
+    return `${name} · su GPS no coincide con las predicciones de LTC · ${gps(bus.vehicle!.measuredAt)}`;
+  if (bus?.placedBy === 'gps') return `${name} · ${gps(bus.vehicle!.measuredAt)}`;
+  if (bus?.placedBy === 'last-gps')
+    return `${name} · último ${gps(bus.vehicle!.measuredAt)} · sin reporte reciente`;
+  if (bus)
+    return `${name} · posición estimada con las predicciones de LTC · ${
+      bus.vehicle ? `último ${gps(bus.vehicle.measuredAt)}` : 'sin GPS'
+    }`;
+  if (assigned && phase === 'not-started')
+    return `Bus ${assigned} asignado · todavía no empieza este viaje`;
+  if (phase === 'ended') return 'LTC ya no predice paradas de este viaje';
+  if (assigned) return `Bus ${assigned} asignado · sin ubicación reciente`;
+  return update ? 'Sin bus asignado todavía' : 'Sin datos en vivo de este viaje';
+}
+
+const busNote: Record<FollowedBus['placedBy'], string> = {
+  gps: 'El bus está donde lo reportó su GPS; no se mueve entre reportes.',
+  'last-gps': 'Es el último GPS recibido: el bus ya avanzó desde entonces.',
+  estimate:
+    'Sin GPS reciente: avanza con la hora que LTC predice para la siguiente parada y ahí espera. Es una estimación, no un GPS.',
+};
+
 export function TransitTripTimeline({
   schedule,
   departure,
@@ -377,6 +438,7 @@ export function TransitTripTimeline({
   active,
   onSelect,
   onClose,
+  onFocusBus,
 }: {
   schedule: Schedule;
   departure: Departure;
@@ -385,8 +447,10 @@ export function TransitTripTimeline({
   active: boolean;
   onSelect: (departure: Departure) => void;
   onClose: () => void;
+  /** Shows this trip's bus on the map; tapping the bus on the line asks for it. */
+  onFocusBus?: (departure: Departure) => void;
 }) {
-  const now = useLiveClock(active);
+  const now = useLiveClock(active, snapshot);
   const detail = useMemo(
     () => tripLiveDetail(schedule, departure, snapshot, now),
     [schedule, departure, snapshot, now],
@@ -414,17 +478,9 @@ export function TransitTripTimeline({
   const placedFor = useRef<string | null>(null);
   const key = `${departure.trip[0]}/${departure.serviceDate}/${departure.stopTime[1]}`;
   const bus = detail.bus;
-  const busFresh = bus?.measured === true;
-  const assigned = detail.update?.vehicleId ?? null;
-  const busLine = bus?.vehicle
-    ? `Bus ${bus.vehicle.vehicleId ?? 'LTC'} · ${measurement(bus.vehicle.measuredAt, now)}${bus.measured ? '' : ' · ubicado por las predicciones'}`
-    : bus
-      ? `Bus ${assigned ?? 'LTC'} · ubicado por las predicciones`
-      : assigned
-        ? `Bus ${assigned} asignado · todavía no empieza este viaje`
-        : detail.update
-          ? 'Sin bus asignado todavía'
-          : 'Sin datos en vivo de este viaje';
+  const along = bus?.along ?? null;
+  const busLine = busText(detail, now);
+  const focus = bus && onFocusBus ? () => onFocusBus(departure) : undefined;
   return (
     <View style={styles.trip}>
       <View style={styles.tripHead}>
@@ -457,7 +513,18 @@ export function TransitTripTimeline({
           />
         ))}
       </ScrollView>
-      <Text style={styles.note}>{busLine}</Text>
+      {focus ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${busLine}. Ver en el mapa`}
+          onPress={focus}
+          style={styles.busLine}
+        >
+          <Text style={[styles.note, styles.link]}>{busLine} · ver en el mapa</Text>
+        </Pressable>
+      ) : (
+        <Text style={styles.note}>{busLine}</Text>
+      )}
       <View style={styles.timeline}>
         <ScrollView
           ref={scroll}
@@ -488,31 +555,38 @@ export function TransitTripTimeline({
                 color={lineColor}
               />
             ))}
-            {bus && (
-              <View
-                pointerEvents="none"
-                accessibilityLabel="Posición del bus"
+            {bus && along && (
+              <Pressable
+                accessibilityRole={focus ? 'button' : undefined}
+                accessibilityLabel={focus ? 'Posición del bus. Ver en el mapa' : 'Posición del bus'}
+                disabled={!focus}
+                onPress={focus}
+                // The icon is small; the touch area is not.
+                hitSlop={12}
                 style={[
                   styles.bus,
-                  { top: (bus.after + 0.5 + bus.fraction) * ROW - BUS_SIZE / 2 },
-                  !busFresh && styles.busEstimated,
+                  { top: (along.after + 0.5 + along.fraction) * ROW - BUS_SIZE / 2 },
+                  bus.placedBy === 'last-gps' && styles.busLast,
+                  bus.placedBy === 'estimate' && styles.busEstimated,
                 ]}
               >
-                <Bus size={14} color={theme.text} strokeWidth={2.5} />
-              </View>
+                <Bus
+                  size={14}
+                  color={bus.placedBy === 'gps' ? theme.text : theme.textFaint}
+                  strokeWidth={2.5}
+                />
+              </Pressable>
             )}
           </View>
         </ScrollView>
       </View>
-      <Text style={styles.note}>
-        El bus se dibuja donde lo reportó su GPS, sin movimiento simulado.
-      </Text>
+      {bus && along && <Text style={styles.note}>{busNote[bus.placedBy]}</Text>}
     </View>
   );
 }
 
 export function TransitAlerts({ snapshot, active }: { snapshot: LiveSnapshot; active: boolean }) {
-  const now = useLiveClock(active);
+  const now = useLiveClock(active, snapshot);
   const [open, setOpen] = useState(false);
   const alerts = snapshot.alerts.filter(
     (alert) =>
@@ -675,5 +749,10 @@ const styles = sheet((theme) => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  busEstimated: { backgroundColor: theme.surface, borderColor: theme.textGhost },
+  // Filled for a current GPS report, hollow for the last one, dashed for an estimate: told apart
+  // by shape, not only by colour.
+  busLast: { backgroundColor: theme.surface },
+  busEstimated: { backgroundColor: theme.surface, borderStyle: 'dashed' },
+  busLine: { alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center' },
+  link: { color: theme.text, textDecorationLine: 'underline' },
 }));

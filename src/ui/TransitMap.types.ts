@@ -5,8 +5,16 @@ export type ReportedBus = Coordinates & {
   id: string;
   label: string;
   measuredAt: number | null;
-  freshnessAt?: number | null;
   stale: boolean;
+};
+
+/** The bus of the trip he follows, drawn apart from the rest. */
+export type FollowedMarker = Coordinates & {
+  label: string;
+  /** Short text under the marker: the bus number and what places it. */
+  tag: string;
+  placedBy: 'gps' | 'last-gps' | 'estimate';
+  measuredAt: number | null;
 };
 
 export type TransitMapProps = {
@@ -17,6 +25,9 @@ export type TransitMapProps = {
   selectedStop: string | null;
   draft: Coordinates | null;
   buses?: ReportedBus[];
+  followed?: FollowedMarker | null;
+  /** Moves the camera there once; a new key moves it again, even to the same point. */
+  focus?: { key: number; point: Coordinates } | null;
   routePoints?: Coordinates[];
   /** The selected trip's line colour, already deepened for the screen. */
   routeColor?: string;

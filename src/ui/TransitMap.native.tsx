@@ -1,12 +1,11 @@
-import { memo, useEffect, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { memo, useEffect, useRef, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 
 import { agencyClock } from '../transit/schedule.ts';
 import { Bus } from './icons.ts';
 import { placeIcon } from './placeIcons.ts';
 import { useSwipeLock } from './SwipeLock.tsx';
-import { useReportedBuses } from './useReportedBuses.ts';
 import type { TransitMapProps } from './TransitMap.types.ts';
 
 export const TransitMap = memo(function TransitMap({
@@ -16,7 +15,9 @@ export const TransitMap = memo(function TransitMap({
   selectedPlace,
   selectedStop,
   draft,
-  buses,
+  buses = [],
+  followed,
+  focus,
   routePoints = [],
   routeColor = '#3977A5',
   onPlace,
@@ -24,8 +25,10 @@ export const TransitMap = memo(function TransitMap({
   onPoint,
   onInteraction,
 }: TransitMapProps) {
-  const reports = useReportedBuses(buses);
   const map = useRef<MapView>(null);
+  const [ready, setReady] = useState(false);
+  const target = useRef(focus);
+  target.current = focus;
   const { acquire } = useSwipeLock();
   const release = useRef<(() => void) | null>(null);
   const lat = center.lat;
@@ -36,6 +39,17 @@ export const TransitMap = memo(function TransitMap({
       250,
     );
   }, [lat, lng]);
+  // Once per tap, even to the same point, and only then: the camera does not chase the bus while
+  // he pans. A tap before the map is ready waits for it.
+  const focusKey = focus?.key;
+  useEffect(() => {
+    const point = target.current?.point;
+    if (!ready || focusKey === undefined || !point) return;
+    map.current?.animateToRegion(
+      { latitude: point.lat, longitude: point.lng, latitudeDelta: 0.008, longitudeDelta: 0.008 },
+      400,
+    );
+  }, [focusKey, ready]);
   useEffect(() => () => release.current?.(), []);
   const end = () => {
     release.current?.();
@@ -53,6 +67,7 @@ export const TransitMap = memo(function TransitMap({
           latitudeDelta: 0.012,
           longitudeDelta: 0.012,
         }}
+        onMapReady={() => setReady(true)}
         onTouchStart={() => {
           release.current ??= acquire();
           onInteraction?.(true);
@@ -114,7 +129,7 @@ export const TransitMap = memo(function TransitMap({
             pinColor="#DA692F"
           />
         )}
-        {reports.map((bus) => (
+        {buses.map((bus) => (
           <Marker
             key={`bus-${bus.id}`}
             identifier={`bus-${bus.id}`}
@@ -129,6 +144,35 @@ export const TransitMap = memo(function TransitMap({
             </View>
           </Marker>
         ))}
+        {followed && (
+          <Marker
+            key="followed"
+            identifier="followed"
+            coordinate={{ latitude: followed.lat, longitude: followed.lng }}
+            title={followed.label}
+            description={
+              followed.measuredAt === null
+                ? 'sin hora de GPS'
+                : `GPS de las ${agencyClock(followed.measuredAt)}`
+            }
+            // The circle's centre, above the tag, sits on the point.
+            anchor={{ x: 0.5, y: 0.34 }}
+            zIndex={4}
+          >
+            <View style={styles.followed}>
+              <View
+                style={[
+                  styles.followedBus,
+                  followed.placedBy === 'last-gps' && styles.followedLast,
+                  followed.placedBy === 'estimate' && styles.followedEstimate,
+                ]}
+              >
+                <Bus size={18} color="#111111" strokeWidth={2.5} />
+              </View>
+              <Text style={styles.followedTag}>{followed.tag}</Text>
+            </View>
+          </Marker>
+        )}
       </MapView>
     </View>
   );
@@ -147,4 +191,27 @@ const styles = StyleSheet.create({
   placeChosen: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#17683A' },
   bus: { ...marker, width: 28, height: 28, borderRadius: 14, backgroundColor: '#C34438' },
   busStale: { backgroundColor: '#777777' },
+  // His bus is told apart by size, a white face, a black ring and its tag, not only by colour.
+  followed: { alignItems: 'center', width: 112 },
+  followedBus: {
+    ...marker,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 3,
+    borderColor: '#111111',
+    backgroundColor: '#FFFFFF',
+  },
+  followedLast: { borderColor: '#777777' },
+  followedEstimate: { borderStyle: 'dashed' },
+  followedTag: {
+    marginTop: 2,
+    paddingHorizontal: 4,
+    borderRadius: 4,
+    overflow: 'hidden',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#111111',
+    backgroundColor: '#FFFFFF',
+  },
 });
