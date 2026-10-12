@@ -331,25 +331,26 @@ export function normalizeVehicles(
       issues.invalidEntities++;
       continue;
     }
-    const stopSequence = own(vehicle, 'currentStopSequence')
+    let stopSequence = own(vehicle, 'currentStopSequence')
       ? boundedInteger(vehicle.currentStopSequence, 0, 100_000)
       : null;
     const pattern = schedule.patterns[joined.trip[6]];
-    const stopId = own(vehicle, 'stopId') ? (vehicle.stopId ?? null) : null;
+    let stopId = own(vehicle, 'stopId') ? (vehicle.stopId ?? null) : null;
+    // LTC's current stop and sequence often name two different stops of the trip, or one it does
+    // not have: 26 to 29 of 66 buses on 2026-10-12. The position and trip are still sound, so only
+    // the stop fields are dropped; dropping the bus hid it from the map.
     if (
-      stopId !== null &&
-      !pattern.some(
-        (stop) =>
-          schedule.stops[stop[0]][0] === stopId &&
-          (stopSequence === null || stop[1] === stopSequence),
-      )
+      (stopId !== null &&
+        !pattern.some(
+          (stop) =>
+            schedule.stops[stop[0]][0] === stopId &&
+            (stopSequence === null || stop[1] === stopSequence),
+        )) ||
+      (stopSequence !== null && !pattern.some((stop) => stop[1] === stopSequence))
     ) {
       issues.ambiguousStops++;
-      continue;
-    }
-    if (stopSequence !== null && !pattern.some((stop) => stop[1] === stopSequence)) {
-      issues.ambiguousStops++;
-      continue;
+      stopId = null;
+      stopSequence = null;
     }
     const status = own(vehicle, 'currentStatus') ? vehicle.currentStatus : null;
     result.push({

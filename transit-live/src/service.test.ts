@@ -316,6 +316,44 @@ test('rejects future measured timestamps and unsupported vehicle trip relationsh
   assert.equal(result[0].position?.speed, 0);
 });
 
+test('a bus whose stop fields contradict its trip keeps its position without them', () => {
+  const counts = issues();
+  const position = { latitude: 43.0005, longitude: -81.0005, bearing: 156, speed: 1.8 };
+  const bus = (id: string, stop: { stopId?: string; currentStopSequence?: number }) => ({
+    id,
+    vehicle: { trip: descriptor, timestamp: seconds - 1, vehicle: { id }, position, ...stop },
+  });
+  const result = normalizeVehicles(
+    feed([
+      // As bus 3511 on 2026-10-12: a real stop of the trip, with the sequence of another one.
+      bus('contradicting', { stopId: 'B', currentStopSequence: 3 }),
+      bus('unknown-stop', { stopId: 'Z' }),
+      bus('out-of-range', { currentStopSequence: 9 }),
+      bus('consistent', { stopId: 'A', currentStopSequence: 3 }),
+      bus('sequence-only', { currentStopSequence: 2 }),
+    ]),
+    schedule,
+    index,
+    query,
+    now,
+    counts,
+  );
+  // Positions travel as 32-bit floats.
+  const lat = Math.fround(43.0005);
+  assert.deepEqual(
+    result.map((v) => [v.vehicleId, v.stopId, v.stopSequence, v.position?.lat, v.measuredAt]),
+    [
+      ['contradicting', null, null, lat, now - 1_000],
+      ['unknown-stop', null, null, lat, now - 1_000],
+      ['out-of-range', null, null, lat, now - 1_000],
+      ['consistent', 'A', 3, lat, now - 1_000],
+      ['sequence-only', null, 2, lat, now - 1_000],
+    ],
+  );
+  assert.equal(counts.ambiguousStops, 3, 'the dropped stop fields are still counted');
+  assert.equal(counts.invalidEntities + counts.unmatchedTrips, 0);
+});
+
 test('alerts use AND within selector, OR between selectors, original text and active periods', () => {
   const alert = { descriptionText: { translation: [{ text: 'Actual detour', language: 'en' }] } };
   const result = normalizeAlerts(
