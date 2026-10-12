@@ -7,10 +7,12 @@ import { migrate } from '../db/migrate.ts';
 import { adapt, database, scheduleFixture } from './fixtures.ts';
 import {
   listPlaces,
+  listStopWalks,
   listWalkLinks,
   readSchedule,
   replaceSchedule,
   savePlace,
+  saveStopWalk,
   saveWalkLink,
 } from './store.ts';
 import { SCHEDULE_SCHEMA } from './schedule.ts';
@@ -93,6 +95,29 @@ test('walking links remain directional and survive removed public stops', async 
   );
 });
 
+test('transfer walks between stops keep each direction and refuse the same stop', async () => {
+  const { db } = await database();
+  await saveStopWalk(db, {
+    from_stop: 'A',
+    to_stop: 'B',
+    minutes: 3,
+    note: 'Signal at the corner',
+  });
+  await saveStopWalk(db, { from_stop: 'B', to_stop: 'A', minutes: 4, note: '' });
+  await saveStopWalk(db, { from_stop: 'A', to_stop: 'B', minutes: 2, note: 'Button first' });
+  assert.deepEqual(
+    (await listStopWalks(db)).map((w) => [w.from_stop, w.to_stop, w.minutes, w.note]),
+    [
+      ['A', 'B', 2, 'Button first'],
+      ['B', 'A', 4, ''],
+    ],
+  );
+  await assert.rejects(saveStopWalk(db, { from_stop: 'A', to_stop: 'A', minutes: 1, note: '' }));
+  await assert.rejects(saveStopWalk(db, { from_stop: 'A', to_stop: 'B', minutes: 0, note: '' }));
+  await assert.rejects(saveStopWalk(db, { from_stop: 'A', to_stop: 'B', minutes: 61, note: '' }));
+  assert.equal((await listStopWalks(db)).length, 2);
+});
+
 test('a schedule saved in an older package format gives way to the one the app ships', async () => {
   const { db, raw } = await database();
   const older = { ...scheduleFixture(), schema: SCHEDULE_SCHEMA - 1 };
@@ -143,14 +168,20 @@ test('personal Transit data round-trips through backups without replaceable city
     minutes: 5,
     entrance: 'North entrance',
   });
+  await saveStopWalk(source.db, { from_stop: 'A', to_stop: 'B', minutes: 2, note: 'Crosswalk' });
   const raw = JSON.stringify(scheduleFixture());
   await replaceSchedule(source.db, raw, await hash(raw));
   const backup = parseBackup(JSON.parse(JSON.stringify(await exportBackup(source.db))));
-  assert.ok(backup.tables.transit_place && backup.tables.transit_walk_link);
+  assert.ok(
+    backup.tables.transit_place &&
+      backup.tables.transit_walk_link &&
+      backup.tables.transit_stop_walk,
+  );
   assert.equal(backup.tables.transit_schedule_cache, undefined);
   await importBackup(target.db, backup);
   assert.deepEqual(await listPlaces(target.db), await listPlaces(source.db));
   assert.deepEqual(await listWalkLinks(target.db, id), await listWalkLinks(source.db, id));
+  assert.deepEqual(await listStopWalks(target.db), await listStopWalks(source.db));
   assert.equal(await readSchedule(target.db), null);
 });
 

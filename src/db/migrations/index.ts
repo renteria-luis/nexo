@@ -61,6 +61,7 @@ import { sql as dealMatchVerdict } from './060_deal_match_verdict.ts';
 import { sql as setVariants } from './061_set_variants.ts';
 import { sql as transit } from './062_transit.ts';
 import { sql as transitPlaceIcon } from './063_transit_place_icon.ts';
+import { sql as transitStopWalk } from './064_transit_stop_walk.ts';
 
 export type Migration = {
   id: string;
@@ -133,4 +134,5 @@ export const migrations: Migration[] = [
   { id: '061_set_variants', sql: setVariants },
   { id: '062_transit', sql: transit },
   { id: '063_transit_place_icon', sql: transitPlaceIcon },
+  { id: '064_transit_stop_walk', sql: transitStopWalk },
 ];

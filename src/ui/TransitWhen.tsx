@@ -38,6 +38,9 @@ export function TransitWhen({
   onClock,
   onApply,
   onNow,
+  label = 'Elegir día y hora de las salidas',
+  applyLabel = 'Ver horarios',
+  initiallyOpen = false,
 }: {
   live: boolean;
   date: IsoDate;
@@ -49,8 +52,11 @@ export function TransitWhen({
   onClock: (clock: string) => void;
   onApply: () => boolean;
   onNow: () => void;
+  label?: string;
+  applyLabel?: string;
+  initiallyOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const [month, setMonth] = useState(() => `${date.slice(0, 7)}-01`);
   const lead = weekday(month) - 1;
   const length = daysBetween(month, `${addDays(month, 32).slice(0, 7)}-01`);
@@ -63,7 +69,7 @@ export function TransitWhen({
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
-        accessibilityLabel="Elegir día y hora de las salidas"
+        accessibilityLabel={label}
         onPress={() => setOpen(!open)}
         style={styles.toggle}
       >
@@ -163,7 +169,7 @@ export function TransitWhen({
               }}
             />
             <Button
-              label="Ver horarios"
+              label={applyLabel}
               variant="primary"
               onPress={() => {
                 if (onApply()) setOpen(false);

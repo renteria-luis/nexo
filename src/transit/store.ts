@@ -44,6 +44,13 @@ export type WalkLink = {
   entrance: string;
   updated_at: number;
 };
+export type StopWalk = {
+  from_stop: string;
+  to_stop: string;
+  minutes: number;
+  note: string;
+  updated_at: number;
+};
 export type CachedSchedule = {
   sha256: string;
   schedule: Schedule;
@@ -140,6 +147,38 @@ export async function saveWalkLink(
       VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(place_id, stop_id, direction) DO UPDATE SET
       minutes = excluded.minutes, entrance = excluded.entrance, updated_at = excluded.updated_at;`,
       [link.place_id, link.stop_id, link.direction, link.minutes, link.entrance.trim(), Date.now()],
+    );
+  });
+}
+
+export async function listStopWalks(db: SQLiteDatabase): Promise<StopWalk[]> {
+  await whenIdle(db);
+  return db.getAllAsync<StopWalk>('SELECT * FROM transit_stop_walk ORDER BY from_stop, to_stop;');
+}
+
+export async function saveStopWalk(
+  db: SQLiteDatabase,
+  walk: Omit<StopWalk, 'updated_at'>,
+): Promise<void> {
+  if (
+    !Number.isFinite(walk.minutes) ||
+    walk.minutes <= 0 ||
+    walk.minutes > 60 ||
+    !walk.from_stop ||
+    !walk.to_stop ||
+    walk.from_stop === walk.to_stop ||
+    walk.note.length > 500
+  ) {
+    throw new Error(
+      'Escribe más de 0 y hasta 60 minutos entre dos paradas distintas, y una nota de hasta 500 caracteres.',
+    );
+  }
+  await inTransaction(db, async () => {
+    await db.runAsync(
+      `INSERT INTO transit_stop_walk (from_stop, to_stop, minutes, note, updated_at)
+      VALUES (?, ?, ?, ?, ?) ON CONFLICT(from_stop, to_stop) DO UPDATE SET
+      minutes = excluded.minutes, note = excluded.note, updated_at = excluded.updated_at;`,
+      [walk.from_stop, walk.to_stop, walk.minutes, walk.note.trim(), Date.now()],
     );
   });
 }

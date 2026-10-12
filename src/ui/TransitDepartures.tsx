@@ -62,7 +62,7 @@ function measurement(at: number | null, now: number) {
 const sameDeparture = (a: Departure, b: Departure) =>
   a.trip[0] === b.trip[0] && a.serviceDate === b.serviceDate && a.stopTime[1] === b.stopTime[1];
 
-function relative(at: number, now: number) {
+export function relative(at: number, now: number) {
   const minutes = Math.round((at - now) / 60_000);
   return minutes === 0 ? 'ahora' : minutes > 0 ? `en ${minutes} min` : `hace ${-minutes} min`;
 }
@@ -73,13 +73,13 @@ function ago(at: number | null, now: number) {
   return seconds < 120 ? `hace ${seconds} s` : `hace ${Math.floor(seconds / 60)} min`;
 }
 
-function destination(d: Departure) {
+export function destination(d: Departure) {
   const text = d.stopTime[7] || d.trip[3] || d.route[2];
   const [main, via] = text.split(/ via /i);
   return { text, main: main.trim(), via: via?.trim() ?? null };
 }
 
-function dayOf(at: number, now: number) {
+export function dayOf(at: number, now: number) {
   const day = agencyDate(at);
   const today = agencyDate(now);
   return day === today ? '' : day === addDays(today, 1) ? 'mañana' : shortDay(day);
@@ -102,6 +102,11 @@ function details(d: Departure, live: LiveDeparture, now: number, departed: boole
 }
 
 type DepartureLine = { departure: Departure; live: LiveDeparture; departed: boolean };
+
+/** A stop's name without the stop number LTC appends to some of them. */
+export function stopName(stop: Stop) {
+  return stop[2].replace(/ - #\d+$/, '');
+}
 
 function DepartureRow({
   line: { departure: d, live, departed },
@@ -158,7 +163,7 @@ export function TransitStopHeader({
   open: boolean;
   onPress: () => void;
 }) {
-  const name = stop[2].replace(/ - #\d+$/, '');
+  const name = stopName(stop);
   const Chevron = open ? ChevronUp : ChevronDown;
   return (
     <Pressable

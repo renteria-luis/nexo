@@ -11,7 +11,7 @@ import {
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { daysBetween } from '../../core/dates.ts';
+import { addDays, daysBetween } from '../../core/dates.ts';
 import { type Coordinates } from '../../core/geo.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 import { loadTransit, refreshTransit, transitLocation } from '../../shell/transit.ts';
@@ -51,6 +51,7 @@ import {
   TransitStopHeader,
   TransitTripTimeline,
 } from '../TransitDepartures.tsx';
+import { TransitPlanner, type PlannerLive } from '../TransitPlanner.tsx';
 import { TransitLegend } from '../TransitStatus.tsx';
 import { TransitWhen } from '../TransitWhen.tsx';
 import { TransitLiveSettings } from '../TransitLiveSettings.tsx';
@@ -121,6 +122,8 @@ function TransitContent() {
   const [from, setFrom] = useState(Date.now);
   const [liveMode, setLiveMode] = useState(true);
   const [detail, setDetail] = useState<Departure | null>(null);
+  const [plannerLive, setPlannerLive] = useState<PlannerLive>({ stops: [], ride: null });
+  const [walkEdits, setWalkEdits] = useState(0);
   const alive = useRef(true);
   const pending = useRef(false);
   const syncPending = useRef(false);
@@ -245,29 +248,58 @@ function TransitContent() {
   const selectedRouteId = selectedDetail?.route[0];
   const selectedShapeId = selectedDetail?.trip[5];
   const editingLive = draft !== null;
-  const query = useMemo(
-    () =>
-      schedule && shownStopId && liveMode && !editingLive
-        ? buildLiveQuery(schedule, {
-            stopIds: [shownStopId],
-            trips:
-              selectedTripId && selectedServiceDate
-                ? [{ tripId: selectedTripId, serviceDate: selectedServiceDate }]
-                : [],
-            routeIds: selectedRouteId ? [selectedRouteId] : [],
-          })
-        : null,
-    [
-      schedule,
-      shownStopId,
-      liveMode,
-      editingLive,
-      selectedTripId,
-      selectedServiceDate,
-      selectedRouteId,
-    ],
+  const onPlannerLive = useCallback(
+    (next: PlannerLive) =>
+      setPlannerLive((current) =>
+        current.stops.join() === next.stops.join() && current.ride === next.ride ? current : next,
+      ),
+    [],
   );
-  const live = useTransitLive(schedule, query, selectedDetail?.at);
+  const plannerStops = plannerLive.stops.join();
+  const plannerRide = plannerLive.ride;
+  // One live reading serves the stop card and the planner, inside the service's limits of
+  // eight stops, four trips and four lines; the open stop goes first.
+  const query = useMemo(() => {
+    if (!schedule || editingLive) return null;
+    const stopIds = [
+      ...new Set([
+        ...(shownStopId && liveMode ? [shownStopId] : []),
+        ...(plannerStops ? plannerStops.split(',') : []),
+      ]),
+    ].slice(0, 8);
+    const trips =
+      liveMode && selectedTripId && selectedServiceDate
+        ? [{ tripId: selectedTripId, serviceDate: selectedServiceDate }]
+        : [];
+    const routeIds = liveMode && selectedRouteId ? [selectedRouteId] : [];
+    // The service only answers for trips from two days back to tomorrow.
+    if (
+      plannerRide &&
+      plannerRide.serviceDate >= addDays(today, -2) &&
+      plannerRide.serviceDate <= addDays(today, 1) &&
+      !trips.some(
+        (t) => t.tripId === plannerRide.trip[0] && t.serviceDate === plannerRide.serviceDate,
+      )
+    ) {
+      trips.push({ tripId: plannerRide.trip[0], serviceDate: plannerRide.serviceDate });
+      if (!routeIds.includes(plannerRide.route[0])) routeIds.push(plannerRide.route[0]);
+    }
+    return stopIds.length || trips.length
+      ? buildLiveQuery(schedule, { stopIds, trips, routeIds })
+      : null;
+  }, [
+    schedule,
+    shownStopId,
+    liveMode,
+    editingLive,
+    selectedTripId,
+    selectedServiceDate,
+    selectedRouteId,
+    plannerStops,
+    plannerRide,
+    today,
+  ]);
+  const live = useTransitLive(schedule, query, selectedDetail?.at ?? plannerRide?.at);
   const snapshot = liveMode ? live.state.snapshot : null;
   const effectiveFrom = liveMode ? Math.max(from, live.state.lastSuccessAt ?? from) : from;
   const departuresList = useMemo(
@@ -568,6 +600,20 @@ function TransitContent() {
           </View>
         </Card>
       )}
+      {index && (
+        <TransitPlanner
+          db={data.db}
+          schedule={schedule}
+          stopIndex={index}
+          places={places}
+          initialOrigin={place.id}
+          snapshot={live.state.snapshot}
+          active={live.active}
+          today={today}
+          walksVersion={walkEdits}
+          onLive={onPlannerLive}
+        />
+      )}
       <Card title={draft ? 'Elige el punto exacto' : place.name}>
         <TransitMap
           center={center}
@@ -759,6 +805,7 @@ function TransitContent() {
                 const saved = await listWalkLinks(data.db, place.id);
                 if (alive.current) {
                   setLinks(saved);
+                  setWalkEdits((n) => n + 1);
                   setNotice('Caminata guardada para esta dirección.');
                 }
               })

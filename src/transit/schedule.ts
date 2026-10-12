@@ -280,8 +280,14 @@ export function agencyDate(at: number): IsoDate {
   return `${p.year}-${p.month}-${p.day}`;
 }
 
+// Every live merge asks for its day's start, and each answer costs three time zone conversions;
+// the planner merges hundreds of times per reading.
+const dayStarts = new Map<IsoDate, number>();
+
 // GTFS defines service time from local noon minus twelve hours, including DST days.
 export function serviceDayStart(day: IsoDate): number {
+  const known = dayStarts.get(day);
+  if (known !== undefined) return known;
   if (!isRealDate(day)) throw new Error('Fecha inválida; usa AAAA-MM-DD.');
   const noon = Date.parse(`${day}T12:00:00Z`);
   let instant = noon;
@@ -290,6 +296,7 @@ export function serviceDayStart(day: IsoDate): number {
     const observed = Date.parse(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}Z`);
     instant += noon - observed;
   }
+  dayStarts.set(day, instant - 43_200_000);
   return instant - 43_200_000;
 }
 
