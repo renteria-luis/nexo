@@ -14,7 +14,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { addDays, daysBetween } from '../../core/dates.ts';
 import { type Coordinates } from '../../core/geo.ts';
 import { useAppData } from '../../shell/AppData.tsx';
-import { loadTransit, refreshTransit, transitLocation } from '../../shell/transit.ts';
+import { loadTransit, refreshTransit, transitHere, transitLocation } from '../../shell/transit.ts';
 import {
   agencyClock,
   agencyDate,
@@ -23,15 +23,14 @@ import {
   listPlaces,
   listWalkLinks,
   nearbyStops,
+  nearestPlace,
   queryInstant,
   savePlace,
   saveWalkLink,
   scheduledTime,
-  PLACE_ICONS,
   type CachedSchedule,
   type Departure,
   type Place,
-  type PlaceIcon,
   type WalkLink,
 } from '../../transit/index.ts';
 import { stopLines, usefulStops, validCoordinates } from '../../transit/schedule.ts';
@@ -40,8 +39,10 @@ import { buildLiveQuery } from '../../transit/realtime.ts';
 import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
 import { Chip } from '../Chip.tsx';
+import { Combobox } from '../Combobox.tsx';
 import { Pencil, Plus, RefreshCw } from '../icons.ts';
-import { PLACE_ICON_VIEWS } from '../placeIcons.ts';
+import { PlaceForm, type PlaceDraft } from '../PlaceForm.tsx';
+import { placeOptions } from '../placeIcons.ts';
 import { routeColor } from '../routeColors.ts';
 import { TextField } from '../TextField.tsx';
 import { TransitLiveMap } from '../TransitLiveMap.tsx';
@@ -59,14 +60,6 @@ import { useTransitLive } from '../useTransitLive.ts';
 import { font, sheet, shape, theme } from '../theme.ts';
 import { Screen, useScrollIntoView } from './Screen.tsx';
 
-type Draft = {
-  id?: string;
-  name: string;
-  address: string;
-  lat: string;
-  lng: string;
-  icon: PlaceIcon;
-};
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 const sameTrip = (a: Departure | null, b: Departure | null) =>
@@ -131,7 +124,9 @@ function TransitContent() {
   const [stopsFolded, setStopsFolded] = useState(false);
   const [moreStops, setMoreStops] = useState(false);
   const [links, setLinks] = useState<WalkLink[]>([]);
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraft] = useState<PlaceDraft | null>(null);
+  // Choosing the point on the map, with the place's sheet put away until he comes back.
+  const [picking, setPicking] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -151,10 +146,18 @@ function TransitContent() {
   const [walkEdits, setWalkEdits] = useState(0);
   // The bus he last tapped on a trip card, and when, so the same tap again moves the map again.
   const [focus, setFocus] = useState<{ departure: Departure; at: number } | null>(null);
-  const focusBus = useCallback(
-    (departure: Departure) => setFocus({ departure, at: Date.now() }),
-    [],
-  );
+  // When the screen last had to bring the map into view: a tapped bus or a point to choose.
+  const [reveal, setReveal] = useState<number | null>(null);
+  const focusBus = useCallback((departure: Departure) => {
+    const at = Date.now();
+    setFocus({ departure, at });
+    setReveal(at);
+  }, []);
+  // Where he is as he opens Transit: one reading at once, and the place nearest to it is shown
+  // and starts the trip, unless he picks another before it lands.
+  const [here, setHere] = useState<{ point: Coordinates; asked: number } | null>(null);
+  const [pickedAt, setPickedAt] = useState(0);
+  const [seenHere, setSeenHere] = useState<number | null>(null);
   const alive = useRef(true);
   const pending = useRef(false);
   const syncPending = useRef(false);
@@ -220,8 +223,35 @@ function TransitContent() {
       void load();
     }, [load]),
   );
+  useFocusEffect(
+    useCallback(() => {
+      const asked = Date.now();
+      let current = true;
+      transitHere()
+        .then((point) => {
+          if (current && point) setHere({ point, asked });
+        })
+        .catch((error: unknown) => console.error(error));
+      return () => {
+        current = false;
+      };
+    }, []),
+  );
 
   const place = places.find((p) => p.id === placeId) ?? places[0];
+  const nearest = useMemo(() => (here ? nearestPlace(places, here.point) : null), [here, places]);
+  if (here && nearest && seenHere !== here.asked) {
+    setSeenHere(here.asked);
+    if (pickedAt < here.asked && nearest.id !== place?.id) {
+      setPlaceId(nearest.id);
+      setStopId(null);
+    }
+  }
+  const located = useMemo(
+    () => (here && nearest ? { id: nearest.id, at: here.asked } : null),
+    [here, nearest],
+  );
+  const options = useMemo(() => placeOptions(places), [places]);
   const schedule = data?.cache.schedule;
   const index = useMemo(() => (schedule ? buildStopIndex(schedule) : null), [schedule]);
   const draftPoint =
@@ -411,20 +441,20 @@ function TransitContent() {
       setDraft((d) => (d ? { ...d, lat: String(point.lat), lng: String(point.lng) } : d)),
     [],
   );
-  const editingPoint = draft !== null;
   const pickPlace = useCallback(
     (id: string) => {
-      if (editingPoint) {
+      if (picking) {
         const p = places.find((p) => p.id === id);
         if (p) pickPoint(p);
         return;
       }
       setPlaceId(id);
+      setPickedAt(Date.now());
       setStopId(null);
       setNotice(null);
       setProblem(null);
     },
-    [editingPoint, places, pickPoint],
+    [picking, places, pickPoint],
   );
   const act = async (work: () => Promise<void>) => {
     if (pending.current) return;
@@ -460,8 +490,81 @@ function TransitContent() {
   const ageDays = Math.max(0, daysBetween(agencyDate(schedule.createdAt), today));
 
   return (
-    <Screen title="Transit" scrollEnabled={!mapActive}>
-      {problem && (
+    <Screen
+      title="Transit"
+      scrollEnabled={!mapActive}
+      onOverlayDismiss={
+        draft && !picking
+          ? () => {
+              setDraft(null);
+              setProblem(null);
+            }
+          : undefined
+      }
+      overlay={
+        draft && !picking ? (
+          <PlaceForm
+            draft={draft}
+            onChange={(change) => setDraft((d) => d && { ...d, ...change })}
+            busy={busy}
+            problem={problem}
+            onLocate={() =>
+              void act(async () => {
+                const point = await Promise.race([
+                  transitLocation(),
+                  new Promise<never>((_, reject) =>
+                    setTimeout(
+                      () =>
+                        reject(
+                          new Error(
+                            'La ubicación tardó demasiado. Puedes usar el mapa o escribirla.',
+                          ),
+                        ),
+                      20_000,
+                    ),
+                  ),
+                ]);
+                if (alive.current) pickPoint(point);
+              })
+            }
+            onPickOnMap={() => {
+              setPicking(true);
+              setReveal(Date.now());
+            }}
+            onCancel={() => {
+              setDraft(null);
+              setProblem(null);
+            }}
+            onSave={() =>
+              void act(async () => {
+                if (!draft.lat.trim() || !draft.lng.trim())
+                  throw new Error('Completa la latitud y la longitud.');
+                const id = await savePlace(data.db, {
+                  id: draft.id,
+                  name: draft.name,
+                  address: draft.address,
+                  lat: Number(draft.lat),
+                  lng: Number(draft.lng),
+                  icon: draft.icon,
+                  tags: draft.tags,
+                  importance: draft.importance.trim() ? Number(draft.importance) : null,
+                });
+                const saved = await listPlaces(data.db);
+                if (alive.current) {
+                  setPlaces(saved);
+                  setPlaceId(id);
+                  setPickedAt(Date.now());
+                  setStopId(null);
+                  setDraft(null);
+                  setNotice('Lugar guardado.');
+                }
+              })
+            }
+          />
+        ) : undefined
+      }
+    >
+      {problem && !draft && (
         <Text accessibilityRole="alert" style={styles.error}>
           {problem}
         </Text>
@@ -482,23 +585,27 @@ function TransitContent() {
             variant="ghost"
             disabled={busy || !!draft}
             onPress={() => {
-              setDraft({ name: '', address: '', lat: '', lng: '', icon: 'pin' });
+              setDraft({
+                name: '',
+                address: '',
+                lat: '',
+                lng: '',
+                icon: 'pin',
+                tags: '',
+                importance: '',
+              });
               setProblem(null);
             }}
           />
         }
       >
-        <View style={styles.wrap}>
-          {places.map((p) => (
-            <Chip
-              key={p.id}
-              label={p.name}
-              selected={p.id === place.id}
-              disabled={busy || !!draft}
-              onPress={() => pickPlace(p.id)}
-            />
-          ))}
-        </View>
+        <Combobox
+          options={options}
+          value={place.id}
+          onChange={pickPlace}
+          placeholder="Elige un lugar"
+          accessibilityLabel="Elegir el lugar"
+        />
         <Text style={styles.note}>{place.address}</Text>
         <Text style={styles.coordinates}>
           {place.lat}, {place.lng}
@@ -508,7 +615,7 @@ function TransitContent() {
           icon={Pencil}
           variant="ghost"
           disabled={busy || !!draft}
-          onPress={() =>
+          onPress={() => {
             setDraft({
               id: place.id,
               name: place.name,
@@ -516,117 +623,13 @@ function TransitContent() {
               lat: String(place.lat),
               lng: String(place.lng),
               icon: place.icon,
-            })
-          }
+              tags: place.tags,
+              importance: place.importance === null ? '' : String(place.importance),
+            });
+            setProblem(null);
+          }}
         />
       </Card>
-      {draft && (
-        <Card title={draft.id ? 'Editar lugar' : 'Nuevo lugar'}>
-          <TextField
-            accessibilityLabel="Nombre del lugar"
-            value={draft.name}
-            onChange={(name) => setDraft((d) => d && { ...d, name })}
-            placeholder="Nombre"
-            style={styles.input}
-          />
-          <TextField
-            accessibilityLabel="Dirección o puerta del lugar"
-            value={draft.address}
-            onChange={(address) => setDraft((d) => d && { ...d, address })}
-            placeholder="Dirección o puerta"
-            style={styles.input}
-          />
-          <View style={styles.row}>
-            <TextField
-              accessibilityLabel="Latitud del lugar"
-              value={draft.lat}
-              onChange={(lat) => setDraft((d) => d && { ...d, lat })}
-              placeholder="Latitud"
-              style={[styles.input, styles.flex]}
-            />
-            <TextField
-              accessibilityLabel="Longitud del lugar"
-              value={draft.lng}
-              onChange={(lng) => setDraft((d) => d && { ...d, lng })}
-              placeholder="Longitud"
-              style={[styles.input, styles.flex]}
-            />
-          </View>
-          <Text style={styles.note}>
-            Escribe coordenadas, toca el mapa o usa tu ubicación. Se guarda al tocar Guardar.
-          </Text>
-          <Text style={styles.note}>Ícono en el mapa: {PLACE_ICON_VIEWS[draft.icon].label}</Text>
-          <View style={styles.wrap}>
-            {PLACE_ICONS.map((icon) => (
-              <Chip
-                key={icon}
-                label=""
-                icon={PLACE_ICON_VIEWS[icon].icon}
-                accessibilityLabel={`Ícono ${PLACE_ICON_VIEWS[icon].label}`}
-                selected={draft.icon === icon}
-                onPress={() => setDraft((d) => d && { ...d, icon })}
-              />
-            ))}
-          </View>
-          <Button
-            label="Usar mi ubicación"
-            loading={busy}
-            onPress={() =>
-              void act(async () => {
-                const point = await Promise.race([
-                  transitLocation(),
-                  new Promise<never>((_, reject) =>
-                    setTimeout(
-                      () =>
-                        reject(
-                          new Error(
-                            'La ubicación tardó demasiado. Puedes usar el mapa o escribirla.',
-                          ),
-                        ),
-                      20_000,
-                    ),
-                  ),
-                ]);
-                if (alive.current) pickPoint(point);
-              })
-            }
-          />
-          <View style={styles.wrap}>
-            <Button
-              label="Guardar lugar"
-              variant="primary"
-              loading={busy}
-              onPress={() =>
-                void act(async () => {
-                  if (!draft.lat.trim() || !draft.lng.trim())
-                    throw new Error('Completa la latitud y la longitud.');
-                  const id = await savePlace(data.db, {
-                    ...draft,
-                    lat: Number(draft.lat),
-                    lng: Number(draft.lng),
-                  });
-                  const saved = await listPlaces(data.db);
-                  if (alive.current) {
-                    setPlaces(saved);
-                    setPlaceId(id);
-                    setStopId(null);
-                    setDraft(null);
-                    setNotice('Lugar guardado.');
-                  }
-                })
-              }
-            />
-            <Button
-              label="Cancelar"
-              disabled={busy}
-              onPress={() => {
-                setDraft(null);
-                setProblem(null);
-              }}
-            />
-          </View>
-        </Card>
-      )}
       {index && (
         <TransitPlanner
           db={data.db}
@@ -634,6 +637,7 @@ function TransitContent() {
           stopIndex={index}
           places={places}
           initialOrigin={place.id}
+          located={located}
           snapshot={live.state.snapshot}
           active={live.active}
           today={today}
@@ -642,7 +646,7 @@ function TransitContent() {
           onFocusBus={focusBus}
         />
       )}
-      <MapCard title={draft ? 'Elige el punto exacto' : place.name} reveal={focus?.at ?? null}>
+      <MapCard title={picking ? 'Toca el punto exacto' : place.name} reveal={reveal}>
         <TransitLiveMap
           schedule={schedule}
           snapshot={
@@ -661,11 +665,21 @@ function TransitContent() {
           draft={draftPoint && validCoordinates(draftPoint) ? draftPoint : null}
           onPlace={pickPlace}
           onStop={openStop}
-          onPoint={draft && !busy ? pickPoint : undefined}
+          onPoint={picking && !busy ? pickPoint : undefined}
           onInteraction={setMapActive}
           routePoints={routePoints}
           routeColor={followed ? routeColor(followed.route[3]) : undefined}
         />
+        {picking && draft && (
+          <View style={styles.row}>
+            <Text style={[styles.note, styles.flex]}>
+              {draft.lat && draft.lng
+                ? `${draft.lat}, ${draft.lng}`
+                : 'Toca el mapa o un lugar para copiar su punto.'}
+            </Text>
+            <Button label="Listo" variant="primary" onPress={() => setPicking(false)} />
+          </View>
+        )}
       </MapCard>
       <Card title="Paradas">
         <View style={styles.row}>

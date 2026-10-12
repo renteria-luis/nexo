@@ -51,3 +51,29 @@ export function transitLocation(): Promise<Coordinates> {
   });
   return locating;
 }
+
+let finding: Promise<Coordinates | null> | null = null;
+
+/**
+ * Where he is as he opens Transit, quickly: the phone's last position when it is recent and
+ * good, otherwise one balanced reading. Null without permission, or when the reading is too
+ * rough to tell his places apart; an automatic reading says nothing, he did not ask for it.
+ */
+export function transitHere(): Promise<Coordinates | null> {
+  if (finding) return finding;
+  finding = (async () => {
+    const permission = await Location.requestForegroundPermissionsAsync();
+    if (permission.status !== 'granted') return null;
+    const position =
+      (await Location.getLastKnownPositionAsync({
+        maxAge: 60_000,
+        requiredAccuracy: READING_MAX_ERROR_M,
+      })) ?? (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
+    if (position.coords.accuracy === null || position.coords.accuracy > READING_MAX_ERROR_M)
+      return null;
+    return { lat: position.coords.latitude, lng: position.coords.longitude };
+  })().finally(() => {
+    finding = null;
+  });
+  return finding;
+}

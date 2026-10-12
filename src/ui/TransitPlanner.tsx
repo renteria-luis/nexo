@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { IsoDate } from '../core/dates.ts';
@@ -49,6 +49,7 @@ import {
 import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
 import { Chip } from './Chip.tsx';
+import { Combobox, type Option } from './Combobox.tsx';
 import {
   ArrowUpDown,
   ChevronDown,
@@ -59,7 +60,7 @@ import {
   TriangleAlert,
 } from './icons.ts';
 import { IconButton } from './IconButton.tsx';
-import { PLACE_ICON_VIEWS } from './placeIcons.ts';
+import { placeOptions } from './placeIcons.ts';
 import { TextField } from './TextField.tsx';
 import {
   dayOf,
@@ -110,6 +111,7 @@ export function TransitPlanner({
   stopIndex,
   places,
   initialOrigin,
+  located,
   snapshot,
   active,
   today,
@@ -122,6 +124,8 @@ export function TransitPlanner({
   stopIndex: ReturnType<typeof buildStopIndex>;
   places: Place[];
   initialOrigin: string;
+  /** The place nearest to where he opened Transit, and when that reading was asked for. */
+  located: { id: string; at: number } | null;
   snapshot: LiveSnapshot | null;
   active: boolean;
   today: IsoDate;
@@ -148,8 +152,20 @@ export function TransitPlanner({
   const [failed, setFailed] = useState<{ request: PlanRequest; reason: string } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [openRide, setOpenRide] = useState<{ key: string; departure: Departure } | null>(null);
+  // The trip starts where he opened Transit, unless he chose its start after that reading was
+  // asked for.
+  const [originChosenAt, setOriginChosenAt] = useState(0);
+  const [seenLocated, setSeenLocated] = useState<number | null>(null);
+  if (located && seenLocated !== located.at) {
+    setSeenLocated(located.at);
+    if (originChosenAt < located.at && located.id !== originId) {
+      setOriginId(located.id);
+      setOpenRide(null);
+    }
+  }
   const origin = places.find((p) => p.id === originId);
   const target = places.find((p) => p.id === targetId);
+  const options = useMemo(() => placeOptions(places), [places]);
 
   const pairKey = origin && target && origin.id !== target.id ? `${origin.id}/${target.id}` : null;
   useEffect(() => {
@@ -248,8 +264,10 @@ export function TransitPlanner({
 
   const refreshNow = useCallback(() => setApplied({ mode: 'now', at: Date.now() }), []);
   const pick = (which: 'origin' | 'target', id: string) => {
-    if (which === 'origin') setOriginId(id);
-    else setTargetId(id);
+    if (which === 'origin') {
+      setOriginId(id);
+      setOriginChosenAt(Date.now());
+    } else setTargetId(id);
     setOpenRide(null);
     setProblem(null);
     if (applied.mode === 'now') refreshNow();
@@ -257,6 +275,7 @@ export function TransitPlanner({
   const swap = () => {
     if (!targetId) return;
     setOriginId(targetId);
+    setOriginChosenAt(Date.now());
     setTargetId(originId);
     setOpenRide(null);
     setProblem(null);
@@ -312,24 +331,28 @@ export function TransitPlanner({
     <Card title="Cómo llegar">
       <PlaceRow
         label="Desde"
-        places={places}
+        options={options}
         selected={originId}
+        placeholder="Elige de dónde sales"
+        accessibilityLabel="Elegir el origen"
         onPick={(id) => pick('origin', id)}
       />
-      <View style={styles.swap}>
+      <PlaceRow
+        label="Hasta"
+        options={options}
+        selected={targetId}
+        placeholder="Elige a dónde vas"
+        accessibilityLabel="Elegir el destino"
+        onPick={(id) => pick('target', id)}
+      >
         <IconButton
           icon={ArrowUpDown}
           accessibilityLabel="Invertir origen y destino"
           disabled={!targetId}
           onPress={swap}
+          style={styles.swap}
         />
-      </View>
-      <PlaceRow
-        label="Hasta"
-        places={places}
-        selected={targetId}
-        onPick={(id) => pick('target', id)}
-      />
+      </PlaceRow>
       <View style={styles.wrap}>
         <Chip label="Salir ahora" selected={mode === 'now'} onPress={() => choose('now')} />
         <Chip label="Salir a las…" selected={mode === 'depart'} onPress={() => choose('depart')} />
@@ -403,34 +426,37 @@ export function TransitPlanner({
 
 const PlaceRow = memo(function PlaceRow({
   label,
-  places,
+  options,
   selected,
+  placeholder,
+  accessibilityLabel,
   onPick,
+  children,
 }: {
   label: string;
-  places: Place[];
+  options: readonly Option[];
   selected: string | null;
+  placeholder: string;
+  accessibilityLabel: string;
   onPick: (id: string) => void;
+  /** Beside the list, as tall as it. */
+  children?: ReactNode;
 }) {
   return (
     <View style={styles.placeRow}>
       <Text style={styles.rowLabel}>{label}</Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chips}
-      >
-        {places.map((p) => (
-          <Chip
-            key={p.id}
-            label={p.name}
-            icon={PLACE_ICON_VIEWS[p.icon].icon}
-            accessibilityLabel={`${label} ${p.name}`}
-            selected={p.id === selected}
-            onPress={() => onPick(p.id)}
+      <View style={styles.pickerLine}>
+        <View style={styles.grow}>
+          <Combobox
+            options={options}
+            value={selected}
+            onChange={onPick}
+            placeholder={placeholder}
+            accessibilityLabel={accessibilityLabel}
           />
-        ))}
-      </ScrollView>
+        </View>
+        {children}
+      </View>
     </View>
   );
 });
@@ -957,8 +983,9 @@ const styles = sheet((theme) => ({
   grow: { flex: 1, minWidth: 0 },
   placeRow: { gap: 6 },
   rowLabel: { fontFamily: font.bold, fontSize: 12, color: theme.textFaint },
-  chips: { gap: 8, paddingRight: 8 },
-  swap: { alignItems: 'flex-end', marginTop: -4, marginBottom: -4 },
+  pickerLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // Square, at the height of the list beside it.
+  swap: { width: 42, height: 42 },
   list: { gap: 10 },
   body: { fontFamily: font.bold, fontSize: 14, color: theme.text },
   note: { fontFamily: font.regular, fontSize: 12, color: theme.textFaint },

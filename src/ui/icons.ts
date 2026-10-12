@@ -18,6 +18,7 @@ export { default as Briefcase } from 'lucide-react-native/icons/briefcase';
 export { default as Bus } from 'lucide-react-native/icons/bus';
 export { default as CalendarClock } from 'lucide-react-native/icons/calendar-clock';
 export { default as CalendarDays } from 'lucide-react-native/icons/calendar-days';
+export { default as Cannabis } from 'lucide-react-native/icons/cannabis';
 export { default as Carrot } from 'lucide-react-native/icons/carrot';
 export { default as ChartLine } from 'lucide-react-native/icons/chart-line';
 export { default as Check } from 'lucide-react-native/icons/check';

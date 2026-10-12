@@ -1,6 +1,8 @@
-import type { PlaceIcon } from '../transit/store.ts';
+import { sortPlaces, type Place, type PlaceIcon } from '../transit/store.ts';
+import type { Option } from './Combobox.tsx';
 import {
   Briefcase,
+  Cannabis,
   Church,
   Clapperboard,
   Coffee,
@@ -44,9 +46,20 @@ export const PLACE_ICON_VIEWS: Record<PlaceIcon, { icon: LucideIcon; label: stri
   friends: { icon: Users, label: 'Amigos' },
   train: { icon: TrainFront, label: 'Tren' },
   airport: { icon: Plane, label: 'Aeropuerto' },
+  leaf: { icon: Cannabis, label: 'Hoja' },
 };
 
 /** A place saved by a newer version may carry an icon this one does not know yet. */
 export function placeIcon(icon: string): LucideIcon {
   return (PLACE_ICON_VIEWS as Record<string, { icon: LucideIcon }>)[icon]?.icon ?? MapPin;
+}
+
+/** Places as the place pickers offer them: in his order, with their icon and their tags. */
+export function placeOptions(places: readonly Place[]): Option[] {
+  return sortPlaces(places).map((place) => ({
+    id: place.id,
+    label: place.name,
+    icon: placeIcon(place.icon),
+    keywords: place.tags,
+  }));
 }

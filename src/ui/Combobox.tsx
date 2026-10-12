@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
-import { Check, ChevronDown } from './icons.ts';
+import { matchesSearch } from '../nutrition/index.ts';
+import { Check, ChevronDown, type LucideIcon } from './icons.ts';
 import { useInfo } from './InfoBubble.tsx';
 import { SearchField } from './SearchField.tsx';
 import { font, hardShadow, pressed as pressedInto, sheet, shape, theme } from './theme.ts';
@@ -17,7 +18,13 @@ import { font, hardShadow, pressed as pressedInto, sheet, shape, theme } from '.
  * La lista sale en el mismo globo que usa la (i) (`InfoBubble`), asi que se cierra
  * tocando fuera y no la recorta la cartilla donde vive el boton.
  */
-export type Option = { id: string; label: string };
+export type Option = {
+  id: string;
+  label: string;
+  icon?: LucideIcon;
+  /** More words that find it, like a food's keywords. */
+  keywords?: string;
+};
 
 export function Combobox({
   options,
@@ -35,6 +42,7 @@ export function Combobox({
   const spot = useRef<View>(null);
   const { show, hide } = useInfo();
   const chosen = options.find((option) => option.id === value) ?? null;
+  const Icon = chosen?.icon;
 
   return (
     <View ref={spot} collapsable={false}>
@@ -58,6 +66,7 @@ export function Combobox({
         }
         style={({ pressed }) => [styles.trigger, pressed && styles.triggerPressed]}
       >
+        {Icon && <Icon size={17} color={theme.text} strokeWidth={2.5} />}
         <Text style={chosen === null ? styles.placeholder : styles.value} numberOfLines={1}>
           {chosen?.label ?? placeholder}
         </Text>
@@ -78,7 +87,7 @@ function List({
 }) {
   const [search, setSearch] = useState('');
   const found = options.filter((option) =>
-    option.label.toLowerCase().includes(search.trim().toLowerCase()),
+    matchesSearch([option.label, option.keywords ?? null], search),
   );
 
   return (
@@ -86,20 +95,24 @@ function List({
       <SearchField value={search} onChange={setSearch} accessibilityLabel="Buscar" />
       <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
         {found.length === 0 && <Text style={styles.empty}>Nada con ese nombre.</Text>}
-        {found.map((option) => (
-          <Pressable
-            key={option.id}
-            accessibilityRole="button"
-            accessibilityLabel={option.label}
-            onPress={() => onPick(option.id)}
-            style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-          >
-            <Text style={styles.rowText} numberOfLines={1}>
-              {option.label}
-            </Text>
-            {option.id === value && <Check size={16} color={theme.text} strokeWidth={3} />}
-          </Pressable>
-        ))}
+        {found.map((option) => {
+          const Icon = option.icon;
+          return (
+            <Pressable
+              key={option.id}
+              accessibilityRole="button"
+              accessibilityLabel={option.label}
+              onPress={() => onPick(option.id)}
+              style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+            >
+              {Icon && <Icon size={16} color={theme.text} strokeWidth={2.5} />}
+              <Text style={styles.rowText} numberOfLines={1}>
+                {option.label}
+              </Text>
+              {option.id === value && <Check size={16} color={theme.text} strokeWidth={3} />}
+            </Pressable>
+          );
+        })}
       </ScrollView>
     </View>
   );

@@ -5,6 +5,8 @@ export {
   saveWalkLink,
   listStopWalks,
   saveStopWalk,
+  sortPlaces,
+  nearestPlace,
   PLACE_ICONS,
 } from './store.ts';
 export type { Place, PlaceIcon, WalkLink, StopWalk, CachedSchedule } from './store.ts';

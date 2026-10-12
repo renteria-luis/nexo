@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import type { Coordinates } from '../core/geo.ts';
+import { distanceMetres, type Coordinates } from '../core/geo.ts';
 import { inTransaction, whenIdle } from '../db/transaction.ts';
 import { SCHEDULE_SCHEMA, validateSchedule, validCoordinates, type Schedule } from './schedule.ts';
 
@@ -25,6 +25,7 @@ export const PLACE_ICONS = [
   'friends',
   'train',
   'airport',
+  'leaf',
 ] as const;
 export type PlaceIcon = (typeof PLACE_ICONS)[number];
 
@@ -34,6 +35,10 @@ export type Place = Coordinates & {
   address: string;
   gym_id: string | null;
   icon: PlaceIcon;
+  /** Words to find it by, separated by commas. */
+  tags: string;
+  /** 1 lists it first; without one it goes after the ranked places. */
+  importance: number | null;
   updated_at: number;
 };
 export type WalkLink = {
@@ -64,9 +69,43 @@ export async function listPlaces(db: SQLiteDatabase): Promise<Place[]> {
   return db.getAllAsync<Place>('SELECT * FROM transit_place ORDER BY rowid;');
 }
 
+/** How every list of places is ordered: by importance, 1 first, then the unranked, by name. */
+export function sortPlaces(places: readonly Place[]): Place[] {
+  return [...places].sort(
+    (a, b) => (a.importance ?? 11) - (b.importance ?? 11) || a.name.localeCompare(b.name, 'es'),
+  );
+}
+
+/** The place he is at, or the closest one to where he is. */
+export function nearestPlace(places: readonly Place[], point: Coordinates): Place | null {
+  let best: { place: Place; metres: number } | null = null;
+  for (const place of places) {
+    const metres = distanceMetres(point, place);
+    if (!best || metres < best.metres) best = { place, metres };
+  }
+  return best?.place ?? null;
+}
+
+/** "gym,  fit , ,gimnasio" is kept as "gym, fit, gimnasio". */
+function cleanTags(tags: string): string {
+  return tags
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .join(', ');
+}
+
+/** An edit that leaves out the icon, the tags or the importance keeps the saved one. */
 export async function savePlace(
   db: SQLiteDatabase,
-  input: { id?: string; name: string; address: string; icon?: PlaceIcon } & Coordinates,
+  input: {
+    id?: string;
+    name: string;
+    address: string;
+    icon?: PlaceIcon;
+    tags?: string;
+    importance?: number | null;
+  } & Coordinates,
 ): Promise<string> {
   if (input.icon !== undefined && !PLACE_ICONS.includes(input.icon)) {
     throw new Error('Elige uno de los íconos de la lista.');
@@ -79,29 +118,41 @@ export async function savePlace(
   ) {
     throw new Error('Revisa el nombre, la latitud (-90 a 90) y la longitud (-180 a 180).');
   }
+  if (input.tags !== undefined && input.tags.length > 500) {
+    throw new Error('Las etiquetas pasan de 500 letras.');
+  }
+  if (
+    input.importance != null &&
+    (!Number.isInteger(input.importance) || input.importance < 1 || input.importance > 10)
+  ) {
+    throw new Error('La importancia va de 1 a 10, o se deja vacía.');
+  }
+  const tags = input.tags === undefined ? null : cleanTags(input.tags);
   const id = input.id ?? `place-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
   await inTransaction(db, async () => {
     if (input.id) {
-      const existing = await db.getFirstAsync<{ id: string }>(
-        'SELECT id FROM transit_place WHERE id = ?;',
+      const existing = await db.getFirstAsync<{ importance: number | null }>(
+        'SELECT importance FROM transit_place WHERE id = ?;',
         [id],
       );
       if (!existing) throw new Error('Ese lugar ya no existe. Vuelve a abrir Transit.');
       await db.runAsync(
-        'UPDATE transit_place SET name = ?, address = ?, lat = ?, lng = ?, icon = COALESCE(?, icon), updated_at = ? WHERE id = ?;',
+        'UPDATE transit_place SET name = ?, address = ?, lat = ?, lng = ?, icon = COALESCE(?, icon), tags = COALESCE(?, tags), importance = ?, updated_at = ? WHERE id = ?;',
         [
           input.name.trim(),
           input.address.trim(),
           input.lat,
           input.lng,
           input.icon ?? null,
+          tags,
+          input.importance === undefined ? existing.importance : input.importance,
           Date.now(),
           id,
         ],
       );
     } else {
       await db.runAsync(
-        'INSERT INTO transit_place (id, name, address, lat, lng, icon, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?);',
+        'INSERT INTO transit_place (id, name, address, lat, lng, icon, tags, importance, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);',
         [
           id,
           input.name.trim(),
@@ -109,6 +160,8 @@ export async function savePlace(
           input.lat,
           input.lng,
           input.icon ?? 'pin',
+          tags ?? '',
+          input.importance ?? null,
           Date.now(),
         ],
       );

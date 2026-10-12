@@ -14,6 +14,7 @@ import {
   savePlace,
   saveStopWalk,
   saveWalkLink,
+  sortPlaces,
 } from './store.ts';
 import { SCHEDULE_SCHEMA } from './schedule.ts';
 import { syncSchedule, validateManifest, STATIC_BASE_URL } from './sync.ts';
@@ -61,6 +62,68 @@ test('a seventh place can be edited without modifying the other six, and rejects
   await assert.rejects(savePlace(db, { id, name: 'Bad', address: '', lat: 91, lng: 0 }));
   await assert.rejects(
     savePlace(db, { id: 'missing', name: 'Bad', address: '', lat: 43, lng: -81 }),
+  );
+});
+
+test('a place keeps its tags and importance, and lists go by importance then name', async () => {
+  const { db } = await database();
+  const id = await savePlace(db, {
+    name: 'Gimnasio nuevo',
+    address: '',
+    lat: 43,
+    lng: -81.2,
+    icon: 'leaf',
+    tags: ' gym,  fit , ,gimnasio',
+    importance: 2,
+  });
+  const saved = (await listPlaces(db)).find((p) => p.id === id)!;
+  assert.equal(saved.tags, 'gym, fit, gimnasio');
+  assert.equal(saved.importance, 2);
+  assert.equal(saved.icon, 'leaf');
+  await savePlace(db, { id, name: 'Gimnasio nuevo', address: '', lat: 43, lng: -81.2 });
+  const kept = (await listPlaces(db)).find((p) => p.id === id)!;
+  assert.deepEqual([kept.tags, kept.importance], ['gym, fit, gimnasio', 2], 'left out, kept');
+  await savePlace(db, {
+    id,
+    name: 'Gimnasio nuevo',
+    address: '',
+    lat: 43,
+    lng: -81.2,
+    importance: null,
+  });
+  assert.equal((await listPlaces(db)).find((p) => p.id === id)!.importance, null, 'cleared');
+  for (const importance of [0, 11, 2.5])
+    await assert.rejects(
+      savePlace(db, { id, name: 'X', address: '', lat: 43, lng: -81.2, importance }),
+      /1 a 10/,
+    );
+  await savePlace(db, {
+    id: 'costco',
+    name: 'Costco',
+    address: '',
+    lat: 42.9874,
+    lng: -81.2931,
+    importance: 1,
+  });
+  await savePlace(db, {
+    id: 'food-basics',
+    name: 'Food Basics',
+    address: '',
+    lat: 43.0071,
+    lng: -81.21,
+    importance: 10,
+  });
+  assert.deepEqual(
+    sortPlaces(await listPlaces(db)).map((p) => p.name),
+    [
+      'Costco',
+      'Food Basics',
+      'Cine / Silver Cinema Masonville',
+      'Fanshawe Gym',
+      'Fit4Less',
+      'Gimnasio nuevo',
+      'Masonville puerta',
+    ],
   );
 });
 
