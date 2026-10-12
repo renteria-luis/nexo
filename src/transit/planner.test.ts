@@ -140,6 +140,72 @@ test('one transfer: the weekday express makes the 08:30 connection, tight, with 
   assert.ok(options.every((o) => o.live.every((l) => l.board.status === 'schedule')));
 });
 
+test('every bus is listed, also another line that leaves a minute earlier and arrives later', () => {
+  // 2026-10-12: Google Maps listed a bus that Nexo hid behind another line leaving a minute later
+  // and arriving two minutes sooner. Here a local 16 leaves a minute before an express 92.
+  const passed = plannerFixture();
+  passed.trips.push(['92S-X', 2, 'weekday', 'Express', 1, '', 5, (8 * 60 + 16) * 60]);
+  const search = startPlan(
+    buildPlannerIndex(passed),
+    request({ destination: { lat: 42.9879, lng: -81.2003 }, at: queryInstant(TUESDAY, '08:10') }),
+  );
+  while (!search.step(1_000));
+  const options = liveOptions(search.result(), null, 0);
+  assert.deepEqual(options.map(describe), [
+    '08:13 08:22 92S-X:ORIGIN_SB>CORNER_SB',
+    '08:12 08:24 16S-3:ORIGIN_SB>CORNER_SB',
+    '08:17 08:26 92S-1:ORIGIN_SB>CORNER_SB',
+    '08:10 08:34',
+    '08:27 08:39 16S-4:ORIGIN_SB>CORNER_SB',
+    '08:42 08:54 16S-5:ORIGIN_SB>CORNER_SB',
+  ]);
+});
+
+test('later buses are not crowded out by other stops to get off the same ones', () => {
+  // A line that stops twelve times within walking distance of the end: each stop used to count
+  // as an option, and the first 120 of them filled the list with the first few buses.
+  const many = plannerFixture();
+  const first = many.stops.length;
+  for (let i = 0; i < 12; i++)
+    many.stops.push([`NEAR_${i}`, String(900 + i), `Near ${i}`, 42.9876, -81.1705 + i * 0.0004]);
+  const origin = many.stops.findIndex((s) => s[0] === 'ORIGIN_SB');
+  many.patterns.push([
+    [origin, 1, 0, 0, 0, 1, 1, ''],
+    ...Array.from({ length: 12 }, (_, i): Schedule['patterns'][number][number] => [
+      first + i,
+      i + 2,
+      (10 + i) * 60,
+      (10 + i) * 60,
+      i === 11 ? 1 : 0,
+      0,
+      1,
+      '',
+    ]),
+  ]);
+  many.routes.push(['50', '50', 'Many stops', '808080']);
+  for (let i = 0; i < 18; i++)
+    many.trips.push([
+      `50-${i}`,
+      many.routes.length - 1,
+      'daily',
+      'Many stops',
+      0,
+      '',
+      many.patterns.length - 1,
+      (8 * 60 + 5 * i) * 60,
+    ]);
+  const search = startPlan(buildPlannerIndex(many), request());
+  while (!search.step(1_000));
+  const listed = liveOptions(search.result(), null, 0).filter(
+    (o) => o.itinerary.rides[0]?.route[0] === '50',
+  );
+  assert.deepEqual(
+    listed.map((o) => o.itinerary.rides[0].trip[0]),
+    Array.from({ length: 17 }, (_, i) => `50-${i + 1}`),
+    'every bus from 08:05 to 09:25, the last that leaves within 90 minutes',
+  );
+});
+
 test('the weekday-only express is not proposed on a Saturday', () => {
   const options = liveOptions(plan({ at: queryInstant(SATURDAY, '08:00') }), null, 0);
   assert.ok(options.every((o) => o.itinerary.rides.every((r) => r.route[0] !== '92')));

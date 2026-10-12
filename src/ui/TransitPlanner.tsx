@@ -492,7 +492,7 @@ const PlanList = memo(function PlanList({
   // Judged against the real time: a reading taken late in a minute is ahead of the minute's start
   // by more than the 30 s that live data may be ahead, and read as old.
   const options = useMemo(() => liveOptions(result, snapshot, now), [result, snapshot, now]);
-  const count = more ? SHOWN * 2 : SHOWN;
+  const count = more ? options.length : SHOWN;
   const shown = result.request.mode === 'arrive' ? options.slice(-count) : options.slice(0, count);
   const issue = issueText(result, originName, targetName);
   return (
@@ -533,7 +533,7 @@ const PlanList = memo(function PlanList({
           style={styles.more}
         >
           <Text style={styles.moreText}>
-            {more ? 'Ver menos opciones' : `Ver ${Math.min(options.length, SHOWN * 2) - SHOWN} más`}
+            {more ? 'Ver menos opciones' : `Ver ${options.length - SHOWN} más`}
           </Text>
         </Pressable>
       )}

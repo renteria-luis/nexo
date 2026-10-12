@@ -34,9 +34,13 @@ export const WALK_ONLY_M = 1_500;
 export const FIRST_WINDOW_MIN = 90;
 export const MAX_TRIP_MIN = 180;
 export const MAX_TRANSFER_WAIT_MIN = 60;
-// An extra bus has to let him leave this much later, arriving no later, to push a simpler option
-// off the list; otherwise a direct bus an hour slower would stay just for having no transfer.
+// A transfer is listed beside an option with fewer buses that gets there no later only when it
+// lets him leave this much later; a direct bus is never hidden by a transfer.
 export const TRANSFER_WORTH_MIN = 10;
+// Every direct bus is listed, whatever its line. A transfer on other buses is listed even when it
+// leaves earlier and arrives later than another option, unless that one gets him there this much
+// sooner with no more buses.
+export const SOONER_WORTH_MIN = 10;
 const POOL = 120;
 const MINUTE = 60_000;
 
@@ -200,9 +204,9 @@ type PlanContext = {
 
 export type PlanResult = {
   request: PlanRequest;
-  /** The options no other beats on leaving later, arriving earlier and fewer transfers. */
+  /** Every option worth listing, as the schedule has them. */
   best: Itinerary[];
-  /** The best option for each last bus near the shown ones, for re-ranking with live data. */
+  /** One option per bus or pair of buses, the soonest and every listed one, for live re-ranking. */
   pool: Itinerary[];
   issue: PlanIssue;
   /** Loop iterations, which is what the search's cost grows with. */
@@ -348,6 +352,8 @@ function makeRide(
 }
 
 const rideKey = (ride: Ride) => `${ride.trip[0]}/${ride.serviceDate}/${ride.board}/${ride.alight}`;
+/** One bus: a trip on one service day. */
+const tripKey = (trip: Trip, date: IsoDate) => `${trip[0]}/${date}`;
 
 function itinerary(
   rides: Ride[],
@@ -371,28 +377,61 @@ function itinerary(
   };
 }
 
+/** What tells two options apart when choosing which to list. */
+type Listing = {
+  leaveAt: number;
+  arriveAt: number;
+  buses: number;
+  /** The first and the last bus, by trip and service day, empty for walking. */
+  first: string;
+  last: string;
+  /** Line and direction of each bus. */
+  lines: string;
+};
+
+function listingOf(leaveAt: number, arriveAt: number, rides: readonly Ride[]): Listing {
+  const first = rides[0];
+  const last = rides.at(-1);
+  return {
+    leaveAt,
+    arriveAt,
+    buses: rides.length,
+    first: first ? tripKey(first.trip, first.serviceDate) : '',
+    last: last ? tripKey(last.trip, last.serviceDate) : '',
+    lines: rides.map((ride) => routeKey(ride.trip)).join('/'),
+  };
+}
+
 /**
- * Keeps the options no other one beats: leaving later and arriving no later, with no more buses,
- * or with one more bus that buys TRANSFER_WORTH_MIN of leaving later.
+ * One option per bus he can take first, as Google Maps lists them: another line stays even when
+ * it leaves earlier and arrives later. An option goes when one with no more buses leaves no
+ * earlier and arrives no later on the same first or last bus or the same lines. A transfer also
+ * goes when such an option gets there SOONER_WORTH_MIN sooner, or when it buys less than
+ * TRANSFER_WORTH_MIN of leaving later over an option with fewer buses that arrives no later.
  */
-function dominanceFilter<T>(
-  options: T[],
-  view: (option: T) => { leaveAt: number; arriveAt: number; rides: number },
-): T[] {
+function worthShowing<T>(options: T[], view: (option: T) => Listing): T[] {
   const sorted = options
     .map((option) => ({ option, ...view(option) }))
-    .sort((a, b) => a.arriveAt - b.arriveAt || b.leaveAt - a.leaveAt || a.rides - b.rides);
-  const latest = [-Infinity, -Infinity, -Infinity];
+    .sort((a, b) => a.arriveAt - b.arriveAt || b.leaveAt - a.leaveAt || a.buses - b.buses);
   const kept: T[] = [];
-  for (const { option, leaveAt, rides } of sorted) {
-    if (
-      latest.some(
-        (leave, r) => leave - Math.max(0, r - rides) * TRANSFER_WORTH_MIN * MINUTE >= leaveAt,
-      )
-    )
-      continue;
-    kept.push(option);
-    latest[rides] = Math.max(latest[rides], leaveAt);
+  // Only an option sorted before another arrives no later, so only it can hide the other.
+  for (let i = 0; i < sorted.length; i++) {
+    const x = sorted[i];
+    let hidden = false;
+    for (let k = 0; k < i && !hidden; k++) {
+      const other = sorted[k];
+      hidden =
+        (other.buses <= x.buses &&
+          other.leaveAt >= x.leaveAt &&
+          (other.first === x.first ||
+            other.last === x.last ||
+            other.lines === x.lines ||
+            (x.buses > 1 && x.arriveAt - other.arriveAt >= SOONER_WORTH_MIN * MINUTE))) ||
+        (other.buses > 0 &&
+          other.buses < x.buses &&
+          x.leaveAt - other.leaveAt < TRANSFER_WORTH_MIN * MINUTE);
+    }
+    if (!hidden) kept.push(x.option);
   }
   return kept;
 }
@@ -638,15 +677,59 @@ export function startPlan(
     );
   };
 
+  const firstBus = (candidate: Candidate) =>
+    candidate.first ? boardings[candidate.first.boarding] : null;
+
+  // One option per bus, or pair of buses: getting off a stop sooner or later is not another
+  // option, and neither is a first bus to one he can walk to and leave no earlier, which no delay
+  // can make better. The other first buses to a last one stay, to take over if the best is late.
+  // Without this the pool filled with ways to catch the same few buses, and later ones never got
+  // listed.
+  const distinctBuses = () => {
+    const best = new Map<string, Candidate>();
+    for (const candidate of candidates) {
+      const f = candidate.final!;
+      const b = firstBus(candidate);
+      const key = `${b ? `${tripKey(b.trip, b.day.date)}|` : ''}${tripKey(f.trip, f.day.date)}`;
+      const known = best.get(key);
+      if (
+        !known ||
+        candidate.arrive < known.arrive ||
+        (candidate.arrive === known.arrive && candidate.leave > known.leave)
+      )
+        best.set(key, candidate);
+    }
+    return [...best.values()].filter((candidate) => {
+      if (!candidate.first) return true;
+      const f = candidate.final!;
+      const direct = best.get(tripKey(f.trip, f.day.date));
+      return !direct || direct.leave < candidate.leave || direct.arrive > candidate.arrive;
+    });
+  };
+
+  const listing = (candidate: Candidate): Listing => {
+    const f = candidate.final;
+    const b = firstBus(candidate);
+    const last = f ? tripKey(f.trip, f.day.date) : '';
+    return {
+      leaveAt: candidate.leave,
+      arriveAt: candidate.arrive,
+      buses: candidate.rides,
+      first: b ? tripKey(b.trip, b.day.date) : last,
+      last,
+      lines: [...(b ? [b.trip] : []), ...(f ? [f.trip] : [])].map(routeKey).join('/'),
+    };
+  };
+
   let result: PlanResult | null = null;
   const finish = () => {
     const metres = distanceMetres(request.origin, request.destination);
-    let kept = candidates;
+    let kept = distinctBuses();
     if (metres <= WALK_ONLY_M) {
       const minutes = estimatedWalkMinutes(metres);
       const leave = arriving ? arriveBy - minutes * MINUTE : request.at;
       // Walking can start at any time, so a bus that takes as long as the walk is never better.
-      kept = candidates.filter((c) => c.arrive - c.leave < minutes * MINUTE);
+      kept = kept.filter((c) => c.arrive - c.leave < minutes * MINUTE);
       kept.push({
         leave,
         arrive: leave + minutes * MINUTE,
@@ -663,15 +746,17 @@ export function startPlan(
         ? b.leave - a.leave || a.arrive - b.arrive || a.rides - b.rides
         : a.arrive - b.arrive || b.leave - a.leave || a.rides - b.rides,
     );
-    const pool = kept.slice(0, POOL).map(build);
+    // The pool keeps every option the schedule lists, even past the nearest POOL.
+    const listed = worthShowing(kept, listing);
+    const shown = new Set(listed);
+    const built = new Map(
+      kept.filter((c, i) => i < POOL || shown.has(c)).map((c) => [c, build(c)] as const),
+    );
+    const pool = [...built.values()];
     const day = agencyDate(request.at);
     result = {
       request,
-      best: dominanceFilter(pool, (plan) => ({
-        leaveAt: plan.leaveAt,
-        arriveAt: plan.arriveAt,
-        rides: plan.rides.length,
-      })),
+      best: listed.map((c) => built.get(c)!),
       pool,
       issue:
         day < schedule.validFrom || day > schedule.validTo
@@ -955,13 +1040,9 @@ export function liveOptions(
     const seen = unique.get(option.itinerary.key);
     if (!seen || option.leaveAt > seen.leaveAt) unique.set(option.itinerary.key, option);
   }
-  const working = dominanceFilter(
+  const working = worthShowing(
     [...unique.values()].filter((option) => !option.problem),
-    (option) => ({
-      leaveAt: option.leaveAt,
-      arriveAt: option.arriveAt,
-      rides: option.itinerary.rides.length,
-    }),
+    (option) => listingOf(option.leaveAt, option.arriveAt, option.itinerary.rides),
   );
   const listed = new Set(result.best.map((plan) => plan.key));
   const shown = new Set(working.map((option) => option.itinerary.key));
