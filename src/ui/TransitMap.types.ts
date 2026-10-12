@@ -18,6 +18,8 @@ export type TransitMapProps = {
   draft: Coordinates | null;
   buses?: ReportedBus[];
   routePoints?: Coordinates[];
+  /** The selected trip's line colour, already deepened for the screen. */
+  routeColor?: string;
   onPlace: (id: string) => void;
   onStop: (id: string) => void;
   onPoint?: (point: Coordinates) => void;

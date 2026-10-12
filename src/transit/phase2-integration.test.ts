@@ -22,6 +22,25 @@ import {
   type Schedule,
 } from './schedule.ts';
 
+const ICONS = {
+  LoaderCircle: 'LoaderCircle',
+  Ban: 'Ban',
+  Bus: 'Bus',
+  ChevronDown: 'ChevronDown',
+  ChevronUp: 'ChevronUp',
+  CircleSlash: 'CircleSlash',
+  Info: 'Info',
+  TriangleAlert: 'TriangleAlert',
+  X: 'X',
+};
+
+const rowLabels = (tree: unknown) =>
+  nodes(tree)
+    .filter(
+      (node) => node.type === 'Pressable' && / línea /.test(node.props.accessibilityLabel ?? ''),
+    )
+    .map((node) => node.props.accessibilityLabel);
+
 function snapshotFixture(schedule: Schedule, now: number): LiveSnapshot {
   return {
     schema: 1,
@@ -193,18 +212,10 @@ test('validated predictions keep the selected branch, repeated stop, and complet
   });
   const checked = validateLiveSnapshot(JSON.parse(JSON.stringify(snapshot)), schedule, query, now);
   const selections: unknown[] = [];
-  const icons = {
-    LoaderCircle: 'LoaderCircle',
-    Bus: 'Bus',
-    ChevronDown: 'ChevronDown',
-    ChevronUp: 'ChevronUp',
-    TriangleAlert: 'TriangleAlert',
-    X: 'X',
-  };
   const list = renderModule('src/ui/TransitDepartures.tsx', {
     '../transit/realtime.ts': realtime,
-    './icons.ts': icons,
-  }).mount('TransitDepartures', {
+    './icons.ts': ICONS,
+  }).mount('TransitStopDepartures', {
     schedule,
     departures: rows,
     snapshot: checked,
@@ -213,9 +224,12 @@ test('validated predictions keep the selected branch, repeated stop, and complet
     onSelect: (departure: unknown) => selections.push(departure),
   });
   const listTree = await list.settle();
-  assert.match(textOf(listTree), /02 → 2B Terminal · En vivo LTC/);
-  assert.match(textOf(listTree), /02 → Short turn · No se detiene/);
-  assert.match(textOf(listTree), /Recogida condicionada/);
+  assert.deepEqual(rowLabels(listTree), [
+    '08:05, línea 02, 2B Terminal, En vivo LTC',
+    '08:20, línea 02, Short turn, No se detiene',
+  ]);
+  assert.match(textOf(listTree), /2B Terminal/, 'the line heading names its destination');
+  assert.match(textOf(listTree), /No para aquí · recogida condicionada/);
   const shortTurn = nodes(listTree).find(
     (node) => node.type === 'Pressable' && node.props.accessibilityLabel?.includes('Short turn'),
   );
@@ -226,7 +240,7 @@ test('validated predictions keep the selected branch, repeated stop, and complet
   let closed = 0;
   const trip = renderModule('src/ui/TransitDepartures.tsx', {
     '../transit/realtime.ts': realtime,
-    './icons.ts': icons,
+    './icons.ts': ICONS,
   }).mount('TransitTripTimeline', {
     schedule,
     departure: selected,
@@ -239,7 +253,8 @@ test('validated predictions keep the selected branch, repeated stop, and complet
   const tripTree = await trip.settle();
   const rowsText = nodes(tripTree)
     .filter((node) => node.type === 'View' && typeof node.props.accessibilityLabel === 'string')
-    .map((node) => node.props.accessibilityLabel);
+    .map((node) => node.props.accessibilityLabel)
+    .filter((label) => /, \d{2}:\d{2}, /.test(label) || label === 'Posición del bus');
   assert.deepEqual(rowsText, [
     'Road NB, 08:00, Ya pasó',
     'Road SB, 08:11, Horario · sin predicción · sin recogida',
@@ -288,19 +303,18 @@ test('retained cancellation evidence is labeled as an old report and arrival-onl
     schedule,
     departures: rows,
     snapshot: validateLiveSnapshot(snapshot, schedule, query, now),
-    selected: null,
     current: true,
     active: false,
     onSelect: () => undefined,
   };
   const canceled = renderModule('src/ui/TransitDepartures.tsx', {
     '../transit/realtime.ts': realtime,
-    './icons.ts': { LoaderCircle: 'LoaderCircle' },
-  }).mount('TransitDepartures', props);
-  const canceledText = textOf(await canceled.settle());
-  assert.match(canceledText, /Último reporte: cancelado/);
-  assert.match(canceledText, /hace 120 s/);
-  assert.doesNotMatch(canceledText, /Última predicción/);
+    './icons.ts': ICONS,
+  }).mount('TransitStopDepartures', props);
+  const canceledTree = await canceled.settle();
+  assert.match(rowLabels(canceledTree)[0], /Último reporte: cancelado/);
+  assert.match(textOf(canceledTree), /último reporte hace 2 min/);
+  assert.doesNotMatch(rowLabels(canceledTree)[0], /Última predicción/);
 
   snapshot.tripUpdates[0] = {
     ...snapshot.tripUpdates[0],
@@ -319,11 +333,32 @@ test('retained cancellation evidence is labeled as an old report and arrival-onl
   props.snapshot = validateLiveSnapshot(snapshot, schedule, query, now);
   const arrival = renderModule('src/ui/TransitDepartures.tsx', {
     '../transit/realtime.ts': realtime,
-    './icons.ts': { LoaderCircle: 'LoaderCircle' },
-  }).mount('TransitDepartures', props);
-  const arrivalText = textOf(await arrival.settle());
-  assert.match(arrivalText, /En vivo LTC · llegada/);
-  assert.doesNotMatch(arrivalText, /sin predicción/);
+    './icons.ts': ICONS,
+  }).mount('TransitStopDepartures', props);
+  const arrivalTree = await arrival.settle();
+  assert.match(rowLabels(arrivalTree)[0], /En vivo LTC/);
+  assert.match(textOf(arrivalTree), /llegada/);
+  assert.doesNotMatch(rowLabels(arrivalTree)[0], /sin predicción/);
+});
+
+test('a departure on another day says which day it is', async (t) => {
+  const schedule = scheduleFixture();
+  const now = scheduledTime('2026-10-11', 20 * 3_600);
+  t.mock.method(Date, 'now', () => now);
+  const rows = departures(schedule, buildStopIndex(schedule), 0, now);
+  assert.equal(rows[0].serviceDate, '2026-10-12');
+  const list = renderModule('src/ui/TransitDepartures.tsx', {
+    '../transit/realtime.ts': realtime,
+    './icons.ts': ICONS,
+  }).mount('TransitStopDepartures', {
+    schedule,
+    departures: rows,
+    snapshot: null,
+    current: false,
+    active: false,
+    onSelect: () => undefined,
+  });
+  assert.match(textOf(await list.settle()), /mañana/);
 });
 
 test('alert UI independently expires source freshness and filters future or finished active periods', async (t) => {
@@ -362,14 +397,7 @@ test('alert UI independently expires source freshness and filters future or fini
   const checked = validateLiveSnapshot(snapshot, schedule, query, now);
   const alerts = renderModule('src/ui/TransitDepartures.tsx', {
     '../transit/realtime.ts': realtime,
-    './icons.ts': {
-      LoaderCircle: 'LoaderCircle',
-      Bus: 'Bus',
-      ChevronDown: 'ChevronDown',
-      ChevronUp: 'ChevronUp',
-      TriangleAlert: 'TriangleAlert',
-      X: 'X',
-    },
+    './icons.ts': ICONS,
   }).mount('TransitAlerts', {
     snapshot: checked,
     active: false,

@@ -18,6 +18,7 @@ export const TransitMap = memo(function TransitMap({
   draft,
   buses,
   routePoints = [],
+  routeColor = '#3977A5',
   onPlace,
   onStop,
   onPoint,
@@ -68,7 +69,7 @@ export const TransitMap = memo(function TransitMap({
             <Polyline
               points={routePoints.map((p) => `${x(p.lng)},${y(p.lat)}`).join(' ')}
               fill="none"
-              stroke="#3977A5"
+              stroke={routeColor}
               strokeWidth={3}
             />
           )}

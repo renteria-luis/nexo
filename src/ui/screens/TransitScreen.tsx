@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { daysBetween } from '../../core/dates.ts';
@@ -33,7 +33,7 @@ import {
   type PlaceIcon,
   type WalkLink,
 } from '../../transit/index.ts';
-import { validCoordinates } from '../../transit/schedule.ts';
+import { stopLines, usefulStops, validCoordinates } from '../../transit/schedule.ts';
 import { buildLiveQuery } from '../../transit/realtime.ts';
 
 import { Button } from '../Button.tsx';
@@ -41,13 +41,21 @@ import { Card } from '../Card.tsx';
 import { Chip } from '../Chip.tsx';
 import { Pencil, Plus, RefreshCw } from '../icons.ts';
 import { PLACE_ICON_VIEWS } from '../placeIcons.ts';
+import { routeColor } from '../routeColors.ts';
 import { TextField } from '../TextField.tsx';
 import { TransitMap } from '../TransitMap';
 import type { ReportedBus } from '../TransitMap.types.ts';
-import { TransitAlerts, TransitDepartures, TransitTripTimeline } from '../TransitDepartures.tsx';
+import {
+  TransitAlerts,
+  TransitStopDepartures,
+  TransitStopHeader,
+  TransitTripTimeline,
+} from '../TransitDepartures.tsx';
+import { TransitLegend } from '../TransitStatus.tsx';
+import { TransitWhen } from '../TransitWhen.tsx';
 import { TransitLiveSettings } from '../TransitLiveSettings.tsx';
 import { useTransitLive } from '../useTransitLive.ts';
-import { font, sheet, shape } from '../theme.ts';
+import { font, sheet, shape, theme } from '../theme.ts';
 import { Screen } from './Screen.tsx';
 
 type Draft = {
@@ -94,6 +102,8 @@ function TransitContent() {
   const [places, setPlaces] = useState<Place[]>([]);
   const [placeId, setPlaceId] = useState<string | null>(null);
   const [stopId, setStopId] = useState<string | null>(null);
+  const [stopsFolded, setStopsFolded] = useState(false);
+  const [moreStops, setMoreStops] = useState(false);
   const [links, setLinks] = useState<WalkLink[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -198,24 +208,34 @@ function TransitContent() {
       : { lat: placeLat ?? 43, lng: placeLng ?? -81.24 };
   }, [draftLat, draftLng, placeLat, placeLng]);
   const candidates = useMemo(
-    () => (schedule ? nearbyStops(schedule, center) : []),
+    () => (schedule ? nearbyStops(schedule, center, 16) : []),
     [schedule, center],
   );
   const stops = useMemo(() => candidates.map((c) => c.stop), [candidates]);
+  const useful = useMemo(
+    () => (schedule && index ? usefulStops(schedule, index, candidates) : { main: [], more: [] }),
+    [schedule, index, candidates],
+  );
   const selected = candidates.find((c) => c.stop[0] === stopId);
-  const stop = selected ?? candidates[0];
+  const stop = stopsFolded ? undefined : (selected ?? useful.main[0] ?? candidates[0]);
   const shownStopId = stop?.stop[0] ?? null;
   const stopIndex = stop?.index;
-  const lineNames = useMemo(() => {
-    if (!schedule || !index || stopIndex === undefined) return [];
-    return [
-      ...new Set(
-        (index.get(stopIndex) ?? []).flatMap((r) =>
-          r.trips.map((trip) => schedule.routes[trip[1]][1]),
-        ),
-      ),
-    ].sort();
-  }, [schedule, index, stopIndex]);
+  const routesAt = useCallback(
+    (at: number) =>
+      schedule && index
+        ? [...new Map(stopLines(schedule, index, at).map((l) => [l.route[0], l.route])).values()]
+        : [],
+    [schedule, index],
+  );
+  const openStop = useCallback(
+    (id: string) => {
+      setStopId(id);
+      setStopsFolded(false);
+      setDetail(null);
+      if (useful.more.some((c) => c.stop[0] === id)) setMoreStops(true);
+    },
+    [useful],
+  );
   const knownStops = useMemo(() => new Set(schedule?.stops.map((s) => s[0]) ?? []), [schedule]);
   const missingLinks = links.filter((l) => !knownStops.has(l.stop_id));
   const selectedDetail =
@@ -557,141 +577,138 @@ function TransitContent() {
           selectedStop={shownStopId}
           draft={draftPoint && validCoordinates(draftPoint) ? draftPoint : null}
           onPlace={pickPlace}
-          onStop={setStopId}
+          onStop={openStop}
           onPoint={draft && !busy ? pickPoint : undefined}
           onInteraction={setMapActive}
           buses={buses}
           routePoints={routePoints}
+          routeColor={selectedDetail ? routeColor(selectedDetail.route[3]) : undefined}
         />
       </Card>
-      <Card title="Paradas cercanas">
-        <Text style={styles.note}>
-          Distancia en línea recta. La acera, los cruces y la puerta pueden cambiar la caminata.
-          Líneas asociadas al horario completo; no todas pasan a toda hora.
-        </Text>
-        {candidates.map((c) => (
-          <Chip
-            key={c.stop[0]}
-            label={`${c.stop[1] || 'Sin código'} · ${c.stop[2]} · ${Math.round(c.distanceM)} m`}
-            accessibilityLabel={`${c.stop[2]}, identificador ${c.stop[0]}, a ${Math.round(c.distanceM)} metros en línea recta`}
-            selected={c.stop[0] === shownStopId}
-            onPress={() => setStopId(c.stop[0])}
-            style={styles.stopChip}
-          />
-        ))}
-      </Card>
-      {stop && (
-        <Card title={stop.stop[2]}>
-          <Text style={styles.note}>
-            ID {stop.stop[0]} · código {stop.stop[1] || 'no publicado'}
-          </Text>
-          <Text style={styles.body}>
-            Líneas: {lineNames.join(', ') || 'ninguna en este paquete'}
-          </Text>
-          <Text style={styles.note}>
-            {liveMode
-              ? (live.state.reason ??
-                (snapshot
-                  ? 'Predicciones oficiales LTC; cada reporte conserva su hora.'
-                  : 'Sin datos en vivo · se muestra el horario guardado.'))
-              : 'Consulta de horario guardado; los datos en vivo corresponden a ahora.'}
-          </Text>
+      <Card title="Paradas">
+        <View style={styles.row}>
+          <View style={styles.flex}>
+            <TransitWhen
+              live={liveMode}
+              date={date}
+              clock={clock}
+              today={today}
+              validFrom={schedule.validFrom}
+              validTo={schedule.validTo}
+              onDate={setDate}
+              onClock={setClock}
+              onApply={() => {
+                try {
+                  setFrom(queryInstant(date, clock));
+                  setLiveMode(false);
+                  setProblem(null);
+                  return true;
+                } catch (error) {
+                  setProblem(message(error));
+                  return false;
+                }
+              }}
+              onNow={() => {
+                const now = Date.now();
+                setDate(agencyDate(now));
+                setClock(agencyClock(now));
+                setFrom(now);
+                setLiveMode(true);
+                setProblem(null);
+              }}
+            />
+          </View>
           {liveMode && live.config && (
-            <Button
-              label="Actualizar en vivo"
-              variant="ghost"
-              loading={live.state.loading}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Actualizar en vivo"
+              accessibilityState={{ busy: live.state.loading }}
+              disabled={live.state.loading}
               onPress={() => void live.refresh()}
-            />
+              style={[styles.iconButton, live.state.loading && styles.busy]}
+            >
+              <RefreshCw size={18} color={theme.text} strokeWidth={2.5} />
+            </Pressable>
           )}
-          {snapshot && Object.entries(snapshot.health).some(([, h]) => h.status !== 'ok') && (
-            <Text style={styles.note}>
-              Sin datos frescos en alguna fuente. Se conserva el último reporte y el horario.
-            </Text>
-          )}
-          {selectedDetail ? (
-            <TransitTripTimeline
-              schedule={schedule}
-              departure={selectedDetail}
-              choices={choices}
-              snapshot={snapshot}
-              active={live.active}
-              onSelect={setDetail}
-              onClose={() => setDetail(null)}
-            />
-          ) : (
-            <>
-              <View style={styles.row}>
-                <TextField
-                  accessibilityLabel="Fecha de horarios"
-                  value={date}
-                  onChange={setDate}
-                  placeholder="AAAA-MM-DD"
-                  style={[styles.input, styles.flex]}
-                />
-                <TextField
-                  accessibilityLabel="Hora de horarios"
-                  value={clock}
-                  onChange={setClock}
-                  placeholder="HH:MM"
-                  style={[styles.input, styles.flex]}
-                />
-              </View>
-              <View style={styles.wrap}>
-                <Button
-                  label="Ver horarios"
-                  onPress={() => {
-                    try {
-                      setFrom(queryInstant(date, clock));
-                      setLiveMode(false);
-                      setProblem(null);
-                    } catch (error) {
-                      setProblem(message(error));
-                    }
-                  }}
-                />
-                <Button
-                  label="Ahora"
-                  variant="ghost"
-                  onPress={() => {
-                    const now = Date.now();
-                    setDate(agencyDate(now));
-                    setClock(agencyClock(now));
-                    setFrom(now);
-                    setLiveMode(true);
-                    setProblem(null);
-                  }}
-                />
-              </View>
-              <Text style={styles.note}>
-                Desde {agencyDate(from)} {agencyClock(from)}, hora de London. Próximas salidas
-                dentro de 24 horas.
-              </Text>
-              {expired && (
-                <Text style={styles.error}>
-                  El horario guardado venció el {schedule.validTo}. Actualiza antes de confiar en el
-                  servicio.
-                </Text>
-              )}
-              {outsideDate && (
-                <Text style={styles.note}>
-                  La fecha está fuera de vigencia. Solo pueden aparecer viajes que continúan desde
-                  un día de servicio válido anterior.
-                </Text>
-              )}
-              <TransitDepartures
-                schedule={schedule}
-                departures={departuresList}
-                snapshot={snapshot}
-                current={liveMode}
-                active={live.active}
-                onSelect={setDetail}
+        </View>
+        {liveMode && live.state.reason && <Text style={styles.note}>{live.state.reason}</Text>}
+        {!liveMode && (
+          <Text style={styles.note}>
+            Horario guardado desde {agencyDate(from)} {agencyClock(from)}, hora de London; lo en
+            vivo es solo para ahora.
+          </Text>
+        )}
+        {snapshot && Object.entries(snapshot.health).some(([, h]) => h.status !== 'ok') && (
+          <Text style={styles.note}>
+            Alguna fuente de LTC no está al día; se conserva el último reporte y el horario.
+          </Text>
+        )}
+        {expired && (
+          <Text style={styles.error}>
+            El horario guardado venció el {schedule.validTo}. Actualiza antes de confiar en el
+            servicio.
+          </Text>
+        )}
+        {outsideDate && (
+          <Text style={styles.note}>
+            La fecha está fuera de vigencia. Solo pueden aparecer viajes que continúan desde un día
+            de servicio válido anterior.
+          </Text>
+        )}
+        {[...useful.main, ...(moreStops ? useful.more : [])].map((c) => {
+          const open = c.stop[0] === shownStopId;
+          return (
+            <View key={c.stop[0]} style={styles.stopBlock}>
+              <TransitStopHeader
+                stop={c.stop}
+                distanceM={c.distanceM}
+                routes={routesAt(c.index)}
+                open={open}
+                onPress={() => (open ? setStopsFolded(true) : openStop(c.stop[0]))}
               />
-            </>
-          )}
-          {snapshot && <TransitAlerts snapshot={snapshot} active={live.active} />}
-        </Card>
-      )}
+              {open &&
+                (selectedDetail ? (
+                  <TransitTripTimeline
+                    schedule={schedule}
+                    departure={selectedDetail}
+                    choices={choices}
+                    snapshot={snapshot}
+                    active={live.active}
+                    onSelect={setDetail}
+                    onClose={() => setDetail(null)}
+                  />
+                ) : (
+                  <TransitStopDepartures
+                    schedule={schedule}
+                    departures={departuresList}
+                    snapshot={snapshot}
+                    current={liveMode}
+                    active={live.active}
+                    onSelect={setDetail}
+                  />
+                ))}
+            </View>
+          );
+        })}
+        {useful.more.length > 0 && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: moreStops }}
+            onPress={() => setMoreStops(!moreStops)}
+            style={styles.more}
+          >
+            <Text style={styles.moreText}>
+              {moreStops ? 'Ver menos paradas' : `Ver ${useful.more.length} paradas más`}
+            </Text>
+          </Pressable>
+        )}
+        <Text style={styles.note}>
+          Distancias en línea recta: la acera, los cruces y la puerta pueden cambiar la caminata.
+          Las paradas repetidas para las mismas líneas quedan en «Ver más».
+        </Text>
+        {snapshot && <TransitAlerts snapshot={snapshot} active={live.active} />}
+        <TransitLegend />
+      </Card>
       {stop && (
         <Card title="Tu caminata">
           <View style={styles.wrap}>
@@ -816,7 +833,23 @@ const styles = sheet((theme) => ({
     minHeight: 44,
     backgroundColor: theme.surface,
   },
-  stopChip: { minHeight: 44, paddingVertical: 8 },
-  detail: { gap: 8, borderTopWidth: 1, borderTopColor: theme.lineSoft, paddingTop: 10 },
-  current: { fontFamily: font.black, color: theme.text },
+  stopBlock: { gap: 8 },
+  iconButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.surface,
+  },
+  busy: { opacity: 0.5 },
+  more: { alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 2 },
+  moreText: {
+    fontFamily: font.bold,
+    fontSize: 13,
+    color: theme.text,
+    textDecorationLine: 'underline',
+  },
 }));

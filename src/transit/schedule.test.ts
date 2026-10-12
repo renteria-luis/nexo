@@ -4,6 +4,9 @@ import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import { scheduleFixture } from './fixtures.ts';
 import {
+  SCHEDULE_SCHEMA,
+  stopLines,
+  usefulStops,
   activeServices,
   agencyClock,
   agencyDate,
@@ -80,7 +83,10 @@ test('GTFS service-day anchoring respects both Toronto DST transitions and devic
 test('invalid, partial or incompatible packages are rejected before use', () => {
   for (const mutate of [
     (s: ReturnType<typeof scheduleFixture>) => {
-      s.schema = 2;
+      s.schema = SCHEDULE_SCHEMA + 1;
+    },
+    (s: ReturnType<typeof scheduleFixture>) => {
+      s.routes[0][3] = 'green';
     },
     (s: ReturnType<typeof scheduleFixture>) => {
       s.stops[0][3] = 91;
@@ -130,4 +136,38 @@ test('the shipped official package matches its hash and includes citywide schedu
   assert.ok(nearby.some((c) => c.stop[0] === 'PROUFAR2'));
   assert.ok(nearby.some((c) => c.stop[0] === 'PROUFAR3'));
   assert.ok(nearby[0].distanceM < 100);
+});
+
+test('nearby stops keep one stop per line and direction, closest first, the rest one tap away', () => {
+  const s = scheduleFixture();
+  s.stops.push(
+    ['C', '12', 'Road NB next', 43.0002, -81.0002],
+    ['D', '13', 'Cross EB', 43.0003, -81.0003],
+  );
+  s.routes.push(['17', '17', 'Route 17', '6BCFF6']);
+  s.patterns.push([[2, 1, 0, 0, 0, 0, 1, '']], [[3, 1, 0, 0, 0, 0, 1, '']]);
+  s.trips.push(
+    ['same-line', 0, 'weekday', '2A Downtown', 0, 'shape', 1, 9 * 3600],
+    ['other-line', 1, 'weekday', '17 East', 0, 'shape', 2, 9 * 3600],
+  );
+  const index = buildStopIndex(s);
+  assert.deepEqual(
+    stopLines(s, index, 1).map((line) => line.key),
+    [],
+    'a stop where nobody may board serves no line',
+  );
+  const candidates = [0, 1, 2, 3].map((i) => ({ index: i, id: s.stops[i][0] }));
+  const { main, more } = usefulStops(s, index, candidates);
+  assert.deepEqual(
+    main.map((c) => c.id),
+    ['A', 'D'],
+  );
+  assert.deepEqual(
+    more.map((c) => c.id),
+    ['B', 'C'],
+  );
+  assert.deepEqual(
+    usefulStops(s, index, candidates, 1).main.map((c) => c.id),
+    ['A'],
+  );
 });

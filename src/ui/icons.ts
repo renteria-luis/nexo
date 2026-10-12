@@ -11,9 +11,11 @@
 //
 // Adding an icon: find its name at lucide.dev/icons, add the line, keep it sorted.
 
+export { default as Ban } from 'lucide-react-native/icons/ban';
 export { default as BookOpen } from 'lucide-react-native/icons/book-open';
 export { default as Briefcase } from 'lucide-react-native/icons/briefcase';
 export { default as Bus } from 'lucide-react-native/icons/bus';
+export { default as CalendarClock } from 'lucide-react-native/icons/calendar-clock';
 export { default as CalendarDays } from 'lucide-react-native/icons/calendar-days';
 export { default as Carrot } from 'lucide-react-native/icons/carrot';
 export { default as ChartLine } from 'lucide-react-native/icons/chart-line';
@@ -25,6 +27,7 @@ export { default as ChevronRight } from 'lucide-react-native/icons/chevron-right
 export { default as ChevronUp } from 'lucide-react-native/icons/chevron-up';
 export { default as Church } from 'lucide-react-native/icons/church';
 export { default as Circle } from 'lucide-react-native/icons/circle';
+export { default as CircleSlash } from 'lucide-react-native/icons/circle-slash';
 export { default as Clapperboard } from 'lucide-react-native/icons/clapperboard';
 export { default as Coffee } from 'lucide-react-native/icons/coffee';
 export { default as Command } from 'lucide-react-native/icons/command';

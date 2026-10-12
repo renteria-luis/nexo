@@ -1,12 +1,12 @@
 import { addDays, isRealDate, type IsoDate } from '../core/dates.ts';
 import { distanceMetres, type Coordinates } from '../core/geo.ts';
 
-export const SCHEDULE_SCHEMA = 1;
+export const SCHEDULE_SCHEMA = 2;
 export const SCHEDULE_MAX_BYTES = 12_000_000;
 export const SCHEDULE_SOURCE = 'https://www.londontransit.ca/gtfsfeed/google_transit.zip';
 
 export type Stop = [id: string, code: string, name: string, lat: number, lng: number];
-export type Route = [id: string, shortName: string, name: string];
+export type Route = [id: string, shortName: string, name: string, color: string];
 export type Service = [id: string, weekdays: number, start: IsoDate, end: IsoDate];
 export type Exception = [service: string, date: IsoDate, kind: number];
 export type StopTime = [
@@ -120,8 +120,16 @@ export function validateSchedule(raw: unknown): Schedule {
   }
   const routeIds = new Set<string>();
   for (const row of p.routes) {
-    tuple(row, 3);
-    check(text(row[0], true) && !routeIds.has(row[0]) && text(row[1]) && text(row[2]), 'línea');
+    tuple(row, 4);
+    check(
+      text(row[0], true) &&
+        !routeIds.has(row[0]) &&
+        text(row[1]) &&
+        text(row[2]) &&
+        typeof row[3] === 'string' &&
+        /^([0-9A-F]{6})?$/.test(row[3]),
+      'línea',
+    );
     routeIds.add(row[0]);
   }
   const serviceIds = new Set<string>();
@@ -370,4 +378,42 @@ export function nearbyStops(schedule: Schedule, point: Coordinates, limit = 12) 
     }))
     .sort((a, b) => a.distanceM - b.distanceM)
     .slice(0, limit);
+}
+
+/**
+ * The lines a stop serves, one per route and direction, from the trips that let people on there.
+ */
+export function stopLines(
+  schedule: Schedule,
+  index: ReturnType<typeof buildStopIndex>,
+  stop: number,
+): { key: string; route: Route }[] {
+  const lines = new Map<string, Route>();
+  for (const { trips, time } of index.get(stop) ?? []) {
+    if (time[4] === 1) continue;
+    for (const trip of trips)
+      lines.set(`${trip[1]}/${trip[4] ?? trip[3]}`, schedule.routes[trip[1]]);
+  }
+  return [...lines].map(([key, route]) => ({ key, route }));
+}
+
+// A nearby stop makes the short list only when it adds a line, or a direction of one, that a
+// closer stop does not already serve: the next stop down the same street is one tap away.
+export function usefulStops<T extends { index: number }>(
+  schedule: Schedule,
+  index: ReturnType<typeof buildStopIndex>,
+  candidates: T[],
+  limit = 6,
+): { main: T[]; more: T[] } {
+  const served = new Set<string>();
+  const main: T[] = [];
+  const more: T[] = [];
+  for (const candidate of candidates) {
+    const keys = stopLines(schedule, index, candidate.index).map((line) => line.key);
+    if (main.length < limit && keys.some((key) => !served.has(key))) {
+      main.push(candidate);
+      for (const key of keys) served.add(key);
+    } else more.push(candidate);
+  }
+  return { main, more };
 }

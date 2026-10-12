@@ -155,14 +155,22 @@ def prepare(raw, created_at):
             if (minimum is not None and minimum < 0) or (kind == 2 and minimum is None):
                 raise ValueError('Invalid minimum transfer time')
             transfers.append([stop_ids[r['from_stop_id']], stop_ids[r['to_stop_id']], kind, minimum])
-        return dict(schema=1, source=SOURCE, sourceSha256=hashlib.sha256(raw).hexdigest(),
+        return dict(schema=2, source=SOURCE, sourceSha256=hashlib.sha256(raw).hexdigest(),
                     createdAt=created_at, feedVersion=feed['feed_version'], timezone='America/Toronto',
                     validFrom=start, validTo=end,
                     stops=[[r['stop_id'], r.get('stop_code', ''), r['stop_name'],
                             coordinate(r['stop_lat'], 90), coordinate(r['stop_lon'], 180)] for r in stops],
-                    routes=[[r['route_id'], r['route_short_name'], r['route_long_name']] for r in routes],
+                    routes=[[r['route_id'], r['route_short_name'], r['route_long_name'], color(r.get('route_color', ''))]
+                            for r in routes],
                     services=services, exceptions=exceptions, patterns=patterns, trips=compact_trips,
                     shapes=shapes, transfers=transfers)
+
+
+def color(value):
+    # LTC paints each line with routes.txt's route_color; a missing one leaves the app's default.
+    if value and not (len(value) == 6 and all(c in '0123456789abcdefABCDEF' for c in value)):
+        raise ValueError('Invalid route colour')
+    return value.upper()
 
 
 def publish(raw, output, now):
@@ -174,7 +182,7 @@ def publish(raw, output, now):
     if manifest_path.exists():
         old = json.loads(manifest_path.read_text())
         current = output / 'schedule.json'
-        if (old.get('sourceSha256') == package['sourceSha256'] and current.exists()
+        if (old.get('schema') == package['schema'] and old.get('sourceSha256') == package['sourceSha256'] and current.exists()
                 and hashlib.sha256(current.read_bytes()).hexdigest() == old.get('sha256')):
             print('Official schedule unchanged; no publication needed')
             return False

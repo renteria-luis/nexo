@@ -2,7 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { Coordinates } from '../core/geo.ts';
 import { inTransaction, whenIdle } from '../db/transaction.ts';
-import { validateSchedule, validCoordinates, type Schedule } from './schedule.ts';
+import { SCHEDULE_SCHEMA, validateSchedule, validCoordinates, type Schedule } from './schedule.ts';
 
 export const PLACE_ICONS = [
   'pin',
@@ -149,7 +149,11 @@ export async function readSchedule(db: SQLiteDatabase): Promise<CachedSchedule |
   const row = await db.getFirstAsync<{ content: string } & Omit<CachedSchedule, 'schedule'>>(
     'SELECT * FROM transit_schedule_cache WHERE id = 1;',
   );
-  return row ? { ...row, schedule: validateSchedule(JSON.parse(row.content)) } : null;
+  if (!row) return null;
+  const content = JSON.parse(row.content);
+  // A package saved by an older version of the app gives way to the one this version ships.
+  if (typeof content?.schema === 'number' && content.schema < SCHEDULE_SCHEMA) return null;
+  return { ...row, schedule: validateSchedule(content) };
 }
 
 export async function replaceSchedule(

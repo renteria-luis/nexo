@@ -17,7 +17,7 @@ import { readBounded, Sources, UPSTREAMS, type SharedCache, type Snapshot } from
 const now = Date.parse('2026-10-11T20:00:00Z');
 const seconds = now / 1000;
 const schedule = validateSchedule({
-  schema: 1,
+  schema: 2,
   source: SCHEDULE_SOURCE,
   sourceSha256: 'a'.repeat(64),
   createdAt: now,
@@ -30,8 +30,8 @@ const schedule = validateSchedule({
     ['B', '', 'Second', 43.001, -81.001],
   ],
   routes: [
-    ['02', '2', 'North'],
-    ['2', '2', 'Other'],
+    ['02', '2', 'North', ''],
+    ['2', '2', 'Other', ''],
   ],
   services: [['S', 127, '2026-09-28', '2026-11-28']],
   exceptions: [],

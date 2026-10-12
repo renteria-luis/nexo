@@ -9,11 +9,20 @@ import {
   type LiveDetailStop,
   type LiveSnapshot,
 } from '../transit/realtime.ts';
-import { agencyClock, type Departure, type Schedule } from '../transit/schedule.ts';
-import { Button } from './Button.tsx';
+import { addDays, shortDay } from '../core/dates.ts';
+import {
+  agencyClock,
+  agencyDate,
+  type Departure,
+  type Route,
+  type Schedule,
+  type Stop,
+} from '../transit/schedule.ts';
 import { Chip } from './Chip.tsx';
 import { Bus, ChevronDown, ChevronUp, TriangleAlert, X } from './icons.ts';
+import { routeColor } from './routeColors.ts';
 import { font, shape, sheet, theme } from './theme.ts';
+import { RouteBadge, StatusIcons } from './TransitStatus.tsx';
 
 const statusLabel: Record<string, string> = {
   live: 'En vivo LTC',
@@ -53,7 +62,132 @@ function measurement(at: number | null, now: number) {
 const sameDeparture = (a: Departure, b: Departure) =>
   a.trip[0] === b.trip[0] && a.serviceDate === b.serviceDate && a.stopTime[1] === b.stopTime[1];
 
-export function TransitDepartures({
+function relative(at: number, now: number) {
+  const minutes = Math.round((at - now) / 60_000);
+  return minutes === 0 ? 'ahora' : minutes > 0 ? `en ${minutes} min` : `hace ${-minutes} min`;
+}
+
+function ago(at: number | null, now: number) {
+  if (at === null) return null;
+  const seconds = Math.max(0, Math.floor((now - at) / 1000));
+  return seconds < 120 ? `hace ${seconds} s` : `hace ${Math.floor(seconds / 60)} min`;
+}
+
+function destination(d: Departure) {
+  const text = d.stopTime[7] || d.trip[3] || d.route[2];
+  const [main, via] = text.split(/ via /i);
+  return { text, main: main.trim(), via: via?.trim() ?? null };
+}
+
+function dayOf(at: number, now: number) {
+  const day = agencyDate(at);
+  const today = agencyDate(now);
+  return day === today ? '' : day === addDays(today, 1) ? 'mañana' : shortDay(day);
+}
+
+function details(d: Departure, live: LiveDeparture, now: number, departed: boolean) {
+  const age = live.status === 'live' || live.status === 'stale' ? ago(live.reportedAt, now) : null;
+  return [
+    dayOf(live.at, now),
+    departed ? 'ya pasó' : live.status === 'live' ? relative(live.at, now) : '',
+    live.status === 'canceled' ? 'Cancelado' : '',
+    live.status === 'skipped' ? 'No para aquí' : '',
+    live.at !== d.at ? `horario ${agencyClock(d.at)}` : '',
+    live.eventKind === 'arrival' ? 'llegada' : '',
+    age ? (live.status === 'stale' ? `último reporte ${age}` : age) : '',
+    d.stopTime[4] > 1 ? 'recogida condicionada' : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+type DepartureLine = { departure: Departure; live: LiveDeparture; departed: boolean };
+
+function DepartureRow({
+  line: { departure: d, live, departed },
+  heading,
+  now,
+  onSelect,
+}: {
+  line: DepartureLine;
+  heading: string;
+  now: number;
+  onSelect: (departure: Departure) => void;
+}) {
+  const where = destination(d);
+  const note = details(d, live, now, departed);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${agencyClock(live.at)}, línea ${d.route[1]}, ${where.text}, ${label(live)}${departed ? ', ya pasó' : ''}`}
+      onPress={() => onSelect(d)}
+      style={({ pressed }) => [
+        styles.departure,
+        departed && styles.departed,
+        pressed && styles.pressedRow,
+      ]}
+    >
+      <Text style={styles.departureTime}>{agencyClock(live.at)}</Text>
+      <View style={styles.grow}>
+        {where.main !== heading && (
+          <Text style={styles.departureWhere} numberOfLines={1}>
+            {where.main}
+          </Text>
+        )}
+        {note !== '' && (
+          <Text style={styles.note} numberOfLines={2}>
+            {note}
+          </Text>
+        )}
+      </View>
+      <StatusIcons live={live} />
+    </Pressable>
+  );
+}
+
+export function TransitStopHeader({
+  stop,
+  distanceM,
+  routes,
+  open,
+  onPress,
+}: {
+  stop: Stop;
+  distanceM: number;
+  routes: Route[];
+  open: boolean;
+  onPress: () => void;
+}) {
+  const name = stop[2].replace(/ - #\d+$/, '');
+  const Chevron = open ? ChevronUp : ChevronDown;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ expanded: open }}
+      accessibilityLabel={`${name}, parada ${stop[1] || stop[0]}, a ${Math.round(distanceM)} metros`}
+      onPress={onPress}
+      style={[styles.stopHead, open && styles.stopHeadOpen]}
+    >
+      <View style={styles.grow}>
+        <Text style={styles.stopTitle} numberOfLines={2}>
+          {name}
+        </Text>
+        <Text style={styles.note}>
+          #{stop[1] || stop[0]} · {Math.round(distanceM)} m
+        </Text>
+      </View>
+      <View style={styles.stopLines}>
+        {routes.slice(0, 5).map((route) => (
+          <RouteBadge key={route[0]} route={route} size={22} />
+        ))}
+        {routes.length > 5 && <Text style={styles.note}>+{routes.length - 5}</Text>}
+      </View>
+      <Chevron size={18} color={theme.text} strokeWidth={2.5} />
+    </Pressable>
+  );
+}
+
+export function TransitStopDepartures({
   schedule,
   departures,
   snapshot,
@@ -69,45 +203,71 @@ export function TransitDepartures({
   onSelect: (departure: Departure) => void;
 }) {
   const now = useLiveClock(active);
-  const shown = departures
-    .map((departure) => ({
-      departure,
-      live: mergeLiveDeparture(schedule, departure, current ? snapshot : null, now),
-    }))
-    .filter(({ live }) => !current || live.at >= now - 60_000)
-    .sort((a, b) => a.live.at - b.live.at)
-    .slice(0, 20);
+  const [opened, setOpened] = useState<string[]>([]);
+  const groups = useMemo(() => {
+    const byLine = new Map<string, DepartureLine[]>();
+    for (const departure of departures) {
+      const live = mergeLiveDeparture(schedule, departure, current ? snapshot : null, now);
+      const key = `${departure.route[0]}/${departure.trip[4] ?? departure.trip[3]}`;
+      const lines = byLine.get(key) ?? [];
+      lines.push({ departure, live, departed: current && live.at < now - 60_000 });
+      byLine.set(key, lines);
+    }
+    return [...byLine]
+      .map(([key, lines]) => {
+        lines.sort((a, b) => a.live.at - b.live.at);
+        const ahead = lines.filter((l) => !l.departed);
+        return { key, previous: lines.filter((l) => l.departed).at(-1) ?? null, ahead };
+      })
+      .filter((group) => group.ahead.length > 0)
+      .sort((a, b) => a.ahead[0].live.at - b.ahead[0].live.at);
+  }, [departures, schedule, snapshot, current, now]);
+  if (!groups.length)
+    return <Text style={styles.body}>No hay salidas para abordar con este horario.</Text>;
   return (
-    <View style={styles.list}>
-      {shown.map(({ departure: d, live }) => {
-        const destination = d.stopTime[7] || d.trip[3] || d.route[2];
+    <View style={styles.groups}>
+      {groups.map(({ key, previous, ahead }) => {
+        const route = ahead[0].departure.route;
+        const where = destination(ahead[0].departure);
+        const open = opened.includes(key);
+        const shown = [...(previous ? [previous] : []), ...(open ? ahead : ahead.slice(0, 3))];
         return (
-          <View key={`${d.trip[0]}-${d.serviceDate}-${d.stopTime[1]}`}>
-            <Button
-              label={`${agencyClock(live.at)} · ${d.route[1]} → ${destination} · ${label(live)}${live.eventKind === 'arrival' ? ' · llegada' : ''}`}
-              variant="ghost"
-              onPress={() => onSelect(d)}
-            />
-            {live.reportedAt !== null && (
-              <Text style={styles.note}>
-                Horario {agencyClock(d.at)} · {measurement(live.reportedAt, now)}
-                {live.uncertainty !== null && live.uncertainty > 0
-                  ? ` · incertidumbre ${live.uncertainty} s`
-                  : ''}
+          <View key={key} style={styles.group}>
+            <View style={styles.groupHead}>
+              <RouteBadge route={route} />
+              <Text style={styles.groupTitle} numberOfLines={1}>
+                {where.main}
               </Text>
+              {where.via && (
+                <Text style={styles.groupVia} numberOfLines={1}>
+                  vía {where.via}
+                </Text>
+              )}
+            </View>
+            {shown.map((line) => (
+              <DepartureRow
+                key={`${line.departure.trip[0]}-${line.departure.serviceDate}-${line.departure.stopTime[1]}`}
+                line={line}
+                heading={where.main}
+                now={now}
+                onSelect={onSelect}
+              />
+            ))}
+            {ahead.length > 3 && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ expanded: open }}
+                onPress={() => setOpened(open ? opened.filter((k) => k !== key) : [...opened, key])}
+                style={styles.more}
+              >
+                <Text style={styles.moreText}>
+                  {open ? 'Ver menos' : `Ver ${ahead.length - 3} más`}
+                </Text>
+              </Pressable>
             )}
-            {current && live.status === 'live' && (
-              <Text style={styles.note}>
-                {Math.max(0, Math.ceil((live.at - now) / 60_000))} min según LTC
-              </Text>
-            )}
-            {d.stopTime[4] > 1 && <Text style={styles.note}>Recogida condicionada</Text>}
           </View>
         );
       })}
-      {!shown.length && (
-        <Text style={styles.body}>No hay salidas para abordar con este horario.</Text>
-      )}
     </View>
   );
 }
@@ -117,11 +277,6 @@ const ROW = 52;
 const SHOWN_ROWS = 8.5;
 const RAIL = 34;
 const BUS_SIZE = 26;
-
-function relative(at: number, now: number) {
-  const minutes = Math.round((at - now) / 60_000);
-  return minutes === 0 ? 'ahora' : minutes > 0 ? `en ${minutes} min` : `hace ${-minutes} min`;
-}
 
 function stopNote(s: LiveDetailStop, now: number) {
   if (s.progress === 'passed') return 'Ya pasó';
@@ -156,7 +311,9 @@ const TimelineRow = memo(function TimelineRow({
   boarding,
   fadedAbove,
   fadedBelow,
+  color,
 }: {
+  color: string;
   name: string;
   time: string;
   note: string;
@@ -171,8 +328,22 @@ const TimelineRow = memo(function TimelineRow({
   return (
     <View style={styles.row} accessibilityLabel={`${name}, ${time}, ${note}`}>
       <View style={styles.rail}>
-        <View style={[styles.segment, first && styles.hidden, fadedAbove && styles.faded]} />
-        <View style={[styles.segment, last && styles.hidden, fadedBelow && styles.faded]} />
+        <View
+          style={[
+            styles.segment,
+            { backgroundColor: color },
+            first && styles.hidden,
+            fadedAbove && styles.faded,
+          ]}
+        />
+        <View
+          style={[
+            styles.segment,
+            { backgroundColor: color },
+            last && styles.hidden,
+            fadedBelow && styles.faded,
+          ]}
+        />
         <View style={[styles.dot, boarding && styles.dotBoarding]} />
       </View>
       <View style={styles.rowText}>
@@ -233,6 +404,7 @@ export function TransitTripTimeline({
       : window;
   }, [times, now, departure]);
   const boarding = detail.stops.findIndex((s) => s.stopTime[1] === departure.stopTime[1]);
+  const lineColor = routeColor(departure.route[3]);
   const scroll = useRef<ScrollView>(null);
   const placedFor = useRef<string | null>(null);
   const key = `${departure.trip[0]}/${departure.serviceDate}/${departure.stopTime[1]}`;
@@ -251,9 +423,7 @@ export function TransitTripTimeline({
   return (
     <View style={styles.trip}>
       <View style={styles.tripHead}>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>{departure.route[1]}</Text>
-        </View>
+        <RouteBadge route={departure.route} size={32} />
         <Text style={styles.headsign} numberOfLines={2}>
           {departure.stopTime[7] || departure.trip[3] || departure.route[2]}
         </Text>
@@ -310,6 +480,7 @@ export function TransitTripTimeline({
                 boarding={index === boarding}
                 fadedAbove={index <= boarding}
                 fadedBelow={index < boarding}
+                color={lineColor}
               />
             ))}
             {bus && (
@@ -382,7 +553,49 @@ export function TransitAlerts({ snapshot, active }: { snapshot: LiveSnapshot; ac
 }
 
 const styles = sheet((theme) => ({
-  list: { gap: 8 },
+  stopHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 54,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.surface,
+  },
+  stopHeadOpen: { backgroundColor: theme.surfaceHigh },
+  stopTitle: { fontFamily: font.bold, fontSize: 14, color: theme.text },
+  stopLines: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  groups: { gap: 14 },
+  group: { gap: 4 },
+  groupHead: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 2 },
+  groupTitle: { flexShrink: 1, fontFamily: font.black, fontSize: 15, color: theme.text },
+  groupVia: { flexShrink: 1, fontFamily: font.regular, fontSize: 12, color: theme.textFaint },
+  departure: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minHeight: 46,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.surface,
+  },
+  departed: { opacity: 0.55, borderColor: theme.lineSoft },
+  pressedRow: { backgroundColor: theme.surfaceHigh },
+  departureTime: { minWidth: 46, fontFamily: font.black, fontSize: 16, color: theme.text },
+  departureWhere: { fontFamily: font.bold, fontSize: 13, color: theme.text },
+  more: { alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 2 },
+  moreText: {
+    fontFamily: font.bold,
+    fontSize: 13,
+    color: theme.text,
+    textDecorationLine: 'underline',
+  },
   body: { fontFamily: font.bold, fontSize: 14, color: theme.text },
   note: { fontFamily: font.regular, fontSize: 12, color: theme.textFaint },
   detail: { gap: 8, borderTopWidth: 1, borderTopColor: theme.lineSoft, paddingTop: 10 },
@@ -390,17 +603,6 @@ const styles = sheet((theme) => ({
   alertsHead: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 36 },
   trip: { gap: 10 },
   tripHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  badge: {
-    minWidth: 40,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderWidth: shape.border,
-    borderColor: theme.line,
-    borderRadius: shape.radiusSmall,
-    backgroundColor: theme.info,
-    alignItems: 'center',
-  },
-  badgeText: { fontFamily: font.black, fontSize: 15, color: theme.accentInk },
   headsign: { flex: 1, fontFamily: font.bold, fontSize: 15, color: theme.text },
   close: {
     width: 36,

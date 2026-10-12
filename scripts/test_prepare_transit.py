@@ -18,7 +18,7 @@ def fixture(change=None):
         'agency.txt': [['agency_name', 'agency_timezone'], ['London Transit', 'America/Toronto']],
         'feed_info.txt': [['feed_start_date', 'feed_end_date', 'feed_version'], ['20260101', '20261231', 'fixture']],
         'stops.txt': [['stop_id', 'stop_name', 'stop_lat', 'stop_lon'], ['A', 'Road NB', '43', '-81'], ['B', 'Road SB', '43.01', '-81.01']],
-        'routes.txt': [['route_id', 'route_short_name', 'route_long_name'], ['02', '02', 'Route 2']],
+        'routes.txt': [['route_id', 'route_short_name', 'route_long_name', 'route_color'], ['02', '02', 'Route 2', '75aaae']],
         'trips.txt': [['trip_id', 'route_id', 'service_id', 'trip_headsign', 'shape_id'], ['T', '02', 'special', '2A Downtown', 'S']],
         'calendar_dates.txt': [['service_id', 'date', 'exception_type'], ['special', '20261011', '1']],
         'stop_times.txt': [['trip_id', 'stop_id', 'stop_sequence', 'arrival_time', 'departure_time', 'pickup_type', 'drop_off_type'],
@@ -41,6 +41,7 @@ class PreparationTests(unittest.TestCase):
         package = module.prepare(fixture(), 1)
         self.assertEqual(package['trips'][0][7], 25 * 3600)
         self.assertEqual(package['routes'][0][0], '02')
+        self.assertEqual(package['routes'][0][3], '75AAAE')
         self.assertEqual(package['services'], [])
         self.assertEqual(package['exceptions'], [['special', '2026-10-11', 1]])
         self.assertEqual(package['patterns'][0][1][4:6], [1, 0])
@@ -59,6 +60,8 @@ class PreparationTests(unittest.TestCase):
         for change in changes:
             with self.subTest(change=change), self.assertRaises((ValueError, KeyError)):
                 module.prepare(fixture(change), 1)
+        with self.assertRaises(ValueError):
+            module.prepare(fixture(lambda t: t['routes.txt'][1].__setitem__(3, 'green')), 1)
         with self.assertRaises(zipfile.BadZipFile):
             module.prepare(b'broken zip', 1)
 
@@ -69,6 +72,11 @@ class PreparationTests(unittest.TestCase):
             self.assertTrue(module.publish(fixture(), target, now))
             before = {p.name: p.read_bytes() for p in target.iterdir()}
             self.assertFalse(module.publish(fixture(), target, now))
+            older = json.loads((target / 'manifest.json').read_text())
+            older['schema'] = 1
+            (target / 'manifest.json').write_text(json.dumps(older))
+            self.assertTrue(module.publish(fixture(), target, now), 'a new package format republishes the same feed')
+            before = {p.name: p.read_bytes() for p in target.iterdir()}
             with self.assertRaises(zipfile.BadZipFile):
                 module.publish(b'bad', target, now)
             self.assertEqual({p.name: p.read_bytes() for p in target.iterdir()}, before)

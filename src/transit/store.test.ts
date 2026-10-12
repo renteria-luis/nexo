@@ -13,6 +13,7 @@ import {
   savePlace,
   saveWalkLink,
 } from './store.ts';
+import { SCHEDULE_SCHEMA } from './schedule.ts';
 import { syncSchedule, validateManifest, STATIC_BASE_URL } from './sync.ts';
 
 const hash = async (raw: string) => createHash('sha256').update(raw).digest('hex');
@@ -92,6 +93,24 @@ test('walking links remain directional and survive removed public stops', async 
   );
 });
 
+test('a schedule saved in an older package format gives way to the one the app ships', async () => {
+  const { db, raw } = await database();
+  const older = { ...scheduleFixture(), schema: SCHEDULE_SCHEMA - 1 };
+  raw
+    .prepare(
+      'INSERT INTO transit_schedule_cache (id, sha256, content, saved_at) VALUES (1, ?, ?, 1);',
+    )
+    .run('older', JSON.stringify(older));
+  assert.equal(await readSchedule(db), null);
+  raw.exec(
+    `UPDATE transit_schedule_cache SET content = '{"schema":${SCHEDULE_SCHEMA}}' WHERE id = 1;`,
+  );
+  await assert.rejects(
+    readSchedule(db),
+    'a broken package in the current format still fails loudly',
+  );
+});
+
 test('atomic cache replacement preserves last-good schedules and personal data after invalid payloads or SQL failure', async () => {
   const { db, raw } = await database();
   const text = JSON.stringify(scheduleFixture());
@@ -162,7 +181,7 @@ test('updates verify hashes, skip unchanged downloads and preserve last-good dat
   const content = JSON.stringify(next);
   const sha256 = await hash(content);
   const manifest = {
-    schema: 1,
+    schema: SCHEDULE_SCHEMA,
     file: 'schedule.json',
     bytes: Buffer.byteLength(content),
     sha256,
@@ -194,7 +213,7 @@ test('updates verify hashes, skip unchanged downloads and preserve last-good dat
       throw new Error('offline');
     },
     async () => new Response('bad', { status: 503 }),
-    async () => new Response(JSON.stringify({ ...manifest, schema: 2 })),
+    async () => new Response(JSON.stringify({ ...manifest, schema: SCHEDULE_SCHEMA + 1 })),
     async (url: string | URL | Request) =>
       new Response(
         String(url).endsWith('manifest.json')

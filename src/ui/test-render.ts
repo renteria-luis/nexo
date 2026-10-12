@@ -78,6 +78,9 @@ export function renderModule(file: string, mocks: Record<string, any> = {}) {
           done?.({ finished: true });
         },
       }),
+      // A loop never ends on its own, so here it neither starts nor runs.
+      loop: () => ({ start() {}, stop() {} }),
+      sequence: () => ({ start() {}, stop() {} }),
       Value: class {
         value: number;
         constructor(value: number) {

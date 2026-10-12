@@ -5,7 +5,7 @@ import { SCHEDULE_SOURCE, type Schedule } from './schedule.ts';
 
 export function scheduleFixture(): Schedule {
   return {
-    schema: 1,
+    schema: 2,
     source: SCHEDULE_SOURCE,
     sourceSha256: 'a'.repeat(64),
     createdAt: Date.UTC(2026, 9, 11),
@@ -17,7 +17,7 @@ export function scheduleFixture(): Schedule {
       ['A', '10', 'Road NB', 43, -81],
       ['B', '11', 'Road SB', 43.0001, -81.0001],
     ],
-    routes: [['02', '02', 'Route 2']],
+    routes: [['02', '02', 'Route 2', '75AAAE']],
     services: [
       ['weekday', 31, '2026-01-01', '2026-12-31'],
       ['weekend', 96, '2026-01-01', '2026-12-31'],
