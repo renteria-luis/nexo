@@ -141,6 +141,7 @@ export function renderModule(file: string, mocks: Record<string, any> = {}) {
     };
   };
   return {
+    exports,
     mount(name: string, props: Record<string, any> = {}) {
       const render = () => {
         const tree = expand({ type: exports[name], props }, 'root');

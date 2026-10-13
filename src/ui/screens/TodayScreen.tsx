@@ -26,6 +26,8 @@ import { ChevronRight, Dumbbell, Tag, Utensils, Wallet, type LucideIcon } from '
 import { Star } from '../Star.tsx';
 import { HealthArrivalCard } from '../HealthArrivalCard.tsx';
 import { TodayLog } from '../TodayLog.tsx';
+import { TransitJourneyCard } from '../TransitJourneyCard.tsx';
+import { TRANSIT_ENABLED } from '../../transit/index.ts';
 import { font, sheet, shape, theme } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
@@ -279,6 +281,7 @@ export function TodayScreen({
         </View>
       </Card>
 
+      {TRANSIT_ENABLED && <TransitJourneyCard surface="today" />}
       {healthArrival && (
         <HealthArrivalCard
           arrival={healthArrival}

@@ -24,6 +24,8 @@ import { Chip } from '../Chip.tsx';
 import { formatWeight } from '../../core/units.ts';
 import { RestLandscape } from '../RestLandscape.tsx';
 import { TrainingTiming } from '../TrainingTiming.tsx';
+import { TransitJourneyCard } from '../TransitJourneyCard.tsx';
+import { TRANSIT_ENABLED } from '../../transit/index.ts';
 import { SessionLog } from '../SessionLog.tsx';
 import { SessionPlanner } from '../SessionPlanner.tsx';
 import { SessionPlanEditor } from '../SessionPlanEditor.tsx';
@@ -507,6 +509,7 @@ export function TrainingScreen() {
                       }
                 }
               />
+              {TRANSIT_ENABLED && <TransitJourneyCard surface="training" />}
               <View style={planOpen ? styles.hidden : undefined}>
                 <SessionLog
                   exercises={loaded.exercise.exercises}

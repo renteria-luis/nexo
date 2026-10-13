@@ -358,16 +358,20 @@ export function departures(
   stop: number,
   from: number,
   limit = 20,
+  observedTrips: readonly { tripId: string; serviceDate: IsoDate }[] = [],
 ): Departure[] {
   const day = agencyDate(from);
   const result: Departure[] = [];
   for (let offset = -2; offset <= 1; offset++) {
     const serviceDate = addDays(day, offset);
     const active = activeServices(schedule, serviceDate);
+    const observed = new Set(
+      observedTrips.filter((trip) => trip.serviceDate === serviceDate).map((trip) => trip.tripId),
+    );
     const start = serviceDayStart(serviceDate);
     for (const { trips, time } of index.get(stop) ?? [])
       for (const trip of trips) {
-        if (!active.has(trip[2]) || time[4] === 1) continue;
+        if ((!active.has(trip[2]) && !observed.has(trip[0])) || time[4] === 1) continue;
         const at = start + (trip[7] + time[3]) * 1_000;
         if (at >= from && at < from + 86_400_000)
           result.push({ trip, route: schedule.routes[trip[1]], stopTime: time, serviceDate, at });

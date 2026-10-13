@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { addDays, isRealDate } from '../generated/core/dates.ts';
-import { activeServices, agencyDate, type Schedule } from '../generated/transit/schedule.ts';
+import { agencyDate, type Schedule } from '../generated/transit/schedule.ts';
 import {
   REALTIME_MAX_RESPONSE_BYTES,
   type RealtimeQuery,
@@ -16,6 +16,7 @@ import {
 import { readBounded, Sources } from './source.ts';
 
 const QUERY_KEYS = [
+  'includeReportedTrips',
   'schema',
   'staticVersion',
   'staticSourceSha256',
@@ -44,6 +45,7 @@ export function validateQuery(
   if (
     Object.keys(value).some((key) => !QUERY_KEYS.includes(key)) ||
     value.schema !== 1 ||
+    (value.includeReportedTrips !== undefined && value.includeReportedTrips !== true) ||
     typeof value.staticVersion !== 'string' ||
     value.staticVersion.length < 1 ||
     value.staticVersion.length > 200 ||
@@ -78,12 +80,7 @@ export function validateQuery(
     value.routeIds.some((route) => !index.routes.has(route)) ||
     value.trips.some((ref) => {
       const trip = index.trips.get(ref.tripId);
-      return (
-        !trip ||
-        ref.serviceDate < addDays(day, -2) ||
-        ref.serviceDate > addDays(day, 1) ||
-        !activeServices(schedule, ref.serviceDate).has(trip[2])
-      );
+      return !trip || ref.serviceDate < addDays(day, -2) || ref.serviceDate > addDays(day, 1);
     })
   )
     throw new Error('unknown_or_inactive_identifier');

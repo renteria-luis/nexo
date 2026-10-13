@@ -5,6 +5,7 @@ import {
   mergeLiveDeparture,
   tripLiveDetail,
   liveFreshness,
+  observedServiceTrips,
   type FollowedBus,
   type LiveDeparture,
   type LiveDetailStop,
@@ -13,6 +14,7 @@ import {
 import { addDays, shortDay } from '../core/dates.ts';
 import {
   agencyClock,
+  activeServices,
   agencyDate,
   type Departure,
   type Route,
@@ -238,7 +240,17 @@ export function TransitStopDepartures({
   const [opened, setOpened] = useState<string[]>([]);
   const groups = useMemo(() => {
     const byLine = new Map<string, DepartureLine[]>();
+    const observed = new Set(
+      observedServiceTrips(schedule, snapshot, now).map(
+        (trip) => `${trip.tripId}/${trip.serviceDate}`,
+      ),
+    );
     for (const departure of departures) {
+      if (
+        !activeServices(schedule, departure.serviceDate).has(departure.trip[2]) &&
+        !observed.has(`${departure.trip[0]}/${departure.serviceDate}`)
+      )
+        continue;
       const live = mergeLiveDeparture(schedule, departure, current ? snapshot : null, now);
       const key = `${departure.route[0]}/${departure.trip[4] ?? departure.trip[3]}`;
       const lines = byLine.get(key) ?? [];

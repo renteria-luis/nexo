@@ -3,6 +3,7 @@ import { distanceMetres, type Coordinates } from '../core/geo.ts';
 import type { LiveAlert } from './realtime-contract.ts';
 import {
   mergeLiveDeparture,
+  observedServiceTrips,
   relevantLiveAlerts,
   type LiveDeparture,
   type LiveSnapshot,
@@ -10,6 +11,7 @@ import {
 import {
   activeServices,
   agencyDate,
+  nearbyStops,
   serviceDayStart,
   type Departure,
   type Route,
@@ -110,6 +112,7 @@ function stopsWithin(
 
 export type PlanMode = 'now' | 'depart' | 'arrive';
 export type PlanRequest = {
+  observedTrips?: readonly { tripId: string; serviceDate: IsoDate }[];
   origin: Coordinates;
   destination: Coordinates;
   /** His saved minutes from the origin to a stop, by stop id. */
@@ -160,7 +163,7 @@ export type Itinerary = {
   slack: number | null;
 };
 
-type ServiceDay = { date: IsoDate; start: number; active: Set<string> };
+type ServiceDay = { date: IsoDate; start: number; active: Set<string>; observed: Set<string> };
 type Boarding = { trip: Trip; day: ServiceDay; board: number; walk: Walk };
 type Front = {
   key: number;
@@ -240,13 +243,22 @@ function lastAtOrBefore(values: number[], limit: number): number {
   return low - 1;
 }
 
-function serviceDays(schedule: Schedule, from: number, to: number): ServiceDay[] {
+function serviceDays(
+  schedule: Schedule,
+  from: number,
+  to: number,
+  observedTrips: PlanRequest['observedTrips'] = [],
+): ServiceDay[] {
   const days: ServiceDay[] = [];
   const last = agencyDate(to);
   // Times past 24:00 belong to an earlier service day, as in the stop card's departures.
   for (let date = addDays(agencyDate(from), -2); date <= last; date = addDays(date, 1)) {
     const active = activeServices(schedule, date);
-    if (active.size) days.push({ date, start: serviceDayStart(date), active });
+    const observed = new Set(
+      observedTrips.filter((trip) => trip.serviceDate === date).map((trip) => trip.tripId),
+    );
+    if (active.size || observed.size)
+      days.push({ date, start: serviceDayStart(date), active, observed });
   }
   return days;
 }
@@ -472,7 +484,7 @@ export function startPlan(
   const egress = placeWalks(index, request.destination, request.destinationWalks, false);
   const context: PlanContext = {
     index,
-    days: serviceDays(schedule, from, arriveBy),
+    days: serviceDays(schedule, from, arriveBy, request.observedTrips),
     egress,
     finals: new Map(),
     saved,
@@ -513,7 +525,7 @@ export function startPlan(
           const trip = trips[t];
           const departs = day.start + (trip[7] + pattern[board][3]) * 1_000;
           if (departs > boardBy) break;
-          if (!day.active.has(trip[2])) continue;
+          if (!day.active.has(trip[2]) && !day.observed.has(trip[0])) continue;
           const leave = departs - (BOARD_MARGIN_MIN + walk.minutes) * MINUTE;
           const id = boardings.push({ trip, day, board, walk }) - 1;
           const key = routeKey(trip);
@@ -572,7 +584,7 @@ export function startPlan(
           const trip = trips[t];
           const door = day.start + (trip[7] + pattern[alight][2]) * 1_000 + out.minutes * MINUTE;
           if (door > arriveBy) break;
-          if (!day.active.has(trip[2])) continue;
+          if (!day.active.has(trip[2]) && !day.observed.has(trip[0])) continue;
           const key = routeKey(trip);
           let direct: { leave: number; board: number } | null = null;
           // The best first ride of each line, so a late bus on one still leaves the others to
@@ -843,7 +855,7 @@ function continueFrom(
           const trip = trips[t];
           const departs = day.start + (trip[7] + pattern[board][3]) * 1_000;
           if (departs > ready + MAX_TRANSFER_WAIT_MIN * MINUTE) break;
-          if (!day.active.has(trip[2])) continue;
+          if (!day.active.has(trip[2]) && !day.observed.has(trip[0])) continue;
           if (trip[0] === skip.trip[0] && day.date === skip.serviceDate) continue;
           for (const alight of finals) {
             if (alight <= board) continue;
@@ -868,6 +880,7 @@ function continueFrom(
 
 export type RideLive = { board: LiveDeparture; alight: LiveDeparture };
 export type PlanOption = {
+  reportedOutsideCalendar?: boolean;
   itinerary: Itinerary;
   live: RideLive[];
   leaveAt: number;
@@ -935,10 +948,25 @@ export function liveOptions(
   result: PlanResult,
   snapshot: LiveSnapshot | null,
   now: number,
+  includeOutsideWindow = false,
 ): PlanOption[] {
   const context = result.context;
   const schedule = context.index.schedule;
   const { mode, at } = result.request;
+  const services = new Map<string, Set<string>>();
+  const scheduledRide = (ride: Itinerary['rides'][number]) => {
+    let active = services.get(ride.serviceDate);
+    if (!active) {
+      active = activeServices(schedule, ride.serviceDate);
+      services.set(ride.serviceDate, active);
+    }
+    return active.has(ride.trip[2]);
+  };
+  const observed = new Set(
+    observedServiceTrips(schedule, snapshot, now).map(
+      (trip) => `${trip.tripId}/${trip.serviceDate}`,
+    ),
+  );
   const liveTrips = new Set(snapshot?.tripUpdates.map((t) => t.tripId) ?? []);
   // Options share their buses, and what follows a stop at a given time is the same for all.
   const merged = new Map<string, RideLive>();
@@ -1005,6 +1033,7 @@ export function liveOptions(
       tight && !problem ? after(current.rides[0], live[0].alight.at, current.rides[1]) : null;
     return {
       itinerary: current,
+      reportedOutsideCalendar: current.rides.some((ride) => !scheduledRide(ride)),
       live,
       leaveAt,
       arriveAt: last
@@ -1027,10 +1056,15 @@ export function liveOptions(
       : option.leaveAt >= (mode === 'now' ? now : at) - MINUTE;
   const walking = result.pool.find((plan) => !plan.rides.length);
   const evaluated = result.pool
+    .filter((plan) =>
+      plan.rides.every(
+        (ride) => scheduledRide(ride) || observed.has(`${ride.trip[0]}/${ride.serviceDate}`),
+      ),
+    )
     .map(evaluate)
     .filter(
       (option) =>
-        fits(option) &&
+        (includeOutsideWindow || fits(option)) &&
         (!walking ||
           !option.itinerary.rides.length ||
           option.arriveAt - option.leaveAt < walking.access.minutes * MINUTE),
@@ -1061,6 +1095,7 @@ export function liveOptions(
 
 /** The boarding and alighting stops of the best options, in order, for the live query. */
 export function planLiveStops(result: PlanResult, limit: number): string[] {
+  if (limit <= 0 || result.issue === 'outside-validity') return [];
   const stops = result.context.index.schedule.stops;
   const ids: string[] = [];
   const best = result.request.mode === 'arrive' ? [...result.best].reverse() : result.best;
@@ -1071,5 +1106,12 @@ export function planLiveStops(result: PlanResult, limit: number): string[] {
         if (!ids.includes(id)) ids.push(id);
         if (ids.length >= limit) return ids;
       }
+  if (!ids.length && !result.pool.some((option) => option.rides.length === 0)) {
+    for (const point of [result.request.origin, result.request.destination])
+      for (const candidate of nearbyStops(result.context.index.schedule, point, 3)) {
+        if (!ids.includes(candidate.stop[0])) ids.push(candidate.stop[0]);
+        if (ids.length >= limit) return ids;
+      }
+  }
   return ids;
 }

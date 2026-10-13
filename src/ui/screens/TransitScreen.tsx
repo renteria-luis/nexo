@@ -1,4 +1,4 @@
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useRoute } from '@react-navigation/native';
 import {
   Component,
   useCallback,
@@ -14,6 +14,8 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { addDays, daysBetween } from '../../core/dates.ts';
 import { type Coordinates } from '../../core/geo.ts';
 import { useAppData } from '../../shell/AppData.tsx';
+import { useTransitJourneyLink } from '../../shell/TransitJourney.tsx';
+import type { TransitResponse } from '../../shell/notifications.ts';
 import { loadTransit, refreshTransit, transitHere, transitLocation } from '../../shell/transit.ts';
 import {
   agencyClock,
@@ -34,7 +36,7 @@ import {
   type WalkLink,
 } from '../../transit/index.ts';
 import { stopLines, usefulStops, validCoordinates } from '../../transit/schedule.ts';
-import { buildLiveQuery } from '../../transit/realtime.ts';
+import { buildLiveQuery, observedServiceTrips } from '../../transit/realtime.ts';
 
 import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
@@ -54,6 +56,7 @@ import {
 } from '../TransitDepartures.tsx';
 import { TransitPlanner, type PlannerLive } from '../TransitPlanner.tsx';
 import { TransitLegend } from '../TransitStatus.tsx';
+import { TransitJourneyCard } from '../TransitJourneyCard.tsx';
 import { TransitWhen } from '../TransitWhen.tsx';
 import { TransitLiveSettings } from '../TransitLiveSettings.tsx';
 import { useTransitLive } from '../useTransitLive.ts';
@@ -117,7 +120,13 @@ export function TransitScreen() {
 }
 
 function TransitContent() {
+  const journey = useTransitJourneyLink();
+  const route = useRoute<{ key: string; name: string; params?: { reminder?: TransitResponse } }>();
+  const reminder = route.params?.reminder;
   const [data, setData] = useState<{ db: SQLiteDatabase; cache: CachedSchedule } | null>(null);
+  useEffect(() => {
+    if (data) journey.actions.schedule(data.cache);
+  }, [data, journey.actions]);
   const [places, setPlaces] = useState<Place[]>([]);
   const [placeId, setPlaceId] = useState<string | null>(null);
   const [stopId, setStopId] = useState<string | null>(null);
@@ -323,6 +332,7 @@ function TransitContent() {
     if (!schedule || editingLive) return null;
     const stopIds = [
       ...new Set([
+        ...(journey.query?.stopIds ?? []),
         ...(shownStopId && liveMode ? [shownStopId] : []),
         ...(plannerStops ? plannerStops.split(',') : []),
       ]),
@@ -358,6 +368,7 @@ function TransitContent() {
     plannerStops,
     plannerRide,
     today,
+    journey.query,
   ]);
   // Live reads follow the open trips until they are over, not only around his departure.
   const following = [selectedDetail, plannerRide].filter((d): d is Departure => d !== null);
@@ -374,6 +385,9 @@ function TransitContent() {
       : undefined,
   );
   const snapshot = liveMode ? live.state.snapshot : null;
+  useEffect(() => {
+    journey.actions.snapshot(live.state.snapshot);
+  }, [journey.actions, live.state.snapshot]);
   // The map shows the bus he tapped while its trip is open, otherwise the open Paradas trip, then
   // the planner's.
   const tapped =
@@ -392,9 +406,10 @@ function TransitContent() {
             stopIndex,
             liveMode ? effectiveFrom - 3_600_000 : effectiveFrom,
             liveMode ? 80 : 20,
+            liveMode ? observedServiceTrips(schedule, live.state.snapshot, effectiveFrom) : [],
           )
         : [],
-    [schedule, index, stopIndex, effectiveFrom, liveMode],
+    [schedule, index, stopIndex, effectiveFrom, liveMode, live.state.snapshot],
   );
   const choices = useMemo(
     () =>
@@ -570,6 +585,13 @@ function TransitContent() {
         </Text>
       )}
       {notice && <Text style={styles.note}>{notice}</Text>}
+      {reminder && (reminder.expired || reminder.journeyId !== journey.saved.next?.id) && (
+        <Text style={styles.note}>
+          Ese aviso corresponde a un cálculo anterior. Revisa el viaje y las horas actuales antes de
+          salir.
+        </Text>
+      )}
+      <TransitJourneyCard surface="transit" />
       <TransitLiveSettings
         config={live.config}
         error={live.configError}
@@ -632,6 +654,7 @@ function TransitContent() {
       </Card>
       {index && (
         <TransitPlanner
+          key={journey.saved.next?.id ?? 'browse'}
           db={data.db}
           schedule={schedule}
           stopIndex={index}
@@ -644,6 +667,16 @@ function TransitContent() {
           walksVersion={walkEdits}
           onLive={onPlannerLive}
           onFocusBus={focusBus}
+          initialJourney={journey.saved.next}
+          onSelectJourney={async (choice, option) => {
+            const origin = places.find((p) => p.id === choice.originId);
+            await journey.actions.choose({
+              ...choice,
+              selectedKey: option.scheduleKey,
+              workoutId:
+                origin?.gym_id && origin.gym_id === journey.gymId ? journey.sessionId : null,
+            });
+          }}
         />
       )}
       <MapCard title={picking ? 'Toca el punto exacto' : place.name} reveal={reveal}>

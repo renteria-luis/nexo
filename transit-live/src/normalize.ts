@@ -119,11 +119,27 @@ function identity(
     if (candidates.length !== 1) return null;
     date = candidates[0];
   }
-  if (!activeServices(schedule, date).has(trip[2])) return null;
+  const calendarException = !activeServices(schedule, date).has(trip[2]);
+  if (calendarException && (date < schedule.validFrom || date > schedule.validTo)) return null;
+  if (
+    calendarException &&
+    (!own(descriptor, 'startDate') ||
+      startTime === null ||
+      measuredAt === null ||
+      now - measuredAt > 90_000)
+  )
+    return null;
   const currentDay = agencyDate(now);
   if (date < addDays(currentDay, -2) || date > addDays(currentDay, 1)) return null;
   return {
-    identity: { tripId: trip[0], routeId, directionId, serviceDate: date, startTime },
+    identity: {
+      tripId: trip[0],
+      routeId,
+      directionId,
+      serviceDate: date,
+      startTime,
+      ...(calendarException ? { calendarException: true as const } : {}),
+    },
     trip,
   };
 }
@@ -228,6 +244,10 @@ export function normalizeTrips(
       update.vehicle && own(update.vehicle, 'id')
         ? (update.vehicle.id?.slice(0, 150) ?? null)
         : null;
+    if (joined.identity.calendarException && (!query.includeReportedTrips || !vehicleId)) {
+      issues.unmatchedTrips++;
+      continue;
+    }
     // LTC repeats some trips: one copy names the bus and carries its delays, the other restates the
     // schedule. Keep the copy with the bus; two buses on one trip leave no way to know which is right.
     const key = `${joined.identity.tripId}/${joined.identity.serviceDate}`;
@@ -308,6 +328,13 @@ export function normalizeVehicles(
     }
     const joined = identity(vehicle.trip, schedule, index, measuredAt, now);
     if (!joined) {
+      issues.unmatchedTrips++;
+      continue;
+    }
+    if (
+      joined.identity.calendarException &&
+      (!query.includeReportedTrips || !vehicle.vehicle?.id)
+    ) {
       issues.unmatchedTrips++;
       continue;
     }

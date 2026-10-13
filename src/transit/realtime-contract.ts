@@ -8,6 +8,8 @@ export type LiveTripRef = { tripId: string; serviceDate: string };
 
 export type RealtimeQuery = {
   schema: 1;
+  /** Older apps reject calendar exceptions, so the service sends them only on opt-in. */
+  includeReportedTrips?: true;
   staticVersion: string;
   staticSourceSha256: string;
   stopIds: string[];
@@ -24,6 +26,8 @@ export type RealtimeHealth = {
 };
 
 export type LiveIdentity = LiveTripRef & {
+  /** An explicitly dated, assigned LTC report contradicts the static service calendar. */
+  calendarException?: true;
   routeId: string;
   directionId: number | null;
   startTime: string | null;

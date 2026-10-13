@@ -173,6 +173,71 @@ test('strict joins reject wrong leading zero, start, invalid date and unknown tr
   assert.equal(counts.unmatchedTrips, invalid.length);
 });
 
+test('a holiday accepts only a fresh, explicitly dated and timed report with a physical bus', () => {
+  const holiday = { ...schedule, exceptions: [['S', '2026-10-11', 2] as [string, string, 1 | 2]] };
+  const holidayIndex = indexes(holiday);
+  const optedIn = { ...query, includeReportedTrips: true as const };
+  const valid = {
+    trip: descriptor,
+    timestamp: seconds,
+    vehicle: { id: 'HOLIDAY-BUS' },
+    stopTimeUpdate: [{ stopSequence: 1, departure: { delay: 60 } }],
+  };
+  const updates = [
+    valid,
+    { ...valid, vehicle: undefined },
+    { ...valid, timestamp: seconds - 91 },
+    { ...valid, timestamp: undefined },
+    { ...valid, trip: { ...descriptor, startTime: undefined } },
+    { ...valid, trip: { ...descriptor, startDate: undefined } },
+    { ...valid, trip: { ...descriptor, routeId: '2' } },
+  ];
+  for (const [i, update] of updates.entries()) {
+    const found = normalizeTrips(
+      feed([{ id: String(i), tripUpdate: update }]),
+      holiday,
+      holidayIndex,
+      optedIn,
+      now,
+      issues(),
+    );
+    assert.equal(found.length, i === 0 ? 1 : 0, `case ${i}`);
+    if (i === 0) assert.equal(found[0].calendarException, true);
+  }
+  const vehicles = normalizeVehicles(
+    feed([
+      {
+        id: 'bus',
+        vehicle: {
+          trip: descriptor,
+          timestamp: seconds,
+          vehicle: { id: 'HOLIDAY-BUS' },
+          position: { latitude: 43, longitude: -81 },
+        },
+      },
+    ]),
+    holiday,
+    holidayIndex,
+    optedIn,
+    now,
+    issues(),
+  );
+  assert.equal(vehicles[0].calendarException, true);
+  assert.doesNotThrow(() => validateQuery(query, holiday, holidayIndex, now));
+  assert.equal(
+    normalizeTrips(
+      feed([{ id: 'old-app', tripUpdate: valid }]),
+      holiday,
+      holidayIndex,
+      query,
+      now,
+      issues(),
+    ).length,
+    0,
+    'the published phase-3 app keeps its compatible response',
+  );
+});
+
 test('a direction that contradicts the trip ID is dropped, not the trip', () => {
   const counts = issues();
   const [contradicted, agreeing] = [1, 0].map(

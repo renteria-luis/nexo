@@ -63,6 +63,7 @@ import { sql as transit } from './062_transit.ts';
 import { sql as transitPlaceIcon } from './063_transit_place_icon.ts';
 import { sql as transitStopWalk } from './064_transit_stop_walk.ts';
 import { sql as transitPlaceTags } from './065_transit_place_tags.ts';
+import { sql as transitJourney } from './066_transit_journey.ts';
 
 export type Migration = {
   id: string;
@@ -137,4 +138,5 @@ export const migrations: Migration[] = [
   { id: '063_transit_place_icon', sql: transitPlaceIcon },
   { id: '064_transit_stop_walk', sql: transitStopWalk },
   { id: '065_transit_place_tags', sql: transitPlaceTags },
+  { id: '066_transit_journey', sql: transitJourney },
 ];

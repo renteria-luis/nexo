@@ -68,6 +68,7 @@ function fixture(active = false) {
       }),
     },
     '../TrainingTiming.tsx': { TrainingTiming: 'TrainingTiming' },
+    '../TransitJourneyCard.tsx': { TransitJourneyCard: 'TransitJourneyCard' },
     '../SessionPlanEditor.tsx': { SessionPlanEditor: 'SessionPlanEditor' },
     '../RestLandscape.tsx': { RestLandscape: 'RestLandscape' },
   }).mount('TrainingScreen');

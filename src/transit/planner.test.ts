@@ -14,7 +14,7 @@ import {
   type PlanRequest,
   type PlanResult,
 } from './planner.ts';
-import type { LiveSnapshot } from './realtime.ts';
+import { observedServiceTrips, type LiveSnapshot } from './realtime.ts';
 import { agencyClock, queryInstant, type Schedule } from './schedule.ts';
 
 const schedule = plannerFixture();
@@ -54,6 +54,54 @@ const describe = (option: PlanOption) =>
         `${ride.trip[0]}:${stopId(ride.departure.stopTime[0])}>${stopId(ride.arrival.stopTime[0])}`,
     ),
   ].join(' ');
+
+test('an empty holiday calendar discovers stops and admits only buses actually reported fresh', () => {
+  const holiday: Schedule = {
+    ...schedule,
+    exceptions: [
+      ['daily', TUESDAY, 2],
+      ['weekday', TUESDAY, 2],
+    ],
+  };
+  const index = buildPlannerIndex(holiday);
+  const get = (observedTrips: PlanRequest['observedTrips'] = []) => {
+    const search = startPlan(index, request({ observedTrips }));
+    while (!search.step(1_000));
+    return search.result();
+  };
+  const empty = get();
+  assert.equal(liveOptions(empty, null, request().at).length, 0);
+  assert.ok(
+    planLiveStops(empty, 8).includes('ORIGIN_SB'),
+    'discover actual reports even without scheduled departures',
+  );
+  const now = request().at;
+  const live = snapshot(
+    now,
+    ['16S-3', '20E-4'].map((id) => update(schedule, id, now, { calendarException: true }, 0)),
+  );
+  const observed = observedServiceTrips(holiday, live, now);
+  const reported = get(observed);
+  const options = liveOptions(reported, live, now);
+  assert.ok(options.length);
+  assert.ok(options.every((option) => option.reportedOutsideCalendar));
+  assert.ok(
+    options.every((option) =>
+      option.itinerary.rides.every((ride) => ['16S-3', '20E-4'].includes(ride.trip[0])),
+    ),
+  );
+  assert.equal(
+    liveOptions(reported, null, now).length,
+    0,
+    'an absent feed must not invent holiday service',
+  );
+  assert.equal(
+    liveOptions(reported, live, now + 91_000).length,
+    0,
+    'stale exceptions do not turn into a made-up timetable',
+  );
+  assert.ok(liveOptions(plan(), null, now).length, 'ordinary scheduled fallback remains available');
+});
 
 function snapshot(now: number, updates: LiveSnapshot['tripUpdates']): LiveSnapshot {
   return {

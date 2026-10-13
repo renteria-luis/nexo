@@ -162,6 +162,7 @@ export function buildLiveQuery(
 ): LiveQuery {
   const query: LiveQuery = {
     schema: REALTIME_SCHEMA,
+    includeReportedTrips: true,
     staticVersion: schedule.feedVersion,
     staticSourceSha256: schedule.sourceSha256,
     stopIds: [...new Set(selection.stopIds ?? [])].sort(),
@@ -184,9 +185,21 @@ export function validateLiveQuery(raw: unknown, schedule: Schedule): LiveQuery {
   );
   requireValid(
     Object.keys(q).every((k) =>
-      ['schema', 'staticVersion', 'staticSourceSha256', 'stopIds', 'trips', 'routeIds'].includes(k),
+      [
+        'schema',
+        'includeReportedTrips',
+        'staticVersion',
+        'staticSourceSha256',
+        'stopIds',
+        'trips',
+        'routeIds',
+      ].includes(k),
     ),
     'parámetros desconocidos',
+  );
+  requireValid(
+    q.includeReportedTrips === undefined || q.includeReportedTrips === true,
+    'capacidad de consulta',
   );
   list(q.stopIds, 8);
   list(q.trips, 4);
@@ -215,10 +228,7 @@ export function validateLiveQuery(raw: unknown, schedule: Schedule): LiveQuery {
       'viaje o fecha',
     );
     const trip = schedule.trips.find((t) => t[0] === ref.tripId);
-    requireValid(
-      trip && activeServices(schedule, ref.serviceDate).has(trip[2]),
-      'viaje sin servicio ese día',
-    );
+    requireValid(trip, 'viaje desconocido');
     const key = `${ref.tripId}/${ref.serviceDate}`;
     requireValid(!tripKeys.has(key), 'viaje duplicado');
     tripKeys.add(key);
@@ -232,6 +242,7 @@ export function liveQueryKey(query: LiveQuery): string {
     [...query.stopIds].sort(),
     query.trips.map((t) => `${t.tripId}/${t.serviceDate}`).sort(),
     [...query.routeIds].sort(),
+    query.includeReportedTrips === true,
   ]);
 }
 
@@ -258,7 +269,13 @@ function identity(raw: unknown, schedule: Schedule, query: LiveQuery, now: numbe
   requireValid(
     trip &&
       schedule.routes[trip[1]][0] === value.routeId &&
-      activeServices(schedule, value.serviceDate).has(trip[2]),
+      (activeServices(schedule, value.serviceDate).has(trip[2]) ||
+        (value.calendarException === true &&
+          value.serviceDate >= schedule.validFrom &&
+          value.serviceDate <= schedule.validTo &&
+          value.startTime === tripStartTime(schedule, trip) &&
+          text(value.vehicleId) &&
+          typeof value.measuredAt === 'number')),
     'viaje, línea o día distintos',
   );
   requireValid(
@@ -511,6 +528,40 @@ export function liveFreshness(
       (at) =>
         at !== null && at <= now + FUTURE_ALLOWANCE_MS && snapshot.generatedAt - at <= maximumAge,
     )
+  );
+}
+
+/** Actual reported trips only: a holiday report never activates its whole weekday/weekend service. */
+export function observedServiceTrips(
+  schedule: Schedule,
+  snapshot: LiveSnapshot | null,
+  now: number,
+): LiveTripRef[] {
+  if (
+    !snapshot ||
+    !snapshot.staticCompatible ||
+    snapshot.staticSourceSha256 !== schedule.sourceSha256
+  )
+    return [];
+  const observed = new Map<string, LiveTripRef>();
+  for (const source of ['trips', 'vehicles'] as const) {
+    const reports = source === 'trips' ? snapshot.tripUpdates : snapshot.vehicles;
+    for (const report of reports) {
+      if (
+        !report.calendarException ||
+        !report.vehicleId ||
+        !liveFreshness(snapshot, source, report.measuredAt, now)
+      )
+        continue;
+      if ('relationship' in report && report.relationship !== 'scheduled') continue;
+      observed.set(`${report.tripId}/${report.serviceDate}`, {
+        tripId: report.tripId,
+        serviceDate: report.serviceDate,
+      });
+    }
+  }
+  return [...observed.values()].sort(
+    (a, b) => a.tripId.localeCompare(b.tripId) || a.serviceDate.localeCompare(b.serviceDate),
   );
 }
 

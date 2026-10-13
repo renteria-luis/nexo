@@ -27,7 +27,8 @@ import {
   type Ride,
   type Walk,
 } from '../transit/planner.ts';
-import type { LiveSnapshot } from '../transit/realtime.ts';
+import { observedServiceTrips, type LiveSnapshot } from '../transit/realtime.ts';
+import type { NextTrip } from '../transit/journey.ts';
 import {
   agencyClock,
   agencyDate,
@@ -118,6 +119,8 @@ export function TransitPlanner({
   walksVersion,
   onLive,
   onFocusBus,
+  initialJourney,
+  onSelectJourney,
 }: {
   db: SQLiteDatabase;
   schedule: Schedule;
@@ -134,18 +137,23 @@ export function TransitPlanner({
   onLive: (live: PlannerLive) => void;
   /** Shows an opened bus on the screen's map. */
   onFocusBus: (departure: Departure) => void;
+  initialJourney?: NextTrip | null;
+  onSelectJourney?: (
+    choice: { originId: string; destinationId: string; mode: PlanMode; at: number },
+    option: PlanOption,
+  ) => Promise<void>;
 }) {
-  const [originId, setOriginId] = useState(initialOrigin);
-  const [targetId, setTargetId] = useState<string | null>(null);
+  const [originId, setOriginId] = useState(initialJourney?.originId ?? initialOrigin);
+  const [targetId, setTargetId] = useState<string | null>(initialJourney?.destinationId ?? null);
   // The chip he picked, and the search it last applied: a time to leave at or arrive by is only
   // searched once he chooses it.
-  const [mode, setMode] = useState<PlanMode>('now');
+  const [mode, setMode] = useState<PlanMode>(initialJourney?.mode ?? 'now');
   const [applied, setApplied] = useState<{ mode: PlanMode; at: number }>(() => ({
-    mode: 'now',
-    at: Date.now(),
+    mode: initialJourney?.mode ?? 'now',
+    at: initialJourney?.at ?? Date.now(),
   }));
-  const [date, setDate] = useState(() => agencyDate(Date.now()));
-  const [time, setTime] = useState(() => agencyClock(Date.now()));
+  const [date, setDate] = useState(() => agencyDate(initialJourney?.at ?? Date.now()));
+  const [time, setTime] = useState(() => agencyClock(initialJourney?.at ?? Date.now()));
   const [walks, setWalks] = useState<Walks | null>(null);
   const [saved, setSaved] = useState(0);
   const [result, setResult] = useState<PlanResult | null>(null);
@@ -154,7 +162,7 @@ export function TransitPlanner({
   const [openRide, setOpenRide] = useState<{ key: string; departure: Departure } | null>(null);
   // The trip starts where he opened Transit, unless he chose its start after that reading was
   // asked for.
-  const [originChosenAt, setOriginChosenAt] = useState(0);
+  const [originChosenAt, setOriginChosenAt] = useState(() => (initialJourney ? Date.now() : 0));
   const [seenLocated, setSeenLocated] = useState<number | null>(null);
   if (located && seenLocated !== located.at) {
     setSeenLocated(located.at);
@@ -188,6 +196,9 @@ export function TransitPlanner({
   const fromLng = origin?.lng;
   const toLat = target?.lat;
   const toLng = target?.lng;
+  const observedKey = JSON.stringify(
+    observedServiceTrips(schedule, snapshot, snapshot?.generatedAt ?? 0),
+  );
   const request = useMemo<PlanRequest | null>(() => {
     if (!pairKey || !walks || walks.key !== pairKey) return null;
     if (
@@ -211,8 +222,9 @@ export function TransitPlanner({
       stopWalks: walks.stops,
       mode: applied.mode,
       at: applied.at,
+      observedTrips: JSON.parse(observedKey),
     };
-  }, [pairKey, walks, fromLat, fromLng, toLat, toLng, applied]);
+  }, [pairKey, walks, fromLat, fromLng, toLat, toLng, applied, observedKey]);
 
   const generation = useRef(0);
   useEffect(() => {
@@ -418,6 +430,21 @@ export function TransitPlanner({
           onStale={refreshNow}
           onSaveWalk={saveWalk}
           onFocusBus={onFocusBus}
+          initialKey={initialJourney?.selectedKey}
+          onSelect={
+            onSelectJourney
+              ? (option) =>
+                  onSelectJourney(
+                    {
+                      originId,
+                      destinationId: target.id,
+                      mode: shownResult.request.mode,
+                      at: shownResult.request.at,
+                    },
+                    option,
+                  )
+              : undefined
+          }
         />
       )}
     </Card>
@@ -491,6 +518,8 @@ const PlanList = memo(function PlanList({
   onStale,
   onSaveWalk,
   onFocusBus,
+  initialKey,
+  onSelect,
 }: {
   schedule: Schedule;
   stopIndex: ReturnType<typeof buildStopIndex>;
@@ -505,10 +534,14 @@ const PlanList = memo(function PlanList({
   onStale: () => void;
   onSaveWalk: (edit: WalkEdit, minutes: number) => Promise<void>;
   onFocusBus: (departure: Departure) => void;
+  initialKey?: string | null;
+  onSelect?: (option: PlanOption) => Promise<void>;
 }) {
   // Read again on returning to the app and on each reading, like the trip cards.
   const now = useLiveClock(active, snapshot);
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(initialKey ?? null);
+  const [selecting, setSelecting] = useState(false);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
   const [more, setMore] = useState(false);
   const minute = Math.floor(now / 60_000) * 60_000;
   const stale = result.request.mode === 'now' && minute - result.request.at > STALE_NOW_MS;
@@ -523,6 +556,7 @@ const PlanList = memo(function PlanList({
   const issue = issueText(result, originName, targetName);
   return (
     <View style={styles.list}>
+      {selectionError && <Text style={styles.error}>{selectionError}</Text>}
       {issue && <Text style={result.issue === 'none' ? styles.body : styles.note}>{issue}</Text>}
       {searching && <Text style={styles.note}>Actualizando…</Text>}
       {shown.map((option) => (
@@ -535,19 +569,33 @@ const PlanList = memo(function PlanList({
           onToggle={() => setOpen(open === option.scheduleKey ? null : option.scheduleKey)}
         >
           {open === option.scheduleKey && (
-            <PlanSteps
-              schedule={schedule}
-              stopIndex={stopIndex}
-              option={option}
-              snapshot={snapshot}
-              active={active}
-              now={minute}
-              targetName={targetName}
-              openRide={openRide}
-              onOpenRide={onOpenRide}
-              onSaveWalk={onSaveWalk}
-              onFocusBus={onFocusBus}
-            />
+            <>
+              <PlanSteps
+                schedule={schedule}
+                stopIndex={stopIndex}
+                option={option}
+                snapshot={snapshot}
+                active={active}
+                now={minute}
+                targetName={targetName}
+                openRide={openRide}
+                onOpenRide={onOpenRide}
+                onSaveWalk={onSaveWalk}
+                onFocusBus={onFocusBus}
+              />
+              {onSelect && (
+                <Button
+                  label="Elegir este viaje"
+                  disabled={selecting || !!option.problem || option.leaveAt < now}
+                  onPress={() => {
+                    setSelecting(true);
+                    void onSelect(option)
+                      .catch((error) => setSelectionError(message(error)))
+                      .finally(() => setSelecting(false));
+                  }}
+                />
+              )}
+            </>
           )}
         </PlanRow>
       ))}
@@ -668,6 +716,12 @@ const PlanRow = memo(function PlanRow({
         <Chevron size={18} color={theme.text} strokeWidth={2.5} />
       </Pressable>
       {option.notice && <Text style={styles.warn}>{noticeText(option)}</Text>}
+      {option.reportedOutsideCalendar && (
+        <Text style={styles.note}>
+          LTC reporta este bus aunque su calendario no lo incluya hoy. Sin predicción, la hora es la
+          del horario.
+        </Text>
+      )}
       {option.tight && option.backup && !expanded && (
         <Text style={styles.note}>
           Si pierdes el transbordo: {option.backup.ride.route[1]} de las{' '}

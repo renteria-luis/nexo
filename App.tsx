@@ -6,12 +6,15 @@ import {
   useNavigationContainerRef,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Keyboard, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppDataProvider, useAppData } from './src/shell/AppData.tsx';
+import { TransitJourneyProvider } from './src/shell/TransitJourney.tsx';
+import { TransitTravelSettings } from './src/ui/TransitJourneyCard.tsx';
+import { listenToTransitReminders, type TransitResponse } from './src/shell/notifications.ts';
 import { enabledTabs, type ModuleRegistry } from './src/modules/registry.ts';
 import { DealsScreen } from './src/ui/screens/DealsScreen.tsx';
 import { ExerciseScreen, ExercisesScreen } from './src/ui/screens/ExercisesScreen.tsx';
@@ -170,6 +173,7 @@ function SettingsRoute() {
 
   return (
     <SettingsScreen
+      transitSettings={TRANSIT_ENABLED ? <TransitTravelSettings /> : undefined}
       onOpenExercises={() => navigation.navigate('Ejercicios')}
       onOpenFoods={() => navigation.navigate('Alimentos')}
       settings={state.loaded.settings}
@@ -191,6 +195,17 @@ function SettingsRoute() {
 function Navigation({ navigation }: { navigation: ReturnType<typeof useNavigationContainerRef> }) {
   const { nudgeTarget, clearNudgeTarget, healthArrival } = useAppData();
   const sidebar = useSidebar();
+  const [navigationReady, setNavigationReady] = useState(false);
+  const [travelTarget, setTravelTarget] = useState<TransitResponse | null>(null);
+  const handledTravel = useRef<TransitResponse | null>(null);
+  useEffect(() => (TRANSIT_ENABLED ? listenToTransitReminders(setTravelTarget) : undefined), []);
+  useEffect(() => {
+    if (!navigationReady || !travelTarget || handledTravel.current === travelTarget) return;
+    handledTravel.current = travelTarget;
+    sidebar.close();
+    const navigate = navigation.navigate as (...args: Navigate) => void;
+    navigate('Transit', { reminder: travelTarget }, { pop: true });
+  }, [travelTarget, navigationReady, navigation, sidebar]);
 
   useEffect(() => {
     if (nudgeTarget === null) return;
@@ -214,6 +229,7 @@ function Navigation({ navigation }: { navigation: ReturnType<typeof useNavigatio
   return (
     <NavigationContainer
       ref={navigation}
+      onReady={() => setNavigationReady(true)}
       theme={navigationTheme}
       // Cambiar de pantalla con el teclado abierto lo dejaba flotando sobre otra cosa.
       onStateChange={() => Keyboard.dismiss()}
@@ -300,21 +316,23 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AppDataProvider>
-        <SwipeLockProvider>
-          <SidebarProvider navigation={navigation}>
-            {/* El globito de la (i) se dibuja aqui para que no lo recorte la lista
+        <TransitJourneyProvider>
+          <SwipeLockProvider>
+            <SidebarProvider navigation={navigation}>
+              {/* El globito de la (i) se dibuja aqui para que no lo recorte la lista
                 dentro de la que vive el boton que lo abre. */}
-            <InfoProvider>
-              <Navigation navigation={navigation} />
-            </InfoProvider>
-            {/* Encima de todo menos del menu lateral, que si la tapa. */}
-            <Assistant />
-          </SidebarProvider>
-        </SwipeLockProvider>
-        {/* La barra que corona el teclado del sistema, una sola para toda la app. */}
-        <KeyboardBar />
-        {/* Una sola paleta, clara: la barra de estado va siempre en oscuro. */}
-        <StatusBar style="dark" />
+              <InfoProvider>
+                <Navigation navigation={navigation} />
+              </InfoProvider>
+              {/* Encima de todo menos del menu lateral, que si la tapa. */}
+              <Assistant />
+            </SidebarProvider>
+          </SwipeLockProvider>
+          {/* La barra que corona el teclado del sistema, una sola para toda la app. */}
+          <KeyboardBar />
+          {/* Una sola paleta, clara: la barra de estado va siempre en oscuro. */}
+          <StatusBar style="dark" />
+        </TransitJourneyProvider>
       </AppDataProvider>
     </SafeAreaProvider>
   );

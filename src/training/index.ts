@@ -7,3 +7,4 @@ export * from './pace.ts';
 export * from './planner-draft.ts';
 export * from './sessions.ts';
 export * from './session-plan.ts';
+export { readWorkoutFinish, type WorkoutFinish } from './read.ts';

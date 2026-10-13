@@ -11,6 +11,7 @@ import {
 import {
   buildLiveQuery,
   mergeLiveDeparture,
+  observedServiceTrips,
   tripLiveDetail,
   validateLiveSnapshot,
 } from '../../src/transit/realtime.ts';
@@ -61,6 +62,58 @@ function scheduleFixture() {
     transfers: [[0, 1, 2, 180]],
   });
 }
+
+test('an explicitly reported holiday bus reaches departures without activating other trips or replacing the schedule fallback', async () => {
+  const schedule = scheduleFixture();
+  const now = scheduledTime('2026-10-12', 8 * 3_600) - 60_000;
+  const query = buildLiveQuery(schedule, { stopIds: ['A'] });
+  const header = { gtfsRealtimeVersion: '2.0', incrementality: 0, timestamp: now / 1_000 };
+  const encode = (entity: Bindings.transit_realtime.IFeedEntity[]) =>
+    Bindings.transit_realtime.FeedMessage.encode(
+      Bindings.transit_realtime.FeedMessage.fromObject({ header, entity }),
+    ).finish();
+  const descriptor = {
+    tripId: 'weekend-trip',
+    routeId: '02',
+    startDate: '20261012',
+    startTime: '08:00:00',
+  };
+  const binary: Record<string, Uint8Array> = {
+    [UPSTREAMS.trips]: encode([
+      {
+        id: 'exception',
+        tripUpdate: {
+          trip: descriptor,
+          vehicle: { id: 'BUS' },
+          timestamp: now / 1_000,
+          stopTimeUpdate: [{ stopSequence: 1, departure: { delay: 120 } }],
+        },
+      },
+    ]),
+    [UPSTREAMS.vehicles]: encode([]),
+    [UPSTREAMS.alerts]: encode([]),
+  };
+  const sources = new Sources(
+    { get: async () => null, set: async () => undefined },
+    async (input) => new Response(new Uint8Array(binary[String(input)])),
+    () => now,
+  );
+  const response = await buildResponse(schedule, sources, query, now);
+  const live = validateLiveSnapshot(JSON.parse(JSON.stringify(response)), schedule, query, now);
+  const observed = observedServiceTrips(schedule, live, now);
+  assert.deepEqual(observed, [{ tripId: 'weekend-trip', serviceDate: '2026-10-12' }]);
+  const list = departures(schedule, buildStopIndex(schedule), 0, now, 20, observed);
+  const actual = list.find((departure) => departure.trip[0] === 'weekend-trip')!;
+  assert.ok(actual);
+  assert.equal(mergeLiveDeparture(schedule, actual, live, now).status, 'live');
+  assert.ok(list.some((departure) => departure.trip[0] === 'holiday-trip'));
+  assert.deepEqual(observedServiceTrips(schedule, live, now + 91_000), []);
+  const fallback = departures(schedule, buildStopIndex(schedule), 0, now);
+  assert.ok(fallback.every((departure) => departure.trip[0] !== 'weekend-trip'));
+  const unsafe = structuredClone(response);
+  delete unsafe.tripUpdates[0].calendarException;
+  assert.throws(() => validateLiveSnapshot(unsafe, schedule, query, now), /viaje/);
+});
 
 test('binary feeds reach the phone with explicit zero values, loop sequence and previous service date intact', async () => {
   const schedule = scheduleFixture();

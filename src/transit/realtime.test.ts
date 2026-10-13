@@ -155,7 +155,7 @@ test('config store serializes writes, retains old config on failure and reports 
   assert.equal(await store.load(), null);
 });
 
-test('query surface keeps leading zeros, calendars, finite size and known identifiers', () => {
+test('query surface keeps leading zeros, finite size and known identifiers; reports validate service', () => {
   const { schedule, query } = fixture();
   assert.deepEqual(validateLiveQuery(query, schedule), query);
   assert.throws(() => validateLiveQuery({ ...query, routeIds: ['2'] }, schedule), /línea/);
@@ -163,13 +163,11 @@ test('query surface keeps leading zeros, calendars, finite size and known identi
     () => validateLiveQuery({ ...query, upstream: 'http://private.invalid' }, schedule),
     /parámetros/,
   );
-  assert.throws(
-    () =>
-      validateLiveQuery(
-        { ...query, trips: [{ tripId: 'weekend-trip', serviceDate: '2026-10-12' }] },
-        schedule,
-      ),
-    /sin servicio/,
+  assert.doesNotThrow(() =>
+    validateLiveQuery(
+      { ...query, trips: [{ tripId: 'weekend-trip', serviceDate: '2026-10-12' }] },
+      schedule,
+    ),
   );
   assert.throws(
     () => validateLiveQuery({ ...query, stopIds: Array(9).fill('A') }, schedule),

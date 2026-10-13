@@ -67,6 +67,7 @@ const RE_ENTRY_FIELDS: FieldSpec[] = [
 ];
 
 export type SettingsScreenProps = {
+  transitSettings?: React.ReactNode;
   onResetDatabase: () => void;
   /** Escribe el archivo y abre la hoja de compartir. */
   onExport: () => Promise<{ uri: string; bytes: number; shared: boolean }>;
@@ -132,6 +133,7 @@ export function SettingsScreen({
   onClearSetting,
   onOpenExercises,
   onOpenFoods,
+  transitSettings,
 }: SettingsScreenProps) {
   const [confirmingReset, setConfirmingReset] = useState(false);
   // Lo que no paso la validacion, para que no parezca guardado.
@@ -343,12 +345,14 @@ export function SettingsScreen({
         {readapting && RE_ENTRY_FIELDS.map(renderField)}
       </Card>
 
-      <Card title="Avisos">
+      <Card title="Avisos de salud">
         <View style={styles.switchRow}>
-          <Text style={styles.switchLabel}>Todos los avisos</Text>
+          <Text style={styles.switchLabel}>Avisos de salud y creatina</Text>
           <Toggle
             value={nudgesOn}
-            accessibilityLabel={nudgesOn ? 'Apagar todos los avisos' : 'Encender los avisos'}
+            accessibilityLabel={
+              nudgesOn ? 'Apagar avisos de salud y creatina' : 'Encender avisos de salud y creatina'
+            }
             onChange={(next) => onSaveSetting('nudges_enabled', next ? 'true' : 'false')}
           />
         </View>
@@ -381,6 +385,7 @@ export function SettingsScreen({
       </Card>
 
       <AssistantSettings />
+      {transitSettings}
 
       <Card title="Ofertas">
         <Field label="Palabras que vigilo">
