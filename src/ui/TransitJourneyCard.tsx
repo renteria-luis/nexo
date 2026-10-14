@@ -1,10 +1,18 @@
 import { useIsFocused, useNavigation } from '@react-navigation/native';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Platform, Text, View } from 'react-native';
 import { shortDay } from '../core/dates.ts';
 import { useTransitJourney } from '../shell/TransitJourney.tsx';
 import { transitHere } from '../shell/transit.ts';
-import { agencyClock, agencyDate } from '../transit/schedule.ts';
+import {
+  agencyClock,
+  agencyDate,
+  scheduledTime,
+  type Departure,
+  type Schedule,
+} from '../transit/schedule.ts';
+import { isActive } from '../transit/active-trip.ts';
+import type { LiveSnapshot } from '../transit/realtime.ts';
 import { nearestPlace } from '../transit/store.ts';
 import { TRANSIT_ENABLED } from '../transit/index.ts';
 import type { TravelPreferences } from '../transit/journey.ts';
@@ -16,6 +24,7 @@ import { placeOptions } from './placeIcons.ts';
 import { goTo, type Navigate } from './navigation.ts';
 import { Toggle } from './Toggle.tsx';
 import { TransitActiveTrip } from './TransitActiveTrip.tsx';
+import { TransitAlerts } from './TransitDepartures.tsx';
 import { RouteBadge } from './TransitStatus.tsx';
 import { font, sheet } from './theme.ts';
 
@@ -28,6 +37,64 @@ const evidence = {
   learned: 'Según tus tiempos y las series pendientes.',
   complete: 'Entreno completado.',
 };
+
+export function TransitJourneyAlerts({
+  schedule,
+  snapshot,
+  active,
+  departures,
+}: {
+  schedule: Schedule;
+  snapshot: LiveSnapshot;
+  active: boolean;
+  departures: Departure[];
+}) {
+  const { trip, advice, result } = useTransitJourney();
+  const targets = useMemo(() => {
+    if (trip) {
+      if (!isActive(trip) || trip.sourceSha256 !== schedule.sourceSha256) return [];
+      return trip.rides.slice(trip.leg).flatMap((ride) => {
+        const bus = schedule.trips.find((candidate) => candidate[0] === ride.tripId);
+        if (!bus) return [];
+        const stopTime = schedule.patterns[bus[6]][ride.stops[0].position];
+        return [
+          {
+            departure: {
+              trip: bus,
+              route: schedule.routes[bus[1]],
+              serviceDate: ride.serviceDate,
+              stopTime,
+              at: scheduledTime(ride.serviceDate, bus[7] + stopTime[3]),
+            },
+            stopIds: ride.stops.map((stop) => stop.id),
+          },
+        ];
+      });
+    }
+    if (advice) {
+      if (result?.context.index.schedule.sourceSha256 !== schedule.sourceSha256) return [];
+      return advice.option.itinerary.rides.map((ride) => ({
+        departure: ride.departure,
+        stopIds: schedule.patterns[ride.trip[6]]
+          .slice(ride.board, ride.alight + 1)
+          .map((time) => schedule.stops[time[0]][0]),
+      }));
+    }
+    return departures.map((departure) => ({
+      departure,
+      stopIds: [schedule.stops[departure.stopTime[0]][0]],
+    }));
+  }, [trip, advice, result, schedule, departures]);
+  return (
+    <TransitAlerts
+      schedule={schedule}
+      snapshot={snapshot}
+      active={active}
+      targets={targets}
+      scope={trip || advice ? 'tu viaje' : 'esta parada'}
+    />
+  );
+}
 
 export function TransitTravelSettings() {
   const { saved, actions, busy } = useTransitJourney();
@@ -263,12 +330,20 @@ export function TransitJourneyCard({ surface }: { surface: 'today' | 'training' 
               <>
                 <View style={styles.row}>
                   {advice.option.itinerary.rides.map((ride, i) => (
-                    <RouteBadge key={`${ride.trip[0]}-${i}`} route={ride.route} />
+                    <Fragment key={`${ride.trip[0]}-${i}`}>
+                      {i > 0 && <Text style={styles.note}>→</Text>}
+                      <RouteBadge route={ride.route} />
+                    </Fragment>
                   ))}
                   <Text style={styles.value}>
                     {advice.boardAt === null ? 'Caminando' : `Bus ${agencyClock(advice.boardAt)}`}
                   </Text>
                 </View>
+                {advice.option.itinerary.rides.length > 0 && (
+                  <Text style={styles.note}>
+                    {advice.option.itinerary.rides.length === 1 ? 'Directo' : '1 transbordo'}
+                  </Text>
+                )}
                 <Text style={styles.value}>
                   {trip.workoutId ? 'Termina' : 'Prepárate'} {agencyClock(advice.finishBy)} · sal{' '}
                   {agencyClock(advice.leaveAt)}

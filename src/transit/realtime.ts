@@ -662,9 +662,10 @@ function retainFollowed(
 
 export type LiveDeparture = {
   at: number;
-  source: 'official' | 'schedule' | 'last-known';
+  source: 'official' | 'schedule' | 'last-known' | 'estimate';
   status:
     | 'live'
+    | 'estimated'
     | 'schedule'
     | 'unassigned'
     | 'stale'
@@ -784,7 +785,7 @@ export function relevantLiveAlerts(
   departure: Departure,
   snapshot: LiveSnapshot | null,
   now = Date.now(),
-  stopId: string | null = schedule.stops[departure.stopTime[0]][0],
+  stopId: string | readonly string[] | null = schedule.stops[departure.stopTime[0]][0],
 ): LiveAlert[] {
   if (!usableSnapshot(snapshot, schedule, now)) return [];
   return snapshot.alerts.filter(
@@ -802,7 +803,9 @@ export function relevantLiveAlerts(
                 ? schedule.patterns[departure.trip[6]].some(
                     (t) => schedule.stops[t[0]][0] === s.stopId,
                   )
-                : s.stopId === stopId)) &&
+                : typeof stopId === 'string'
+                  ? s.stopId === stopId
+                  : stopId.includes(s.stopId))) &&
             (s.tripId === null || s.tripId === departure.trip[0]) &&
             (s.serviceDate === null || s.serviceDate === departure.serviceDate) &&
             (s.directionId === null || s.directionId === departure.trip[4]),

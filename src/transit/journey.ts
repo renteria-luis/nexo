@@ -132,15 +132,19 @@ export function travelAdvice(
                   : null;
   const source = !board
     ? 'Caminata estimada'
-    : board.status === 'live'
-      ? 'Predicción LTC en vivo'
-      : option.reportedOutsideCalendar
-        ? 'Bus reportado por LTC · hora de horario'
-        : board.status === 'stale'
-          ? 'Última predicción · sin datos frescos'
-          : board.status === 'unassigned'
-            ? 'Horario · sin bus asignado'
-            : 'Horario programado';
+    : option.live.some(
+          (ride) => ride.board.status === 'estimated' || ride.alight.status === 'estimated',
+        )
+      ? 'Estimación con el retraso LTC'
+      : board.status === 'live'
+        ? 'Predicción LTC en vivo'
+        : option.reportedOutsideCalendar
+          ? 'Bus reportado por LTC · hora de horario'
+          : board.status === 'stale'
+            ? 'Última predicción · sin datos frescos'
+            : board.status === 'unassigned'
+              ? 'Horario · sin bus asignado'
+              : 'Horario programado';
   return {
     option,
     finishBy,

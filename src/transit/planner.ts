@@ -937,26 +937,60 @@ function rideLive(
   snapshot: LiveSnapshot | null,
   liveTrips: Set<string>,
   now: number,
+  timelines: Map<string, LiveDeparture[]>,
 ): RideLive {
   const usable = snapshot && liveTrips.has(ride.trip[0]) ? snapshot : null;
-  return {
-    board: mergeLiveDeparture(schedule, ride.departure, usable, now),
-    alight: mergeLiveDeparture(schedule, ride.arrival, usable, now),
-  };
+  const key = tripKey(ride.trip, ride.serviceDate);
+  let times = timelines.get(key);
+  if (!times) {
+    const pattern = schedule.patterns[ride.trip[6]];
+    let anchor: { live: LiveDeparture; scheduledAt: number } | null = null;
+    times = pattern.map((stopTime) => {
+      const at = ride.departure.at + (stopTime[3] - pattern[ride.board][3]) * 1_000;
+      const live = mergeLiveDeparture(schedule, { ...ride.departure, stopTime, at }, usable, now);
+      // A partial stop query must not turn a delayed bus back into an on-time bus further on.
+      // Only a fresh prediction anchors this estimate; a later coherent prediction replaces it.
+      if (
+        anchor &&
+        (live.status === 'live'
+          ? live.at < anchor.live.at
+          : ['schedule', 'no-data', 'unassigned'].includes(live.status) &&
+            anchor.live.at > anchor.scheduledAt)
+      )
+        return {
+          ...live,
+          at: Math.max(anchor.live.at, at + anchor.live.at - anchor.scheduledAt),
+          source: 'estimate',
+          status: 'estimated',
+          measuredAt: anchor.live.measuredAt,
+          reportedAt: anchor.live.reportedAt,
+          uncertainty: null,
+          eventKind: 'schedule',
+        };
+      if (live.status === 'live') anchor = { live, scheduledAt: at };
+      return live;
+    });
+    timelines.set(key, times);
+  }
+  return { board: times[ride.board], alight: times[ride.alight] };
 }
 
-/** LTC's alerts for a ride's line, or for the stop where he boards or gets off. */
+/** LTC's alerts for the ride's line and the part of its trip he actually takes. */
 export function rideAlerts(
   schedule: Schedule,
   ride: Ride,
   snapshot: LiveSnapshot | null,
   now: number,
 ): LiveAlert[] {
-  const alerts = new Map<string, LiveAlert>();
-  for (const departure of [ride.departure, ride.arrival])
-    for (const alert of relevantLiveAlerts(schedule, departure, snapshot, now))
-      alerts.set(alert.id, alert);
-  return [...alerts.values()];
+  return relevantLiveAlerts(
+    schedule,
+    ride.departure,
+    snapshot,
+    now,
+    schedule.patterns[ride.trip[6]]
+      .slice(ride.board, ride.alight + 1)
+      .map((time) => schedule.stops[time[0]][0]),
+  );
 }
 
 function broken(live: RideLive): 'canceled' | 'skipped' | null {
@@ -998,11 +1032,12 @@ export function liveOptions(
   const liveTrips = new Set(snapshot?.tripUpdates.map((t) => t.tripId) ?? []);
   // Options share their buses, and what follows a stop at a given time is the same for all.
   const merged = new Map<string, RideLive>();
+  const timelines = new Map<string, LiveDeparture[]>();
   const ridden = (ride: Ride) => {
     const key = rideKey(ride);
     let found = merged.get(key);
     if (!found) {
-      found = rideLive(schedule, ride, snapshot, liveTrips, now);
+      found = rideLive(schedule, ride, snapshot, liveTrips, now, timelines);
       merged.set(key, found);
     }
     return found;
@@ -1056,6 +1091,7 @@ export function liveOptions(
       current.rides.length === 2 && current.transfer
         ? live[1].board.at - live[0].alight.at - current.transfer.minutes * MINUTE
         : null;
+    if (!problem && slack !== null && slack < TRANSFER_MARGIN_MIN * MINUTE) problem = 'missed';
     const tight = slack !== null && slack < TIGHT_TRANSFER_MIN * MINUTE;
     const backup =
       tight && !problem ? after(current.rides[0], live[0].alight.at, current.rides[1]) : null;

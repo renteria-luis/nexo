@@ -3,6 +3,7 @@ import { AppState, Pressable, ScrollView, Text, View } from 'react-native';
 
 import {
   mergeLiveDeparture,
+  relevantLiveAlerts,
   tripLiveDetail,
   liveFreshness,
   observedServiceTrips,
@@ -29,6 +30,7 @@ import { RouteBadge, StatusIcons } from './TransitStatus.tsx';
 
 const statusLabel: Record<string, string> = {
   live: 'En vivo LTC',
+  estimated: 'Estimación con el retraso LTC',
   schedule: 'Horario',
   unassigned: 'Horario · sin bus asignado',
   stale: 'Última predicción',
@@ -597,18 +599,30 @@ export function TransitTripTimeline({
   );
 }
 
-export function TransitAlerts({ snapshot, active }: { snapshot: LiveSnapshot; active: boolean }) {
+export function TransitAlerts({
+  schedule,
+  snapshot,
+  targets,
+  active,
+  scope,
+}: {
+  schedule: Schedule;
+  snapshot: LiveSnapshot;
+  targets: { departure: Departure; stopIds: readonly string[] }[];
+  active: boolean;
+  scope?: string;
+}) {
   const now = useLiveClock(active, snapshot);
   const [open, setOpen] = useState(false);
-  const alerts = snapshot.alerts.filter(
-    (alert) =>
-      alert.activePeriods.length === 0 ||
-      alert.activePeriods.some(
-        (period) =>
-          (period.start === null || period.start <= now) &&
-          (period.end === null || period.end > now),
+  const alerts = [
+    ...new Map(
+      targets.flatMap(({ departure, stopIds }) =>
+        relevantLiveAlerts(schedule, departure, snapshot, now, stopIds).map(
+          (alert) => [alert.id, alert] as const,
+        ),
       ),
-  );
+    ).values(),
+  ];
   if (!alerts.length) return null;
   const fresh = liveFreshness(snapshot, 'alerts', snapshot.generatedAt, now);
   const Chevron = open ? ChevronUp : ChevronDown;
@@ -622,7 +636,10 @@ export function TransitAlerts({ snapshot, active }: { snapshot: LiveSnapshot; ac
         style={styles.alertsHead}
       >
         <TriangleAlert size={16} color={theme.text} strokeWidth={2.5} />
-        <Text style={[styles.body, styles.grow]}>Alertas LTC · {alerts.length}</Text>
+        <Text style={[styles.body, styles.grow]}>
+          Alertas LTC · {scope ? `${scope} · ` : ''}
+          {alerts.length}
+        </Text>
         <Chevron size={16} color={theme.text} strokeWidth={2.5} />
       </Pressable>
       {open && (

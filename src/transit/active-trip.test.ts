@@ -337,6 +337,73 @@ test('a bus waiting at his stop is not mistaken for getting off', () => {
   );
 });
 
+test('a partial delay keeps the earlier direct alighting stop and Ya bajé starts the final walk', () => {
+  const schedule = plannerFixture();
+  schedule.stops[0][3] = 43.01;
+  schedule.stops[1][3] = 43.01;
+  const origin = { ...ORIGIN, lat: 43.01 };
+  const destination = { ...DESTINATION, lat: 42.9935, lng: -81.2006 };
+  const now = at('08:00');
+  const search = startPlan(buildPlannerIndex(schedule), {
+    origin,
+    destination,
+    originWalks: new Map(),
+    destinationWalks: new Map(),
+    stopWalks: [],
+    mode: 'depart',
+    at: now,
+  });
+  while (!search.step(1_000));
+  const result = search.result();
+  const pool = result.pool.filter((p) => p.rides[0]?.trip[0] === '16S-3');
+  assert.ok(
+    pool.some((p) => p.rides.length === 2),
+    'the search includes a ride past the destination and back',
+  );
+  const direct = pool.find((p) => p.rides.length === 1)!;
+  const ride = direct.rides[0];
+  const snapshot = withBus(schedule, now, origin).snapshot!;
+  snapshot.coverage = { stopIds: ['ORIGIN_SB', 'MIDDLE_SB'], trips: [] };
+  snapshot.tripUpdates = [
+    {
+      tripId: ride.trip[0],
+      serviceDate: ride.serviceDate,
+      routeId: ride.route[0],
+      directionId: 1,
+      startTime: null,
+      entityId: 'delay',
+      vehicleId: 'bus',
+      measuredAt: now,
+      relationship: 'scheduled',
+      delay: 16 * 60,
+      stops: [ride.departure, ride.arrival].map((departure) => ({
+        stopId: schedule.stops[departure.stopTime[0]][0],
+        stopSequence: departure.stopTime[1],
+        relationship: 'scheduled',
+        arrival: null,
+        departure: { time: departure.at + 16 * 60_000, delay: 16 * 60, uncertainty: null },
+      })),
+    },
+  ];
+  const option = liveOptions({ ...result, pool, best: [direct] }, snapshot, now)[0];
+  assert.equal(option.itinerary.rides.length, 1);
+  const trip = freezeTrip({
+    id: 'partial-delay',
+    journeyId: null,
+    schedule,
+    option,
+    origin,
+    destination,
+    now,
+  });
+  assert.equal(trip.rides[0].stops.at(-1)!.id, 'MIDDLE_SB');
+  const boarded = applyAction(trip, 'boarded', option.live[0].board.at).trip;
+  const alighted = applyAction(boarded, 'alighted', option.live[0].alight.at);
+  assert.equal(alighted.trip.phase, 'final');
+  assert.equal(alighted.trip.walks[alighted.trip.leg].to.kind, 'place');
+  assert.ok(alighted.events.every((event) => event.kind !== 'transfer'));
+});
+
 test('adjacent stops warn as he boards; the clock ends a forgotten trip once', () => {
   const { trip } = setup('92S-1>20E-3', at('08:15'));
   const boarded = applyAction(trip, 'boarded', second('08:20', 0));

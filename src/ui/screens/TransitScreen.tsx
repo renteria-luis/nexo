@@ -50,14 +50,13 @@ import { TextField } from '../TextField.tsx';
 import { TransitPersonalMap, type WalkPreview } from '../TransitPersonalMap.tsx';
 import { TransitWalkReview } from '../TransitWalkReview.tsx';
 import {
-  TransitAlerts,
   TransitStopDepartures,
   TransitStopHeader,
   TransitTripTimeline,
 } from '../TransitDepartures.tsx';
 import { TransitPlanner, type PlannerLive } from '../TransitPlanner.tsx';
 import { TransitLegend } from '../TransitStatus.tsx';
-import { TransitJourneyCard } from '../TransitJourneyCard.tsx';
+import { TransitJourneyAlerts, TransitJourneyCard } from '../TransitJourneyCard.tsx';
 import { TransitWhen } from '../TransitWhen.tsx';
 import { TransitLiveSettings } from '../TransitLiveSettings.tsx';
 import { useTransitLive } from '../useTransitLive.ts';
@@ -870,7 +869,14 @@ function TransitContent() {
           Distancias en línea recta: la acera, los cruces y la puerta pueden cambiar la caminata.
           Las paradas repetidas para las mismas líneas quedan en «Ver más».
         </Text>
-        {snapshot && <TransitAlerts snapshot={snapshot} active={live.active} />}
+        {snapshot && (
+          <TransitJourneyAlerts
+            schedule={schedule}
+            snapshot={snapshot}
+            active={live.active}
+            departures={selectedDetail ? [selectedDetail] : departuresList}
+          />
+        )}
         <TransitLegend />
       </Card>
       {stop && (

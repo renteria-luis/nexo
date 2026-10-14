@@ -396,6 +396,18 @@ test('alert UI independently expires source freshness and filters future or fini
       header: 'Finished closure',
       activePeriods: [{ start: null, end: now }],
     },
+    {
+      ...alert,
+      id: 'other-route',
+      header: 'Unrelated route detour',
+      selectors: [{ ...alert.selectors[0], routeId: '55' }],
+    },
+    {
+      ...alert,
+      id: 'after-alighting',
+      header: 'Closure beyond the destination',
+      selectors: [{ ...alert.selectors[0], stopId: 'B' }],
+    },
   );
   const query = buildLiveQuery(schedule, { stopIds: ['A'] });
   const checked = validateLiveSnapshot(snapshot, schedule, query, now);
@@ -403,7 +415,11 @@ test('alert UI independently expires source freshness and filters future or fini
     '../transit/realtime.ts': realtime,
     './icons.ts': ICONS,
   }).mount('TransitAlerts', {
+    schedule,
     snapshot: checked,
+    targets: [
+      { departure: departures(schedule, buildStopIndex(schedule), 0, now)[0], stopIds: ['A'] },
+    ],
     active: false,
   });
   const folded = await alerts.settle();
@@ -417,6 +433,7 @@ test('alert UI independently expires source freshness and filters future or fini
   assert.match(alertText, /Últimas alertas guardadas · sin confirmación actual/);
   assert.match(alertText, /hace 601 s/);
   assert.doesNotMatch(alertText, /Reportes vigentes|Future closure|Finished closure/);
+  assert.doesNotMatch(alertText, /Unrelated route detour|Closure beyond the destination/);
 });
 
 function followedReading(schedule: Schedule, departure: Departure, generatedAt: number) {

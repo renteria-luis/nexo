@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { DEFAULT_TRAVEL_PREFERENCES } from '../transit/journey.ts';
+import { DEFAULT_TRAVEL_PREFERENCES, travelAdvice } from '../transit/journey.ts';
+import * as activeTrip from '../transit/active-trip.ts';
+import * as realtime from '../transit/realtime.ts';
+import { plannerFixture } from '../transit/fixtures.ts';
+import { buildPlannerIndex, liveOptions, startPlan } from '../transit/planner.ts';
 import * as schedule from '../transit/schedule.ts';
 import { sortPlaces } from '../transit/store.ts';
 import { nodes, renderModule, textOf } from './test-render.ts';
@@ -35,7 +39,7 @@ function fixture(surface: 'today' | 'training') {
       },
     },
   };
-  const screen = renderModule('src/ui/TransitJourneyCard.tsx', {
+  const view = renderModule('src/ui/TransitJourneyCard.tsx', {
     '@react-navigation/native': {
       useIsFocused: () => true,
       useNavigation: () => ({ navigate() {} }),
@@ -43,14 +47,18 @@ function fixture(surface: 'today' | 'training') {
     '../shell/TransitJourney.tsx': { useTransitJourney: () => journey },
     '../shell/transit.ts': { transitHere: async () => null },
     '../transit/schedule.ts': schedule,
+    '../transit/active-trip.ts': activeTrip,
+    '../transit/realtime.ts': realtime,
     '../transit/store.ts': { sortPlaces, nearestPlace: () => null },
     '../transit/index.ts': { TRANSIT_ENABLED: true },
     './Combobox.tsx': { Combobox: 'Combobox' },
     './NumericField.tsx': { NumericField: 'NumericField' },
     './Button.tsx': { Button: 'Button' },
     './TransitActiveTrip.tsx': { TransitActiveTrip: 'TransitActiveTrip' },
+    './TransitDepartures.tsx': { TransitAlerts: 'TransitAlerts' },
     './icons.ts': new Proxy({}, { get: (_, name) => String(name) }),
-  }).mount('TransitJourneyCard', { surface });
+  });
+  const screen = view.mount('TransitJourneyCard', { surface });
   const control = async (label: string) => {
     const found = nodes(await screen.settle()).find(
       (node) => (node.props.accessibilityLabel ?? node.props.label) === label,
@@ -58,8 +66,91 @@ function fixture(surface: 'today' | 'training') {
     assert.ok(found, label);
     return found.props;
   };
-  return { journey, screen, calls, control };
+  return { journey, screen, calls, control, view };
 }
+
+function plannedTrip() {
+  const data = plannerFixture();
+  const now = schedule.queryInstant('2026-10-13', '08:00');
+  const origin = { id: 'gym', name: 'Origin', lat: 43, lng: -81.2 };
+  const destination = { id: 'end', name: 'Destination', lat: 42.9878, lng: -81.17 };
+  const search = startPlan(buildPlannerIndex(data), {
+    origin,
+    destination,
+    originWalks: new Map(),
+    destinationWalks: new Map(),
+    stopWalks: [],
+    mode: 'depart',
+    at: now,
+  });
+  while (!search.step(1_000));
+  const option = liveOptions(search.result(), null, now)[0];
+  const trip = activeTrip.freezeTrip({
+    id: 'trip',
+    journeyId: 'journey',
+    schedule: data,
+    origin,
+    destination,
+    option,
+    now,
+  });
+  return { data, option, trip, now };
+}
+
+test('the next-trip card explicitly labels two buses as a transfer', async () => {
+  const f = fixture('today');
+  const { option, now } = plannedTrip();
+  f.journey.saved.next = { originId: 'gym', destinationId: 'end', workoutId: null };
+  f.journey.advice = travelAdvice(option, 0, null, now);
+  assert.equal(option.itinerary.rides.length, 2);
+  const text = textOf(await f.screen.settle());
+  assert.match(text, /→/);
+  assert.match(text, /1 transbordo/);
+});
+
+test('alerts follow the frozen remaining rides, then the next option, then the browsed stop', async () => {
+  const f = fixture('today');
+  const { data, option, trip, now } = plannedTrip();
+  const departure = option.itinerary.rides[0].departure;
+  const screen = f.view.mount('TransitJourneyAlerts', {
+    schedule: data,
+    snapshot: {},
+    active: false,
+    departures: [departure],
+  });
+  const targets = async () =>
+    nodes(await screen.settle()).find((n) => n.type === 'TransitAlerts')!.props;
+  assert.deepEqual(
+    (await targets()).targets.map((t: any) => t.stopIds),
+    [['ORIGIN_SB']],
+  );
+  f.journey.advice = travelAdvice(option, 0, null, now);
+  f.journey.result = { context: { index: { schedule: data } } };
+  assert.deepEqual(
+    (await targets()).targets.map((t: any) => t.stopIds),
+    [
+      ['ORIGIN_SB', 'CORNER_SB'],
+      ['CORNER_EB', 'EAST_EB', 'END_EB'],
+    ],
+  );
+  // The live advice may change after starting; it must not change the active trip's alerts.
+  f.journey.trip = { ...trip, leg: 1, phase: 'waiting' };
+  assert.deepEqual(
+    (await targets()).targets.map((t: any) => t.stopIds),
+    [['CORNER_EB', 'EAST_EB', 'END_EB']],
+  );
+  f.journey.trip = { ...f.journey.trip, phase: 'final', leg: 2 };
+  assert.deepEqual((await targets()).targets, []);
+  f.journey.trip = { ...f.journey.trip, phase: 'canceled' };
+  assert.deepEqual((await targets()).targets, []);
+  f.journey.trip = null;
+  f.journey.result = { context: { index: { schedule: { ...data, sourceSha256: 'new-feed' } } } };
+  assert.deepEqual(
+    (await targets()).targets,
+    [],
+    'schedule updates cannot reuse old pattern positions',
+  );
+});
 
 test('Training preselects its gym and passes only the session identity to Transit', async () => {
   const f = fixture('training');

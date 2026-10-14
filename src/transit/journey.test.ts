@@ -79,6 +79,22 @@ test('unknown or too-late Training estimates cannot recommend a catchable bus', 
   );
   assert.equal(travelAdvice({ ...option, problem: 'canceled' }, 5, null, now).feasible, false);
 });
+
+test('a live boarding prediction cannot label a derived arrival as official', () => {
+  const advice = travelAdvice(
+    {
+      ...option,
+      live: option.live.map((ride) => ({
+        board: { ...ride.board, status: 'live', source: 'official' },
+        alight: { ...ride.alight, status: 'estimated', source: 'estimate' },
+      })),
+    },
+    5,
+    null,
+    now,
+  );
+  assert.equal(advice.source, 'Estimación con el retraso LTC');
+});
 test('completing Training allows the already prepared departure until leave time', () => {
   const prepared = option.leaveAt - 5 * 60_000;
   assert.equal(

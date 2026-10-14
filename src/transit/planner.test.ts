@@ -368,6 +368,50 @@ test('a late first bus moves the list to the connection still possible', () => {
   assert.equal(agencyClock(notice.leaveAt), '08:21', 'the late bus lets him leave later');
 });
 
+test('a partial live query cannot erase a delay before an unqueried transfer stop', () => {
+  const now = request().at;
+  const result = plan();
+  const late = update(schedule, '92S-1', now, {}, 15);
+  late.stops = late.stops.slice(0, 1);
+  const reading = snapshot(now, [late]);
+  reading.coverage = { stopIds: ['ORIGIN_SB', 'END_EB'], trips: [] };
+  const options = liveOptions(result, reading, now);
+  const delayed = options.filter((o) => o.itinerary.rides[0]?.trip[0] === late.tripId);
+  assert.ok(delayed.length);
+  for (const option of delayed) {
+    assert.equal(agencyClock(option.live[0].alight.at), '08:40');
+    assert.equal(option.live[0].alight.source, 'estimate');
+    assert.equal(option.live[0].alight.status, 'estimated');
+    if (!option.problem && option.itinerary.rides.length === 2)
+      assert.ok(option.slack! >= 3 * 60_000, 'the second bus must still be reachable');
+  }
+  assert.equal(liveOptions(result, null, now)[0].live[0].alight.source, 'schedule');
+  assert.ok(
+    liveOptions(result, reading, now + 91_000).every((o) =>
+      o.live.every((ride) => ride.alight.source !== 'estimate'),
+    ),
+    'an old report must not produce a fresh delay estimate',
+  );
+});
+
+test('a bus cannot pass an earlier predicted stop after its reported alighting time', () => {
+  const now = request().at;
+  const result = plan();
+  const late = update(schedule, '16S-3', now, {}, 0);
+  late.stops[1].arrival!.time! += 15 * 60_000;
+  late.stops[1].departure!.time! += 15 * 60_000;
+  const candidate = result.pool.find((p) => p.rides[0]?.trip[0] === late.tripId)!;
+  const options = liveOptions(
+    { ...result, pool: [candidate], best: [candidate] },
+    snapshot(now, [late]),
+    now,
+  );
+  const delayed = options.find((o) => o.itinerary.rides[0]?.trip[0] === late.tripId)!;
+  assert.ok(delayed);
+  assert.ok(delayed.live[0].alight.at >= late.stops[1].departure!.time!);
+  assert.equal(delayed.live[0].alight.status, 'estimated');
+});
+
 test('cancelled, skipped and missing live data stay distinguishable', () => {
   const now = queryInstant(TUESDAY, '08:00');
   const result = plan();
@@ -403,6 +447,22 @@ test('a cancelled second bus is replaced by the next one from the same stop', ()
   const notice = options.find((o) => o.notice)!;
   assert.equal(notice.replaced?.reason, 'canceled');
   assert.equal(notice.itinerary.rides[1].trip[0], '20E-4');
+});
+
+test('a replacement connection must also pass its live boarding margin', () => {
+  const now = request().at;
+  const result = plan();
+  const option = result.best[0];
+  const reading = snapshot(now, [
+    update(schedule, '92S-1', now, {}, 4),
+    update(schedule, '20E-4', now, {}, -12),
+  ]);
+  const [checked] = liveOptions({ ...result, pool: [option], best: [option] }, reading, now);
+  assert.equal(checked.replaced?.ride.trip[0], '20E-3');
+  assert.equal(checked.itinerary.rides[1].trip[0], '20E-4');
+  assert.ok(checked.slack! < 3 * 60_000);
+  assert.equal(checked.problem, 'missed');
+  assert.equal(checked.notice, true);
 });
 
 test('options he can no longer leave for drop out as time passes', () => {
