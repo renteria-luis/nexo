@@ -14,10 +14,21 @@ test('health cancellation adopts old nudge IDs but preserves Transit and unknown
   const pending = [
     notice('creatina-22', { nudgeId: 'creatina-22' }),
     notice('transit:trip:leave'),
+    notice('trip:abc:alight:0', { notificationOwner: 'trip' }),
     notice('unknown'),
   ];
   assert.deepEqual(ownedNotificationChanges(pending, [], 'health').cancel, ['creatina-22']);
   assert.deepEqual(ownedNotificationChanges(pending, [], 'transit').cancel, ['transit:trip:leave']);
+  assert.deepEqual(ownedNotificationChanges(pending, [], 'trip').cancel, ['trip:abc:alight:0']);
+  assert.throws(
+    () =>
+      ownedNotificationChanges(
+        [],
+        ['a', 'b', 'c'].map((id) => notice(`trip:abc:${id}`)),
+        'trip',
+      ),
+    /espacio/,
+  );
 });
 test('unchanged requests survive a sync; a new prediction replaces only that event', () => {
   const first = notice('transit:trip:prepare', { planSignature: 'a' });

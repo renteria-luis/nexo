@@ -19,6 +19,7 @@ async function fixture() {
   let permission = true;
   let last: any = null;
   const listeners: ((event: any) => void)[] = [];
+  const presented: any[] = [];
   const nudge = {
     id: 'creatina',
     title: 'Creatina',
@@ -39,9 +40,11 @@ async function fixture() {
     },
     scheduleNotificationAsync: async (request: any) => {
       calls.push(`schedule:${request.identifier}`);
-      pending.set(request.identifier, request);
+      if (request.trigger === null) presented.push({ request });
+      else pending.set(request.identifier, request);
       return request.identifier;
     },
+    getPresentedNotificationsAsync: async () => presented,
     setNotificationCategoryAsync: async () => undefined,
     getLastNotificationResponse: () => last,
     clearLastNotificationResponse: () => {
@@ -112,6 +115,7 @@ async function fixture() {
     last: () => last,
     healthRecorded: () => healthRecorded,
     listeners,
+    presented,
   };
 }
 
@@ -231,7 +235,73 @@ test('a cold Transit tap survives health listener startup and is routed independ
   f.module.listenToNudges((value: any) => health.push(value));
   assert.ok(f.last(), 'health leaves the Transit response available');
   f.module.listenToTransitReminders((value: any) => travel.push(value));
-  assert.deepEqual(travel, [{ journeyId: 'one', expired: true }]);
+  assert.deepEqual(travel, [{ kind: 'reminder', journeyId: 'one', expired: true }]);
   assert.equal(health.length, 0);
   assert.equal(f.last(), null);
+});
+
+test('a trip in progress shows each event once and holds its warnings apart from reminders', async (t) => {
+  const f = await fixture();
+  t.mock.method(Date, 'now', f.now);
+  const trip = { id: 'abc' } as any;
+  await f.module.syncTransitReminders(f.db, f.trip, [f.reminder('leave', 600_000)]);
+  await f.module.syncTripAlarms(
+    f.db,
+    trip,
+    [{ key: 'alight:0', at: f.now() + 120_000, title: 'Bájate pronto', body: 'Parada' }],
+    true,
+  );
+  assert.deepEqual([...f.pending.keys()].sort(), ['transit:one:leave', 'trip:abc:alight:0']);
+  assert.equal(f.pending.get('trip:abc:alight:0').content.data.notificationOwner, 'trip');
+  // The GPS warning replaces the held one under the same identifier.
+  const event = { key: 'alight:0', kind: 'alight', title: 'Bájate en la próxima', body: 'Parada' };
+  await f.module.presentTripEvents(f.db, trip, [event], false);
+  await f.module.presentTripEvents(f.db, trip, [event], false);
+  assert.equal(f.presented.length, 1);
+  assert.equal(f.presented[0].request.content.sound, false);
+  await f.module.syncTripAlarms(f.db, trip, [], true);
+  assert.deepEqual([...f.pending.keys()], ['transit:one:leave']);
+  await f.module.syncTripAlarms(f.db, null, [], true);
+  assert.deepEqual([...f.pending.keys()], ['transit:one:leave']);
+  const routed: any[] = [];
+  f.module.listenToTransitReminders((value: any) => routed.push(value));
+  for (const listener of f.listeners)
+    listener({
+      actionIdentifier: 'default',
+      notification: {
+        request: { content: { data: { notificationOwner: 'trip', tripId: 'abc' } } },
+      },
+    });
+  assert.deepEqual(routed, [{ kind: 'trip', tripId: 'abc' }]);
+});
+
+test('a dismissed scheduled trip warning stays consumed across later predictions', async (t) => {
+  const f = await fixture();
+  t.mock.method(Date, 'now', f.now);
+  const trip = { id: 'trip' } as any;
+  const alarm = { key: 'alight:0', at: f.now() + 60_000, title: 'Bájate pronto', body: 'Parada' };
+  await f.module.syncTripAlarms(f.db, trip, [alarm], true);
+  f.advance(61_000);
+  // iOS delivered it and he dismissed it: neither pending nor presented remembers it.
+  f.pending.clear();
+  await f.module.syncTripAlarms(f.db, trip, [{ ...alarm, at: f.now() + 60_000 }], true);
+  await f.module.presentTripEvents(f.db, trip, [{ ...alarm, kind: 'alight' }], true);
+  assert.equal(f.pending.size, 0);
+  assert.equal(f.presented.length, 0);
+  // An explicit boarding correction creates a new event, unlike a passive prediction change.
+  await f.module.presentTripEvents(
+    f.db,
+    trip,
+    [{ ...alarm, key: 'alight:0:1', kind: 'alight' }],
+    true,
+  );
+  assert.equal(f.presented.length, 1);
+  f.presented.length = 0;
+  await f.module.presentTripEvents(
+    f.db,
+    trip,
+    [{ ...alarm, key: 'alight:0:1', kind: 'alight' }],
+    true,
+  );
+  assert.equal(f.presented.length, 0);
 });

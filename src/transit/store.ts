@@ -3,6 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { distanceMetres, type Coordinates } from '../core/geo.ts';
 import { inTransaction, whenIdle } from '../db/transaction.ts';
 import { SCHEDULE_SCHEMA, validateSchedule, validCoordinates, type Schedule } from './schedule.ts';
+import { serializePath } from './walks.ts';
 
 export const PLACE_ICONS = [
   'pin',
@@ -47,6 +48,8 @@ export type WalkLink = {
   direction: 'to_stop' | 'from_stop';
   minutes: number;
   entrance: string;
+  /** The way he walks it, as stored by `serializePath`; empty when he kept none. */
+  path: string;
   updated_at: number;
 };
 export type StopWalk = {
@@ -54,8 +57,22 @@ export type StopWalk = {
   to_stop: string;
   minutes: number;
   note: string;
+  path: string;
   updated_at: number;
 };
+export type MapNote = Coordinates & {
+  id: string;
+  /** A button to press, a crossing that is usually slow, or any other note. */
+  kind: 'button' | 'slow' | 'note';
+  note: string;
+  /** The wait he usually gets there, in seconds, when he noted one. */
+  wait_min: number | null;
+  wait_max: number | null;
+  updated_at: number;
+};
+export type WalkPathTarget =
+  | { kind: 'link'; placeId: string; stopId: string; direction: WalkLink['direction'] }
+  | { kind: 'transfer'; fromStop: string; toStop: string };
 export type CachedSchedule = {
   sha256: string;
   schedule: Schedule;
@@ -170,17 +187,17 @@ export async function savePlace(
   return id;
 }
 
-export async function listWalkLinks(db: SQLiteDatabase, placeId: string): Promise<WalkLink[]> {
+export async function listWalkLinks(db: SQLiteDatabase, placeId?: string): Promise<WalkLink[]> {
   await whenIdle(db);
   return db.getAllAsync<WalkLink>(
-    'SELECT * FROM transit_walk_link WHERE place_id = ? ORDER BY stop_id, direction;',
-    [placeId],
+    `SELECT * FROM transit_walk_link ${placeId === undefined ? '' : 'WHERE place_id = ?'} ORDER BY place_id, stop_id, direction;`,
+    placeId === undefined ? [] : [placeId],
   );
 }
 
 export async function saveWalkLink(
   db: SQLiteDatabase,
-  link: Omit<WalkLink, 'updated_at'>,
+  link: Omit<WalkLink, 'updated_at' | 'path'>,
 ): Promise<void> {
   if (
     !Number.isFinite(link.minutes) ||
@@ -211,7 +228,7 @@ export async function listStopWalks(db: SQLiteDatabase): Promise<StopWalk[]> {
 
 export async function saveStopWalk(
   db: SQLiteDatabase,
-  walk: Omit<StopWalk, 'updated_at'>,
+  walk: Omit<StopWalk, 'updated_at' | 'path'>,
 ): Promise<void> {
   if (
     !Number.isFinite(walk.minutes) ||
@@ -233,6 +250,77 @@ export async function saveStopWalk(
       minutes = excluded.minutes, note = excluded.note, updated_at = excluded.updated_at;`,
       [walk.from_stop, walk.to_stop, walk.minutes, walk.note.trim(), Date.now()],
     );
+  });
+}
+
+/** Keeps a path on a walk he already gave minutes to; an empty path clears it. */
+export async function saveWalkPath(
+  db: SQLiteDatabase,
+  target: WalkPathTarget,
+  path: readonly Coordinates[],
+): Promise<void> {
+  const content = serializePath(path);
+  await inTransaction(db, async () => {
+    const result =
+      target.kind === 'link'
+        ? await db.runAsync(
+            'UPDATE transit_walk_link SET path = ?, updated_at = ? WHERE place_id = ? AND stop_id = ? AND direction = ?;',
+            [content, Date.now(), target.placeId, target.stopId, target.direction],
+          )
+        : await db.runAsync(
+            'UPDATE transit_stop_walk SET path = ?, updated_at = ? WHERE from_stop = ? AND to_stop = ?;',
+            [content, Date.now(), target.fromStop, target.toStop],
+          );
+    if (!result.changes)
+      throw new Error('Guarda primero los minutos de esa caminata; el camino va con ellos.');
+  });
+}
+
+export async function listMapNotes(db: SQLiteDatabase): Promise<MapNote[]> {
+  await whenIdle(db);
+  return db.getAllAsync<MapNote>('SELECT * FROM transit_map_note ORDER BY updated_at;');
+}
+
+export async function saveMapNote(
+  db: SQLiteDatabase,
+  input: Omit<MapNote, 'id' | 'updated_at'> & { id?: string },
+): Promise<string> {
+  const waits = [input.wait_min, input.wait_max];
+  if (
+    !validCoordinates(input) ||
+    !['button', 'slow', 'note'].includes(input.kind) ||
+    input.note.length > 500 ||
+    waits.some((w) => w !== null && (!Number.isInteger(w) || w < 0 || w > 600)) ||
+    (input.wait_min !== null && input.wait_max !== null && input.wait_min > input.wait_max)
+  )
+    throw new Error(
+      'Revisa la nota: hasta 500 letras y una espera de 0 a 600 s, la menor primero.',
+    );
+  const id = input.id ?? `note-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
+  await inTransaction(db, async () => {
+    await db.runAsync(
+      `INSERT INTO transit_map_note (id, lat, lng, kind, note, wait_min, wait_max, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET lat = excluded.lat,
+      lng = excluded.lng, kind = excluded.kind, note = excluded.note, wait_min = excluded.wait_min,
+      wait_max = excluded.wait_max, updated_at = excluded.updated_at;`,
+      [
+        id,
+        input.lat,
+        input.lng,
+        input.kind,
+        input.note.trim(),
+        input.wait_min,
+        input.wait_max,
+        Date.now(),
+      ],
+    );
+  });
+  return id;
+}
+
+export async function deleteMapNote(db: SQLiteDatabase, id: string): Promise<void> {
+  await inTransaction(db, async () => {
+    await db.runAsync('DELETE FROM transit_map_note WHERE id = ?;', [id]);
   });
 }
 

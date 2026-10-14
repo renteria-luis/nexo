@@ -15,6 +15,7 @@ import { NumericField } from './NumericField.tsx';
 import { placeOptions } from './placeIcons.ts';
 import { goTo, type Navigate } from './navigation.ts';
 import { Toggle } from './Toggle.tsx';
+import { TransitActiveTrip } from './TransitActiveTrip.tsx';
 import { RouteBadge } from './TransitStatus.tsx';
 import { font, sheet } from './theme.ts';
 
@@ -168,6 +169,7 @@ export function TransitJourneyCard({ surface }: { surface: 'today' | 'training' 
     }
   };
   if (!TRANSIT_ENABLED) return null;
+  if (journey.trip) return <TransitActiveTrip />;
   const selecting = editing || !trip || (surface === 'training' && trip.workoutId !== sessionId);
   const linkedWorkout = workout && trip?.workoutId === workout.sessionId ? workout : null;
   const originName = places.find((place) => place.id === trip?.originId)?.name;
@@ -280,7 +282,9 @@ export function TransitJourneyCard({ surface }: { surface: 'today' | 'training' 
                     caminando
                     {advice.option.itinerary.access.source === 'estimate'
                       ? ' (estimados)'
-                      : ' (tus minutos)'}
+                      : advice.option.itinerary.access.source === 'learned'
+                        ? ' (según tus caminatas)'
+                        : ' (tus minutos)'}
                     {advice.boardingMinutes ? ` + ${advice.boardingMinutes} min antes del bus` : ''}
                     .
                   </Text>
@@ -308,6 +312,20 @@ export function TransitJourneyCard({ surface }: { surface: 'today' | 'training' 
                 disabled={busy}
                 onPress={() => void act(() => actions.select(alternative.option))}
               />
+            )}
+            {advice && !advice.option.problem && (
+              <Button
+                label="Salgo ahora"
+                variant="primary"
+                disabled={busy}
+                onPress={() => void act(() => actions.startTrip())}
+              />
+            )}
+            {advice && !advice.option.problem && (
+              <Text style={styles.note}>
+                Sigue tu viaje con el GPS hasta que llegues: avisa cuándo bajarte y mide tus
+                caminatas.
+              </Text>
             )}
             {(advice || trip.reminders) && (
               <Button

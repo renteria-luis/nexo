@@ -1,5 +1,6 @@
 import type { Coordinates } from '../core/geo.ts';
 import type { Place, Stop } from '../transit/index.ts';
+import type { MapNote } from '../transit/store.ts';
 
 export type ReportedBus = Coordinates & {
   id: string;
@@ -31,6 +32,10 @@ export type TransitMapProps = {
   routePoints?: Coordinates[];
   /** The selected trip's line colour, already deepened for the screen. */
   routeColor?: string;
+  walkPaths?: { id: string; points: Coordinates[]; drawing?: boolean }[];
+  notes?: MapNote[];
+  location?: (Coordinates & { at: number; accuracy: number | null }) | null;
+  onNote?: (id: string) => void;
   onPlace: (id: string) => void;
   onStop: (id: string) => void;
   onPoint?: (point: Coordinates) => void;

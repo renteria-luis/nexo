@@ -29,7 +29,11 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "nexo lee tu ubicacion una vez al abrir Entreno o tocar la flecha para reconocer el gimnasio, o cuando usas tu ubicacion al guardar un lugar en Transit. Nunca la sigue."
+          "locationWhenInUsePermission": "Nexo usa tu ubicación para reconocer el gimnasio y guardar lugares. Solo al iniciar un viaje en Transit sigue tu recorrido, también con la pantalla bloqueada, hasta llegar, cancelar o vencer el viaje.",
+          "isIosBackgroundLocationEnabled": true,
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false,
+          "motionUsagePermission": false
         }
       ],
       "expo-sharing",

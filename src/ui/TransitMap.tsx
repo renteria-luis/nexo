@@ -20,6 +20,10 @@ export const TransitMap = memo(function TransitMap({
   focus,
   routePoints = [],
   routeColor = '#3977A5',
+  walkPaths = [],
+  notes = [],
+  location,
+  onNote,
   onPlace,
   onStop,
   onPoint,
@@ -82,6 +86,39 @@ export const TransitMap = memo(function TransitMap({
               points={routePoints.map((p) => `${x(p.lng)},${y(p.lat)}`).join(' ')}
               fill="none"
               stroke={routeColor}
+              strokeWidth={3}
+            />
+          )}
+          {walkPaths
+            .filter((path) => path.points.length > 1)
+            .map((path) => (
+              <Polyline
+                key={`walk-${path.id}`}
+                points={path.points.map((p) => `${x(p.lng)},${y(p.lat)}`).join(' ')}
+                fill="none"
+                stroke={path.drawing ? '#DA692F' : '#17683A'}
+                strokeWidth={3}
+                strokeDasharray="7 5"
+              />
+            ))}
+          {notes
+            .filter((note) => visible(note.lat, note.lng))
+            .map((note) => (
+              <Circle
+                key={`note-${note.id}`}
+                cx={x(note.lng)}
+                cy={y(note.lat)}
+                r={9}
+                fill="#A16B16"
+              />
+            ))}
+          {location && (
+            <Circle
+              cx={x(location.lng)}
+              cy={y(location.lat)}
+              r={9}
+              fill="#17683A"
+              stroke="#FFFFFF"
               strokeWidth={3}
             />
           )}
@@ -152,10 +189,24 @@ export const TransitMap = memo(function TransitMap({
             />
           )}
           <SvgText x={8} y={height - 10} fontSize={11} fill="#46514B">
-            N ↑ · puntos, sin calles ni recorridos a pie
+            N ↑ · puntos y caminos personales, sin calles
           </SvgText>
         </Svg>
         <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+          {notes
+            .filter((note) => visible(note.lat, note.lng))
+            .map((note) => (
+              <Pressable
+                key={`note-${note.id}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Cruce: ${note.note || note.kind}`}
+                style={[styles.marker, { left: x(note.lng) - 14, top: y(note.lat) - 14 }]}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  onNote?.(note.id);
+                }}
+              />
+            ))}
           {stops
             .filter((s) => visible(s[3], s[4]))
             .map((s) => (

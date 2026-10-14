@@ -940,7 +940,7 @@ const paths = new WeakMap<Schedule, Map<string, PathStops>>();
 // street the bus takes. Stops are matched in order, each at the first close pass after the one
 // before, so a loop that passes a stop twice keeps the right pass. Null when a stop is far from
 // the path; the estimate then runs straight between the two stops.
-function pathStops(schedule: Schedule, trip: Trip): PathStops {
+export function pathStops(schedule: Schedule, trip: Trip): PathStops {
   const key = `${trip[6]}/${trip[5]}`;
   let known = paths.get(schedule);
   if (!known) paths.set(schedule, (known = new Map()));

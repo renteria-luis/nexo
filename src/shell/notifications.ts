@@ -16,6 +16,7 @@ import {
   ownedNotificationChanges,
   type NotificationOwner,
 } from '../core/notification-plan.ts';
+import type { ActiveTrip, TripAlarm, TripEvent } from '../transit/active-trip.ts';
 import type { NextTrip, TravelReminder } from '../transit/journey.ts';
 import { readJourneyState } from '../transit/journey-store.ts';
 import { inTransaction } from '../db/transaction.ts';
@@ -46,7 +47,10 @@ if (supported) {
       return {
         shouldShowBanner: !expired,
         shouldShowList: !expired,
-        shouldPlaySound: !expired && data?.notificationOwner === 'transit' && data.sound === true,
+        shouldPlaySound:
+          !expired &&
+          (data?.notificationOwner === 'transit' || data?.notificationOwner === 'trip') &&
+          data.sound === true,
         shouldSetBadge: false,
       };
     },
@@ -209,7 +213,116 @@ export async function syncTransitReminders(
   });
 }
 
-export type TransitResponse = { journeyId: string; expired: boolean };
+const tripNotice = (trip: ActiveTrip, key: string) => `trip:${trip.id}:${key}`;
+
+async function consumedTripEvents(db: SQLiteDatabase, tripId: string): Promise<Set<string>> {
+  await inTransaction(db, async () => {
+    await db.runAsync('UPDATE transit_trip_notice SET consumed = 1 WHERE fires_at <= ?;', [
+      Date.now(),
+    ]);
+  });
+  const rows = await db.getAllAsync<{ event: string }>(
+    'SELECT event FROM transit_trip_notice WHERE trip_id = ? AND consumed = 1;',
+    [tripId],
+  );
+  return new Set(rows.map((row) => row.event));
+}
+
+/**
+ * A trip's events, each shown once and now. Quiet hours do not apply: he started this trip and
+ * asked to be guided. One a held warning already showed is not shown again; one still held is
+ * replaced by it, since both share the event's identifier.
+ */
+export async function presentTripEvents(
+  db: SQLiteDatabase,
+  trip: ActiveTrip,
+  events: readonly TripEvent[],
+  sound: boolean,
+): Promise<void> {
+  if (!supported || !events.length) return;
+  await coordinateNotifications(async () => {
+    if (!(await allowed())) return;
+    const consumed = await consumedTripEvents(db, trip.id);
+    const shown = new Set(
+      (await Notifications.getPresentedNotificationsAsync()).map((n) => n.request.identifier),
+    );
+    for (const event of events) {
+      const identifier = tripNotice(trip, event.key);
+      if (shown.has(identifier) || consumed.has(event.key)) continue;
+      await Notifications.cancelScheduledNotificationAsync(identifier);
+      await Notifications.scheduleNotificationAsync({
+        identifier,
+        content: {
+          title: event.title,
+          body: event.body,
+          sound: sound ? 'default' : false,
+          data: { notificationOwner: 'trip', tripId: trip.id, event: event.key, sound },
+        },
+        trigger: null,
+      });
+      await inTransaction(db, async () => {
+        await db.runAsync(
+          'INSERT INTO transit_trip_notice (trip_id, event, fires_at, consumed) VALUES (?, ?, ?, 1) ON CONFLICT(trip_id, event) DO UPDATE SET consumed = 1;',
+          [trip.id, event.key, Date.now()],
+        );
+      });
+      consumed.add(event.key);
+    }
+  });
+}
+
+/** The warnings held for a time; an ended trip or none clears them. */
+export async function syncTripAlarms(
+  db: SQLiteDatabase,
+  trip: ActiveTrip | null,
+  alarms: readonly TripAlarm[],
+  sound: boolean,
+): Promise<void> {
+  if (!supported) return;
+  await coordinateNotifications(async () => {
+    const consumed = trip ? await consumedTripEvents(db, trip.id) : new Set<string>();
+    const due = alarms.filter((alarm) => alarm.at > Date.now() && !consumed.has(alarm.key));
+    const permission = !due.length || (await allowed());
+    const requests =
+      permission && trip
+        ? due.map((alarm): Notifications.NotificationRequestInput => ({
+            identifier: tripNotice(trip, alarm.key),
+            content: {
+              title: alarm.title,
+              body: alarm.body,
+              sound: sound ? 'default' : false,
+              data: {
+                notificationOwner: 'trip',
+                tripId: trip.id,
+                event: alarm.key,
+                sound,
+                planSignature: JSON.stringify([alarm.at, alarm.title, alarm.body, sound]),
+              },
+            },
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.DATE,
+              date: new Date(alarm.at),
+            },
+          }))
+        : [];
+    await replaceOwned('trip', requests);
+    await inTransaction(db, async () => {
+      await db.runAsync(
+        'DELETE FROM transit_trip_notice WHERE trip_id <> ? OR (consumed = 0 AND fires_at > ?);',
+        [trip?.id ?? '', Date.now()],
+      );
+      for (const alarm of permission && trip ? due : []) {
+        await db.runAsync(
+          'INSERT INTO transit_trip_notice (trip_id, event, fires_at, consumed) VALUES (?, ?, ?, 0) ON CONFLICT(trip_id, event) DO UPDATE SET fires_at = excluded.fires_at;',
+          [trip!.id, alarm.key, alarm.at],
+        );
+      }
+    });
+  });
+}
+
+export type TransitResponse =
+  { kind: 'reminder'; journeyId: string; expired: boolean } | { kind: 'trip'; tripId: string };
 
 export function listenToTransitReminders(
   onResponse: (response: TransitResponse) => void,
@@ -217,8 +330,13 @@ export function listenToTransitReminders(
   if (!supported) return () => undefined;
   const respond = (event: Notifications.NotificationResponse) => {
     const data = event.notification.request.content.data;
+    if (data?.notificationOwner === 'trip' && typeof data.tripId === 'string') {
+      onResponse({ kind: 'trip', tripId: data.tripId });
+      return true;
+    }
     if (data?.notificationOwner !== 'transit' || typeof data.journeyId !== 'string') return false;
     onResponse({
+      kind: 'reminder',
       journeyId: data.journeyId,
       expired: typeof data.expiresAt === 'number' && Date.now() > data.expiresAt,
     });

@@ -47,7 +47,8 @@ import { PlaceForm, type PlaceDraft } from '../PlaceForm.tsx';
 import { placeOptions } from '../placeIcons.ts';
 import { routeColor } from '../routeColors.ts';
 import { TextField } from '../TextField.tsx';
-import { TransitLiveMap } from '../TransitLiveMap.tsx';
+import { TransitPersonalMap, type WalkPreview } from '../TransitPersonalMap.tsx';
+import { TransitWalkReview } from '../TransitWalkReview.tsx';
 import {
   TransitAlerts,
   TransitStopDepartures,
@@ -153,6 +154,11 @@ function TransitContent() {
   const [detail, setDetail] = useState<Departure | null>(null);
   const [plannerLive, setPlannerLive] = useState<PlannerLive>({ stops: [], ride: null });
   const [walkEdits, setWalkEdits] = useState(0);
+  const [walkPreview, setWalkPreview] = useState<WalkPreview | null>(null);
+  const walksChanged = useCallback(() => {
+    setWalkEdits((n) => n + 1);
+    void journey.actions.refresh();
+  }, [journey.actions]);
   // The bus he last tapped on a trip card, and when, so the same tap again moves the map again.
   const [focus, setFocus] = useState<{ departure: Departure; at: number } | null>(null);
   // When the screen last had to bring the map into view: a tapped bus or a point to choose.
@@ -337,11 +343,17 @@ function TransitContent() {
         ...(plannerStops ? plannerStops.split(',') : []),
       ]),
     ].slice(0, 8);
-    const trips =
-      liveMode && selectedTripId && selectedServiceDate
-        ? [{ tripId: selectedTripId, serviceDate: selectedServiceDate }]
-        : [];
-    const routeIds = liveMode && selectedRouteId ? [selectedRouteId] : [];
+    const trips = [...(journey.query?.trips ?? [])];
+    if (
+      liveMode &&
+      selectedTripId &&
+      selectedServiceDate &&
+      !trips.some((t) => t.tripId === selectedTripId && t.serviceDate === selectedServiceDate)
+    )
+      trips.push({ tripId: selectedTripId, serviceDate: selectedServiceDate });
+    const routeIds = [...(journey.query?.routeIds ?? [])];
+    if (liveMode && selectedRouteId && !routeIds.includes(selectedRouteId))
+      routeIds.push(selectedRouteId);
     // The service only answers for trips from two days back to tomorrow.
     if (
       plannerRide &&
@@ -355,7 +367,11 @@ function TransitContent() {
       if (!routeIds.includes(plannerRide.route[0])) routeIds.push(plannerRide.route[0]);
     }
     return stopIds.length || trips.length
-      ? buildLiveQuery(schedule, { stopIds, trips, routeIds })
+      ? buildLiveQuery(schedule, {
+          stopIds,
+          trips: trips.slice(0, 4),
+          routeIds: routeIds.slice(0, 4),
+        })
       : null;
   }, [
     schedule,
@@ -439,7 +455,7 @@ function TransitContent() {
       .catch((error) => {
         if (alive.current && version === placeRead.current) setProblem(message(error));
       });
-  }, [db, activePlaceId]);
+  }, [db, activePlaceId, walkEdits]);
   const savedWalk = links.find(
     (l) => l.place_id === activePlaceId && l.stop_id === shownStopId && l.direction === direction,
   );
@@ -585,12 +601,13 @@ function TransitContent() {
         </Text>
       )}
       {notice && <Text style={styles.note}>{notice}</Text>}
-      {reminder && (reminder.expired || reminder.journeyId !== journey.saved.next?.id) && (
-        <Text style={styles.note}>
-          Ese aviso corresponde a un cálculo anterior. Revisa el viaje y las horas actuales antes de
-          salir.
-        </Text>
-      )}
+      {reminder?.kind === 'reminder' &&
+        (reminder.expired || reminder.journeyId !== journey.saved.next?.id) && (
+          <Text style={styles.note}>
+            Ese aviso corresponde a un cálculo anterior. Revisa el viaje y las horas actuales antes
+            de salir.
+          </Text>
+        )}
       <TransitJourneyCard surface="transit" />
       <TransitLiveSettings
         config={live.config}
@@ -665,6 +682,7 @@ function TransitContent() {
           active={live.active}
           today={today}
           walksVersion={walkEdits}
+          onWalkChanged={walksChanged}
           onLive={onPlannerLive}
           onFocusBus={focusBus}
           initialJourney={journey.saved.next}
@@ -680,7 +698,11 @@ function TransitContent() {
         />
       )}
       <MapCard title={picking ? 'Toca el punto exacto' : place.name} reveal={reveal}>
-        <TransitLiveMap
+        <TransitPersonalMap
+          db={data.db}
+          revision={walkEdits}
+          onChanged={walksChanged}
+          preview={walkPreview}
           schedule={schedule}
           snapshot={
             sameTrip(followed, plannerRide) && !sameTrip(followed, selectedDetail)
@@ -714,6 +736,18 @@ function TransitContent() {
           </View>
         )}
       </MapCard>
+      <TransitWalkReview
+        db={data.db}
+        schedule={schedule}
+        places={places}
+        revision={walkEdits}
+        onChanged={walksChanged}
+        onPath={(walk) => {
+          const key = Date.now();
+          setWalkPreview({ key, walk });
+          setReveal(key);
+        }}
+      />
       <Card title="Paradas">
         <View style={styles.row}>
           <View style={styles.flex}>
@@ -889,7 +923,7 @@ function TransitContent() {
                 const saved = await listWalkLinks(data.db, place.id);
                 if (alive.current) {
                   setLinks(saved);
-                  setWalkEdits((n) => n + 1);
+                  walksChanged();
                   setNotice('Caminata guardada para esta dirección.');
                 }
               })

@@ -24,6 +24,16 @@ import {
 } from '../transit/journey.ts';
 import { readJourneyState, saveJourneyState } from '../transit/journey-store.ts';
 import {
+  isActive,
+  tripLiveSelection,
+  type ActiveTrip,
+  type TripAction,
+  type TripLive,
+} from '../transit/active-trip.ts';
+import { agencyDate } from '../transit/schedule.ts';
+import { listAcceptedWalks } from '../transit/trip-store.ts';
+import { learnedWalks, personalWalks } from '../transit/walks.ts';
+import {
   buildPlannerIndex,
   liveOptions,
   planLiveStops,
@@ -56,6 +66,8 @@ import {
   type TransitLiveConfig,
 } from './transit-live.ts';
 import { syncTransitReminders, type TravelNotificationStatus } from './notifications.ts';
+import { tripTracker } from './trip-task.ts';
+import type { GpsStatus, TrackerState } from './trip-tracker.ts';
 
 type Choice = {
   originId: string;
@@ -81,6 +93,12 @@ type ViewState = {
   notificationStatus: TravelNotificationStatus;
   notificationProblem: string | null;
   now: number;
+  /** The trip in progress, or the one that just ended until he closes it. */
+  trip: ActiveTrip | null;
+  gps: GpsStatus;
+  tripProblem: string | null;
+  /** The schedule and the newest live reading, to time the trip's buses. */
+  tripLive: TripLive | null;
 };
 type Actions = {
   refresh: () => Promise<void>;
@@ -92,6 +110,10 @@ type Actions = {
   visible: (surface: string, value: boolean) => void;
   snapshot: (value: LiveSnapshot | null) => void;
   schedule: (value: CachedSchedule) => void;
+  /** Leaves now on the trip shown, followed until he arrives, cancels or it times out. */
+  startTrip: () => Promise<void>;
+  tripAction: (action: TripAction) => Promise<void>;
+  dismissTrip: () => Promise<void>;
 };
 const initial: JourneyState = { preferences: DEFAULT_TRAVEL_PREFERENCES, next: null };
 const ViewContext = createContext<ViewState | null>(null);
@@ -136,7 +158,14 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const [tracking, setTracking] = useState<TrackerState>(tripTracker.getState);
+  useEffect(() => tripTracker.subscribe(setTracking), []);
+
   const refresh = useCallback(async () => {
+    // The saved trip is the truth on every visit: a reset, a restore or the clock may have ended it.
+    tripTracker.reconcile().catch((error: unknown) => {
+      if (mounted.current) setProblem(message(error));
+    });
     try {
       const db = await openDatabase();
       const [next, nextPlaces, liveConfig] = await Promise.all([
@@ -172,13 +201,20 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
   const trip = saved.next;
   const tripId = trip?.id;
+  const following = tracking.trip && isActive(tracking.trip) ? tracking.trip : null;
+  const followingId = following?.id;
   useEffect(() => {
-    if (!active || !tripId) return;
-    const timer = setInterval(() => setNow(Date.now()), 15_000);
+    if (!active || (!tripId && !followingId && !tracking.problem)) return;
+    const timer = setInterval(() => {
+      setNow(Date.now());
+      tripTracker.tick().catch((error: unknown) => {
+        if (mounted.current) setProblem(message(error));
+      });
+    }, 15_000);
     return () => clearInterval(timer);
-  }, [active, tripId]);
+  }, [active, tripId, followingId, tracking.problem]);
   useEffect(() => {
-    if (!tripId) return;
+    if (!tripId && !followingId) return;
     let alive = true;
     loadTransit()
       .then((data) => {
@@ -190,7 +226,7 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
     return () => {
       alive = false;
     };
-  }, [tripId]);
+  }, [tripId, followingId]);
 
   const session = loaded?.today.session;
   const sessionId = session?.id ?? null;
@@ -257,25 +293,23 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
         if (!alive) return;
         setSearching(true);
         const db = await openDatabase();
-        const [from, to, stops] = await Promise.all([
+        const [from, to, stops, accepted] = await Promise.all([
           listWalkLinks(db, origin.id),
           listWalkLinks(db, destination.id),
           listStopWalks(db),
+          listAcceptedWalks(db),
         ]);
         const request = {
           origin,
           destination,
-          originWalks: new Map(
-            from
-              .filter((walk) => walk.direction === 'to_stop')
-              .map((walk) => [walk.stop_id, walk.minutes]),
-          ),
-          destinationWalks: new Map(
-            to
-              .filter((walk) => walk.direction === 'from_stop')
-              .map((walk) => [walk.stop_id, walk.minutes]),
-          ),
-          stopWalks: stops,
+          ...personalWalks({
+            originId: origin.id,
+            destinationId: destination.id,
+            origin: from,
+            destination: to,
+            stops,
+            learned: learnedWalks(accepted),
+          }),
           mode: trip?.mode === 'arrive' ? ('arrive' as const) : ('depart' as const),
           at,
           observedTrips: JSON.parse(observedKey),
@@ -337,15 +371,31 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
       (choice) => choice.feasible && choice.option.scheduleKey !== advice?.option.scheduleKey,
     ) ?? null;
   const near = !!plan && Math.abs(plan.request.at - minute) <= 3 * 3_600_000;
+  // A trip in progress asks first for its own buses; its rides name trips of the schedule it was
+  // started with, which a newer schedule may not have.
+  const tripSelection = JSON.stringify(
+    following && schedule && following.sourceSha256 === schedule.sourceSha256
+      ? tripLiveSelection(following, agencyDate(minute))
+      : { stopIds: [], trips: [], routeIds: [] },
+  );
   const query = useMemo(() => {
-    if (!plan || !schedule || !near) return null;
-    const chosen = plan.pool.find((option) => option.key === trip?.selectedKey);
-    const prioritized = chosen ? { ...plan, best: [chosen, ...plan.best] } : plan;
-    const stops = planLiveStops(prioritized, 8);
-    return stops.length
-      ? buildLiveQuery(schedule, { stopIds: stops, trips: [], routeIds: [] })
+    if (!schedule) return null;
+    const ahead = JSON.parse(tripSelection) as ReturnType<typeof tripLiveSelection>;
+    const chosen = plan?.pool.find((option) => option.key === trip?.selectedKey);
+    const prioritized = plan && chosen ? { ...plan, best: [chosen, ...plan.best] } : plan;
+    const stops = [
+      ...new Set([...ahead.stopIds, ...(prioritized && near ? planLiveStops(prioritized, 8) : [])]),
+    ].slice(0, 8);
+    return stops.length || ahead.trips.length
+      ? buildLiveQuery(schedule, { stopIds: stops, trips: ahead.trips, routeIds: ahead.routeIds })
       : null;
-  }, [plan, schedule, trip?.selectedKey, near]);
+  }, [plan, schedule, trip?.selectedKey, near, tripSelection]);
+  useEffect(() => {
+    if (schedule) tripTracker.setSchedule(schedule);
+  }, [schedule]);
+  useEffect(() => {
+    tripTracker.setLive(snapshot);
+  }, [snapshot]);
   const controller = useRef<ReturnType<typeof createTransitLiveClient> | null>(null);
   useEffect(() => {
     if (!schedule) return;
@@ -434,10 +484,16 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
       setBusy(false);
     }
   }, []);
-  const latest = useRef({ advice, plan });
+  const latest = useRef({ advice, plan, origin, destination });
   useEffect(() => {
-    latest.current = { advice, plan };
-  }, [advice, plan]);
+    latest.current = { advice, plan, origin, destination };
+  }, [advice, plan, origin, destination]);
+  // Arriving ends the next trip it came from; cancelling keeps it to try again.
+  const arrived = tracking.trip?.phase === 'completed' ? tracking.trip.journeyId : null;
+  useEffect(() => {
+    if (!arrived || current.current.next?.id !== arrived || pendingWrite.current) return;
+    write({ ...current.current, next: null }).catch(() => undefined);
+  }, [arrived, write]);
   const actions = useMemo<Actions>(
     () => ({
       refresh,
@@ -498,6 +554,24 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
         if (error) throw new Error(error);
         await write({ ...current.current, preferences });
       },
+      startTrip: async () => {
+        const next = current.current.next;
+        const { advice: choice, plan: found, origin: from, destination: to } = latest.current;
+        if (!next || !choice || !found || !from || !to)
+          throw new Error('Elige primero el viaje y espera a que se calcule.');
+        await tripTracker.start({
+          option: choice.option,
+          schedule: found.context.index.schedule,
+          origin: from,
+          destination: to,
+          journeyId: next.id,
+        });
+        // He is leaving: the reminders to prepare and to leave have done their job.
+        if (next.reminders)
+          await write({ ...current.current, next: { ...next, reminders: false } });
+      },
+      tripAction: (action) => tripTracker.act(action),
+      dismissTrip: () => tripTracker.dismiss(),
       visible: (surface, value) =>
         setSurfaces((old) => (old[surface] === value ? old : { ...old, [surface]: value })),
       snapshot: (value) => setExternal(value),
@@ -505,6 +579,7 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
     }),
     [refresh, write],
   );
+  const tripLive = useMemo(() => (schedule ? { schedule, snapshot } : null), [schedule, snapshot]);
   const view: ViewState = {
     saved,
     places,
@@ -533,6 +608,10 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
     notificationStatus,
     notificationProblem,
     now,
+    trip: tracking.trip,
+    gps: tracking.gps,
+    tripProblem: tracking.problem,
+    tripLive,
   };
   // The map screen consumes stable trip selection, never the card's ticking estimate.
   const gymId = session?.gym_id ?? null;

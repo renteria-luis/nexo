@@ -11,6 +11,7 @@ Not distributed. No App Store, no accounts, no multi-user.
 | Training | Gyms, routines, sessions, sets, volume and strength progression | Planned |
 | Nutrition | Foods, batch cooking, daily targets, water, discipline score | Planned |
 | Deals | Read-only aggregation of Canadian grocery and retail deals, with deep links out | Planned |
+| Transit | Saved places, LTC schedules/live data, personal itineraries, trip guidance and reviewed walks | Implemented; active-trip iPhone validation pending |
 | Finance | Expenses, income, subscriptions, budgets | Later |
 
 Each module is a self-contained vertical: its own tables, its own navigation slot, its own feature flag. Turning one off leaves the rest working. No module imports another module's internals; cross-module data moves through a declared read interface.

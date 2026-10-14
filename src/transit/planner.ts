@@ -121,6 +121,11 @@ export type PlanRequest = {
   destinationWalks: ReadonlyMap<string, number>;
   /** His saved transfer walks between two stops, one direction each. */
   stopWalks: readonly { from_stop: string; to_stop: string; minutes: number }[];
+  /**
+   * The walks above that his accepted walks supplied rather than his typed minutes: `to:stop`
+   * from the origin, `from:stop` to the destination, `from>to` between stops.
+   */
+  learned?: ReadonlySet<string>;
   mode: PlanMode;
   /** Now, the time to leave at, or the time to be there by. */
   at: number;
@@ -131,7 +136,7 @@ export type Walk = {
   from: number | null;
   to: number | null;
   minutes: number;
-  source: 'saved' | 'estimate' | 'same';
+  source: 'saved' | 'learned' | 'estimate' | 'same';
   /** Straight line, which is only what an estimate starts from. */
   metres: number;
 };
@@ -201,6 +206,8 @@ type PlanContext = {
   /** Per pattern, the positions where it lets him off at a destination stop. */
   finals: Map<number, number[]>;
   saved: Map<string, number>;
+  /** Saved stop pairs whose minutes came from his accepted walks. */
+  learned: Set<string>;
   savedFrom: Map<number, number[]>;
   savedTo: Map<number, number[]>;
 };
@@ -267,7 +274,13 @@ function stopWalk(context: PlanContext, from: number, to: number, metres: number
   if (from === to) return { from, to, minutes: 0, source: 'same', metres: 0 };
   const saved = context.saved.get(`${from}/${to}`);
   return saved !== undefined
-    ? { from, to, minutes: saved, source: 'saved', metres }
+    ? {
+        from,
+        to,
+        minutes: saved,
+        source: context.learned.has(`${from}/${to}`) ? 'learned' : 'saved',
+        metres,
+      }
     : { from, to, minutes: estimatedWalkMinutes(metres), source: 'estimate', metres };
 }
 
@@ -313,6 +326,7 @@ function placeWalks(
   point: Coordinates,
   saved: ReadonlyMap<string, number>,
   toStop: boolean,
+  learned: ReadonlySet<string> | undefined,
 ): Map<number, Walk> {
   const walks = new Map<number, Walk>();
   const add = (stop: number, metres: number, minutes: number, source: Walk['source']) =>
@@ -329,7 +343,12 @@ function placeWalks(
     const stop = index.stopIds.get(id);
     if (stop === undefined) continue;
     const s = index.schedule.stops[stop];
-    add(stop, distanceMetres(point, { lat: s[3], lng: s[4] }), minutes, 'saved');
+    add(
+      stop,
+      distanceMetres(point, { lat: s[3], lng: s[4] }),
+      minutes,
+      learned?.has(`${toStop ? 'to' : 'from'}:${id}`) ? 'learned' : 'saved',
+    );
   }
   return walks;
 }
@@ -470,6 +489,7 @@ export function startPlan(
     ? request.at - ARRIVE_EARLY_MIN * MINUTE
     : request.at + MAX_TRIP_MIN * MINUTE;
   const saved = new Map<string, number>();
+  const learned = new Set<string>();
   const savedFrom = new Map<number, number[]>();
   const savedTo = new Map<number, number[]>();
   for (const walk of request.stopWalks) {
@@ -477,17 +497,25 @@ export function startPlan(
     const b = index.stopIds.get(walk.to_stop);
     if (a === undefined || b === undefined || a === b) continue;
     saved.set(`${a}/${b}`, walk.minutes);
+    if (request.learned?.has(`${walk.from_stop}>${walk.to_stop}`)) learned.add(`${a}/${b}`);
     savedFrom.set(a, [...(savedFrom.get(a) ?? []), b]);
     savedTo.set(b, [...(savedTo.get(b) ?? []), a]);
   }
-  const access = placeWalks(index, request.origin, request.originWalks, true);
-  const egress = placeWalks(index, request.destination, request.destinationWalks, false);
+  const access = placeWalks(index, request.origin, request.originWalks, true, request.learned);
+  const egress = placeWalks(
+    index,
+    request.destination,
+    request.destinationWalks,
+    false,
+    request.learned,
+  );
   const context: PlanContext = {
     index,
     days: serviceDays(schedule, from, arriveBy, request.observedTrips),
     egress,
     finals: new Map(),
     saved,
+    learned,
     savedFrom,
     savedTo,
   };

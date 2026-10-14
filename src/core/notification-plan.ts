@@ -1,4 +1,4 @@
-export type NotificationOwner = 'health' | 'transit';
+export type NotificationOwner = 'health' | 'transit' | 'trip';
 export type PendingNotice = {
   identifier: string;
   content: { data?: Record<string, unknown> | null };
@@ -8,6 +8,7 @@ export function noticeOwner(notice: PendingNotice): NotificationOwner | null {
   const data = notice.content.data;
   if (data?.notificationOwner === 'transit' || notice.identifier.startsWith('transit:'))
     return 'transit';
+  if (data?.notificationOwner === 'trip' || notice.identifier.startsWith('trip:')) return 'trip';
   if (data?.notificationOwner === 'health' || typeof data?.nudgeId === 'string') return 'health';
   return null;
 }
@@ -23,9 +24,10 @@ export function ownedNotificationChanges<T extends PendingNotice>(
     throw new Error('Notification ownership mismatch.');
   const ids = new Set(desired.map((notice) => notice.identifier));
   if (ids.size !== desired.length) throw new Error('Duplicate notification identifiers.');
-  // Transit owns at most two slots. Health keeps room even when synced afterwards.
+  // The next trip's reminders and a trip in progress own two slots each. Health keeps room even
+  // when synced afterwards.
   if (
-    desired.length > (owner === 'transit' ? 2 : 62) ||
+    desired.length > (owner === 'health' ? 60 : 2) ||
     pending.length - own.length + desired.length > 64
   )
     throw new Error('No hay espacio para más avisos pendientes. Revisa los avisos en Ajustes.');

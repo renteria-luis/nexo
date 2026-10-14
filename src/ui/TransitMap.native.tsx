@@ -20,6 +20,10 @@ export const TransitMap = memo(function TransitMap({
   focus,
   routePoints = [],
   routeColor = '#3977A5',
+  walkPaths = [],
+  notes = [],
+  location,
+  onNote,
   onPlace,
   onStop,
   onPoint,
@@ -92,6 +96,44 @@ export const TransitMap = memo(function TransitMap({
             coordinates={routePoints.map((p) => ({ latitude: p.lat, longitude: p.lng }))}
             strokeColor={routeColor}
             strokeWidth={4}
+          />
+        )}
+        {walkPaths
+          .filter((path) => path.points.length > 1)
+          .map((path) => (
+            <Polyline
+              key={`walk-${path.id}`}
+              coordinates={path.points.map((p) => ({ latitude: p.lat, longitude: p.lng }))}
+              strokeColor={path.drawing ? '#DA692F' : '#17683A'}
+              strokeWidth={4}
+              lineDashPattern={[7, 5]}
+            />
+          ))}
+        {notes.map((note) => (
+          <Marker
+            key={`note-${note.id}`}
+            identifier={`note-${note.id}`}
+            coordinate={{ latitude: note.lat, longitude: note.lng }}
+            title={
+              note.kind === 'button'
+                ? 'Botón peatonal'
+                : note.kind === 'slow'
+                  ? 'Cruce lento'
+                  : 'Nota de cruce'
+            }
+            description={note.note}
+            pinColor="#A16B16"
+            onPress={() => onNote?.(note.id)}
+          />
+        ))}
+        {location && (
+          <Marker
+            identifier="trip-location"
+            coordinate={{ latitude: location.lat, longitude: location.lng }}
+            title="Tu última ubicación"
+            description={`${agencyClock(location.at)}${location.accuracy === null ? '' : ` · ±${Math.round(location.accuracy)} m`}`}
+            pinColor="#17683A"
+            zIndex={5}
           />
         )}
         {places.map((p) => {

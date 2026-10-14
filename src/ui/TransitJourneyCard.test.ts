@@ -48,6 +48,7 @@ function fixture(surface: 'today' | 'training') {
     './Combobox.tsx': { Combobox: 'Combobox' },
     './NumericField.tsx': { NumericField: 'NumericField' },
     './Button.tsx': { Button: 'Button' },
+    './TransitActiveTrip.tsx': { TransitActiveTrip: 'TransitActiveTrip' },
     './icons.ts': new Proxy({}, { get: (_, name) => String(name) }),
   }).mount('TransitJourneyCard', { surface });
   const control = async (label: string) => {

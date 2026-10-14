@@ -6,14 +6,26 @@ import * as journey from '../transit/journey.ts';
 import * as storage from '../transit/journey-store.ts';
 import * as planner from '../transit/planner.ts';
 import * as realtime from '../transit/realtime.ts';
+import * as activeTrip from '../transit/active-trip.ts';
+import * as schedules from '../transit/schedule.ts';
 import { queryInstant } from '../transit/schedule.ts';
+import * as walks from '../transit/walks.ts';
 import { nodes, renderModule } from '../ui/test-render.ts';
 
-async function fixture(t: TestContext, existingWorkout: boolean) {
+async function fixture(
+  t: TestContext,
+  existingWorkout: boolean,
+  cleanupProblem: string | null = null,
+) {
   const { db } = await database();
   const now = queryInstant('2026-10-13', '08:00');
   t.mock.method(Date, 'now', () => now);
-  t.mock.method(globalThis, 'setInterval', (() => 0) as any);
+  const clocks: (() => void)[] = [];
+  let ticks = 0;
+  t.mock.method(globalThis, 'setInterval', ((callback: () => void) => {
+    clocks.push(callback);
+    return 0;
+  }) as any);
   const schedule = plannerFixture();
   const origin = { id: 'from', name: 'From', lat: 43, lng: -81.2, gym_id: 'gym' };
   const destination = { id: 'to', name: 'To', lat: 42.9878, lng: -81.17, gym_id: null };
@@ -41,7 +53,7 @@ async function fixture(t: TestContext, existingWorkout: boolean) {
   };
   await storage.saveJourneyState(db, {
     preferences: journey.DEFAULT_TRAVEL_PREFERENCES,
-    next: trip,
+    next: cleanupProblem ? null : trip,
   });
   const session = {
     id: 'workout',
@@ -83,6 +95,22 @@ async function fixture(t: TestContext, existingWorkout: boolean) {
     '../transit/planner.ts': planner,
     '../transit/realtime.ts': realtime,
     '../transit/index.ts': { TRANSIT_ENABLED: true },
+    '../transit/active-trip.ts': activeTrip,
+    '../transit/schedule.ts': schedules,
+    '../transit/walks.ts': walks,
+    '../transit/trip-store.ts': { listAcceptedWalks: async () => [] },
+    './trip-task.ts': {
+      tripTracker: {
+        getState: () => ({ trip: null, gps: 'off', problem: cleanupProblem }),
+        subscribe: () => () => undefined,
+        reconcile: async () => undefined,
+        tick: async () => {
+          ticks++;
+        },
+        setSchedule() {},
+        setLive() {},
+      },
+    },
     '../transit/store.ts': {
       listPlaces: async () => [origin, destination],
       listWalkLinks: async () => [],
@@ -120,6 +148,8 @@ async function fixture(t: TestContext, existingWorkout: boolean) {
     )?.props.value;
   };
   return {
+    clocks,
+    ticks: () => ticks,
     settle,
     syncs,
     reads,
@@ -139,6 +169,26 @@ test('cold startup preserves armed reminders until Training has answered its rea
   f.resolve();
   await f.settle();
   assert.ok(f.syncs.some((reminders) => reminders.length === 2));
+});
+
+test('the visible journey clock also reconciles the active trip timeout', async (t) => {
+  const f = await fixture(t, false);
+  await f.settle();
+  assert.ok(f.clocks.length > 0);
+  f.clocks.at(-1)!();
+  await f.settle();
+  assert.equal(f.ticks(), 1);
+});
+
+test('cleanup retries keep a clock even after the saved journey and active trip have ended', async (t) => {
+  const f = await fixture(t, false, 'No se pudo detener el GPS');
+  const view = await f.settle();
+  assert.equal(view.saved.next, null);
+  assert.equal(view.trip, null);
+  assert.ok(f.clocks.length > 0);
+  f.clocks.at(-1)!();
+  await f.settle();
+  assert.equal(f.ticks(), 1);
 });
 
 test('a saved journey whose workout is gone cancels its reminders instead of waiting forever', async (t) => {

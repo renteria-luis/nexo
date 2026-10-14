@@ -1,5 +1,7 @@
 import { registerRootComponent } from 'expo';
 
+// First: iOS can deliver a trip's location readings before any screen exists.
+import './src/shell/trip-task.ts';
 import App from './App';
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);

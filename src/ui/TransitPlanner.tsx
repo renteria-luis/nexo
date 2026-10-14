@@ -47,6 +47,8 @@ import {
   type StopWalk,
   type WalkLink,
 } from '../transit/store.ts';
+import { listAcceptedWalks } from '../transit/trip-store.ts';
+import { learnedWalks, personalWalks, type LearnedWalk } from '../transit/walks.ts';
 import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
 import { Chip } from './Chip.tsx';
@@ -103,7 +105,13 @@ const message = (error: unknown) => (error instanceof Error ? error.message : St
 const clock = agencyClock;
 const minutesOf = (ms: number) => Math.round(ms / 60_000);
 
-type Walks = { key: string; origin: WalkLink[]; destination: WalkLink[]; stops: StopWalk[] };
+type Walks = {
+  key: string;
+  origin: WalkLink[];
+  destination: WalkLink[];
+  stops: StopWalk[];
+  learned: Map<string, LearnedWalk>;
+};
 type WalkEdit = { kind: 'access' | 'transfer' | 'egress'; walk: Walk };
 
 export function TransitPlanner({
@@ -117,6 +125,7 @@ export function TransitPlanner({
   active,
   today,
   walksVersion,
+  onWalkChanged,
   onLive,
   onFocusBus,
   initialJourney,
@@ -134,6 +143,7 @@ export function TransitPlanner({
   today: IsoDate;
   /** Changes when a walk is saved elsewhere on the screen. */
   walksVersion: number;
+  onWalkChanged?: () => void;
   onLive: (live: PlannerLive) => void;
   /** Shows an opened bus on the screen's map. */
   onFocusBus: (departure: Departure) => void;
@@ -180,9 +190,21 @@ export function TransitPlanner({
     if (!pairKey) return;
     let alive = true;
     const [from, to] = pairKey.split('/');
-    Promise.all([listWalkLinks(db, from), listWalkLinks(db, to), listStopWalks(db)])
-      .then(([o, d, s]) => {
-        if (alive) setWalks({ key: pairKey, origin: o, destination: d, stops: s });
+    Promise.all([
+      listWalkLinks(db, from),
+      listWalkLinks(db, to),
+      listStopWalks(db),
+      listAcceptedWalks(db),
+    ])
+      .then(([o, d, s, accepted]) => {
+        if (alive)
+          setWalks({
+            key: pairKey,
+            origin: o,
+            destination: d,
+            stops: s,
+            learned: learnedWalks(accepted),
+          });
       })
       .catch((error) => {
         if (alive) setProblem(message(error));
@@ -208,18 +230,18 @@ export function TransitPlanner({
       toLng === undefined
     )
       return null;
+    const [originId, destinationId] = pairKey.split('/');
     return {
       origin: { lat: fromLat, lng: fromLng },
       destination: { lat: toLat, lng: toLng },
-      originWalks: new Map(
-        walks.origin.filter((l) => l.direction === 'to_stop').map((l) => [l.stop_id, l.minutes]),
-      ),
-      destinationWalks: new Map(
-        walks.destination
-          .filter((l) => l.direction === 'from_stop')
-          .map((l) => [l.stop_id, l.minutes]),
-      ),
-      stopWalks: walks.stops,
+      ...personalWalks({
+        originId,
+        destinationId,
+        origin: walks.origin,
+        destination: walks.destination,
+        stops: walks.stops,
+        learned: walks.learned,
+      }),
       mode: applied.mode,
       at: applied.at,
       observedTrips: JSON.parse(observedKey),
@@ -335,8 +357,9 @@ export function TransitPlanner({
         });
       }
       setSaved((n) => n + 1);
+      onWalkChanged?.();
     },
-    [db, schedule, origin, target, walks],
+    [db, schedule, origin, target, walks, onWalkChanged],
   );
 
   return (
@@ -736,9 +759,11 @@ const PlanRow = memo(function PlanRow({
 function walkSource(walk: Walk) {
   return walk.source === 'saved'
     ? 'tus minutos'
-    : walk.source === 'same'
-      ? 'misma parada'
-      : `estimado · ${Math.round(walk.metres)} m en línea recta`;
+    : walk.source === 'learned'
+      ? 'según tus caminatas'
+      : walk.source === 'same'
+        ? 'misma parada'
+        : `estimado · ${Math.round(walk.metres)} m en línea recta`;
 }
 
 function PlanSteps({
@@ -895,7 +920,11 @@ function WalkStep({
             icon={Pencil}
             accessibilityLabel="Corregir con tus minutos"
             onPress={() => {
-              setMinutes(edit.walk.source === 'saved' ? String(edit.walk.minutes) : '');
+              setMinutes(
+                edit.walk.source === 'saved' || edit.walk.source === 'learned'
+                  ? String(edit.walk.minutes)
+                  : '',
+              );
               setError(null);
               setEditing(true);
             }}

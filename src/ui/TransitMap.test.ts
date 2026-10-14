@@ -138,6 +138,43 @@ test('native live map retains measured bus points and draws only the selected tr
   assert.deepEqual(tree.find((n) => n.type === 'Marker')!.props.coordinate, bus.props.coordinate);
 });
 
+test('native personal paths and crossing pins coexist with the last trip location', async () => {
+  const selected: string[] = [];
+  const points = [
+    { lat: 43, lng: -81 },
+    { lat: 43.01, lng: -81.01 },
+  ];
+  const screen = renderModule('src/ui/TransitMap.native.tsx', {
+    'react-native-maps': {
+      __esModule: true,
+      default: 'MapView',
+      Marker: 'Marker',
+      Polyline: 'Polyline',
+    },
+    './icons.ts': { Bus: 'Bus' },
+    './placeIcons.ts': { placeIcon: () => 'PlaceIcon' },
+    './SwipeLock.tsx': { useSwipeLock: () => ({ acquire: () => () => undefined }) },
+  }).mount('TransitMap', {
+    center: points[0],
+    places: [],
+    stops: [],
+    selectedPlace: null,
+    selectedStop: null,
+    draft: null,
+    onPlace() {},
+    onStop() {},
+    walkPaths: [{ id: 'walk', points }],
+    notes: [{ id: 'crossing', lat: 43.005, lng: -81.005, kind: 'button', note: 'Button' }],
+    location: { ...points[0], at: 1, accuracy: 8 },
+    onNote: (id: string) => selected.push(id),
+  });
+  const tree = nodes(await screen.settle());
+  assert.equal(tree.find((n) => n.type === 'Polyline')!.props.coordinates.length, 2);
+  tree.find((n) => n.props.identifier === 'note-crossing')!.props.onPress();
+  assert.deepEqual(selected, ['crossing']);
+  assert.match(tree.find((n) => n.props.identifier === 'trip-location')!.props.description, /±8 m/);
+});
+
 test('the followed bus is drawn apart, named, and the camera goes to it once per tap', async () => {
   const moves: unknown[] = [];
   let map: { props: Record<string, any> } | undefined;

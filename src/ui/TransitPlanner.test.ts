@@ -7,6 +7,7 @@ import * as realtime from '../transit/realtime.ts';
 import * as scheduleModule from '../transit/schedule.ts';
 import { buildStopIndex, queryInstant } from '../transit/schedule.ts';
 import { sortPlaces, type Place, type StopWalk, type WalkLink } from '../transit/store.ts';
+import * as walks from '../transit/walks.ts';
 import { nodes, renderModule, textOf } from './test-render.ts';
 
 const schedule = plannerFixture();
@@ -31,6 +32,8 @@ function mount(saved: unknown[], changes: Record<string, unknown>) {
     '../transit/planner.ts': planner,
     '../transit/realtime.ts': realtime,
     '../transit/schedule.ts': scheduleModule,
+    '../transit/walks.ts': walks,
+    '../transit/trip-store.ts': { listAcceptedWalks: async () => [] },
     './icons.ts': new Proxy({}, { get: (_, name) => String(name) }),
     './TextField.tsx': { TextField: 'TextField' },
     './Combobox.tsx': { Combobox: 'Combobox' },
@@ -90,7 +93,8 @@ test('choosing where to go lists the options with their lines, and a tight one n
   t.mock.method(Date, 'now', () => queryInstant('2026-10-13', '08:00'));
   const saved: unknown[] = [];
   const lives: { stops: string[]; ride: unknown }[] = [];
-  const screen = mount(saved, props(lives));
+  let walkChanges = 0;
+  const screen = mount(saved, props(lives, { onWalkChanged: () => walkChanges++ }));
   let tree = await screen.settle();
   assert.match(textOf(tree), /Elige a dónde vas/);
   picker(tree, 'Elegir el destino').onChange('end');
@@ -132,6 +136,7 @@ test('choosing where to go lists the options with their lines, and a tight one n
     .props.onPress();
   await searched(screen, () => saved.length > 0);
   assert.deepEqual(saved, [{ from_stop: 'CORNER_SB', to_stop: 'CORNER_EB', minutes: 4, note: '' }]);
+  assert.equal(walkChanges, 1, 'the map and saved journey refresh after the transfer is saved');
 });
 
 test('the same place on both ends asks for two places instead of searching', async (t) => {

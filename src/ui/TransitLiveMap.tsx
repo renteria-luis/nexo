@@ -17,6 +17,7 @@ export const TransitLiveMap = memo(function TransitLiveMap({
   active,
   followed,
   focusKey,
+  pointFocus,
   ...map
 }: Omit<TransitMapProps, 'buses' | 'followed' | 'focus'> & {
   schedule: Schedule;
@@ -25,6 +26,7 @@ export const TransitLiveMap = memo(function TransitLiveMap({
   followed: Departure | null;
   /** Changes on each tap on the followed bus, to bring the camera to it. */
   focusKey: number | null;
+  pointFocus?: TransitMapProps['focus'];
 }) {
   const now = useLiveClock(active, snapshot);
   const detail = useMemo(
@@ -74,5 +76,7 @@ export const TransitLiveMap = memo(function TransitLiveMap({
   const [focus, setFocus] = useState<TransitMapProps['focus']>(null);
   if (focusKey !== null && focusKey !== focus?.key && marker)
     setFocus({ key: focusKey, point: { lat: marker.lat, lng: marker.lng } });
-  return <TransitMap {...map} buses={buses} followed={marker} focus={focus} />;
+  const selectedFocus =
+    pointFocus && pointFocus.key > (focus?.key ?? -Infinity) ? pointFocus : focus;
+  return <TransitMap {...map} buses={buses} followed={marker} focus={selectedFocus} />;
 });
