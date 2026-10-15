@@ -61,6 +61,7 @@ import {
   Footprints,
   Pencil,
   TriangleAlert,
+  X,
 } from './icons.ts';
 import { IconButton } from './IconButton.tsx';
 import { placeOptions } from './placeIcons.ts';
@@ -75,6 +76,8 @@ import {
 } from './TransitDepartures.tsx';
 import { RouteBadge, StatusIcons } from './TransitStatus.tsx';
 import { TransitWhen } from './TransitWhen.tsx';
+import { TransitPlanMap } from './TransitPlanMap.tsx';
+import { useScrollIntoView } from './screens/Screen.tsx';
 import { font, shape, sheet, theme } from './theme.ts';
 
 /** What the planner wants read live: the stops of its best options and a ride he opened. */
@@ -130,12 +133,18 @@ export function TransitPlanner({
   onFocusBus,
   initialJourney,
   onSelectJourney,
+  refreshAt = 0,
+  onMapInteraction,
+  onPlacesChange,
 }: {
   db: SQLiteDatabase;
   schedule: Schedule;
   stopIndex: ReturnType<typeof buildStopIndex>;
   places: Place[];
-  initialOrigin: string;
+  initialOrigin: string | null;
+  refreshAt?: number;
+  onMapInteraction?: (active: boolean) => void;
+  onPlacesChange?: (ids: string[]) => void;
   /** The place nearest to where he opened Transit, and when that reading was asked for. */
   located: { id: string; at: number } | null;
   snapshot: LiveSnapshot | null;
@@ -146,7 +155,7 @@ export function TransitPlanner({
   onWalkChanged?: () => void;
   onLive: (live: PlannerLive) => void;
   /** Shows an opened bus on the screen's map. */
-  onFocusBus: (departure: Departure) => void;
+  onFocusBus?: (departure: Departure) => void;
   initialJourney?: NextTrip | null;
   onSelectJourney?: (
     choice: { originId: string; destinationId: string; mode: PlanMode; at: number },
@@ -154,7 +163,20 @@ export function TransitPlanner({
   ) => Promise<void>;
 }) {
   const [originId, setOriginId] = useState(initialJourney?.originId ?? initialOrigin);
+  const [openKey, setOpenKey] = useState<string | null>(initialJourney?.selectedKey ?? null);
+  const [mapOption, setMapOption] = useState<PlanOption | null>(null);
+  const [mapFocus, setMapFocus] = useState<{ departure: Departure; at: number } | null>(null);
+  const mapBlock = useRef<View>(null);
+  const scrollIntoView = useScrollIntoView();
+  const focusBus = (departure: Departure) => {
+    setMapFocus({ departure, at: Date.now() });
+    scrollIntoView(mapBlock.current);
+    onFocusBus?.(departure);
+  };
   const [targetId, setTargetId] = useState<string | null>(initialJourney?.destinationId ?? null);
+  useEffect(() => {
+    onPlacesChange?.([...new Set([originId, targetId].filter((id): id is string => !!id))]);
+  }, [originId, targetId, onPlacesChange]);
   // The chip he picked, and the search it last applied: a time to leave at or arrive by is only
   // searched once he chooses it.
   const [mode, setMode] = useState<PlanMode>(initialJourney?.mode ?? 'now');
@@ -172,6 +194,11 @@ export function TransitPlanner({
   const [openRide, setOpenRide] = useState<{ key: string; departure: Departure } | null>(null);
   // The trip starts where he opened Transit, unless he chose its start after that reading was
   // asked for.
+  const [seenRefresh, setSeenRefresh] = useState(refreshAt);
+  if (seenRefresh !== refreshAt) {
+    setSeenRefresh(refreshAt);
+    if (mode === 'now') setApplied({ mode: 'now', at: refreshAt });
+  }
   const [originChosenAt, setOriginChosenAt] = useState(() => (initialJourney ? Date.now() : 0));
   const [seenLocated, setSeenLocated] = useState<number | null>(null);
   if (located && seenLocated !== located.at) {
@@ -179,6 +206,8 @@ export function TransitPlanner({
     if (originChosenAt < located.at && located.id !== originId) {
       setOriginId(located.id);
       setOpenRide(null);
+      setOpenKey(null);
+      setMapFocus(null);
     }
   }
   const origin = places.find((p) => p.id === originId);
@@ -286,7 +315,8 @@ export function TransitPlanner({
     [],
   );
 
-  const openDeparture = openRide?.departure ?? null;
+  const mappedOption = mapOption?.scheduleKey === openKey && shownResult ? mapOption : null;
+  const openDeparture = openRide?.departure ?? mappedOption?.itinerary.rides[0]?.departure ?? null;
   useEffect(() => {
     const near =
       shownResult !== null &&
@@ -297,12 +327,14 @@ export function TransitPlanner({
   useEffect(() => () => onLive({ stops: [], ride: null }), [onLive]);
 
   const refreshNow = useCallback(() => setApplied({ mode: 'now', at: Date.now() }), []);
-  const pick = (which: 'origin' | 'target', id: string) => {
+  const pick = (which: 'origin' | 'target', id: string | null) => {
     if (which === 'origin') {
       setOriginId(id);
       setOriginChosenAt(Date.now());
     } else setTargetId(id);
     setOpenRide(null);
+    setOpenKey(null);
+    setMapFocus(null);
     setProblem(null);
     if (applied.mode === 'now') refreshNow();
   };
@@ -312,12 +344,16 @@ export function TransitPlanner({
     setOriginChosenAt(Date.now());
     setTargetId(originId);
     setOpenRide(null);
+    setOpenKey(null);
+    setMapFocus(null);
     setProblem(null);
     if (applied.mode === 'now') refreshNow();
   };
   const choose = (next: PlanMode) => {
     setMode(next);
     setOpenRide(null);
+    setOpenKey(null);
+    setMapFocus(null);
     setProblem(null);
     if (next === 'now') {
       refreshNow();
@@ -365,6 +401,7 @@ export function TransitPlanner({
   return (
     <Card title="Cómo llegar">
       <PlaceRow
+        onClear={() => pick('origin', null)}
         label="Desde"
         options={options}
         selected={originId}
@@ -373,6 +410,7 @@ export function TransitPlanner({
         onPick={(id) => pick('origin', id)}
       />
       <PlaceRow
+        onClear={() => pick('target', null)}
         label="Hasta"
         options={options}
         selected={targetId}
@@ -413,6 +451,8 @@ export function TransitPlanner({
             try {
               setApplied({ mode, at: queryInstant(date, time) });
               setOpenRide(null);
+              setOpenKey(null);
+              setMapFocus(null);
               setProblem(null);
               return true;
             } catch (error) {
@@ -430,7 +470,24 @@ export function TransitPlanner({
           {problem ?? searchFailed}
         </Text>
       )}
-      {!target ? (
+      <View ref={mapBlock} collapsable={false}>
+        <TransitPlanMap
+          schedule={schedule}
+          places={places}
+          origin={origin}
+          target={target}
+          option={mappedOption}
+          links={walks?.key === pairKey ? [...walks.origin, ...walks.destination] : []}
+          transfers={walks?.stops ?? []}
+          snapshot={snapshot}
+          active={active}
+          focus={mapFocus}
+          onInteraction={onMapInteraction}
+        />
+      </View>
+      {!origin ? (
+        <Text style={styles.note}>Elige de dónde sales.</Text>
+      ) : !target ? (
         <Text style={styles.note}>Elige a dónde vas.</Text>
       ) : applied.mode !== mode ? (
         <Text style={styles.note}>Elige el día y la hora y toca Buscar viajes.</Text>
@@ -452,14 +509,20 @@ export function TransitPlanner({
           onOpenRide={setOpenRide}
           onStale={refreshNow}
           onSaveWalk={saveWalk}
-          onFocusBus={onFocusBus}
-          initialKey={initialJourney?.selectedKey}
+          onFocusBus={focusBus}
+          open={openKey}
+          onToggle={(key) => {
+            setOpenKey(key);
+            setOpenRide(null);
+            setMapFocus(null);
+          }}
+          onMapOption={setMapOption}
           onSelect={
             onSelectJourney
               ? (option) =>
                   onSelectJourney(
                     {
-                      originId,
+                      originId: origin.id,
                       destinationId: target.id,
                       mode: shownResult.request.mode,
                       at: shownResult.request.at,
@@ -481,6 +544,7 @@ const PlaceRow = memo(function PlaceRow({
   placeholder,
   accessibilityLabel,
   onPick,
+  onClear,
   children,
 }: {
   label: string;
@@ -489,6 +553,7 @@ const PlaceRow = memo(function PlaceRow({
   placeholder: string;
   accessibilityLabel: string;
   onPick: (id: string) => void;
+  onClear: () => void;
   /** Beside the list, as tall as it. */
   children?: ReactNode;
 }) {
@@ -505,6 +570,13 @@ const PlaceRow = memo(function PlaceRow({
             accessibilityLabel={accessibilityLabel}
           />
         </View>
+        {selected && (
+          <IconButton
+            icon={X}
+            accessibilityLabel={`Quitar ${label.toLowerCase()}`}
+            onPress={onClear}
+          />
+        )}
         {children}
       </View>
     </View>
@@ -541,7 +613,9 @@ const PlanList = memo(function PlanList({
   onStale,
   onSaveWalk,
   onFocusBus,
-  initialKey,
+  open,
+  onToggle,
+  onMapOption,
   onSelect,
 }: {
   schedule: Schedule;
@@ -557,12 +631,13 @@ const PlanList = memo(function PlanList({
   onStale: () => void;
   onSaveWalk: (edit: WalkEdit, minutes: number) => Promise<void>;
   onFocusBus: (departure: Departure) => void;
-  initialKey?: string | null;
+  open: string | null;
+  onToggle: (key: string | null) => void;
+  onMapOption: (option: PlanOption | null) => void;
   onSelect?: (option: PlanOption) => Promise<void>;
 }) {
   // Read again on returning to the app and on each reading, like the trip cards.
   const now = useLiveClock(active, snapshot);
-  const [open, setOpen] = useState<string | null>(initialKey ?? null);
   const [selecting, setSelecting] = useState(false);
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const [more, setMore] = useState(false);
@@ -576,6 +651,10 @@ const PlanList = memo(function PlanList({
   const options = useMemo(() => liveOptions(result, snapshot, now), [result, snapshot, now]);
   const count = more ? options.length : SHOWN;
   const shown = result.request.mode === 'arrive' ? options.slice(-count) : options.slice(0, count);
+  const expandedOption = shown.find((option) => option.scheduleKey === open) ?? null;
+  useEffect(() => {
+    onMapOption(expandedOption);
+  }, [expandedOption, onMapOption]);
   const issue = issueText(result, originName, targetName);
   return (
     <View style={styles.list}>
@@ -589,7 +668,7 @@ const PlanList = memo(function PlanList({
           now={minute}
           mode={result.request.mode}
           expanded={open === option.scheduleKey}
-          onToggle={() => setOpen(open === option.scheduleKey ? null : option.scheduleKey)}
+          onToggle={() => onToggle(open === option.scheduleKey ? null : option.scheduleKey)}
         >
           {open === option.scheduleKey && (
             <>

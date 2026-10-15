@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Line, Polyline, Text as SvgText } from 'react-native-svg';
 
 import { agencyClock } from '../transit/schedule.ts';
+import { mapRegion } from '../transit/map.ts';
 import { Bus } from './icons.ts';
 import { placeIcon } from './placeIcons.ts';
 import type { TransitMapProps } from './TransitMap.types.ts';
@@ -13,11 +14,14 @@ export const TransitMap = memo(function TransitMap({
   places,
   stops,
   selectedPlace,
+  selectedPlaces = [],
   selectedStop,
   draft,
   buses = [],
   followed,
   focus,
+  viewport,
+  journeyPaths = [],
   routePoints = [],
   routeColor = '#3977A5',
   walkPaths = [],
@@ -35,16 +39,32 @@ export const TransitMap = memo(function TransitMap({
     key: focus?.key ?? null,
     at: focus?.point ?? center,
     from: center,
+    viewportKey: viewport?.key,
+    region: viewport?.points.length ? mapRegion(viewport.points) : null,
   });
   let shown = view;
-  if (focus && focus.key !== view.key) shown = { key: focus.key, at: focus.point, from: center };
+  if (viewport?.key !== view.viewportKey)
+    shown = {
+      ...view,
+      at: center,
+      from: center,
+      viewportKey: viewport?.key,
+      region: viewport?.points.length ? mapRegion(viewport.points) : null,
+    };
+  else if (focus && focus.key !== view.key)
+    shown = { ...view, key: focus.key, at: focus.point, from: center, region: null };
   else if (view.from.lat !== center.lat || view.from.lng !== center.lng)
-    shown = { key: view.key, at: center, from: center };
-  if (shown !== view) setView(shown);
-  const middle = shown.at;
+    shown = { ...view, at: center, from: center };
+  if (shown !== view) {
+    setView(shown);
+    setZoom(1);
+  }
+  const middle = shown.region?.center ?? shown.at;
+  const latDelta = shown.region?.latDelta ?? 0.012;
+  const lngDelta = shown.region?.lngDelta ?? 0.015;
   const height = 250;
-  const x = (lng: number) => width / 2 + ((lng - middle.lng) / 0.015) * width * zoom;
-  const y = (lat: number) => height / 2 - ((lat - middle.lat) / 0.012) * height * zoom;
+  const x = (lng: number) => width / 2 + ((lng - middle.lng) / lngDelta) * width * zoom;
+  const y = (lat: number) => height / 2 - ((lat - middle.lat) / latDelta) * height * zoom;
   const visible = (lat: number, lng: number) =>
     x(lng) >= 0 && x(lng) <= width && y(lat) >= 0 && y(lat) <= height;
   return (
@@ -64,9 +84,11 @@ export const TransitMap = memo(function TransitMap({
           const bounds = (e.currentTarget as unknown as HTMLElement).getBoundingClientRect();
           onPoint({
             lat:
-              middle.lat - (((pointer.clientY - bounds.top - height / 2) / height) * 0.012) / zoom,
+              middle.lat -
+              (((pointer.clientY - bounds.top - height / 2) / height) * latDelta) / zoom,
             lng:
-              middle.lng + (((pointer.clientX - bounds.left - width / 2) / width) * 0.015) / zoom,
+              middle.lng +
+              (((pointer.clientX - bounds.left - width / 2) / width) * lngDelta) / zoom,
           });
         }}
       >
@@ -89,6 +111,18 @@ export const TransitMap = memo(function TransitMap({
               strokeWidth={3}
             />
           )}
+          {journeyPaths
+            .filter((path) => path.points.length > 1)
+            .map((path) => (
+              <Polyline
+                key={path.id}
+                points={path.points.map((p) => `${x(p.lng)},${y(p.lat)}`).join(' ')}
+                fill="none"
+                stroke={path.color}
+                strokeWidth={3}
+                strokeDasharray={path.dashed ? '7 5' : undefined}
+              />
+            ))}
           {walkPaths
             .filter((path) => path.points.length > 1)
             .map((path) => (
@@ -150,8 +184,10 @@ export const TransitMap = memo(function TransitMap({
                 key={p.id}
                 cx={x(p.lng)}
                 cy={y(p.lat)}
-                r={p.id === selectedPlace ? 14 : 12}
-                fill={p.id === selectedPlace ? '#17683A' : '#3977A5'}
+                r={p.id === selectedPlace || selectedPlaces.includes(p.id) ? 14 : 12}
+                fill={
+                  p.id === selectedPlace || selectedPlaces.includes(p.id) ? '#17683A' : '#3977A5'
+                }
               />
             ))}
           {draft && (
@@ -230,7 +266,14 @@ export const TransitMap = memo(function TransitMap({
                   key={p.id}
                   accessibilityRole="button"
                   accessibilityLabel={p.name}
-                  style={[styles.marker, { left: x(p.lng) - 14, top: y(p.lat) - 14 }]}
+                  style={[
+                    styles.marker,
+                    {
+                      left: x(p.lng) - 14,
+                      top: y(p.lat) - 14,
+                      zIndex: p.id === selectedPlace || selectedPlaces.includes(p.id) ? 20 : 10,
+                    },
+                  ]}
                   onPress={(event) => {
                     event.stopPropagation();
                     onPlace(p.id);

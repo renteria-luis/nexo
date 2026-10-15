@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
 
 import { agencyClock } from '../transit/schedule.ts';
 import { Bus } from './icons.ts';
@@ -13,11 +13,14 @@ export const TransitMap = memo(function TransitMap({
   places,
   stops,
   selectedPlace,
+  selectedPlaces = [],
   selectedStop,
   draft,
   buses = [],
   followed,
   focus,
+  viewport,
+  journeyPaths = [],
   routePoints = [],
   routeColor = '#3977A5',
   walkPaths = [],
@@ -31,18 +34,57 @@ export const TransitMap = memo(function TransitMap({
 }: TransitMapProps) {
   const map = useRef<MapView>(null);
   const [ready, setReady] = useState(false);
+  const [region, setRegion] = useState<Region>({
+    latitude: center.lat,
+    longitude: center.lng,
+    latitudeDelta: 0.012,
+    longitudeDelta: 0.012,
+  });
+  // Route filters use the whole offline feed. Only mount stops near the visible map;
+  // panning loads the next ones after the gesture, without resetting the camera.
+  const visibleStops = stops.filter(
+    (stop) =>
+      Math.abs(stop[3] - region.latitude) <= region.latitudeDelta * 0.65 &&
+      Math.abs(stop[4] - region.longitude) <= region.longitudeDelta * 0.65,
+  );
   const target = useRef(focus);
   target.current = focus;
   const { acquire } = useSwipeLock();
   const release = useRef<(() => void) | null>(null);
   const lat = center.lat;
   const lng = center.lng;
+  const viewportTarget = useRef(viewport);
+  viewportTarget.current = viewport;
+  const viewportKey = viewport?.key;
   useEffect(() => {
+    if (viewportKey !== undefined) return;
     map.current?.animateToRegion(
       { latitude: lat, longitude: lng, latitudeDelta: 0.012, longitudeDelta: 0.012 },
       250,
     );
-  }, [lat, lng]);
+  }, [lat, lng, viewportKey]);
+  useEffect(() => {
+    const points = viewportTarget.current?.points;
+    if (!ready || !points?.length) return;
+    if (points.length === 1)
+      map.current?.animateToRegion(
+        {
+          latitude: points[0].lat,
+          longitude: points[0].lng,
+          latitudeDelta: 0.008,
+          longitudeDelta: 0.008,
+        },
+        300,
+      );
+    else
+      map.current?.fitToCoordinates(
+        points.map((p) => ({ latitude: p.lat, longitude: p.lng })),
+        {
+          edgePadding: { top: 48, right: 48, bottom: 48, left: 48 },
+          animated: true,
+        },
+      );
+  }, [viewportKey, ready]);
   // Once per tap, even to the same point, and only then: the camera does not chase the bus while
   // he pans. A tap before the map is ready waits for it.
   const focusKey = focus?.key;
@@ -54,7 +96,18 @@ export const TransitMap = memo(function TransitMap({
       400,
     );
   }, [focusKey, ready]);
-  useEffect(() => () => release.current?.(), []);
+  const interaction = useRef(onInteraction);
+  interaction.current = onInteraction;
+  useEffect(
+    () => () => {
+      if (release.current) {
+        release.current();
+        release.current = null;
+        interaction.current?.(false);
+      }
+    },
+    [],
+  );
   const end = () => {
     release.current?.();
     release.current = null;
@@ -72,6 +125,7 @@ export const TransitMap = memo(function TransitMap({
           longitudeDelta: 0.012,
         }}
         onMapReady={() => setReady(true)}
+        onRegionChangeComplete={setRegion}
         onTouchStart={() => {
           release.current ??= acquire();
           onInteraction?.(true);
@@ -91,6 +145,17 @@ export const TransitMap = memo(function TransitMap({
         pitchEnabled={false}
         toolbarEnabled={false}
       >
+        {journeyPaths
+          .filter((path) => path.points.length > 1)
+          .map((path) => (
+            <Polyline
+              key={path.id}
+              coordinates={path.points.map((p) => ({ latitude: p.lat, longitude: p.lng }))}
+              strokeColor={path.color}
+              strokeWidth={4}
+              lineDashPattern={path.dashed ? [7, 5] : undefined}
+            />
+          ))}
         {routePoints.length > 1 && (
           <Polyline
             coordinates={routePoints.map((p) => ({ latitude: p.lat, longitude: p.lng }))}
@@ -144,16 +209,23 @@ export const TransitMap = memo(function TransitMap({
               identifier={p.id}
               coordinate={{ latitude: p.lat, longitude: p.lng }}
               title={p.name}
+              zIndex={p.id === selectedPlace || selectedPlaces.includes(p.id) ? 20 : 10}
+              displayPriority="required"
               anchor={{ x: 0.5, y: 0.5 }}
               onPress={() => onPlace(p.id)}
             >
-              <View style={[styles.place, p.id === selectedPlace && styles.placeChosen]}>
+              <View
+                style={[
+                  styles.place,
+                  (p.id === selectedPlace || selectedPlaces.includes(p.id)) && styles.placeChosen,
+                ]}
+              >
                 <Icon size={16} color="#FFFFFF" strokeWidth={2.5} />
               </View>
             </Marker>
           );
         })}
-        {stops.map((s) => (
+        {visibleStops.map((s) => (
           <Marker
             key={s[0]}
             identifier={s[0]}
@@ -161,6 +233,8 @@ export const TransitMap = memo(function TransitMap({
             title={s[2]}
             description={`${s[0]} · ${s[1] || 'sin código público'}`}
             pinColor={s[0] === selectedStop ? '#DA692F' : '#9B728D'}
+            zIndex={1}
+            displayPriority="low"
             onPress={() => onStop(s[0])}
           />
         ))}
@@ -168,6 +242,7 @@ export const TransitMap = memo(function TransitMap({
           <Marker
             coordinate={{ latitude: draft.lat, longitude: draft.lng }}
             title="Punto por guardar"
+            zIndex={30}
             pinColor="#DA692F"
           />
         )}

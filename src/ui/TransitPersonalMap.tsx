@@ -200,7 +200,7 @@ export function TransitPersonalMap({
   };
   const pickStop = (id: string) => {
     const stop = map.schedule.stops.find((s) => s[0] === id);
-    if ((drawing !== null || note) && stop && !map.onPoint) pick({ lat: stop[3], lng: stop[4] });
+    if (stop && (map.onPoint || drawing !== null || note)) pick({ lat: stop[3], lng: stop[4] });
     else map.onStop(id);
   };
   const pickPlace = (id: string) => {

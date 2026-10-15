@@ -239,7 +239,7 @@ function Navigation({ navigation }: { navigation: ReturnType<typeof useNavigatio
           // Nuestra barra en lugar del encabezado nativo, que solo dejaba cambiarle el
           // color. En la pantalla principal lleva a Ajustes; en una apilada la cierra,
           // que es lo unico que se puede hacer desde ahi.
-          header: ({ navigation, back, route }) =>
+          header: ({ navigation, back, route, options }) =>
             back ? (
               <TopBar
                 action="done"
@@ -247,6 +247,7 @@ function Navigation({ navigation }: { navigation: ReturnType<typeof useNavigatio
                 onMenu={sidebar.open}
                 // En un dia suelto la fecha de arriba competiria con la del dia abierto.
                 showDate={route.name !== 'Día'}
+                actions={options.headerRight?.({ canGoBack: !!back })}
               />
             ) : (
               <TopBar

@@ -20,6 +20,7 @@ const place = (id: string, name: string, lat: number, lng: number): Place => ({
   gym_id: null,
   icon: 'pin',
   tags: '',
+  category: '',
   importance: null,
   updated_at: 0,
 });
@@ -37,6 +38,8 @@ function mount(saved: unknown[], changes: Record<string, unknown>) {
     './icons.ts': new Proxy({}, { get: (_, name) => String(name) }),
     './TextField.tsx': { TextField: 'TextField' },
     './Combobox.tsx': { Combobox: 'Combobox' },
+    './TransitPlanMap.tsx': { TransitPlanMap: 'TransitPlanMap' },
+    './screens/Screen.tsx': { useScrollIntoView: () => () => undefined },
     '../transit/store.ts': {
       sortPlaces,
       listWalkLinks: async (): Promise<WalkLink[]> => [],
@@ -218,4 +221,85 @@ test('Ver más shows every option, not only ten', async (t) => {
     .props.onPress();
   tree = await screen.settle();
   assert.equal(rows(tree), 5 + more);
+});
+
+test('the map follows both pickers and the expanded option, and clears when either is removed', async (t) => {
+  t.mock.method(Date, 'now', () => queryInstant('2026-10-13', '08:00'));
+  const endpoints: string[][] = [];
+  const settings = props([], {
+    initialOrigin: null,
+    onPlacesChange: (ids: string[]) => endpoints.push(ids),
+  });
+  const screen = mount([], settings);
+  const map = (tree: unknown) => nodes(tree).find((n) => n.type === 'TransitPlanMap')!.props;
+  let tree = await screen.settle();
+  assert.equal(map(tree).origin, undefined);
+  picker(tree, 'Elegir el destino').onChange('end');
+  tree = await screen.settle();
+  assert.equal(map(tree).origin, undefined);
+  assert.equal(map(tree).target.id, 'end');
+  assert.deepEqual(endpoints.at(-1), ['end']);
+  picker(tree, 'Elegir el origen').onChange('start');
+  tree = await searched(screen, (current) => !!byLabel(current, /^Sales /));
+  assert.equal(map(tree).origin.id, 'start');
+  assert.deepEqual(endpoints.at(-1), ['start', 'end']);
+  assert.equal(map(tree).target.id, 'end');
+  assert.equal(map(tree).option, null);
+  const rows = nodes(tree).filter((n) => /^Sales /.test(n.props.accessibilityLabel ?? ''));
+  rows[0].props.onPress();
+  tree = await screen.settle();
+  const first = map(tree).option;
+  assert.ok(first);
+  const others = nodes(tree).filter((n) => /^Sales /.test(n.props.accessibilityLabel ?? ''));
+  others[1].props.onPress();
+  tree = await screen.settle();
+  assert.notEqual(map(tree).option.scheduleKey, first.scheduleKey);
+  byLabel(tree, 'Quitar desde').props.onPress();
+  tree = await screen.settle();
+  assert.equal(map(tree).origin, undefined);
+  assert.equal(map(tree).target.id, 'end');
+  assert.deepEqual(endpoints.at(-1), ['end']);
+  assert.equal(map(tree).option, null);
+});
+
+test('pull refresh reruns now plans without changing selected places', async (t) => {
+  let now = queryInstant('2026-10-13', '08:00');
+  t.mock.method(Date, 'now', () => now);
+  const settings = props([], { refreshAt: 0 });
+  const screen = mount([], settings);
+  let tree = await screen.settle();
+  picker(tree, 'Elegir el destino').onChange('end');
+  tree = await searched(screen, (current) => !!byLabel(current, /^Sales /));
+  now += 12 * 60_000;
+  settings.refreshAt = now;
+  tree = await searched(screen, (current) => !textOf(current).includes('Actualizando…'));
+  assert.equal(picker(tree, 'Elegir el origen').value, 'start');
+  assert.equal(picker(tree, 'Elegir el destino').value, 'end');
+  assert.ok(nodes(tree).some((n) => /^Sales /.test(n.props.accessibilityLabel ?? '')));
+});
+
+test('pull refresh preserves an explicitly scheduled departure time', async (t) => {
+  const now = queryInstant('2026-10-13', '07:00');
+  t.mock.method(Date, 'now', () => now);
+  const settings = props([], {
+    refreshAt: 0,
+    initialJourney: {
+      originId: 'start',
+      destinationId: 'end',
+      mode: 'depart',
+      at: now + 3_600_000,
+    },
+  });
+  const screen = mount([], settings);
+  let tree = await searched(screen, (current) => !!byLabel(current, /^Sales /));
+  const rowLabels = (tree: unknown) =>
+    nodes(tree)
+      .map((n) => n.props.accessibilityLabel)
+      .filter((label) => /^Sales /.test(label ?? ''));
+  const before = rowLabels(tree);
+  settings.refreshAt = now + 20 * 60_000;
+  tree = await screen.settle();
+  assert.deepEqual(rowLabels(tree), before);
+  assert.equal(picker(tree, 'Elegir el origen').value, 'start');
+  assert.equal(picker(tree, 'Elegir el destino').value, 'end');
 });

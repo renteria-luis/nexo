@@ -17,6 +17,7 @@ import {
   sortPlaces,
 } from './store.ts';
 import { SCHEDULE_SCHEMA } from './schedule.ts';
+import { placeCategories } from './place-categories.ts';
 import { syncSchedule, validateManifest, STATIC_BASE_URL } from './sync.ts';
 
 const hash = async (raw: string) => createHash('sha256').update(raw).digest('hex');
@@ -158,6 +159,42 @@ test('walking links remain directional and survive removed public stops', async 
   );
 });
 
+test('categories are created offline, suggested once, preserved on partial edits and clearable', async () => {
+  const { db } = await database();
+  const base = { name: 'Gym', address: 'Door', lat: 43, lng: -81.2 };
+  const one = await savePlace(db, { ...base, category: '  gym  ' });
+  const two = await savePlace(db, { ...base, name: 'Other gym', category: 'GYM' });
+  await savePlace(db, { ...base, id: one, name: 'Updated gym' });
+  let places = await listPlaces(db);
+  assert.equal(places.find((p) => p.id === one)!.category, 'gym');
+  assert.equal(places.find((p) => p.id === two)!.category, 'gym');
+  assert.deepEqual(placeCategories(places), [{ id: 'gym', label: 'gym' }]);
+  await savePlace(db, { ...base, id: two, category: '  Mis   compras ' });
+  await savePlace(db, { ...base, id: one, category: '' });
+  places = await listPlaces(db);
+  assert.equal(places.find((p) => p.id === one)!.category, '');
+  assert.deepEqual(placeCategories(places), [{ id: 'mis compras', label: 'Mis compras' }]);
+  await assert.rejects(savePlace(db, { ...base, category: 'x'.repeat(81) }), /80/);
+  assert.equal(
+    (await listPlaces(db)).length,
+    places.length,
+    'an invalid category does not create a place',
+  );
+});
+
+test('backups from before categories retain every place and give them an empty category', async () => {
+  const old = adapt(new DatabaseSync(':memory:'));
+  await migrate(old, '068_transit_trip_notice');
+  await old.runAsync("UPDATE transit_place SET name = 'My old gym' WHERE id = 'fit4less';");
+  const backup = await exportBackup(old);
+  const { db } = await database();
+  await importBackup(db, backup, adapt(new DatabaseSync(':memory:')));
+  const places = await listPlaces(db);
+  assert.equal(places.length, 6);
+  assert.equal(places.find((p) => p.id === 'fit4less')!.name, 'My old gym');
+  assert.ok(places.every((p) => p.category === ''));
+});
+
 test('transfer walks between stops keep each direction and refuse the same stop', async () => {
   const { db } = await database();
   await saveStopWalk(db, {
@@ -223,6 +260,7 @@ test('personal Transit data round-trips through backups without replaceable city
     lat: 43.01,
     lng: -81.2,
     icon: 'work',
+    category: 'Trabajo',
   });
   await saveWalkLink(source.db, {
     place_id: id,

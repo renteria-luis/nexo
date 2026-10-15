@@ -84,9 +84,11 @@ export function Screen({
   action,
   children,
   overlay,
+  overlayAbove,
   onOverlayDismiss,
   scrollEnabled = true,
   refreshable = false,
+  onRefresh,
 }: {
   title?: string;
   /** En lugar del titulo, cuando la pantalla necesita algo mas que una palabra. */
@@ -96,6 +98,8 @@ export function Screen({
   children: ReactNode;
   /** Lo que va encima de la pantalla entera, fuera del scroll y sin ser un modal. */
   overlay?: ReactNode;
+  /** A child sheet: the first overlay stays mounted and dimmed underneath. */
+  overlayAbove?: ReactNode;
   /**
    * Que hacer al tocar el fondo oscuro. Sin esto el fondo no se toca: no toda hoja se
    * puede cerrar tocando fuera, y una que se cierra a medio llenar es un formulario
@@ -109,25 +113,30 @@ export function Screen({
    */
   scrollEnabled?: boolean;
   refreshable?: boolean;
+  /** Extra data owned by this screen, refreshed alongside the app's shared data. */
+  onRefresh?: () => Promise<void>;
 }) {
   const { state, resetDatabase, retry, exportData, refreshData } = useAppData();
+  const hasOverlay = !!(overlay || overlayAbove);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshProblem, setRefreshProblem] = useState<string | null>(null);
   const refreshingRef = useRef(false);
   const refresh = useCallback(async () => {
-    if (refreshingRef.current) return;
+    if (refreshingRef.current || !scrollEnabled || hasOverlay) return;
     refreshingRef.current = true;
     setRefreshing(true);
     setRefreshProblem(null);
     try {
-      await refreshData();
+      const results = await Promise.allSettled([refreshData(), onRefresh?.()]);
+      const failure = results.find((result) => result.status === 'rejected');
+      if (failure?.status === 'rejected') throw failure.reason;
     } catch (error) {
       setRefreshProblem(error instanceof Error ? error.message : String(error));
     } finally {
       refreshingRef.current = false;
       setRefreshing(false);
     }
-  }, [refreshData]);
+  }, [refreshData, onRefresh, scrollEnabled, hasOverlay]);
   // En las pestanas la barra de abajo flota encima del contenido: lo ultimo de la
   // pantalla necesita ese hueco para poder subir por encima de ella.
   const barSpace = useContext(FloatingBarSpace);
@@ -152,7 +161,8 @@ export function Screen({
   // Lo que mide el marco y lo que mide la hoja, para poder subirla lo justo: lo que el
   // teclado le tapa, y nunca mas de lo que hay libre por arriba.
   const [frameHeight, setFrameHeight] = useState(0);
-  const [sheetHeight, setSheetHeight] = useState(0);
+  const [sheetHeights, setSheetHeights] = useState([0, 0]);
+  const sheetHeight = sheetHeights[overlayAbove ? 1 : 0];
   const shift = useMemo(() => {
     if (frameHeight === 0 || sheetHeight === 0) return 0;
     const spare = (frameHeight - sheetHeight) / 2;
@@ -196,14 +206,14 @@ export function Screen({
       // no vuelve a avisar, y sin esto cada vuelta sumaria una subida sobre la anterior.
       if (target === null || target === revealed.current) return;
       // Con un formulario encima no hay nada que subir: lo que se mueve es la hoja.
-      if (overlay) return;
+      if (hasOverlay) return;
       revealed.current = target;
       // Si el teclado ya esta arriba, sube ahora; si no, cuando el sistema diga cuanto
       // mide, que es lo unico que se puede saber de el.
       if (tall.current > 0) raise(target, tall.current);
       else pending.current = target;
     },
-    [overlay, raise],
+    [hasOverlay, raise],
   );
 
   const scrollIntoView = useCallback<Reveal>((target) => {
@@ -262,13 +272,19 @@ export function Screen({
   const scroll = (
     <ScrollView
       ref={list}
-      scrollEnabled={scrollEnabled}
-      // Se queda puesto mientras se arrastra algo de dentro: con el desplazamiento apagado
-      // ya no se puede jalar, y quitarlo con el dedo encima descuadraba la pantalla en el
-      // iPhone y la dejaba colgada.
+      scrollEnabled={scrollEnabled && !hasOverlay}
+      accessibilityElementsHidden={hasOverlay}
+      aria-hidden={hasOverlay}
+      importantForAccessibility={hasOverlay ? 'no-hide-descendants' : 'auto'}
+      // Keep the same scroll tree through maps and overlays. Removing RefreshControl
+      // remounts its content on web/Android and can interrupt a native map touch on iOS.
       refreshControl={
-        refreshable && !overlay && state.phase === 'ready' ? (
-          <RefreshControl refreshing={refreshing} onRefresh={refresh} />
+        refreshable && state.phase === 'ready' ? (
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refresh}
+            enabled={scrollEnabled && !hasOverlay}
+          />
         ) : undefined
       }
       onScroll={(event) => (offset.current = event.nativeEvent.contentOffset.y)}
@@ -397,39 +413,66 @@ export function Screen({
           {scroll}
           {/* Con el teclado abierto la capa se encoge por arriba de el: si no, los
             botones de guardar y confirmar quedan justo debajo de las teclas. */}
-          {overlay ? (
-            <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-              {/* El oscurecido cubre la pantalla entera y no se encoge con el teclado: el
+          {[overlay, overlayAbove].map((content, index) =>
+            content ? (
+              <View
+                key={index}
+                style={StyleSheet.absoluteFill}
+                pointerEvents={index === 0 && overlayAbove ? 'none' : 'box-none'}
+                accessibilityElementsHidden={index === 0 && !!overlayAbove}
+                aria-hidden={index === 0 && !!overlayAbove}
+                importantForAccessibility={
+                  index === 0 && overlayAbove ? 'no-hide-descendants' : 'auto'
+                }
+              >
+                {/* El oscurecido cubre la pantalla entera y no se encoge con el teclado: el
                 hueco que se le hace abajo es parte del fondo, y sin esto se veia una
                 franja sin oscurecer mientras el teclado sube o baja. */}
-              {onOverlayDismiss ? (
-                <Pressable
-                  accessibilityLabel="Cerrar"
-                  onPress={() => {
-                    // El teclado se quedaria flotando sobre una pantalla en la que ya no
-                    // hay nada que escribir.
-                    Keyboard.dismiss();
-                    onOverlayDismiss();
-                  }}
-                  style={styles.scrim}
-                />
-              ) : (
-                <View style={styles.scrim} pointerEvents="none" />
-              )}
-              {/* La hoja se centra en lo que queda libre encima del teclado. El hueco se
+                {onOverlayDismiss ? (
+                  <Pressable
+                    accessibilityLabel="Cerrar"
+                    onPress={() => {
+                      // El teclado se quedaria flotando sobre una pantalla en la que ya no
+                      // hay nada que escribir.
+                      Keyboard.dismiss();
+                      onOverlayDismiss();
+                    }}
+                    style={[styles.scrim, index === 1 && styles.childScrim]}
+                  />
+                ) : (
+                  <View
+                    style={[styles.scrim, index === 1 && styles.childScrim]}
+                    pointerEvents="none"
+                  />
+                )}
+                {/* La hoja se centra en lo que queda libre encima del teclado. El hueco se
                 hace de golpe, para que la hoja nunca mida mas de lo que cabe, y el
                 desplazamiento lo deshace: asi sube con la misma animacion del teclado en
                 vez de dar un salto. */}
-              <Animated.View
-                pointerEvents="box-none"
-                style={[styles.overlay, { transform: [{ translateY: lift }] }]}
-              >
-                <View onLayout={(event) => setSheetHeight(event.nativeEvent.layout.height)}>
-                  {overlay}
-                </View>
-              </Animated.View>
-            </View>
-          ) : null}
+                <Animated.View
+                  pointerEvents="box-none"
+                  style={[
+                    styles.overlay,
+                    { transform: [{ translateY: index === 0 && overlayAbove ? 0 : lift }] },
+                  ]}
+                >
+                  <View
+                    style={styles.sheetFrame}
+                    onLayout={(event) => {
+                      const height = event.nativeEvent.layout.height;
+                      setSheetHeights((heights) =>
+                        heights[index] === height
+                          ? heights
+                          : heights.map((saved, i) => (i === index ? height : saved)),
+                      );
+                    }}
+                  >
+                    {content}
+                  </View>
+                </Animated.View>
+              </View>
+            ) : null,
+          )}
         </View>
       </ScrollIntoViewContext.Provider>
     </RevealContext.Provider>
@@ -437,6 +480,8 @@ export function Screen({
 }
 
 const styles = sheet((theme) => ({
+  childScrim: { backgroundColor: 'rgba(0,0,0,0.48)' },
+  sheetFrame: { width: '100%', maxHeight: '100%', alignItems: 'center' },
   stack: {
     flex: 1,
   },

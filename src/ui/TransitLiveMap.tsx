@@ -4,6 +4,9 @@ import { liveFreshness, tripLiveDetail, type LiveSnapshot } from '../transit/rea
 import type { Departure, Schedule } from '../transit/schedule.ts';
 import { TransitMap } from './TransitMap';
 import { useLiveClock } from './TransitDepartures.tsx';
+import { categoryKey, placeCategories } from '../transit/place-categories.ts';
+import { stopsForRoutes, type LayerSelection } from '../transit/map-layers.ts';
+import { TransitMapFilters } from './TransitMapFilters.tsx';
 import type { FollowedMarker, ReportedBus, TransitMapProps } from './TransitMap.types.ts';
 
 /**
@@ -18,8 +21,9 @@ export const TransitLiveMap = memo(function TransitLiveMap({
   followed,
   focusKey,
   pointFocus,
+  tripPlaceIds = [],
   ...map
-}: Omit<TransitMapProps, 'buses' | 'followed' | 'focus'> & {
+}: Omit<TransitMapProps, 'buses' | 'followed' | 'focus' | 'stops'> & {
   schedule: Schedule;
   snapshot: LiveSnapshot | null;
   active: boolean;
@@ -27,7 +31,28 @@ export const TransitLiveMap = memo(function TransitLiveMap({
   /** Changes on each tap on the followed bus, to bring the camera to it. */
   focusKey: number | null;
   pointFocus?: TransitMapProps['focus'];
+  /** The planner's endpoints; the explorer keeps its own independent selected place. */
+  tripPlaceIds?: string[];
 }) {
+  const [selectedRoutes, setSelectedRoutes] = useState<LayerSelection>(null);
+  const [selectedCategories, setSelectedCategories] = useState<LayerSelection>(null);
+  const [tripOnly, setTripOnly] = useState(false);
+  const routes = useMemo(
+    () => [...schedule.routes].sort((a, b) => a[1].localeCompare(b[1], 'es', { numeric: true })),
+    [schedule],
+  );
+  const categories = useMemo(() => {
+    const groups = placeCategories(map.places);
+    if (map.places.some((place) => !categoryKey(place.category)))
+      groups.push({ id: '', label: 'Sin categoría' });
+    return groups;
+  }, [map.places]);
+  const stops = useMemo(() => stopsForRoutes(schedule, selectedRoutes), [schedule, selectedRoutes]);
+  const places = map.places.filter((place) =>
+    tripOnly
+      ? tripPlaceIds.includes(place.id)
+      : selectedCategories === null || selectedCategories.has(categoryKey(place.category)),
+  );
   const now = useLiveClock(active, snapshot);
   const detail = useMemo(
     () => (followed ? tripLiveDetail(schedule, followed, snapshot, now) : null),
@@ -78,5 +103,26 @@ export const TransitLiveMap = memo(function TransitLiveMap({
     setFocus({ key: focusKey, point: { lat: marker.lat, lng: marker.lng } });
   const selectedFocus =
     pointFocus && pointFocus.key > (focus?.key ?? -Infinity) ? pointFocus : focus;
-  return <TransitMap {...map} buses={buses} followed={marker} focus={selectedFocus} />;
+  return (
+    <>
+      <TransitMapFilters
+        routes={routes}
+        categories={categories}
+        selectedRoutes={selectedRoutes}
+        selectedCategories={selectedCategories}
+        tripOnly={tripOnly}
+        onRoutes={setSelectedRoutes}
+        onCategories={setSelectedCategories}
+        onTripOnly={setTripOnly}
+      />
+      <TransitMap
+        {...map}
+        places={places}
+        stops={stops}
+        buses={buses}
+        followed={marker}
+        focus={selectedFocus}
+      />
+    </>
+  );
 });

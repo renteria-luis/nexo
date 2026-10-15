@@ -1,6 +1,7 @@
 import type { Coordinates } from '../core/geo.ts';
 import type { Place, Stop } from '../transit/index.ts';
 import type { MapNote } from '../transit/store.ts';
+import type { JourneyPath } from '../transit/map.ts';
 
 export type ReportedBus = Coordinates & {
   id: string;
@@ -23,12 +24,16 @@ export type TransitMapProps = {
   places: Place[];
   stops: Stop[];
   selectedPlace: string | null;
+  selectedPlaces?: string[];
   selectedStop: string | null;
   draft: Coordinates | null;
   buses?: ReportedBus[];
   followed?: FollowedMarker | null;
   /** Moves the camera there once; a new key moves it again, even to the same point. */
   focus?: { key: number; point: Coordinates } | null;
+  /** Fit endpoints or an itinerary once per selection, leaving later pans alone. */
+  viewport?: { key: string; points: Coordinates[] };
+  journeyPaths?: JourneyPath[];
   routePoints?: Coordinates[];
   /** The selected trip's line colour, already deepened for the screen. */
   routeColor?: string;

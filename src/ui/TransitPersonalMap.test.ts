@@ -89,6 +89,22 @@ test('drawing, undo and cancel keep paths directional and preserve the entered m
   assert.deepEqual(await store.listWalkLinks(f.db, f.id), saved);
 });
 
+test('choosing a place point from a stop copies its coordinates instead of changing the inspected stop', async () => {
+  const f = await fixture();
+  const points: { lat: number; lng: number }[] = [];
+  const stops: string[] = [];
+  Object.assign(f.props, {
+    onPoint: (point: { lat: number; lng: number }) => points.push(point),
+    onStop: (id: string) => stops.push(id),
+  });
+  (await f.map()).onStop('ORIGIN_SB');
+  assert.deepEqual(points, [{ lat: 43.0003, lng: -81.2001 }]);
+  assert.deepEqual(stops, []);
+  Object.assign(f.props, { onPoint: undefined });
+  (await f.map()).onStop('ORIGIN_SB');
+  assert.deepEqual(stops, ['ORIGIN_SB'], 'ordinary exploration still selects the stop');
+});
+
 test('crossings validate waits, persist edits and require an explicit delete confirmation', async () => {
   const f = await fixture();
   (await f.control('Añadir cruce')).onPress();

@@ -4,6 +4,7 @@ import { distanceMetres, type Coordinates } from '../core/geo.ts';
 import { inTransaction, whenIdle } from '../db/transaction.ts';
 import { SCHEDULE_SCHEMA, validateSchedule, validCoordinates, type Schedule } from './schedule.ts';
 import { serializePath } from './walks.ts';
+import { categoryKey, cleanCategory } from './place-categories.ts';
 
 export const PLACE_ICONS = [
   'pin',
@@ -38,6 +39,8 @@ export type Place = Coordinates & {
   icon: PlaceIcon;
   /** Words to find it by, separated by commas. */
   tags: string;
+  /** A user-defined map group; empty means uncategorized. */
+  category: string;
   /** 1 lists it first; without one it goes after the ranked places. */
   importance: number | null;
   updated_at: number;
@@ -112,7 +115,7 @@ function cleanTags(tags: string): string {
     .join(', ');
 }
 
-/** An edit that leaves out the icon, the tags or the importance keeps the saved one. */
+/** An edit that leaves out optional fields keeps their saved values. */
 export async function savePlace(
   db: SQLiteDatabase,
   input: {
@@ -121,6 +124,7 @@ export async function savePlace(
     address: string;
     icon?: PlaceIcon;
     tags?: string;
+    category?: string;
     importance?: number | null;
   } & Coordinates,
 ): Promise<string> {
@@ -138,6 +142,9 @@ export async function savePlace(
   if (input.tags !== undefined && input.tags.length > 500) {
     throw new Error('Las etiquetas pasan de 500 letras.');
   }
+  if (input.category !== undefined && cleanCategory(input.category).length > 80) {
+    throw new Error('La categoría puede tener hasta 80 caracteres.');
+  }
   if (
     input.importance != null &&
     (!Number.isInteger(input.importance) || input.importance < 1 || input.importance > 10)
@@ -147,6 +154,14 @@ export async function savePlace(
   const tags = input.tags === undefined ? null : cleanTags(input.tags);
   const id = input.id ?? `place-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
   await inTransaction(db, async () => {
+    let category = input.category === undefined ? null : cleanCategory(input.category);
+    if (category) {
+      const saved = await db.getAllAsync<{ category: string }>(
+        "SELECT DISTINCT category FROM transit_place WHERE category <> '' ORDER BY rowid;",
+      );
+      category =
+        saved.find((p) => categoryKey(p.category) === categoryKey(category!))?.category ?? category;
+    }
     if (input.id) {
       const existing = await db.getFirstAsync<{ importance: number | null }>(
         'SELECT importance FROM transit_place WHERE id = ?;',
@@ -154,7 +169,7 @@ export async function savePlace(
       );
       if (!existing) throw new Error('Ese lugar ya no existe. Vuelve a abrir Transit.');
       await db.runAsync(
-        'UPDATE transit_place SET name = ?, address = ?, lat = ?, lng = ?, icon = COALESCE(?, icon), tags = COALESCE(?, tags), importance = ?, updated_at = ? WHERE id = ?;',
+        'UPDATE transit_place SET name = ?, address = ?, lat = ?, lng = ?, icon = COALESCE(?, icon), tags = COALESCE(?, tags), category = COALESCE(?, category), importance = ?, updated_at = ? WHERE id = ?;',
         [
           input.name.trim(),
           input.address.trim(),
@@ -162,6 +177,7 @@ export async function savePlace(
           input.lng,
           input.icon ?? null,
           tags,
+          category,
           input.importance === undefined ? existing.importance : input.importance,
           Date.now(),
           id,
@@ -169,7 +185,7 @@ export async function savePlace(
       );
     } else {
       await db.runAsync(
-        'INSERT INTO transit_place (id, name, address, lat, lng, icon, tags, importance, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);',
+        'INSERT INTO transit_place (id, name, address, lat, lng, icon, tags, category, importance, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);',
         [
           id,
           input.name.trim(),
@@ -178,6 +194,7 @@ export async function savePlace(
           input.lng,
           input.icon ?? 'pin',
           tags ?? '',
+          category ?? '',
           input.importance ?? null,
           Date.now(),
         ],

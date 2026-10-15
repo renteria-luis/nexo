@@ -1,9 +1,10 @@
-import { useFocusEffect, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import {
   Component,
   useCallback,
   useEffect,
   useMemo,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -12,7 +13,7 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { addDays, daysBetween } from '../../core/dates.ts';
-import { type Coordinates } from '../../core/geo.ts';
+import { distanceMetres, type Coordinates } from '../../core/geo.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 import { useTransitJourneyLink } from '../../shell/TransitJourney.tsx';
 import type { TransitResponse } from '../../shell/notifications.ts';
@@ -37,12 +38,16 @@ import {
 } from '../../transit/index.ts';
 import { stopLines, usefulStops, validCoordinates } from '../../transit/schedule.ts';
 import { buildLiveQuery, observedServiceTrips } from '../../transit/realtime.ts';
+import { placeCategories } from '../../transit/place-categories.ts';
 
 import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
 import { Chip } from '../Chip.tsx';
 import { Combobox } from '../Combobox.tsx';
-import { Pencil, Plus, RefreshCw } from '../icons.ts';
+import { Pencil, Plus, Radio, RefreshCw, X } from '../icons.ts';
+import { IconButton } from '../IconButton.tsx';
+import { ExploreIcon } from '../ExploreIcon.tsx';
+import { PopupSheet } from '../PopupSheet.tsx';
 import { PlaceForm, type PlaceDraft } from '../PlaceForm.tsx';
 import { placeOptions } from '../placeIcons.ts';
 import { routeColor } from '../routeColors.ts';
@@ -61,34 +66,12 @@ import { TransitWhen } from '../TransitWhen.tsx';
 import { TransitLiveSettings } from '../TransitLiveSettings.tsx';
 import { useTransitLive } from '../useTransitLive.ts';
 import { font, sheet, shape, theme } from '../theme.ts';
-import { Screen, useScrollIntoView } from './Screen.tsx';
+import { Screen } from './Screen.tsx';
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 const sameTrip = (a: Departure | null, b: Departure | null) =>
   !!a && !!b && a.trip[0] === b.trip[0] && a.serviceDate === b.serviceDate;
-
-/** The map's card. A tap on a bus further down scrolls the screen up to it. */
-function MapCard({
-  title,
-  reveal,
-  children,
-}: {
-  title: string;
-  reveal: number | null;
-  children: ReactNode;
-}) {
-  const scrollIntoView = useScrollIntoView();
-  const block = useRef<View>(null);
-  useEffect(() => {
-    if (reveal !== null) scrollIntoView(block.current);
-  }, [reveal, scrollIntoView]);
-  return (
-    <View ref={block} collapsable={false}>
-      <Card title={title}>{children}</Card>
-    </View>
-  );
-}
 
 class TransitBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
   state = { error: null as string | null };
@@ -121,6 +104,10 @@ export function TransitScreen() {
 
 function TransitContent() {
   const journey = useTransitJourneyLink();
+  const navigation = useNavigation();
+  const [panel, setPanel] = useState<'explore' | 'live' | null>(null);
+  const [exploreMapActive, setExploreMapActive] = useState(false);
+  const [refreshAt, setRefreshAt] = useState(0);
   const route = useRoute<{ key: string; name: string; params?: { reminder?: TransitResponse } }>();
   const reminder = route.params?.reminder;
   const [data, setData] = useState<{ db: SQLiteDatabase; cache: CachedSchedule } | null>(null);
@@ -152,6 +139,7 @@ function TransitContent() {
   const [liveMode, setLiveMode] = useState(true);
   const [detail, setDetail] = useState<Departure | null>(null);
   const [plannerLive, setPlannerLive] = useState<PlannerLive>({ stops: [], ride: null });
+  const [tripPlaceIds, setTripPlaceIds] = useState<string[]>([]);
   const [walkEdits, setWalkEdits] = useState(0);
   const [walkPreview, setWalkPreview] = useState<WalkPreview | null>(null);
   const walksChanged = useCallback(() => {
@@ -160,12 +148,11 @@ function TransitContent() {
   }, [journey.actions]);
   // The bus he last tapped on a trip card, and when, so the same tap again moves the map again.
   const [focus, setFocus] = useState<{ departure: Departure; at: number } | null>(null);
-  // When the screen last had to bring the map into view: a tapped bus or a point to choose.
-  const [reveal, setReveal] = useState<number | null>(null);
+  // A bus opened from Paradas is inspected in the explorer.
   const focusBus = useCallback((departure: Departure) => {
     const at = Date.now();
     setFocus({ departure, at });
-    setReveal(at);
+    setPanel('explore');
   }, []);
   // Where he is as he opens Transit: one reading at once, and the place nearest to it is shown
   // and starts the trip, unless he picks another before it lands.
@@ -174,7 +161,7 @@ function TransitContent() {
   const [seenHere, setSeenHere] = useState<number | null>(null);
   const alive = useRef(true);
   const pending = useRef(false);
-  const syncPending = useRef(false);
+  const syncPending = useRef<Promise<void> | null>(null);
   const placeRead = useRef(0);
   useEffect(() => {
     alive.current = true;
@@ -183,35 +170,38 @@ function TransitContent() {
     };
   }, []);
 
-  const refresh = useCallback(async (current: NonNullable<typeof data>) => {
-    if (syncPending.current) return;
-    syncPending.current = true;
+  const refresh = useCallback((current: NonNullable<typeof data>) => {
+    if (syncPending.current) return syncPending.current;
     setSyncing(true);
-    try {
-      const result = await refreshTransit(current.db, current.cache);
-      if (!alive.current) return;
-      if (result.kind === 'updated') {
-        setData({ db: current.db, cache: result.cache });
-        setDetail(null);
-        setNotice('Horarios actualizados.');
-      } else {
-        const reason = result.kind === 'failed' ? result.reason : null;
-        setData({
-          db: current.db,
-          cache: { ...current.cache, checked_at: Date.now(), last_error: reason },
-        });
-        setNotice(
-          reason
-            ? `No se pudo actualizar. Se conserva el horario guardado. ${reason}`
-            : 'Ya tienes la versión publicada.',
-        );
+    const work = (async () => {
+      try {
+        const result = await refreshTransit(current.db, current.cache);
+        if (!alive.current) return;
+        if (result.kind === 'updated') {
+          setData({ db: current.db, cache: result.cache });
+          setDetail(null);
+          setNotice('Horarios actualizados.');
+        } else {
+          const reason = result.kind === 'failed' ? result.reason : null;
+          setData({
+            db: current.db,
+            cache: { ...current.cache, checked_at: Date.now(), last_error: reason },
+          });
+          setNotice(
+            reason
+              ? `No se pudo actualizar. Se conserva el horario guardado. ${reason}`
+              : 'Ya tienes la versión publicada.',
+          );
+        }
+      } catch (error) {
+        if (alive.current) setProblem(message(error));
+      } finally {
+        syncPending.current = null;
+        if (alive.current) setSyncing(false);
       }
-    } catch (error) {
-      if (alive.current) setProblem(message(error));
-    } finally {
-      syncPending.current = false;
-      if (alive.current) setSyncing(false);
-    }
+    })();
+    syncPending.current = work;
+    return work;
   }, []);
 
   const load = useCallback(async () => {
@@ -266,6 +256,7 @@ function TransitContent() {
     [here, nearest],
   );
   const options = useMemo(() => placeOptions(places), [places]);
+  const categories = useMemo(() => placeCategories(places), [places]);
   const schedule = data?.cache.schedule;
   const index = useMemo(() => (schedule ? buildStopIndex(schedule) : null), [schedule]);
   const draftPoint =
@@ -289,12 +280,18 @@ function TransitContent() {
     () => (schedule ? nearbyStops(schedule, center, 16) : []),
     [schedule, center],
   );
-  const stops = useMemo(() => candidates.map((c) => c.stop), [candidates]);
   const useful = useMemo(
     () => (schedule && index ? usefulStops(schedule, index, candidates) : { main: [], more: [] }),
     [schedule, index, candidates],
   );
-  const selected = candidates.find((c) => c.stop[0] === stopId);
+  const selected = useMemo(() => {
+    const nearby = candidates.find((c) => c.stop[0] === stopId);
+    if (nearby || !schedule || !stopId) return nearby;
+    const index = schedule.stops.findIndex((stop) => stop[0] === stopId);
+    if (index < 0) return undefined;
+    const stop = schedule.stops[index];
+    return { stop, index, distanceM: distanceMetres(center, { lat: stop[3], lng: stop[4] }) };
+  }, [candidates, schedule, stopId, center]);
   const stop = stopsFolded ? undefined : (selected ?? useful.main[0] ?? candidates[0]);
   const shownStopId = stop?.stop[0] ?? null;
   const stopIndex = stop?.index;
@@ -403,13 +400,9 @@ function TransitContent() {
   useEffect(() => {
     journey.actions.snapshot(live.state.snapshot);
   }, [journey.actions, live.state.snapshot]);
-  // The map shows the bus he tapped while its trip is open, otherwise the open Paradas trip, then
-  // the planner's.
-  const tapped =
-    focus && (sameTrip(focus.departure, selectedDetail) || sameTrip(focus.departure, plannerRide))
-      ? focus.departure
-      : null;
-  const followed = tapped ?? selectedDetail ?? plannerRide;
+  // The explorer follows its own stop selection, independently of Cómo llegar.
+  const tapped = focus && sameTrip(focus.departure, selectedDetail) ? focus.departure : null;
+  const followed = tapped ?? selectedDetail;
   const followedShapeId = followed?.trip[5];
   const effectiveFrom = liveMode ? Math.max(from, live.state.lastSuccessAt ?? from) : from;
   const departuresList = useMemo(
@@ -501,6 +494,59 @@ function TransitContent() {
     }
   };
 
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={styles.row}>
+          <IconButton
+            icon={ExploreIcon}
+            accessibilityLabel="Explorar Transit"
+            selected={panel === 'explore'}
+            disabled={!data}
+            onPress={() => {
+              setPanel('explore');
+              setExploreMapActive(false);
+            }}
+          />
+          <IconButton
+            icon={Radio}
+            accessibilityLabel="Configurar conexión en vivo"
+            selected={panel === 'live'}
+            disabled={!data || !live.loaded || !!draft}
+            onPress={() => {
+              setPanel('live');
+              setExploreMapActive(false);
+            }}
+          />
+        </View>
+      ),
+    });
+  }, [navigation, panel, data, draft, live.loaded]);
+
+  const refreshLive = live.refresh;
+  const refreshAll = useCallback(async () => {
+    if (!data) return;
+    const now = Date.now();
+    setToday(agencyDate(now));
+    if (liveMode) {
+      setFrom(now);
+      setDate(agencyDate(now));
+      setClock(agencyClock(now));
+    }
+    setRefreshAt(now);
+    setWalkEdits((version) => version + 1);
+    const results = await Promise.allSettled([
+      refresh(data),
+      refreshLive(),
+      journey.actions.refresh(),
+      listPlaces(data.db).then((saved) => {
+        if (alive.current) setPlaces(saved);
+      }),
+    ]);
+    const failure = results.find((result) => result.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
+  }, [data, liveMode, refreshLive, refresh, journey.actions]);
+
   if (!data || !place || !schedule)
     return (
       <Screen title="Transit">
@@ -522,19 +568,28 @@ function TransitContent() {
   return (
     <Screen
       title="Transit"
-      scrollEnabled={!mapActive}
+      refreshable
+      onRefresh={refreshAll}
+      scrollEnabled={!mapActive && !panel}
       onOverlayDismiss={
-        draft && !picking
-          ? () => {
-              setDraft(null);
-              setProblem(null);
+        busy
+          ? undefined
+          : () => {
+              if (draft) {
+                if (picking) setPicking(false);
+                else {
+                  setDraft(null);
+                  setProblem(null);
+                }
+              } else setPanel(null);
+              setExploreMapActive(false);
             }
-          : undefined
       }
-      overlay={
+      overlayAbove={
         draft && !picking ? (
           <PlaceForm
             draft={draft}
+            categories={categories}
             onChange={(change) => setDraft((d) => d && { ...d, ...change })}
             busy={busy}
             problem={problem}
@@ -559,7 +614,8 @@ function TransitContent() {
             }
             onPickOnMap={() => {
               setPicking(true);
-              setReveal(Date.now());
+              setPanel('explore');
+              setExploreMapActive(false);
             }}
             onCancel={() => {
               setDraft(null);
@@ -577,6 +633,7 @@ function TransitContent() {
                   lng: Number(draft.lng),
                   icon: draft.icon,
                   tags: draft.tags,
+                  category: draft.category,
                   importance: draft.importance.trim() ? Number(draft.importance) : null,
                 });
                 const saved = await listPlaces(data.db);
@@ -591,6 +648,122 @@ function TransitContent() {
               })
             }
           />
+        ) : undefined
+      }
+      overlay={
+        panel === 'live' ? (
+          <TransitLiveSettings
+            config={live.config}
+            error={live.configError}
+            state={live.state}
+            active={live.active}
+            onSave={live.save}
+            onClear={live.clear}
+            onClose={() => setPanel(null)}
+          />
+        ) : panel === 'explore' ? (
+          <PopupSheet wide scrollEnabled={!exploreMapActive}>
+            <View style={styles.panelHead}>
+              <Text style={styles.panelTitle}>Explorar</Text>
+              <IconButton
+                icon={X}
+                accessibilityLabel="Cerrar explorador"
+                onPress={() => {
+                  if (picking) setPicking(false);
+                  else setPanel(null);
+                  setExploreMapActive(false);
+                }}
+              />
+            </View>
+            <Card
+              title="Tus lugares"
+              action={
+                <View style={styles.row}>
+                  <IconButton
+                    icon={Pencil}
+                    accessibilityLabel="Editar lugar"
+                    disabled={busy || !!draft}
+                    onPress={() => {
+                      setDraft({
+                        id: place.id,
+                        name: place.name,
+                        address: place.address,
+                        lat: String(place.lat),
+                        lng: String(place.lng),
+                        icon: place.icon,
+                        tags: place.tags,
+                        category: place.category,
+                        importance: place.importance === null ? '' : String(place.importance),
+                      });
+                      setProblem(null);
+                    }}
+                  />
+                  <IconButton
+                    icon={Plus}
+                    accessibilityLabel="Añadir lugar"
+                    disabled={busy || !!draft}
+                    onPress={() => {
+                      setDraft({
+                        name: '',
+                        address: '',
+                        lat: '',
+                        lng: '',
+                        icon: 'pin',
+                        tags: '',
+                        category: '',
+                        importance: '',
+                      });
+                      setProblem(null);
+                    }}
+                  />
+                </View>
+              }
+            >
+              <Combobox
+                options={options}
+                value={place.id}
+                onChange={pickPlace}
+                placeholder="Elige un lugar"
+                accessibilityLabel="Elegir el lugar"
+              />
+              <Text style={styles.note}>{place.address}</Text>
+            </Card>
+            <Card title={picking ? 'Toca el punto exacto' : place.name}>
+              <TransitPersonalMap
+                db={data.db}
+                revision={walkEdits}
+                onChanged={walksChanged}
+                preview={walkPreview}
+                schedule={schedule}
+                snapshot={snapshot}
+                active={live.active}
+                followed={followed}
+                focusKey={tapped ? focus!.at : null}
+                center={center}
+                places={places}
+                selectedPlace={place.id}
+                tripPlaceIds={tripPlaceIds}
+                selectedStop={shownStopId}
+                draft={draftPoint && validCoordinates(draftPoint) ? draftPoint : null}
+                onPlace={pickPlace}
+                onStop={openStop}
+                onPoint={picking && !busy ? pickPoint : undefined}
+                onInteraction={setExploreMapActive}
+                routePoints={routePoints}
+                routeColor={followed ? routeColor(followed.route[3]) : undefined}
+              />
+              {picking && draft && (
+                <View style={styles.row}>
+                  <Text style={[styles.note, styles.flex]}>
+                    {draft.lat && draft.lng
+                      ? `${draft.lat}, ${draft.lng}`
+                      : 'Toca el mapa o un lugar para copiar su punto.'}
+                  </Text>
+                  <Button label="Listo" variant="primary" onPress={() => setPicking(false)} />
+                </View>
+              )}
+            </Card>
+          </PopupSheet>
         ) : undefined
       }
     >
@@ -608,66 +781,6 @@ function TransitContent() {
           </Text>
         )}
       <TransitJourneyCard surface="transit" />
-      <TransitLiveSettings
-        config={live.config}
-        error={live.configError}
-        onSave={live.save}
-        onClear={live.clear}
-      />
-      <Card
-        title="Tus lugares"
-        action={
-          <Button
-            label="Añadir"
-            icon={Plus}
-            variant="ghost"
-            disabled={busy || !!draft}
-            onPress={() => {
-              setDraft({
-                name: '',
-                address: '',
-                lat: '',
-                lng: '',
-                icon: 'pin',
-                tags: '',
-                importance: '',
-              });
-              setProblem(null);
-            }}
-          />
-        }
-      >
-        <Combobox
-          options={options}
-          value={place.id}
-          onChange={pickPlace}
-          placeholder="Elige un lugar"
-          accessibilityLabel="Elegir el lugar"
-        />
-        <Text style={styles.note}>{place.address}</Text>
-        <Text style={styles.coordinates}>
-          {place.lat}, {place.lng}
-        </Text>
-        <Button
-          label="Editar lugar"
-          icon={Pencil}
-          variant="ghost"
-          disabled={busy || !!draft}
-          onPress={() => {
-            setDraft({
-              id: place.id,
-              name: place.name,
-              address: place.address,
-              lat: String(place.lat),
-              lng: String(place.lng),
-              icon: place.icon,
-              tags: place.tags,
-              importance: place.importance === null ? '' : String(place.importance),
-            });
-            setProblem(null);
-          }}
-        />
-      </Card>
       {index && (
         <TransitPlanner
           key={journey.saved.next?.id ?? 'browse'}
@@ -675,7 +788,10 @@ function TransitContent() {
           schedule={schedule}
           stopIndex={index}
           places={places}
-          initialOrigin={place.id}
+          initialOrigin={located?.id ?? null}
+          refreshAt={refreshAt}
+          onMapInteraction={setMapActive}
+          onPlacesChange={setTripPlaceIds}
           located={located}
           snapshot={live.state.snapshot}
           active={live.active}
@@ -683,7 +799,6 @@ function TransitContent() {
           walksVersion={walkEdits}
           onWalkChanged={walksChanged}
           onLive={onPlannerLive}
-          onFocusBus={focusBus}
           initialJourney={journey.saved.next}
           onSelectJourney={async (choice, option) => {
             const origin = places.find((p) => p.id === choice.originId);
@@ -696,45 +811,6 @@ function TransitContent() {
           }}
         />
       )}
-      <MapCard title={picking ? 'Toca el punto exacto' : place.name} reveal={reveal}>
-        <TransitPersonalMap
-          db={data.db}
-          revision={walkEdits}
-          onChanged={walksChanged}
-          preview={walkPreview}
-          schedule={schedule}
-          snapshot={
-            sameTrip(followed, plannerRide) && !sameTrip(followed, selectedDetail)
-              ? live.state.snapshot
-              : snapshot
-          }
-          active={live.active}
-          followed={followed}
-          focusKey={tapped ? focus!.at : null}
-          center={center}
-          places={places}
-          stops={stops}
-          selectedPlace={place.id}
-          selectedStop={shownStopId}
-          draft={draftPoint && validCoordinates(draftPoint) ? draftPoint : null}
-          onPlace={pickPlace}
-          onStop={openStop}
-          onPoint={picking && !busy ? pickPoint : undefined}
-          onInteraction={setMapActive}
-          routePoints={routePoints}
-          routeColor={followed ? routeColor(followed.route[3]) : undefined}
-        />
-        {picking && draft && (
-          <View style={styles.row}>
-            <Text style={[styles.note, styles.flex]}>
-              {draft.lat && draft.lng
-                ? `${draft.lat}, ${draft.lng}`
-                : 'Toca el mapa o un lugar para copiar su punto.'}
-            </Text>
-            <Button label="Listo" variant="primary" onPress={() => setPicking(false)} />
-          </View>
-        )}
-      </MapCard>
       <TransitWalkReview
         db={data.db}
         schedule={schedule}
@@ -744,7 +820,7 @@ function TransitContent() {
         onPath={(walk) => {
           const key = Date.now();
           setWalkPreview({ key, walk });
-          setReveal(key);
+          setPanel('explore');
         }}
       />
       <Card title="Paradas">
@@ -985,13 +1061,19 @@ function TransitContent() {
 }
 
 const styles = sheet((theme) => ({
+  panelHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  panelTitle: { fontFamily: font.black, fontSize: 18, color: theme.text },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   row: { flexDirection: 'row', gap: 8 },
   flex: { flex: 1, minWidth: 0 },
   body: { fontFamily: font.bold, fontSize: 14, color: theme.text },
   note: { fontFamily: font.regular, fontSize: 12, color: theme.textFaint },
   error: { fontFamily: font.bold, fontSize: 13, color: theme.danger },
-  coordinates: { fontFamily: font.regular, fontSize: 11, color: theme.textFaint },
   input: {
     fontFamily: font.regular,
     fontSize: 14,

@@ -59,7 +59,7 @@ test('native markers select stable identifiers and only background map taps crea
   }).mount('TransitMap', {
     center: { lat: 43, lng: -81 },
     places: [{ id: 'door', name: 'Door', lat: 43, lng: -81 }],
-    stops: [['STOP', '10', 'Road NB', 43.01, -81.01]],
+    stops: [['STOP', '10', 'Road NB', 43, -81]],
     selectedPlace: 'door',
     selectedStop: 'STOP',
     draft: null,
@@ -69,6 +69,12 @@ test('native markers select stable identifiers and only background map taps crea
   });
   const tree = nodes(await screen.settle());
   const markers = tree.filter((n) => n.type === 'Marker');
+  assert.ok(
+    markers[0].props.zIndex > markers[1].props.zIndex,
+    'a place overlapping a stop draws above it',
+  );
+  assert.equal(markers[0].props.displayPriority, 'required');
+  assert.equal(markers[1].props.displayPriority, 'low');
   assert.equal(nodes(markers[0].props.children)[0].type, 'View');
   assert.ok(
     nodes(markers[0].props.children).some((n) => n.type === 'PlaceIcon'),
@@ -136,6 +142,40 @@ test('native live map retains measured bus points and draws only the selected tr
   ]);
   tree = nodes(await screen.settle());
   assert.deepEqual(tree.find((n) => n.type === 'Marker')!.props.coordinate, bus.props.coordinate);
+});
+
+test('panning a native map loads the stops in its new region while keeping place markers', async () => {
+  const screen = renderModule('src/ui/TransitMap.native.tsx', {
+    'react-native-maps': { __esModule: true, default: 'MapView', Marker: 'Marker' },
+    './icons.ts': { Bus: 'Bus' },
+    './placeIcons.ts': { placeIcon: () => 'PlaceIcon' },
+    './SwipeLock.tsx': { useSwipeLock: () => ({ acquire: () => () => undefined }) },
+  }).mount('TransitMap', {
+    center: { lat: 43, lng: -81 },
+    places: [{ id: 'home', name: 'Home', lat: 43, lng: -81 }],
+    stops: [
+      ['near', '', 'Near', 43, -81],
+      ['far', '', 'Far', 43.1, -81.1],
+    ],
+    selectedPlace: 'home',
+    selectedStop: null,
+    draft: null,
+    onPlace() {},
+    onStop() {},
+  });
+  let tree = nodes(await screen.settle());
+  const markers = () => tree.filter((n) => n.type === 'Marker').map((n) => n.props.identifier);
+  assert.deepEqual(markers(), ['home', 'near']);
+  tree
+    .find((n) => n.type === 'MapView')!
+    .props.onRegionChangeComplete({
+      latitude: 43.1,
+      longitude: -81.1,
+      latitudeDelta: 0.012,
+      longitudeDelta: 0.012,
+    });
+  tree = nodes(await screen.settle());
+  assert.deepEqual(markers(), ['home', 'far']);
 });
 
 test('native personal paths and crossing pins coexist with the last trip location', async () => {
@@ -319,6 +359,7 @@ test('the live map takes the followed bus from the trip evidence and leaves it o
   };
   const screen = renderModule('src/ui/TransitLiveMap.tsx', {
     './TransitMap': { TransitMap: 'TransitMap' },
+    './TransitMapFilters.tsx': { TransitMapFilters: 'TransitMapFilters' },
     '../transit/realtime.ts': realtime,
     './TransitDepartures.tsx': { useLiveClock: () => now },
   }).mount('TransitLiveMap', props);
@@ -339,4 +380,69 @@ test('the live map takes the followed bus from the trip evidence and leaves it o
   props.focusKey = 7;
   map = nodes(await screen.settle()).find((n) => n.type === 'TransitMap')!;
   assert.deepEqual(map.props.focus, { key: 7, point: line.point });
+});
+
+test('native itinerary viewport fits both endpoints once, then fits a single endpoint without chasing live updates', async () => {
+  const moves: any[] = [];
+  let camera: any;
+  const start = { lat: 43, lng: -81.3 },
+    end = { lat: 43.04, lng: -81.1 };
+  const props: Record<string, any> = {
+    center: start,
+    places: [],
+    stops: [],
+    selectedPlace: null,
+    selectedStop: null,
+    draft: null,
+    viewport: { key: 'start/end', points: [start, end] },
+    onPlace() {},
+    onStop() {},
+    journeyPaths: [
+      { id: 'bus-a', points: [start, end], color: '#173D6F', dashed: false },
+      { id: 'bus-b', points: [end, start], color: '#872378', dashed: false },
+      { id: 'walk', points: [start, end], color: '#121212', dashed: true },
+    ],
+  };
+  const screen = renderModule('src/ui/TransitMap.native.tsx', {
+    'react-native-maps': {
+      __esModule: true,
+      Marker: 'Marker',
+      Polyline: 'Polyline',
+      default: (p: any) => {
+        camera = p;
+        p.ref.current = {
+          animateToRegion: (region: any) => moves.push({ region }),
+          fitToCoordinates: (points: any, options: any) => moves.push({ points, options }),
+        };
+        return { type: 'MapView', props: p };
+      },
+    },
+    './icons.ts': { Bus: 'Bus' },
+    './placeIcons.ts': { placeIcon: () => 'PlaceIcon' },
+    './SwipeLock.tsx': { useSwipeLock: () => ({ acquire: () => () => undefined }) },
+  }).mount('TransitMap', props);
+  await screen.settle();
+  assert.equal(moves.length, 0, 'wait for the native map');
+  camera.onMapReady();
+  let tree = nodes(await screen.settle());
+  assert.deepEqual(
+    moves[0].points,
+    [start, end].map((p) => ({ latitude: p.lat, longitude: p.lng })),
+  );
+  const lines = tree.filter((n) => n.type === 'Polyline');
+  assert.deepEqual(
+    lines.map((n) => n.props.strokeColor),
+    ['#173D6F', '#872378', '#121212'],
+  );
+  assert.equal(lines[0].props.lineDashPattern, undefined);
+  assert.deepEqual(lines[2].props.lineDashPattern, [7, 5]);
+  props.viewport = { key: 'start/end', points: [{ ...start }, { ...end }] };
+  props.buses = [{ id: 'one', label: 'Bus', ...end, stale: false, measuredAt: 1 }];
+  await screen.settle();
+  assert.equal(moves.length, 1, 'equivalent geometry and live buses do not reset a pan');
+  props.viewport = { key: 'end', points: [end] };
+  tree = nodes(await screen.settle());
+  assert.equal(moves.length, 2);
+  assert.equal(moves[1].region.latitude, end.lat);
+  assert.equal(moves[1].region.longitude, end.lng);
 });

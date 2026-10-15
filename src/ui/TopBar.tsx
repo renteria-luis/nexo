@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -40,11 +41,13 @@ export function TopBar({
   onPress,
   onMenu,
   showDate = true,
+  actions,
 }: {
   action: 'settings' | 'done';
   onPress: () => void;
   onMenu: () => void;
   showDate?: boolean;
+  actions?: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
   const { state } = useAppData();
@@ -57,19 +60,20 @@ export function TopBar({
         {showDate && today !== null && <Text style={styles.today}>{today}</Text>}
       </View>
 
-      {action === 'done' ? (
-        <IconButton icon={Check} tone="accent" accessibilityLabel="Listo" onPress={onPress} />
-      ) : (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Ajustes"
-          onPress={onPress}
-          style={({ pressed }) => [styles.action, pressed && styles.pressed]}
-        >
-          <Settings size={17} color={theme.text} strokeWidth={2.5} />
-          <Text style={styles.actionText}>Ajustes</Text>
-        </Pressable>
-      )}
+      {actions ??
+        (action === 'done' ? (
+          <IconButton icon={Check} tone="accent" accessibilityLabel="Listo" onPress={onPress} />
+        ) : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Ajustes"
+            onPress={onPress}
+            style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+          >
+            <Settings size={17} color={theme.text} strokeWidth={2.5} />
+            <Text style={styles.actionText}>Ajustes</Text>
+          </Pressable>
+        ))}
     </View>
   );
 }

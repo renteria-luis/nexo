@@ -31,7 +31,7 @@ function fixture() {
       Text: 'Text',
       StyleSheet: { absoluteFill: {} },
       Platform: { OS: 'ios' },
-      Keyboard: { addListener: () => ({ remove() {} }) },
+      Keyboard: { addListener: () => ({ remove() {} }), dismiss() {} },
       Animated: {
         View: 'Animated.View',
         Value: class {
@@ -84,7 +84,9 @@ test('a failed pull stops the spinner and exposes retry without removing data', 
   assert.match(textOf(tree), /existing draft/);
   assert.ok(nodes(tree).some((node) => node.props.label === 'Reintentar actualización'));
   f.props.overlay = 'editing overlay';
-  assert.equal((await f.scroll()).refreshControl, undefined);
+  assert.ok((await f.scroll()).refreshControl, 'opening a popup preserves the scroll tree');
+  assert.equal((await f.scroll()).refreshControl.props.enabled, false);
+  assert.equal((await f.scroll()).scrollEnabled, false);
   f.props.overlay = undefined;
   // A drag inside turns scrolling off mid-touch; removing the control then hung the
   // screen on the iPhone, so it stays mounted and only scrolling stops.
@@ -92,4 +94,60 @@ test('a failed pull stops the spinner and exposes retry without removing data', 
   const dragging = await f.scroll();
   assert.equal(dragging.scrollEnabled, false);
   assert.ok(dragging.refreshControl);
+});
+
+test('screen refresh waits for its extra work and ignores pulls during map gestures', async () => {
+  const f = fixture();
+  let extraCalls = 0;
+  let finishExtra!: () => void;
+  Object.assign(f.props, {
+    onRefresh: () => {
+      extraCalls++;
+      return new Promise<void>((resolve) => {
+        finishExtra = resolve;
+      });
+    },
+  });
+  f.props.scrollEnabled = false;
+  await (await f.scroll()).refreshControl.props.onRefresh();
+  assert.equal(f.calls(), 0);
+  assert.equal(extraCalls, 0);
+  f.props.scrollEnabled = true;
+  const pending = (await f.scroll()).refreshControl.props.onRefresh();
+  assert.equal(extraCalls, 1);
+  f.finish();
+  assert.equal((await f.scroll()).refreshControl.props.refreshing, true);
+  finishExtra();
+  await pending;
+  assert.equal((await f.scroll()).refreshControl.props.refreshing, false);
+});
+
+test('a child sheet keeps its parent mounted, blocks background interaction and dismisses one level', async () => {
+  const f = fixture();
+  Object.assign(f.props, {
+    overlay: 'explorer',
+    overlayAbove: 'place editor',
+    onOverlayDismiss: () => {
+      Object.assign(f.props, { overlayAbove: undefined });
+    },
+  });
+  let tree = await f.screen.settle();
+  assert.match(textOf(tree), /explorer/);
+  assert.match(textOf(tree), /place editor/);
+  const hidden = nodes(tree).filter(
+    (n) => n.props.importantForAccessibility === 'no-hide-descendants',
+  );
+  assert.ok(hidden.some((n) => textOf(n).includes('explorer') && n.props.pointerEvents === 'none'));
+  const close = nodes(tree)
+    .filter((n) => n.props.accessibilityLabel === 'Cerrar')
+    .at(-1)!;
+  // The parent remains, and refresh remains disabled after dismissing the child.
+  close.props.onPress();
+  tree = await f.screen.settle();
+  assert.ok(close);
+  assert.match(textOf(tree), /explorer/);
+  assert.doesNotMatch(textOf(tree), /place editor/);
+  assert.equal((await f.scroll()).refreshControl.props.enabled, false);
+  await (await f.scroll()).refreshControl.props.onRefresh();
+  assert.equal(f.calls(), 0);
 });

@@ -60,6 +60,6 @@ export function placeOptions(places: readonly Place[]): Option[] {
     id: place.id,
     label: place.name,
     icon: placeIcon(place.icon),
-    keywords: place.tags,
+    keywords: [place.tags, place.category].filter(Boolean).join(', '),
   }));
 }
