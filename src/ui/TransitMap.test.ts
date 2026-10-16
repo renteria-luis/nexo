@@ -380,6 +380,51 @@ test('the live map takes the followed bus from the trip evidence and leaves it o
   props.focusKey = 7;
   map = nodes(await screen.settle()).find((n) => n.type === 'TransitMap')!;
   assert.deepEqual(map.props.focus, { key: 7, point: line.point });
+
+  // Cómo llegar's map: only the trip, without the layers or their checkboxes.
+  props.layers = false;
+  const bare = nodes(await screen.settle());
+  map = bare.find((n) => n.type === 'TransitMap')!;
+  assert.ok(!bare.some((n) => n.type === 'TransitMapFilters'));
+  assert.deepEqual(map.props.stops, []);
+  assert.deepEqual(map.props.buses, []);
+  assert.equal(map.props.followed.tag, '3511 · GPS', 'its own bus stays');
+});
+
+test('native trip dots tell stops apart by size and fill, and the phone dot replaces the pin', async () => {
+  const screen = renderModule('src/ui/TransitMap.native.tsx', {
+    'react-native-maps': { __esModule: true, default: 'MapView', Marker: 'Marker' },
+    './icons.ts': { Bus: 'Bus' },
+    './placeIcons.ts': { placeIcon: () => 'PlaceIcon' },
+    './SwipeLock.tsx': { useSwipeLock: () => ({ acquire: () => () => undefined }) },
+  }).mount('TransitMap', {
+    center: { lat: 43, lng: -81 },
+    places: [],
+    stops: [],
+    selectedPlace: null,
+    selectedStop: null,
+    draft: null,
+    onPlace() {},
+    onStop() {},
+    stopDots: [
+      { id: 'a', lat: 43, lng: -81, label: 'A', alight: false, skipped: false },
+      { id: 'b', lat: 43.001, lng: -81, label: 'B · LTC: no para', alight: false, skipped: true },
+      { id: 'c', lat: 43.002, lng: -81, label: 'C · Aquí bajas', alight: true, skipped: false },
+    ],
+    location: { lat: 43, lng: -81, at: 1, accuracy: 5 },
+    showsUserLocation: true,
+  });
+  const tree = nodes(await screen.settle());
+  assert.equal(tree.find((n) => n.type === 'MapView')!.props.showsUserLocation, true);
+  assert.ok(!tree.some((n) => n.props.identifier === 'trip-location'), 'one dot for him, not two');
+  const look = (id: string) => {
+    const dot = tree.find((n) => n.props.identifier === `dot-${id}`)!;
+    const style = [dot.props.children.props.style].flat(Infinity).filter(Boolean);
+    return Object.assign({}, ...style) as { width: number; backgroundColor: string };
+  };
+  assert.equal(look('a').backgroundColor, '#FFFFFF');
+  assert.equal(look('b').backgroundColor, '#8A8A8A');
+  assert.ok(look('c').width > look('a').width, 'where he gets off is larger');
 });
 
 test('native itinerary viewport fits both endpoints once, then fits a single endpoint without chasing live updates', async () => {

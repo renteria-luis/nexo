@@ -22,6 +22,7 @@ export const TransitMap = memo(function TransitMap({
   focus,
   viewport,
   journeyPaths = [],
+  stopDots = [],
   routePoints = [],
   routeColor = '#3977A5',
   walkPaths = [],
@@ -133,6 +134,19 @@ export const TransitMap = memo(function TransitMap({
                 stroke={path.drawing ? '#DA692F' : '#17683A'}
                 strokeWidth={3}
                 strokeDasharray="7 5"
+              />
+            ))}
+          {stopDots
+            .filter((dot) => visible(dot.lat, dot.lng))
+            .map((dot) => (
+              <Circle
+                key={`dot-${dot.id}`}
+                cx={x(dot.lng)}
+                cy={y(dot.lat)}
+                r={dot.alight ? 7 : 4}
+                fill={dot.skipped ? '#8A8A8A' : '#FFFFFF'}
+                stroke="#111111"
+                strokeWidth={dot.alight ? 3 : 2}
               />
             ))}
           {notes

@@ -21,11 +21,13 @@ export const TransitMap = memo(function TransitMap({
   focus,
   viewport,
   journeyPaths = [],
+  stopDots = [],
   routePoints = [],
   routeColor = '#3977A5',
   walkPaths = [],
   notes = [],
   location,
+  showsUserLocation = false,
   onNote,
   onPlace,
   onStop,
@@ -144,6 +146,7 @@ export const TransitMap = memo(function TransitMap({
         rotateEnabled={false}
         pitchEnabled={false}
         toolbarEnabled={false}
+        showsUserLocation={showsUserLocation}
       >
         {journeyPaths
           .filter((path) => path.points.length > 1)
@@ -191,7 +194,22 @@ export const TransitMap = memo(function TransitMap({
             onPress={() => onNote?.(note.id)}
           />
         ))}
-        {location && (
+        {stopDots.map((dot) => (
+          <Marker
+            // A stop that closes or reopens is drawn anew.
+            key={`dot-${dot.id}-${dot.skipped}`}
+            identifier={`dot-${dot.id}`}
+            coordinate={{ latitude: dot.lat, longitude: dot.lng }}
+            title={dot.label}
+            anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={dot.alight ? 3 : 2}
+          >
+            <View
+              style={[styles.dot, dot.alight && styles.dotAlight, dot.skipped && styles.dotSkipped]}
+            />
+          </Marker>
+        ))}
+        {location && !showsUserLocation && (
           <Marker
             identifier="trip-location"
             coordinate={{ latitude: location.lat, longitude: location.lng }}
@@ -308,6 +326,18 @@ const styles = StyleSheet.create({
   placeChosen: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#17683A' },
   bus: { ...marker, width: 28, height: 28, borderRadius: 14, backgroundColor: '#C34438' },
   busStale: { backgroundColor: '#777777' },
+  // Told apart by size and by fill, not only by colour: white on the line, grey where it does
+  // not stop, larger where he gets off.
+  dot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: '#111111',
+    backgroundColor: '#FFFFFF',
+  },
+  dotAlight: { width: 18, height: 18, borderRadius: 9, borderWidth: 3 },
+  dotSkipped: { backgroundColor: '#8A8A8A' },
   // His bus is told apart by size, a white face, a black ring and its tag, not only by colour.
   followed: { alignItems: 'center', width: 112 },
   followedBus: {

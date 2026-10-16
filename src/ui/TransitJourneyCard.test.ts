@@ -9,7 +9,7 @@ import * as schedule from '../transit/schedule.ts';
 import { sortPlaces } from '../transit/store.ts';
 import { nodes, renderModule, textOf } from './test-render.ts';
 
-function fixture(surface: 'today' | 'training') {
+function fixture(surface: 'today' | 'training' | 'transit') {
   const calls: unknown[] = [];
   const journey: any = {
     saved: { preferences: DEFAULT_TRAVEL_PREFERENCES, next: null },
@@ -217,4 +217,18 @@ test('the compact card preserves limited confidence, infeasibility and visible s
   };
   (await f.control('Avisarme de este viaje')).onPress();
   assert.match(textOf(await f.screen.settle()), /No se pudo programar/);
+});
+
+test('on Transit the card shows only a chosen trip, as Tu viaje, changed from Cómo llegar', async () => {
+  const f = fixture('transit');
+  assert.equal(await f.screen.settle(), null, 'no second place to plan a trip');
+  const { option, now } = plannedTrip();
+  f.journey.saved.next = { originId: 'gym', destinationId: 'end', workoutId: null };
+  f.journey.advice = travelAdvice(option, 0, null, now);
+  const tree = await f.screen.settle();
+  assert.match(textOf(tree), /Tu viaje/);
+  const labels = nodes(tree).map((node) => node.props.label);
+  assert.ok(labels.includes('Salgo ahora'));
+  assert.ok(labels.includes('Quitar viaje'));
+  assert.ok(!labels.includes('Cambiar viaje'));
 });

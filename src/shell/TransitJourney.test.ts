@@ -87,6 +87,7 @@ async function fixture(
   const module = renderModule('src/shell/TransitJourney.tsx', {
     'react-native': {
       AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
+      LayoutAnimation: { configureNext() {}, Presets: { easeInEaseOut: {} } },
     },
     '../db/index.ts': { openDatabase: async () => db },
     '../training/read.ts': training,

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Text } from 'react-native';
 import { itineraryPaths } from '../transit/map.ts';
 import type { PlanOption } from '../transit/planner.ts';
@@ -34,7 +34,6 @@ export function TransitPlanMap({
   focus: { departure: Departure; at: number } | null;
   onInteraction?: (active: boolean) => void;
 }) {
-  const [selectedStop, setSelectedStop] = useState<string | null>(null);
   const paths = useMemo(
     () =>
       origin && target && option
@@ -60,14 +59,15 @@ export function TransitPlanMap({
         selectedPlace={null}
         selectedPlaces={endpoints.map((p) => p.id)}
         tripPlaceIds={endpoints.map((p) => p.id)}
-        selectedStop={selectedStop}
+        layers={false}
+        selectedStop={null}
         draft={null}
         viewport={viewport}
         journeyPaths={paths}
         followed={focus?.departure ?? option?.itinerary.rides[0]?.departure ?? null}
         focusKey={focus?.at ?? null}
         onPlace={() => undefined}
-        onStop={setSelectedStop}
+        onStop={() => undefined}
         onInteraction={onInteraction}
       />
       {paths.length > 0 && (

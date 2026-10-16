@@ -35,7 +35,7 @@ function trip() {
   });
 }
 
-function render(journey: Record<string, unknown>) {
+function render(journey: Record<string, unknown>, props: Record<string, unknown> = {}) {
   const taps: unknown[] = [];
   const view: any = {
     gps: 'background',
@@ -60,9 +60,10 @@ function render(journey: Record<string, unknown>) {
       relative: (when: number, now: number) => `en ${Math.round((when - now) / 60_000)} min`,
     },
     './TransitStatus.tsx': { RouteBadge: 'RouteBadge' },
+    './TransitTripMap.tsx': { TransitTripMap: 'TransitTripMap' },
     './Button.tsx': { Button: 'Button' },
     './Card.tsx': { Card: 'Card' },
-  }).mount('TransitActiveTrip');
+  }).mount('TransitActiveTrip', props);
   const press = async (label: string) => {
     const button = nodes(await screen.settle()).find((node) => node.props.label === label);
     assert.ok(button, label);
@@ -119,4 +120,15 @@ test('without permission the buttons carry the trip, and a finished trip shows w
   assert.match(summary, /96 KB/);
   await f.press('Cerrar');
   assert.deepEqual(f.taps, ['dismiss']);
+});
+
+test('on Transit the trip in progress has its own map, and an ended trip does not', async () => {
+  const mapped = async (journey: Record<string, unknown>, props: Record<string, unknown>) =>
+    nodes(await render({ places: [], ...journey }, props).screen.settle()).some(
+      (n) => n.type === 'TransitTripMap',
+    );
+  assert.ok(await mapped({ trip: trip() }, { map: true }));
+  assert.ok(!(await mapped({ trip: trip() }, {})), 'Hoy keeps the card without a map');
+  const ended = activeTrip.applyAction(trip(), 'finish', at('08:57')).trip;
+  assert.ok(!(await mapped({ trip: ended }, { map: true })));
 });

@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { AppState } from 'react-native';
+import { AppState, LayoutAnimation } from 'react-native';
 import { openDatabase } from '../db/index.ts';
 import { readWorkoutFinish, type WorkoutFinish } from '../training/read.ts';
 import type { SessionTiming } from '../training/timing.ts';
@@ -119,10 +119,19 @@ const initial: JourneyState = { preferences: DEFAULT_TRAVEL_PREFERENCES, next: n
 const ViewContext = createContext<ViewState | null>(null);
 const ActionsContext = createContext<Actions | null>(null);
 const LinkContext = createContext<
-  (Pick<ViewState, 'saved' | 'gymId' | 'sessionId' | 'query'> & { actions: Actions }) | null
+  | (Pick<ViewState, 'saved' | 'gymId' | 'sessionId' | 'query'> & {
+      actions: Actions;
+      /** The trip in progress, while there is one. */
+      traveling: string | null;
+    })
+  | null
 >(null);
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const pause = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+// The trip card changes size when a trip is chosen, starts, changes step or ends: it slides into
+// place instead of jumping the screen under his finger.
+const smoothly = () => LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+const tripShape = (state: TrackerState) => `${state.trip?.id}/${state.trip?.phase}`;
 
 export function TransitJourneyProvider({ children }: { children: ReactNode }) {
   const { state, dataRevision, loadSessionTiming } = useAppData();
@@ -159,7 +168,18 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const [tracking, setTracking] = useState<TrackerState>(tripTracker.getState);
-  useEffect(() => tripTracker.subscribe(setTracking), []);
+  const shape = useRef(tripShape(tracking));
+  useEffect(
+    () =>
+      tripTracker.subscribe((next) => {
+        if (tripShape(next) !== shape.current) {
+          shape.current = tripShape(next);
+          smoothly();
+        }
+        setTracking(next);
+      }),
+    [],
+  );
 
   const refresh = useCallback(async () => {
     // The saved trip is the truth on every visit: a reset, a restore or the clock may have ended it.
@@ -310,7 +330,8 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
             stops,
             learned: learnedWalks(accepted),
           }),
-          mode: trip?.mode === 'arrive' ? ('arrive' as const) : ('depart' as const),
+          // Leaving now also searches the late buses, so one he chose is found again.
+          mode: trip?.mode ?? ('depart' as const),
           at,
           observedTrips: JSON.parse(observedKey),
         };
@@ -473,6 +494,7 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
       const replaced = current.current.next?.id !== next.next?.id;
       await saveJourneyState(db, next);
       current.current = next;
+      smoothly();
       setSaved(next);
       setProblem(null);
       if (replaced || !next.next?.reminders) await syncTransitReminders(db, next.next, []);
@@ -615,9 +637,10 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
   };
   // The map screen consumes stable trip selection, never the card's ticking estimate.
   const gymId = session?.gym_id ?? null;
+  const traveling = followingId ?? null;
   const link = useMemo(
-    () => ({ saved, gymId, sessionId, query, actions }),
-    [saved, gymId, sessionId, query, actions],
+    () => ({ saved, gymId, sessionId, query, actions, traveling }),
+    [saved, gymId, sessionId, query, actions, traveling],
   );
   return (
     <ActionsContext.Provider value={actions}>

@@ -168,7 +168,13 @@ export function TransitTravelSettings() {
   );
 }
 
-export function TransitJourneyCard({ surface }: { surface: 'today' | 'training' | 'transit' }) {
+export function TransitJourneyCard({
+  surface,
+  onMapInteraction,
+}: {
+  surface: 'today' | 'training' | 'transit';
+  onMapInteraction?: (active: boolean) => void;
+}) {
   const journey = useTransitJourney();
   const { saved, places, workout, sessionId, gymId, advice, alternative, loading, busy, actions } =
     journey;
@@ -236,14 +242,25 @@ export function TransitJourneyCard({ surface }: { surface: 'today' | 'training' 
     }
   };
   if (!TRANSIT_ENABLED) return null;
-  if (journey.trip) return <TransitActiveTrip />;
+  if (journey.trip)
+    return <TransitActiveTrip map={surface === 'transit'} onMapInteraction={onMapInteraction} />;
+  // Transit plans in Cómo llegar; this card shows only a trip already chosen.
+  if (surface === 'transit' && !trip) return null;
   const selecting = editing || !trip || (surface === 'training' && trip.workoutId !== sessionId);
   const linkedWorkout = workout && trip?.workoutId === workout.sessionId ? workout : null;
   const originName = places.find((place) => place.id === trip?.originId)?.name;
   const targetName = places.find((place) => place.id === trip?.destinationId)?.name;
   return (
     <>
-      <Card title={surface === 'training' ? 'Viaje al terminar' : 'Próximo viaje'}>
+      <Card
+        title={
+          surface === 'training'
+            ? 'Viaje al terminar'
+            : surface === 'transit'
+              ? 'Tu viaje'
+              : 'Próximo viaje'
+        }
+      >
         {selecting ? (
           <>
             <Combobox
@@ -442,15 +459,17 @@ export function TransitJourneyCard({ surface }: { surface: 'today' | 'training' 
             )}
             {details && (
               <View style={styles.row}>
-                <Button
-                  label="Cambiar viaje"
-                  variant="ghost"
-                  onPress={() => {
-                    setOriginId(null);
-                    setDestinationId(null);
-                    setEditing(true);
-                  }}
-                />
+                {surface !== 'transit' && (
+                  <Button
+                    label="Cambiar viaje"
+                    variant="ghost"
+                    onPress={() => {
+                      setOriginId(null);
+                      setDestinationId(null);
+                      setEditing(true);
+                    }}
+                  />
+                )}
                 <Button
                   label="Quitar viaje"
                   variant="ghost"

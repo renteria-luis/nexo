@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { plannerFixture } from './fixtures.ts';
-import { itineraryPaths, mapRegion, ridePath } from './map.ts';
+import { freezeTrip } from './active-trip.ts';
+import { itineraryPaths, mapRegion, ridePath, tripLayers } from './map.ts';
 import { buildPlannerIndex, liveOptions, runPlan, startPlan } from './planner.ts';
 import { queryInstant } from './schedule.ts';
 import type { Place, WalkLink } from './store.ts';
@@ -112,4 +113,88 @@ test('the camera includes either endpoint alone or both with room around their m
     }
     assert.ok(region.latDelta > 0 && region.lngDelta > 0);
   }
+});
+
+test('a trip in progress draws its buses and walks with a dot per stop, larger where he gets off', async () => {
+  const option = (await options()).find(
+    (p) =>
+      p.itinerary.rides.length === 2 &&
+      !p.missed &&
+      p.itinerary.rides[0].alight - p.itinerary.rides[0].board > 1,
+  )!;
+  const trip = freezeTrip({
+    id: 'trip',
+    journeyId: null,
+    schedule,
+    option,
+    origin,
+    destination: target,
+    now: at,
+  });
+  const [first, second] = trip.rides;
+  const skippedStop = first.stops[1];
+  const snapshot = {
+    schema: 1 as const,
+    generatedAt: at,
+    staticVersion: schedule.feedVersion,
+    staticSourceSha256: schedule.sourceSha256,
+    staticCompatible: true,
+    health: Object.fromEntries(
+      (['trips', 'vehicles', 'alerts'] as const).map((k) => [
+        k,
+        { status: 'ok' as const, feedTimestamp: at, fetchedAt: at, error: null },
+      ]),
+    ) as never,
+    tripUpdates: [
+      {
+        tripId: first.tripId,
+        serviceDate: first.serviceDate,
+        routeId: first.routeId,
+        directionId: null,
+        startTime: null,
+        entityId: 'entity',
+        vehicleId: 'bus',
+        measuredAt: at,
+        relationship: 'scheduled' as const,
+        delay: 0,
+        stops: [
+          {
+            stopId: skippedStop.id,
+            stopSequence:
+              schedule.patterns[option.itinerary.rides[0].trip[6]][skippedStop.position][1],
+            relationship: 'skipped' as const,
+            arrival: null,
+            departure: null,
+          },
+        ],
+      },
+    ],
+    vehicles: [],
+    alerts: [],
+    issues: { unmatchedTrips: 0, ambiguousStops: 0, invalidEntities: 0, truncated: false },
+  };
+  const { paths, dots } = tripLayers(trip, { schedule, snapshot }, at);
+  assert.deepEqual(
+    paths.map((p) => [p.id, p.dashed, p.color]),
+    [
+      ['walk-0', true, '#121212'],
+      ['walk-1', true, '#121212'],
+      ['walk-2', true, '#121212'],
+      ['ride-0', false, first.color],
+      ['ride-1', false, second.color],
+    ],
+  );
+  assert.equal(dots.length, first.stops.length + second.stops.length);
+  assert.deepEqual(
+    dots.filter((d) => d.alight).map((d) => [d.lat, d.lng]),
+    [first.stops.at(-1)!, second.stops.at(-1)!].map((s) => [s.lat, s.lng]),
+  );
+  assert.deepEqual(
+    dots.filter((d) => d.skipped).map((d) => d.label),
+    [`${skippedStop.name} (#${skippedStop.code}) · LTC: no para`],
+  );
+  assert.ok(
+    tripLayers(trip, null, at).dots.every((d) => !d.skipped),
+    'no live data, no closure',
+  );
 });

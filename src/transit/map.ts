@@ -1,4 +1,5 @@
 import type { Coordinates } from '../core/geo.ts';
+import { rideStopLive, stopLabel, type ActiveTrip, type TripLive } from './active-trip.ts';
 import type { Itinerary, Ride, Walk } from './planner.ts';
 import { pathStops } from './realtime.ts';
 import type { Schedule } from './schedule.ts';
@@ -6,6 +7,15 @@ import type { Place, StopWalk, WalkLink } from './store.ts';
 import { parsePath } from './walks.ts';
 
 export type JourneyPath = { id: string; points: Coordinates[]; color: string; dashed: boolean };
+/** A stop of a bus he takes, drawn on its line. */
+export type StopDot = Coordinates & {
+  id: string;
+  label: string;
+  /** Where he gets off that bus. */
+  alight: boolean;
+  /** LTC says the bus does not stop there now. */
+  skipped: boolean;
+};
 
 /** Only the part actually ridden, following the ordered GTFS shape through loops. */
 export function ridePath(schedule: Schedule, ride: Ride): Coordinates[] {
@@ -102,5 +112,46 @@ export function mapRegion(points: Coordinates[]) {
     center: { lat: (lowLat + highLat) / 2, lng: (lowLng + highLng) / 2 },
     latDelta: Math.max(0.006, (highLat - lowLat) * 1.5),
     lngDelta: Math.max(0.008, (highLng - lowLng) * 1.5),
+  };
+}
+
+/**
+ * A trip in progress as he chose it: each bus in its line's colour with a dot per stop, and the
+ * walks dashed. It comes from the frozen trip, so it stays until the trip ends.
+ */
+export function tripLayers(
+  trip: ActiveTrip,
+  context: TripLive | null,
+  now: number,
+): { paths: JourneyPath[]; dots: StopDot[] } {
+  const point = ({ lat, lng }: Coordinates) => ({ lat, lng });
+  return {
+    paths: [
+      ...trip.walks.map((walk, i) => ({
+        id: `walk-${i}`,
+        points: [point(walk.from), point(walk.to)],
+        color: '#121212',
+        dashed: true,
+      })),
+      ...trip.rides.map((ride, i) => ({
+        id: `ride-${i}`,
+        points: ride.path,
+        color: ride.color,
+        dashed: false,
+      })),
+    ],
+    dots: trip.rides.flatMap((ride, i) =>
+      ride.stops.map((stop, k) => {
+        const alight = k === ride.stops.length - 1;
+        const skipped = rideStopLive(trip, ride, k, context, now)?.relationship === 'skipped';
+        return {
+          ...point(stop),
+          id: `${i}:${stop.position}`,
+          label: `${stopLabel(stop)}${alight ? ' · Aquí bajas' : ''}${skipped ? ' · LTC: no para' : ''}`,
+          alight,
+          skipped,
+        };
+      }),
+    ),
   };
 }

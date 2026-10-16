@@ -55,6 +55,7 @@ import { Chip } from './Chip.tsx';
 import { Combobox, type Option } from './Combobox.tsx';
 import {
   ArrowUpDown,
+  Check,
   ChevronDown,
   ChevronRight,
   ChevronUp,
@@ -131,7 +132,7 @@ export function TransitPlanner({
   onWalkChanged,
   onLive,
   onFocusBus,
-  initialJourney,
+  journey,
   onSelectJourney,
   refreshAt = 0,
   onMapInteraction,
@@ -156,14 +157,15 @@ export function TransitPlanner({
   onLive: (live: PlannerLive) => void;
   /** Shows an opened bus on the screen's map. */
   onFocusBus?: (departure: Departure) => void;
-  initialJourney?: NextTrip | null;
+  /** The saved next trip: it opens here, and one chosen elsewhere replaces what is shown. */
+  journey?: NextTrip | null;
   onSelectJourney?: (
     choice: { originId: string; destinationId: string; mode: PlanMode; at: number },
     option: PlanOption,
   ) => Promise<void>;
 }) {
-  const [originId, setOriginId] = useState(initialJourney?.originId ?? initialOrigin);
-  const [openKey, setOpenKey] = useState<string | null>(initialJourney?.selectedKey ?? null);
+  const [originId, setOriginId] = useState(journey?.originId ?? initialOrigin);
+  const [openKey, setOpenKey] = useState<string | null>(journey?.selectedKey ?? null);
   const [mapOption, setMapOption] = useState<PlanOption | null>(null);
   const [mapFocus, setMapFocus] = useState<{ departure: Departure; at: number } | null>(null);
   const mapBlock = useRef<View>(null);
@@ -173,19 +175,19 @@ export function TransitPlanner({
     scrollIntoView(mapBlock.current);
     onFocusBus?.(departure);
   };
-  const [targetId, setTargetId] = useState<string | null>(initialJourney?.destinationId ?? null);
+  const [targetId, setTargetId] = useState<string | null>(journey?.destinationId ?? null);
   useEffect(() => {
     onPlacesChange?.([...new Set([originId, targetId].filter((id): id is string => !!id))]);
   }, [originId, targetId, onPlacesChange]);
   // The chip he picked, and the search it last applied: a time to leave at or arrive by is only
   // searched once he chooses it.
-  const [mode, setMode] = useState<PlanMode>(initialJourney?.mode ?? 'now');
+  const [mode, setMode] = useState<PlanMode>(journey?.mode ?? 'now');
   const [applied, setApplied] = useState<{ mode: PlanMode; at: number }>(() => ({
-    mode: initialJourney?.mode ?? 'now',
-    at: initialJourney?.at ?? Date.now(),
+    mode: journey?.mode ?? 'now',
+    at: journey?.at ?? Date.now(),
   }));
-  const [date, setDate] = useState(() => agencyDate(initialJourney?.at ?? Date.now()));
-  const [time, setTime] = useState(() => agencyClock(initialJourney?.at ?? Date.now()));
+  const [date, setDate] = useState(() => agencyDate(journey?.at ?? Date.now()));
+  const [time, setTime] = useState(() => agencyClock(journey?.at ?? Date.now()));
   const [walks, setWalks] = useState<Walks | null>(null);
   const [saved, setSaved] = useState(0);
   const [result, setResult] = useState<PlanResult | null>(null);
@@ -199,7 +201,29 @@ export function TransitPlanner({
     setSeenRefresh(refreshAt);
     if (mode === 'now') setApplied({ mode: 'now', at: refreshAt });
   }
-  const [originChosenAt, setOriginChosenAt] = useState(() => (initialJourney ? Date.now() : 0));
+  const [originChosenAt, setOriginChosenAt] = useState(() => (journey ? Date.now() : 0));
+  // The option he chose here shows as chosen at once, and the list stays as it is; a trip chosen
+  // in Hoy or from a notice is shown in its place.
+  const [chosenKey, setChosenKey] = useState(journey?.selectedKey ?? null);
+  const journeySeen = `${journey?.id}|${journey?.selectedKey}`;
+  const [seenJourney, setSeenJourney] = useState(journeySeen);
+  if (seenJourney !== journeySeen) {
+    setSeenJourney(journeySeen);
+    setChosenKey(journey?.selectedKey ?? null);
+    if (journey && journey.selectedKey !== chosenKey) {
+      setOriginId(journey.originId);
+      // When it was chosen: a selected bus, or else the moment a trip without one was saved.
+      setOriginChosenAt(journey.selectedAt ?? journey.at);
+      setTargetId(journey.destinationId);
+      setMode(journey.mode);
+      setApplied({ mode: journey.mode, at: journey.at });
+      setDate(agencyDate(journey.at));
+      setTime(agencyClock(journey.at));
+      setOpenKey(journey.selectedKey);
+      setOpenRide(null);
+      setMapFocus(null);
+    }
+  }
   const [seenLocated, setSeenLocated] = useState<number | null>(null);
   if (located && seenLocated !== located.at) {
     setSeenLocated(located.at);
@@ -517,18 +541,27 @@ export function TransitPlanner({
             setMapFocus(null);
           }}
           onMapOption={setMapOption}
+          chosenKey={chosenKey}
           onSelect={
             onSelectJourney
-              ? (option) =>
-                  onSelectJourney(
-                    {
-                      originId: origin.id,
-                      destinationId: target.id,
-                      mode: shownResult.request.mode,
-                      at: shownResult.request.at,
-                    },
-                    option,
-                  )
+              ? async (option) => {
+                  const before = chosenKey;
+                  setChosenKey(option.scheduleKey);
+                  try {
+                    await onSelectJourney(
+                      {
+                        originId: origin.id,
+                        destinationId: target.id,
+                        mode: shownResult.request.mode,
+                        at: shownResult.request.at,
+                      },
+                      option,
+                    );
+                  } catch (error) {
+                    setChosenKey(before);
+                    throw error;
+                  }
+                }
               : undefined
           }
         />
@@ -616,6 +649,7 @@ const PlanList = memo(function PlanList({
   open,
   onToggle,
   onMapOption,
+  chosenKey,
   onSelect,
 }: {
   schedule: Schedule;
@@ -634,6 +668,7 @@ const PlanList = memo(function PlanList({
   open: string | null;
   onToggle: (key: string | null) => void;
   onMapOption: (option: PlanOption | null) => void;
+  chosenKey: string | null;
   onSelect?: (option: PlanOption) => Promise<void>;
 }) {
   // Read again on returning to the app and on each reading, like the trip cards.
@@ -649,7 +684,9 @@ const PlanList = memo(function PlanList({
   // Judged against the real time: a reading taken late in a minute is ahead of the minute's start
   // by more than the 30 s that live data may be ahead, and read as old.
   const options = useMemo(() => liveOptions(result, snapshot, now), [result, snapshot, now]);
-  const count = more ? options.length : SHOWN;
+  // The bus he just missed is there for reference and does not take one of the options' places.
+  const limit = SHOWN + (options[0]?.missed ? 1 : 0);
+  const count = more ? options.length : limit;
   const shown = result.request.mode === 'arrive' ? options.slice(-count) : options.slice(0, count);
   const expandedOption = shown.find((option) => option.scheduleKey === open) ?? null;
   useEffect(() => {
@@ -667,6 +704,7 @@ const PlanList = memo(function PlanList({
           option={option}
           now={minute}
           mode={result.request.mode}
+          chosen={option.scheduleKey === chosenKey}
           expanded={open === option.scheduleKey}
           onToggle={() => onToggle(open === option.scheduleKey ? null : option.scheduleKey)}
         >
@@ -685,23 +723,29 @@ const PlanList = memo(function PlanList({
                 onSaveWalk={onSaveWalk}
                 onFocusBus={onFocusBus}
               />
-              {onSelect && (
-                <Button
-                  label="Elegir este viaje"
-                  disabled={selecting || !!option.problem || option.leaveAt < now}
-                  onPress={() => {
-                    setSelecting(true);
-                    void onSelect(option)
-                      .catch((error) => setSelectionError(message(error)))
-                      .finally(() => setSelecting(false));
-                  }}
-                />
+              {onSelect && option.scheduleKey === chosenKey ? (
+                <Text style={styles.body}>
+                  Viaje elegido. Arriba, en Tu viaje, tienes «Salgo ahora» y los avisos.
+                </Text>
+              ) : (
+                onSelect && (
+                  <Button
+                    label="Elegir este viaje"
+                    disabled={selecting || !!option.problem || option.leaveAt < now - 60_000}
+                    onPress={() => {
+                      setSelecting(true);
+                      void onSelect(option)
+                        .catch((error) => setSelectionError(message(error)))
+                        .finally(() => setSelecting(false));
+                    }}
+                  />
+                )
               )}
             </>
           )}
         </PlanRow>
       ))}
-      {options.length > SHOWN && (
+      {options.length > limit && (
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ expanded: more }}
@@ -709,7 +753,7 @@ const PlanList = memo(function PlanList({
           style={styles.more}
         >
           <Text style={styles.moreText}>
-            {more ? 'Ver menos opciones' : `Ver ${options.length - SHOWN} más`}
+            {more ? 'Ver menos opciones' : `Ver ${options.length - limit} más`}
           </Text>
         </Pressable>
       )}
@@ -755,6 +799,7 @@ const PlanRow = memo(function PlanRow({
   option,
   now,
   mode,
+  chosen,
   expanded,
   onToggle,
   children,
@@ -762,6 +807,7 @@ const PlanRow = memo(function PlanRow({
   option: PlanOption;
   now: number;
   mode: PlanMode;
+  chosen: boolean;
   expanded: boolean;
   onToggle: () => void;
   children: ReactNode;
@@ -769,22 +815,37 @@ const PlanRow = memo(function PlanRow({
   const rides = option.itinerary.rides;
   const Chevron = expanded ? ChevronUp : ChevronDown;
   const day = dayOf(option.leaveAt, now);
+  // `now` is the start of the minute, so a bus that left within it can read as still to come.
+  const passed = option.live[0] && relative(option.live[0].board.at, now);
   const when =
-    mode === 'now'
-      ? option.leaveAt <= now
-        ? 'sal ya'
-        : `sal ${relative(option.leaveAt, now)}`
-      : day;
+    option.missed === 'passed'
+      ? passed?.startsWith('hace')
+        ? `pasó ${passed}`
+        : 'acaba de pasar'
+      : option.missed === 'late'
+        ? 'probablemente no llegues'
+        : mode === 'now'
+          ? option.leaveAt <= now
+            ? 'sal ya'
+            : `sal ${relative(option.leaveAt, now)}`
+          : day;
   const summary = [
+    chosen ? 'elegido' : '',
     `${minutesOf(option.arriveAt - option.leaveAt)} min`,
     ridesLabel(option),
     when,
-    option.tight ? 'justo' : '',
+    option.tight && !option.missed ? 'justo' : '',
   ]
     .filter(Boolean)
     .join(' · ');
   return (
-    <View style={[styles.option, option.notice && styles.notice]}>
+    <View
+      style={[
+        styles.option,
+        chosen && styles.chosen,
+        (option.notice || option.missed) && styles.notice,
+      ]}
+    >
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded }}
@@ -814,6 +875,7 @@ const PlanRow = memo(function PlanRow({
             <Footprints size={18} color={theme.text} strokeWidth={2.5} />
           )}
         </View>
+        {chosen && <Check size={18} color={theme.text} strokeWidth={3} />}
         {option.live[0] && <StatusIcons live={option.live[0].board} />}
         <Chevron size={18} color={theme.text} strokeWidth={2.5} />
       </Pressable>
@@ -824,7 +886,7 @@ const PlanRow = memo(function PlanRow({
           del horario.
         </Text>
       )}
-      {option.tight && option.backup && !expanded && (
+      {option.tight && option.backup && !option.missed && !expanded && (
         <Text style={styles.note}>
           Si pierdes el transbordo: {option.backup.ride.route[1]} de las{' '}
           {clock(option.backup.ride.departure.at)}, llegas {clock(option.backup.arriveAt)}.
@@ -1163,6 +1225,7 @@ const styles = sheet((theme) => ({
     backgroundColor: theme.surface,
   },
   notice: { opacity: 0.7, borderColor: theme.lineSoft },
+  chosen: { borderWidth: 3, backgroundColor: theme.okBg },
   optionHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   pressed: { opacity: 0.7 },
   optionTime: { fontFamily: font.black, fontSize: 16, color: theme.text },

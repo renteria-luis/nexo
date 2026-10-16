@@ -17,6 +17,7 @@ import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
 import { relative } from './TransitDepartures.tsx';
 import { RouteBadge } from './TransitStatus.tsx';
+import { TransitTripMap } from './TransitTripMap.tsx';
 import { font, sheet } from './theme.ts';
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -114,8 +115,15 @@ export function tripLines(
   }
 }
 
-export function TransitActiveTrip() {
-  const { trip, gps, tripProblem, tripLive, now, actions } = useTransitJourney();
+export function TransitActiveTrip({
+  map = false,
+  onMapInteraction,
+}: {
+  /** Draw the trip on its own map, where there is room for one. */
+  map?: boolean;
+  onMapInteraction?: (active: boolean) => void;
+} = {}) {
+  const { trip, gps, tripProblem, tripLive, now, places, actions } = useTransitJourney();
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [showStops, setShowStops] = useState(false);
@@ -154,6 +162,15 @@ export function TransitActiveTrip() {
             ? `Te mueves por la ruta del ${ride.route} antes de que pase tu bus. Si subiste a uno, toca «Ya subí».`
             : `Te mueves por la ruta del ${ride.route}, pero tu bus está lejos de ti. Si subiste a uno, toca «Ya subí».`}
         </Text>
+      )}
+      {active && map && (
+        <TransitTripMap
+          trip={trip}
+          live={tripLive}
+          now={now}
+          places={places}
+          onInteraction={onMapInteraction}
+        />
       )}
       {active && (
         <Text style={styles.note}>

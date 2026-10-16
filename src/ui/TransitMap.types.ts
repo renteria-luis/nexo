@@ -1,7 +1,7 @@
 import type { Coordinates } from '../core/geo.ts';
 import type { Place, Stop } from '../transit/index.ts';
 import type { MapNote } from '../transit/store.ts';
-import type { JourneyPath } from '../transit/map.ts';
+import type { JourneyPath, StopDot } from '../transit/map.ts';
 
 export type ReportedBus = Coordinates & {
   id: string;
@@ -34,12 +34,16 @@ export type TransitMapProps = {
   /** Fit endpoints or an itinerary once per selection, leaving later pans alone. */
   viewport?: { key: string; points: Coordinates[] };
   journeyPaths?: JourneyPath[];
+  /** The stops of the buses he takes, as dots on their lines. */
+  stopDots?: StopDot[];
   routePoints?: Coordinates[];
   /** The selected trip's line colour, already deepened for the screen. */
   routeColor?: string;
   walkPaths?: { id: string; points: Coordinates[]; drawing?: boolean }[];
   notes?: MapNote[];
   location?: (Coordinates & { at: number; accuracy: number | null }) | null;
+  /** The phone's own live dot, in place of `location`, where the map can draw it. */
+  showsUserLocation?: boolean;
   onNote?: (id: string) => void;
   onPlace: (id: string) => void;
   onStop: (id: string) => void;

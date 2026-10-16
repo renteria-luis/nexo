@@ -283,7 +283,7 @@ test('pull refresh preserves an explicitly scheduled departure time', async (t) 
   t.mock.method(Date, 'now', () => now);
   const settings = props([], {
     refreshAt: 0,
-    initialJourney: {
+    journey: {
       originId: 'start',
       destinationId: 'end',
       mode: 'depart',
@@ -302,4 +302,74 @@ test('pull refresh preserves an explicitly scheduled departure time', async (t) 
   assert.deepEqual(rowLabels(tree), before);
   assert.equal(picker(tree, 'Elegir el origen').value, 'start');
   assert.equal(picker(tree, 'Elegir el destino').value, 'end');
+});
+
+test('leaving now, the bus he just missed comes first, says so and cannot be chosen', async (t) => {
+  for (const [clock, seconds, says] of [
+    ['08:23', 0, 'pasó hace 3 min'],
+    ['08:18', 30, 'probablemente no llegues'],
+  ] as const) {
+    const now = queryInstant('2026-10-13', clock) + seconds * 1_000;
+    t.mock.method(Date, 'now', () => now);
+    const screen = mount([], props([], { onSelectJourney: async () => undefined }));
+    let tree = await screen.settle();
+    picker(tree, 'Elegir el destino').onChange('end');
+    tree = await searched(screen, (current) => /→/.test(textOf(current)));
+    assert.match(textOf(tree), new RegExp(`24 min · 1 transbordo · ${says}`));
+    assert.doesNotMatch(textOf(tree), new RegExp(`${says} · justo`));
+    byLabel(tree, /^Sales 08:17, llegas 08:41/).props.onPress();
+    tree = await screen.settle();
+    assert.equal(byLabel(tree, 'Elegir este viaje').props.disabled, true);
+  }
+});
+
+test('choosing a trip marks it at once and keeps the list; one chosen elsewhere replaces it', async (t) => {
+  const now = queryInstant('2026-10-13', '08:00');
+  t.mock.method(Date, 'now', () => now);
+  const chosen: string[] = [];
+  const trip = (changes: Record<string, unknown>) => ({
+    workoutId: null,
+    selectedAt: null,
+    reminders: false,
+    ...changes,
+  });
+  const settings: Record<string, unknown> = props([], {
+    onSelectJourney: async (choice: Record<string, unknown>, option: { scheduleKey: string }) => {
+      chosen.push(option.scheduleKey);
+      settings.journey = trip({
+        id: 'here',
+        ...choice,
+        selectedKey: option.scheduleKey,
+        selectedAt: now,
+      });
+    },
+  });
+  const screen = mount([], settings);
+  let tree = await screen.settle();
+  picker(tree, 'Elegir el destino').onChange('end');
+  tree = await searched(screen, (current) => !!byLabel(current, /^Sales /));
+  byLabel(tree, /^Sales 08:17, llegas 08:41/).props.onPress();
+  tree = await screen.settle();
+  byLabel(tree, 'Elegir este viaje').props.onPress();
+  tree = await screen.settle();
+  assert.equal(chosen.length, 1);
+  assert.match(textOf(tree), /Viaje elegido/);
+  assert.match(textOf(tree), /elegido · 24 min/);
+  assert.doesNotMatch(textOf(tree), /Actualizando…/, 'no new search');
+  assert.equal(picker(tree, 'Elegir el destino').value, 'end');
+
+  settings.journey = trip({
+    id: 'today',
+    originId: 'end',
+    destinationId: 'start',
+    mode: 'now',
+    at: now,
+    selectedKey: null,
+  });
+  tree = await searched(
+    screen,
+    (current) =>
+      picker(current, 'Elegir el origen').value === 'end' && !!byLabel(current, /^Sales /),
+  );
+  assert.doesNotMatch(textOf(tree), /Viaje elegido/);
 });

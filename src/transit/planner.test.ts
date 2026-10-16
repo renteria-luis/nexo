@@ -465,11 +465,45 @@ test('a replacement connection must also pass its live boarding margin', () => {
   assert.equal(checked.notice, true);
 });
 
-test('options he can no longer leave for drop out as time passes', () => {
+test('options he can no longer leave for drop out as time passes, but for the one he just missed', () => {
   const result = plan({ mode: 'now' });
-  const later = liveOptions(result, null, queryInstant(TUESDAY, '08:20'));
-  assert.ok(later.every((o) => o.leaveAt >= queryInstant(TUESDAY, '08:19')));
+  const [missed, ...later] = liveOptions(result, null, queryInstant(TUESDAY, '08:20'));
+  assert.equal(missed.missed, 'passed');
+  assert.ok(later.every((o) => o.leaveAt >= queryInstant(TUESDAY, '08:19') && !o.missed));
   assert.equal(describe(later[0]), '08:27 08:56 16S-4:ORIGIN_SB>CORNER_SB 20E-4:CORNER_EB>END_EB');
+});
+
+const CORNER = { lat: 42.988, lng: -81.2 };
+
+test('leaving now, a bus running late is listed when he can still catch it', () => {
+  const at = queryInstant(TUESDAY, '08:00') + 30_000;
+  const result = plan({ mode: 'now', destination: CORNER, at });
+  const timetable = liveOptions(result, null, at);
+  assert.ok(!timetable.some((o) => !o.missed && o.itinerary.rides[0]?.trip[0] === '16S-2'));
+  const late = liveOptions(result, snapshot(at, [update(schedule, '16S-2', at, {}, 5)]), at);
+  const caught = late.find((o) => o.itinerary.rides[0]?.trip[0] === '16S-2');
+  assert.ok(caught, 'the 08:00 bus five minutes late leaves him time');
+  assert.equal(caught.missed, null);
+  assert.equal(agencyClock(caught.leaveAt), '08:02');
+});
+
+test('leaving now, a bus he can leave for within the minute is still listed', () => {
+  const at = queryInstant(TUESDAY, '07:57') + 40_000;
+  const options = liveOptions(plan({ mode: 'now', destination: CORNER, at }), null, at);
+  const first = options.find((o) => !o.missed)!;
+  assert.equal(describe(first), '07:57 08:09 16S-2:ORIGIN_SB>CORNER_SB');
+});
+
+test('leaving now, only the one bus he just missed comes first, passed or out of reach', () => {
+  const missedOf = (clock: string, seconds = 0, mode: PlanRequest['mode'] = 'now') => {
+    const at = queryInstant(TUESDAY, clock) + seconds * 1_000;
+    const options = liveOptions(plan({ mode, destination: CORNER, at }), null, at);
+    assert.ok(options.slice(1).every((o) => !o.missed));
+    return options[0].missed ? `${options[0].missed} ${describe(options[0])}` : null;
+  };
+  assert.equal(missedOf('08:05'), 'passed 07:57 08:09 16S-2:ORIGIN_SB>CORNER_SB');
+  assert.equal(missedOf('07:58', 30), 'late 07:57 08:09 16S-2:ORIGIN_SB>CORNER_SB');
+  assert.equal(missedOf('08:05', 0, 'depart'), null, 'a chosen time lists no bus before it');
 });
 
 test('his saved minutes to a stop replace the estimate and reach a stop beyond the radius', () => {

@@ -43,6 +43,9 @@ export const TRANSFER_WORTH_MIN = 10;
 // leaves earlier and arrives later than another option, unless that one gets him there this much
 // sooner with no more buses.
 export const SOONER_WORTH_MIN = 10;
+// Leaving now, the timetable alone hides a late bus he can still catch and the one he just
+// missed, which is listed for reference; the search starts this much earlier and live data decides.
+export const LATE_LOOKBACK_MIN = 30;
 const POOL = 120;
 const MINUTE = 60_000;
 
@@ -482,6 +485,7 @@ export function startPlan(
   const patterns = schedule.patterns;
   const arriving = request.mode === 'arrive';
   const from = arriving ? request.at - MAX_TRIP_MIN * MINUTE : request.at;
+  const searchFrom = request.mode === 'now' ? from - LATE_LOOKBACK_MIN * MINUTE : from;
   const boardBy = arriving
     ? request.at - ARRIVE_EARLY_MIN * MINUTE
     : request.at + FIRST_WINDOW_MIN * MINUTE;
@@ -511,7 +515,7 @@ export function startPlan(
   );
   const context: PlanContext = {
     index,
-    days: serviceDays(schedule, from, arriveBy, request.observedTrips),
+    days: serviceDays(schedule, searchFrom, arriveBy, request.observedTrips),
     egress,
     finals: new Map(),
     saved,
@@ -539,7 +543,7 @@ export function startPlan(
   // First rides: every bus he can catch near the origin in the window, and when it reaches each
   // later stop. Per stop and line only a staircase survives: arriving later only to leave later.
   const firstRides = (stop: number, walk: Walk) => {
-    const ready = from + (walk.minutes + BOARD_MARGIN_MIN) * MINUTE;
+    const ready = searchFrom + (walk.minutes + BOARD_MARGIN_MIN) * MINUTE;
     const visits = index.visits[stop];
     for (let v = 0; v < visits.length; v += 2) {
       const pattern = patterns[visits[v]];
@@ -607,7 +611,7 @@ export function startPlan(
       const trips = index.patternTrips[visits[v]];
       for (let d = 0; d < days.length; d++) {
         const day = days[d];
-        const need = Math.ceil((from - day.start) / 1_000) - pattern[alight][2];
+        const need = Math.ceil((searchFrom - day.start) / 1_000) - pattern[alight][2];
         for (let t = lowerBound(trips, need); t < trips.length; t++) {
           const trip = trips[t];
           const door = day.start + (trip[7] + pattern[alight][2]) * 1_000 + out.minutes * MINUTE;
@@ -623,11 +627,12 @@ export function startPlan(
             const time = pattern[board];
             if (time[4] === 1) continue;
             const departs = day.start + (trip[7] + time[3]) * 1_000;
-            if (departs < from) break;
+            if (departs < searchFrom) break;
             const walk = access.get(time[0]);
             if (walk && departs <= boardBy) {
               const leave = departs - (BOARD_MARGIN_MIN + walk.minutes) * MINUTE;
-              if (leave >= from && (!direct || leave > direct.leave)) direct = { leave, board };
+              if (leave >= searchFrom && (!direct || leave > direct.leave))
+                direct = { leave, board };
             }
             let into = walksInto.get(time[0]);
             if (!into) {
@@ -786,8 +791,12 @@ export function startPlan(
         ? b.leave - a.leave || a.arrive - b.arrive || a.rides - b.rides
         : a.arrive - b.arrive || b.leave - a.leave || a.rides - b.rides,
     );
-    // The pool keeps every option the schedule lists, even past the nearest POOL.
-    const listed = worthShowing(kept, listing);
+    // The pool keeps every option the schedule lists, even past the nearest POOL. Buses the
+    // timetable has leaving before he asked are in the pool only for live data to judge.
+    const listed = worthShowing(
+      kept.filter((c) => c.leave >= from - MINUTE),
+      listing,
+    );
     const shown = new Set(listed);
     const built = new Map(
       kept.filter((c, i) => i < POOL || shown.has(c)).map((c) => [c, build(c)] as const),
@@ -927,6 +936,11 @@ export type PlanOption = {
    * changed, so a cancelled or late bus does not just vanish from the list.
    */
   notice: boolean;
+  /**
+   * Leaving now, the one bus he just missed, listed first for reference: it already left his
+   * stop, or it has not but he had to leave already to catch it.
+   */
+  missed: 'passed' | 'late' | null;
   /** The option as the schedule had it. */
   scheduleKey: string;
 };
@@ -1004,7 +1018,8 @@ function broken(live: RideLive): 'canceled' | 'skipped' | null {
 /**
  * The options as live data leaves them: each bus at its predicted time, a lost transfer
  * replaced by the next bus, a cancelled or skipping trip kept visible as such, and a backup for
- * a tight transfer. Without a snapshot it is the schedule.
+ * a tight transfer. Leaving now, the bus he just missed comes first. Without a snapshot it is
+ * the schedule.
  */
 export function liveOptions(
   result: PlanResult,
@@ -1109,6 +1124,7 @@ export function liveOptions(
       replaced,
       problem,
       notice: false,
+      missed: null,
       scheduleKey: plan.key,
     };
   };
@@ -1119,7 +1135,7 @@ export function liveOptions(
       ? option.arriveAt <= at
       : option.leaveAt >= (mode === 'now' ? now : at) - MINUTE;
   const walking = result.pool.find((plan) => !plan.rides.length);
-  const evaluated = result.pool
+  const judged = result.pool
     .filter((plan) =>
       plan.rides.every(
         (ride) => scheduledRide(ride) || observed.has(`${ride.trip[0]}/${ride.serviceDate}`),
@@ -1128,19 +1144,21 @@ export function liveOptions(
     .map(evaluate)
     .filter(
       (option) =>
-        (includeOutsideWindow || fits(option)) &&
-        (!walking ||
-          !option.itinerary.rides.length ||
-          option.arriveAt - option.leaveAt < walking.access.minutes * MINUTE),
+        !walking ||
+        !option.itinerary.rides.length ||
+        option.arriveAt - option.leaveAt < walking.access.minutes * MINUTE,
     );
+  const evaluated = includeOutsideWindow ? judged : judged.filter(fits);
   const unique = new Map<string, PlanOption>();
   for (const option of evaluated) {
     const seen = unique.get(option.itinerary.key);
     if (!seen || option.leaveAt > seen.leaveAt) unique.set(option.itinerary.key, option);
   }
+  const view = (option: PlanOption) =>
+    listingOf(option.leaveAt, option.arriveAt, option.itinerary.rides);
   const working = worthShowing(
     [...unique.values()].filter((option) => !option.problem),
-    (option) => listingOf(option.leaveAt, option.arriveAt, option.itinerary.rides),
+    view,
   );
   const listed = new Set(result.best.map((plan) => plan.key));
   const shown = new Set(working.map((option) => option.itinerary.key));
@@ -1152,9 +1170,28 @@ export function liveOptions(
       !shown.has(option.itinerary.key)
     )
       notices.set(option.scheduleKey, { ...option, notice: true });
-  return [...working, ...notices.values()].sort(
+  const sorted = [...working, ...notices.values()].sort(
     (a, b) => a.arriveAt - b.arriveAt || b.leaveAt - a.leaveAt,
   );
+  if (mode !== 'now' || includeOutsideWindow) return sorted;
+  // Of the buses he no longer makes, the last to leave that would be listed beside the ones he
+  // does: an earlier one, or a transfer a direct bus beats, says nothing more.
+  const gone = judged.filter(
+    (option) => option.itinerary.rides.length && !option.problem && !fits(option),
+  );
+  const listedGone = new Set(worthShowing([...working, ...gone], view));
+  let missed: PlanOption | null = null;
+  for (const option of gone)
+    if (
+      listedGone.has(option) &&
+      (!missed ||
+        option.leaveAt > missed.leaveAt ||
+        (option.leaveAt === missed.leaveAt && option.arriveAt < missed.arriveAt))
+    )
+      missed = option;
+  return missed
+    ? [{ ...missed, missed: missed.live[0].board.at <= now ? 'passed' : 'late' }, ...sorted]
+    : sorted;
 }
 
 /** The boarding and alighting stops of the best options, in order, for the live query. */

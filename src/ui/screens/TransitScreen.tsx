@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, LayoutAnimation, Pressable, Text, View } from 'react-native';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { addDays, daysBetween } from '../../core/dates.ts';
@@ -44,7 +44,7 @@ import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
 import { Chip } from '../Chip.tsx';
 import { Combobox } from '../Combobox.tsx';
-import { Pencil, Plus, Radio, RefreshCw, X } from '../icons.ts';
+import { ChevronDown, ChevronRight, Pencil, Plus, Radio, RefreshCw, X } from '../icons.ts';
 import { IconButton } from '../IconButton.tsx';
 import { ExploreIcon } from '../ExploreIcon.tsx';
 import { PopupSheet } from '../PopupSheet.tsx';
@@ -142,6 +142,23 @@ function TransitContent() {
   const [tripPlaceIds, setTripPlaceIds] = useState<string[]>([]);
   const [walkEdits, setWalkEdits] = useState(0);
   const [walkPreview, setWalkPreview] = useState<WalkPreview | null>(null);
+  const [walkOpen, setWalkOpen] = useState(false);
+  // While a trip is in progress its card is the screen: the rest folds to one line each.
+  const traveling = journey.traveling;
+  const [opened, setOpened] = useState<{ trip: string; sections: string[] } | null>(null);
+  const openSections = traveling && opened?.trip === traveling ? opened.sections : [];
+  const shows = (section: string) => !traveling || openSections.includes(section);
+  const stopsShown = shows('stops');
+  const toggleSection = (section: string) => {
+    if (!traveling) return;
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setOpened({
+      trip: traveling,
+      sections: openSections.includes(section)
+        ? openSections.filter((s) => s !== section)
+        : [...openSections, section],
+    });
+  };
   const walksChanged = useCallback(() => {
     setWalkEdits((n) => n + 1);
     void journey.actions.refresh();
@@ -335,7 +352,7 @@ function TransitContent() {
     const stopIds = [
       ...new Set([
         ...(journey.query?.stopIds ?? []),
-        ...(shownStopId && liveMode ? [shownStopId] : []),
+        ...(shownStopId && liveMode && stopsShown ? [shownStopId] : []),
         ...(plannerStops ? plannerStops.split(',') : []),
       ]),
     ].slice(0, 8);
@@ -373,6 +390,7 @@ function TransitContent() {
     schedule,
     shownStopId,
     liveMode,
+    stopsShown,
     editingLive,
     selectedTripId,
     selectedServiceDate,
@@ -510,7 +528,7 @@ function TransitContent() {
           />
           <IconButton
             icon={Radio}
-            accessibilityLabel="Configurar conexión en vivo"
+            accessibilityLabel="Conexión en vivo y horario"
             selected={panel === 'live'}
             disabled={!data || !live.loaded || !!draft}
             onPress={() => {
@@ -660,7 +678,44 @@ function TransitContent() {
             onSave={live.save}
             onClear={live.clear}
             onClose={() => setPanel(null)}
-          />
+          >
+            <Card
+              title="Horario guardado"
+              action={
+                <Button
+                  label="Actualizar"
+                  icon={RefreshCw}
+                  variant="ghost"
+                  loading={syncing}
+                  onPress={() => void refresh(data)}
+                />
+              }
+            >
+              <Text style={styles.body}>{schedule.feedVersion}</Text>
+              <Text style={styles.note}>
+                Válido {schedule.validFrom} a {schedule.validTo} · {schedule.stops.length} paradas
+              </Text>
+              <Text style={styles.note}>
+                Preparado {agencyDate(schedule.createdAt)} ({ageDays} días) · versión{' '}
+                {data.cache.sha256.slice(0, 12)}
+              </Text>
+              <Text style={styles.note}>
+                Última revisión:{' '}
+                {data.cache.checked_at
+                  ? `${agencyDate(data.cache.checked_at)} ${agencyClock(data.cache.checked_at)}`
+                  : 'incluido con esta versión de Nexo'}
+              </Text>
+              {data.cache.last_error && (
+                <Text style={styles.error}>
+                  Falló la última actualización. El horario guardado sigue disponible.
+                </Text>
+              )}
+              <Text style={styles.note}>
+                Lugares, caminatas y horarios disponibles sin conexión. El fondo del mapa puede
+                necesitar internet.
+              </Text>
+            </Card>
+          </TransitLiveSettings>
         ) : panel === 'explore' ? (
           <PopupSheet wide scrollEnabled={!exploreMapActive}>
             <View style={styles.panelHead}>
@@ -780,10 +835,12 @@ function TransitContent() {
             de salir.
           </Text>
         )}
-      <TransitJourneyCard surface="transit" />
-      {index && (
+      <TransitJourneyCard surface="transit" onMapInteraction={setMapActive} />
+      {traveling && (
+        <FoldRow title="Cómo llegar" open={shows('plan')} onPress={() => toggleSection('plan')} />
+      )}
+      {index && shows('plan') && (
         <TransitPlanner
-          key={journey.saved.next?.id ?? 'browse'}
           db={data.db}
           schedule={schedule}
           stopIndex={index}
@@ -799,7 +856,7 @@ function TransitContent() {
           walksVersion={walkEdits}
           onWalkChanged={walksChanged}
           onLive={onPlannerLive}
-          initialJourney={journey.saved.next}
+          journey={journey.saved.next}
           onSelectJourney={async (choice, option) => {
             const origin = places.find((p) => p.id === choice.originId);
             await journey.actions.choose({
@@ -811,206 +868,212 @@ function TransitContent() {
           }}
         />
       )}
-      <TransitWalkReview
-        db={data.db}
-        schedule={schedule}
-        places={places}
-        revision={walkEdits}
-        onChanged={walksChanged}
-        onPath={(walk) => {
-          const key = Date.now();
-          setWalkPreview({ key, walk });
-          setPanel('explore');
-        }}
-      />
-      <Card title="Paradas">
-        <View style={styles.row}>
-          <View style={styles.flex}>
-            <TransitWhen
-              live={liveMode}
-              date={date}
-              clock={clock}
-              today={today}
-              validFrom={schedule.validFrom}
-              validTo={schedule.validTo}
-              onDate={setDate}
-              onClock={setClock}
-              onApply={() => {
-                try {
-                  setFrom(queryInstant(date, clock));
-                  setLiveMode(false);
+      {!traveling && (
+        <TransitWalkReview
+          db={data.db}
+          schedule={schedule}
+          places={places}
+          revision={walkEdits}
+          onChanged={walksChanged}
+          onPath={(walk) => {
+            const key = Date.now();
+            setWalkPreview({ key, walk });
+            setPanel('explore');
+          }}
+        />
+      )}
+      {traveling && (
+        <FoldRow title="Paradas" open={shows('stops')} onPress={() => toggleSection('stops')} />
+      )}
+      {shows('stops') && (
+        <Card title="Paradas">
+          <View style={styles.row}>
+            <View style={styles.flex}>
+              <TransitWhen
+                live={liveMode}
+                date={date}
+                clock={clock}
+                today={today}
+                validFrom={schedule.validFrom}
+                validTo={schedule.validTo}
+                onDate={setDate}
+                onClock={setClock}
+                onApply={() => {
+                  try {
+                    setFrom(queryInstant(date, clock));
+                    setLiveMode(false);
+                    setProblem(null);
+                    return true;
+                  } catch (error) {
+                    setProblem(message(error));
+                    return false;
+                  }
+                }}
+                onNow={() => {
+                  const now = Date.now();
+                  setDate(agencyDate(now));
+                  setClock(agencyClock(now));
+                  setFrom(now);
+                  setLiveMode(true);
                   setProblem(null);
-                  return true;
-                } catch (error) {
-                  setProblem(message(error));
-                  return false;
-                }
-              }}
-              onNow={() => {
-                const now = Date.now();
-                setDate(agencyDate(now));
-                setClock(agencyClock(now));
-                setFrom(now);
-                setLiveMode(true);
-                setProblem(null);
-              }}
-            />
+                }}
+              />
+            </View>
+            {liveMode && live.config && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Actualizar en vivo"
+                accessibilityState={{ busy: live.state.loading }}
+                disabled={live.state.loading}
+                onPress={() => void live.refresh()}
+                style={[styles.iconButton, live.state.loading && styles.busy]}
+              >
+                <RefreshCw size={18} color={theme.text} strokeWidth={2.5} />
+              </Pressable>
+            )}
           </View>
-          {liveMode && live.config && (
+          {liveMode && live.state.reason && <Text style={styles.note}>{live.state.reason}</Text>}
+          {!liveMode && (
+            <Text style={styles.note}>
+              Horario guardado desde {agencyDate(from)} {agencyClock(from)}, hora de London; lo en
+              vivo es solo para ahora.
+            </Text>
+          )}
+          {snapshot && Object.entries(snapshot.health).some(([, h]) => h.status !== 'ok') && (
+            <Text style={styles.note}>
+              Alguna fuente de LTC no está al día; se conserva el último reporte y el horario.
+            </Text>
+          )}
+          {expired && (
+            <Text style={styles.error}>
+              El horario guardado venció el {schedule.validTo}. Actualízalo en Conexión en vivo y
+              horario, arriba, antes de confiar en el servicio.
+            </Text>
+          )}
+          {outsideDate && (
+            <Text style={styles.note}>
+              La fecha está fuera de vigencia. Solo pueden aparecer viajes que continúan desde un
+              día de servicio válido anterior.
+            </Text>
+          )}
+          {[...useful.main, ...(moreStops ? useful.more : [])].map((c) => {
+            const open = c.stop[0] === shownStopId;
+            return (
+              <View key={c.stop[0]} style={styles.stopBlock}>
+                <TransitStopHeader
+                  stop={c.stop}
+                  distanceM={c.distanceM}
+                  routes={routesAt(c.index)}
+                  open={open}
+                  onPress={() => (open ? setStopsFolded(true) : openStop(c.stop[0]))}
+                />
+                {open &&
+                  (selectedDetail ? (
+                    <TransitTripTimeline
+                      schedule={schedule}
+                      departure={selectedDetail}
+                      choices={choices}
+                      snapshot={snapshot}
+                      active={live.active}
+                      onSelect={setDetail}
+                      onClose={() => setDetail(null)}
+                      onFocusBus={focusBus}
+                    />
+                  ) : (
+                    <TransitStopDepartures
+                      schedule={schedule}
+                      departures={departuresList}
+                      snapshot={snapshot}
+                      current={liveMode}
+                      active={live.active}
+                      onSelect={setDetail}
+                    />
+                  ))}
+                {open && (
+                  <Button
+                    label={
+                      walkOpen
+                        ? 'Cerrar tu caminata'
+                        : `Tu caminata con ${place.name}${savedWalk ? `: ${savedWalk.minutes} min` : ''}`
+                    }
+                    variant="ghost"
+                    onPress={() => setWalkOpen(!walkOpen)}
+                  />
+                )}
+                {open && walkOpen && (
+                  <View style={styles.walk}>
+                    <View style={styles.wrap}>
+                      <Chip
+                        label="Lugar → parada"
+                        selected={direction === 'to_stop'}
+                        onPress={() => setDirection('to_stop')}
+                        disabled={busy}
+                      />
+                      <Chip
+                        label="Parada → lugar"
+                        selected={direction === 'from_stop'}
+                        onPress={() => setDirection('from_stop')}
+                        disabled={busy}
+                      />
+                    </View>
+                    <TextField
+                      accessibilityLabel="Minutos de caminata"
+                      value={walkMinutes}
+                      onChange={setWalkMinutes}
+                      placeholder="Tus minutos habituales"
+                      style={styles.input}
+                    />
+                    <TextField
+                      accessibilityLabel="Puerta y notas de caminata"
+                      value={entrance}
+                      onChange={setEntrance}
+                      placeholder="Puerta, cruces o tramo interior"
+                      multiline
+                      style={styles.input}
+                    />
+                    <Text style={styles.note}>
+                      Incluye los cruces y el tramo interior que recorras. Ida y vuelta se guardan
+                      por separado.
+                    </Text>
+                    <Button
+                      label="Guardar caminata"
+                      loading={busy}
+                      onPress={() =>
+                        void act(async () => {
+                          await saveWalkLink(data.db, {
+                            place_id: place.id,
+                            stop_id: c.stop[0],
+                            direction,
+                            minutes: Number(walkMinutes),
+                            entrance,
+                          });
+                          const saved = await listWalkLinks(data.db, place.id);
+                          if (alive.current) {
+                            setLinks(saved);
+                            walksChanged();
+                            // The button now carries the saved minutes, right where he typed them.
+                            setWalkOpen(false);
+                          }
+                        })
+                      }
+                    />
+                  </View>
+                )}
+              </View>
+            );
+          })}
+          {useful.more.length > 0 && (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Actualizar en vivo"
-              accessibilityState={{ busy: live.state.loading }}
-              disabled={live.state.loading}
-              onPress={() => void live.refresh()}
-              style={[styles.iconButton, live.state.loading && styles.busy]}
+              accessibilityState={{ expanded: moreStops }}
+              onPress={() => setMoreStops(!moreStops)}
+              style={styles.more}
             >
-              <RefreshCw size={18} color={theme.text} strokeWidth={2.5} />
+              <Text style={styles.moreText}>
+                {moreStops ? 'Ver menos paradas' : `Ver ${useful.more.length} paradas más`}
+              </Text>
             </Pressable>
           )}
-        </View>
-        {liveMode && live.state.reason && <Text style={styles.note}>{live.state.reason}</Text>}
-        {!liveMode && (
-          <Text style={styles.note}>
-            Horario guardado desde {agencyDate(from)} {agencyClock(from)}, hora de London; lo en
-            vivo es solo para ahora.
-          </Text>
-        )}
-        {snapshot && Object.entries(snapshot.health).some(([, h]) => h.status !== 'ok') && (
-          <Text style={styles.note}>
-            Alguna fuente de LTC no está al día; se conserva el último reporte y el horario.
-          </Text>
-        )}
-        {expired && (
-          <Text style={styles.error}>
-            El horario guardado venció el {schedule.validTo}. Actualiza antes de confiar en el
-            servicio.
-          </Text>
-        )}
-        {outsideDate && (
-          <Text style={styles.note}>
-            La fecha está fuera de vigencia. Solo pueden aparecer viajes que continúan desde un día
-            de servicio válido anterior.
-          </Text>
-        )}
-        {[...useful.main, ...(moreStops ? useful.more : [])].map((c) => {
-          const open = c.stop[0] === shownStopId;
-          return (
-            <View key={c.stop[0]} style={styles.stopBlock}>
-              <TransitStopHeader
-                stop={c.stop}
-                distanceM={c.distanceM}
-                routes={routesAt(c.index)}
-                open={open}
-                onPress={() => (open ? setStopsFolded(true) : openStop(c.stop[0]))}
-              />
-              {open &&
-                (selectedDetail ? (
-                  <TransitTripTimeline
-                    schedule={schedule}
-                    departure={selectedDetail}
-                    choices={choices}
-                    snapshot={snapshot}
-                    active={live.active}
-                    onSelect={setDetail}
-                    onClose={() => setDetail(null)}
-                    onFocusBus={focusBus}
-                  />
-                ) : (
-                  <TransitStopDepartures
-                    schedule={schedule}
-                    departures={departuresList}
-                    snapshot={snapshot}
-                    current={liveMode}
-                    active={live.active}
-                    onSelect={setDetail}
-                  />
-                ))}
-            </View>
-          );
-        })}
-        {useful.more.length > 0 && (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ expanded: moreStops }}
-            onPress={() => setMoreStops(!moreStops)}
-            style={styles.more}
-          >
-            <Text style={styles.moreText}>
-              {moreStops ? 'Ver menos paradas' : `Ver ${useful.more.length} paradas más`}
-            </Text>
-          </Pressable>
-        )}
-        <Text style={styles.note}>
-          Distancias en línea recta: la acera, los cruces y la puerta pueden cambiar la caminata.
-          Las paradas repetidas para las mismas líneas quedan en «Ver más».
-        </Text>
-        {snapshot && (
-          <TransitJourneyAlerts
-            schedule={schedule}
-            snapshot={snapshot}
-            active={live.active}
-            departures={selectedDetail ? [selectedDetail] : departuresList}
-          />
-        )}
-        <TransitLegend />
-      </Card>
-      {stop && (
-        <Card title="Tu caminata">
-          <View style={styles.wrap}>
-            <Chip
-              label="Lugar → parada"
-              selected={direction === 'to_stop'}
-              onPress={() => setDirection('to_stop')}
-              disabled={busy}
-            />
-            <Chip
-              label="Parada → lugar"
-              selected={direction === 'from_stop'}
-              onPress={() => setDirection('from_stop')}
-              disabled={busy}
-            />
-          </View>
-          <TextField
-            accessibilityLabel="Minutos de caminata"
-            value={walkMinutes}
-            onChange={setWalkMinutes}
-            placeholder="Tus minutos habituales"
-            style={styles.input}
-          />
-          <TextField
-            accessibilityLabel="Puerta y notas de caminata"
-            value={entrance}
-            onChange={setEntrance}
-            placeholder="Puerta, cruces o tramo interior"
-            multiline
-            style={styles.input}
-          />
-          <Text style={styles.note}>
-            Incluye los cruces y el tramo interior que recorras. Ida y vuelta se guardan por
-            separado.
-          </Text>
-          <Button
-            label="Guardar caminata"
-            loading={busy}
-            onPress={() =>
-              void act(async () => {
-                await saveWalkLink(data.db, {
-                  place_id: place.id,
-                  stop_id: stop.stop[0],
-                  direction,
-                  minutes: Number(walkMinutes),
-                  entrance,
-                });
-                const saved = await listWalkLinks(data.db, place.id);
-                if (alive.current) {
-                  setLinks(saved);
-                  walksChanged();
-                  setNotice('Caminata guardada para esta dirección.');
-                }
-              })
-            }
-          />
           {missingLinks.map((l) => (
             <Text key={`${l.stop_id}-${l.direction}`} style={styles.error}>
               Revisar parada {l.stop_id}: ya no aparece en el horario. Se conserva tu caminata de{' '}
@@ -1018,49 +1081,57 @@ function TransitContent() {
               {l.entrance || 'sin nota'}.
             </Text>
           ))}
+
+          <Text style={styles.note}>
+            Distancias en línea recta: la acera, los cruces y la puerta pueden cambiar la caminata.
+            Las paradas repetidas para las mismas líneas quedan en «Ver más».
+          </Text>
+          {snapshot && (
+            <TransitJourneyAlerts
+              schedule={schedule}
+              snapshot={snapshot}
+              active={live.active}
+              departures={selectedDetail ? [selectedDetail] : departuresList}
+            />
+          )}
+          <TransitLegend />
         </Card>
       )}
-      <Card
-        title="Horario guardado"
-        action={
-          <Button
-            label="Actualizar"
-            icon={RefreshCw}
-            variant="ghost"
-            loading={syncing}
-            onPress={() => void refresh(data)}
-          />
-        }
-      >
-        <Text style={styles.body}>{schedule.feedVersion}</Text>
-        <Text style={styles.note}>
-          Válido {schedule.validFrom} a {schedule.validTo} · {schedule.stops.length} paradas
-        </Text>
-        <Text style={styles.note}>
-          Preparado {agencyDate(schedule.createdAt)} ({ageDays} días) · versión{' '}
-          {data.cache.sha256.slice(0, 12)}
-        </Text>
-        <Text style={styles.note}>
-          Última revisión:{' '}
-          {data.cache.checked_at
-            ? `${agencyDate(data.cache.checked_at)} ${agencyClock(data.cache.checked_at)}`
-            : 'incluido con esta versión de Nexo'}
-        </Text>
-        {data.cache.last_error && (
-          <Text style={styles.error}>
-            Falló la última actualización. El horario guardado sigue disponible.
-          </Text>
-        )}
-        <Text style={styles.note}>
-          Lugares, caminatas y horarios disponibles sin conexión. El fondo del mapa puede necesitar
-          internet.
-        </Text>
-      </Card>
     </Screen>
   );
 }
 
+/** While a trip is in progress, a section shrinks to its name; a tap opens or folds it. */
+function FoldRow({ title, open, onPress }: { title: string; open: boolean; onPress: () => void }) {
+  const Icon = open ? ChevronDown : ChevronRight;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${open ? 'Ocultar' : 'Mostrar'} ${title}`}
+      accessibilityState={{ expanded: open }}
+      onPress={onPress}
+      style={({ pressed }) => [styles.fold, pressed && styles.busy]}
+    >
+      <Text style={styles.foldTitle}>{title}</Text>
+      <Icon size={20} color={theme.text} strokeWidth={2.5} />
+    </Pressable>
+  );
+}
+
 const styles = sheet((theme) => ({
+  fold: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 48,
+    paddingHorizontal: 14,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radius,
+    backgroundColor: theme.surface,
+  },
+  foldTitle: { fontFamily: font.black, fontSize: 16, color: theme.text },
+  walk: { gap: 8 },
   panelHead: {
     flexDirection: 'row',
     alignItems: 'center',

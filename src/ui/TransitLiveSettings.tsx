@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Platform, Text, View } from 'react-native';
 
 import type { TransitLiveConfig } from '../shell/transit-live.ts';
@@ -20,6 +20,7 @@ export function TransitLiveSettings({
   onSave,
   onClear,
   onClose,
+  children,
 }: {
   config: TransitLiveConfig | null;
   error: string | null;
@@ -28,6 +29,8 @@ export function TransitLiveSettings({
   onSave: (config: TransitLiveConfig) => Promise<void>;
   onClear: () => Promise<void>;
   onClose: () => void;
+  /** More about where Transit's data comes from, below the connection. */
+  children?: ReactNode;
 }) {
   const [endpoint, setEndpoint] = useState(config?.endpoint ?? '');
   const [credential, setCredential] = useState(config?.credential ?? '');
@@ -151,6 +154,7 @@ export function TransitLiveSettings({
           }}
         />
       )}
+      {children}
     </PopupSheet>
   );
 }
