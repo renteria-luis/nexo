@@ -2,7 +2,8 @@ name: transit schedules
 
 on:
   schedule:
-    - cron: '17 10 * * *'
+    # Past midnight in Toronto in summer and winter, so a new feed lands before its first bus.
+    - cron: '17 5 * * *'
   workflow_dispatch:
 
 permissions:

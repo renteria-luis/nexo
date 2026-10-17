@@ -86,6 +86,21 @@ class PreparationTests(unittest.TestCase):
             manifest = json.loads(before['manifest.json'])
             self.assertEqual(manifest['bytes'], len(before['schedule.json']))
 
+    def test_publish_keeps_the_current_feed_until_the_next_one_starts(self):
+        def later(tables):
+            tables['feed_info.txt'][1] = ['20261019', '20261128', 'next']
+            tables['calendar_dates.txt'][1][1] = '20261020'
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            self.assertTrue(module.publish(fixture(), target, datetime(2026, 10, 11, tzinfo=timezone.utc)))
+            before = {p.name: p.read_bytes() for p in target.iterdir()}
+            # 02:00 UTC on the 19th is still the 18th in Toronto.
+            for now in [datetime(2026, 10, 17, 13, tzinfo=timezone.utc), datetime(2026, 10, 19, 2, tzinfo=timezone.utc)]:
+                self.assertFalse(module.publish(fixture(later), target, now))
+                self.assertEqual({p.name: p.read_bytes() for p in target.iterdir()}, before)
+            self.assertTrue(module.publish(fixture(later), target, datetime(2026, 10, 19, 5, 17, tzinfo=timezone.utc)))
+            self.assertEqual(json.loads((target / 'manifest.json').read_text())['validFrom'], '2026-10-19')
+
 
 if __name__ == '__main__':
     unittest.main()

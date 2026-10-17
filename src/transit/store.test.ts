@@ -367,3 +367,38 @@ test('updates verify hashes, skip unchanged downloads and preserve last-good dat
   }
   assert.throws(() => validateManifest({ ...manifest, file: 'https://untrusted.invalid' }));
 });
+
+test('a schedule that has not started yet waits while the saved one still runs today', async () => {
+  const { db } = await database();
+  const current = { ...scheduleFixture(), validFrom: '2000-01-01', validTo: '2999-12-31' };
+  const original = JSON.stringify(current);
+  const cache = await replaceSchedule(db, original, await hash(original));
+  const sync = async (validFrom: string) => {
+    const next = {
+      ...current,
+      feedVersion: validFrom,
+      createdAt: current.createdAt + 1,
+      validFrom,
+    };
+    const content = JSON.stringify(next);
+    const manifest = {
+      schema: SCHEDULE_SCHEMA,
+      file: 'schedule.json',
+      bytes: Buffer.byteLength(content),
+      sha256: await hash(content),
+      sourceSha256: next.sourceSha256,
+      createdAt: next.createdAt,
+      feedVersion: next.feedVersion,
+      timezone: next.timezone,
+      validFrom,
+      validTo: next.validTo,
+    };
+    const fetch = async (url: string | URL | Request) =>
+      new Response(String(url).endsWith('manifest.json') ? JSON.stringify(manifest) : content);
+    return (await syncSchedule(db, (await readSchedule(db))!, { digest: hash, fetch })).kind;
+  };
+  assert.equal(await sync('2998-01-01'), 'unchanged');
+  assert.equal((await readSchedule(db))?.schedule.feedVersion, cache.schedule.feedVersion);
+  assert.equal(await sync('2000-01-02'), 'updated');
+  assert.equal((await readSchedule(db))?.schedule.feedVersion, '2000-01-02');
+});

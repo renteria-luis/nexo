@@ -13,6 +13,7 @@ import tempfile
 from datetime import date, datetime, timezone
 import urllib.request
 import zipfile
+from zoneinfo import ZoneInfo
 
 SOURCE = 'https://www.londontransit.ca/gtfsfeed/google_transit.zip'
 MAX_ZIP_BYTES = 15_000_000
@@ -185,6 +186,11 @@ def publish(raw, output, now):
         if (old.get('schema') == package['schema'] and old.get('sourceSha256') == package['sourceSha256'] and current.exists()
                 and hashlib.sha256(current.read_bytes()).hexdigest() == old.get('sha256')):
             print('Official schedule unchanged; no publication needed')
+            return False
+        # LTC posts a feed days before it starts, and it has no buses for the days before that.
+        today = now.astimezone(ZoneInfo('America/Toronto')).date().isoformat()
+        if package['validFrom'] > today and old.get('validFrom', '') <= today <= old.get('validTo', ''):
+            print(f"Official schedule starts {package['validFrom']}; keeping the current one until then")
             return False
     data = json.dumps(package, ensure_ascii=False, separators=(',', ':'), allow_nan=False).encode()
     if len(data) > 12_000_000:

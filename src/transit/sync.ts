@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { isRealDate } from '../core/dates.ts';
-import { SCHEDULE_MAX_BYTES, SCHEDULE_SCHEMA, validateSchedule } from './schedule.ts';
+import { agencyDate, SCHEDULE_MAX_BYTES, SCHEDULE_SCHEMA, validateSchedule } from './schedule.ts';
 import { replaceSchedule, scheduleCheck, type CachedSchedule } from './store.ts';
 
 export const STATIC_BASE_URL = 'https://raw.githubusercontent.com/renteria-luis/nexo/main/transit/';
@@ -74,6 +74,14 @@ export async function syncSchedule(
     }
     if (manifest.createdAt < cache.schedule.createdAt)
       throw new Error('Llegó una versión anterior. Se conserva la guardada.');
+    // LTC posts a feed days before it starts, with no buses for the days before; the next day's
+    // check takes it once it runs.
+    const today = agencyDate(now);
+    const { validFrom, validTo } = cache.schedule;
+    if (manifest.validFrom > today && validFrom <= today && today <= validTo) {
+      await scheduleCheck(db, now, null);
+      return { kind: 'unchanged' };
+    }
     const artifact = await transport.fetch(`${STATIC_BASE_URL}${manifest.file}`, {
       signal: controller.signal,
     });
