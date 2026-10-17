@@ -28,6 +28,18 @@ export function distanceMetres(from: Coordinates, to: Coordinates): number {
   return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
+const HEADINGS = ['norte', 'noreste', 'este', 'sureste', 'sur', 'suroeste', 'oeste', 'noroeste'];
+
+/** Which way `to` lies from `from`, as one of the eight compass points, in Spanish. */
+export function headingTo(from: Coordinates, to: Coordinates): string {
+  const y = Math.sin(radians(to.lng - from.lng)) * Math.cos(radians(to.lat));
+  const x =
+    Math.cos(radians(from.lat)) * Math.sin(radians(to.lat)) -
+    Math.sin(radians(from.lat)) * Math.cos(radians(to.lat)) * Math.cos(radians(to.lng - from.lng));
+  const degrees = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+  return HEADINGS[Math.round(degrees / 45) % 8];
+}
+
 export type GymFix = {
   gym: GymLocation;
   distanceM: number;

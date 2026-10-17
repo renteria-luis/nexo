@@ -15,6 +15,7 @@ import {
   type PlanResult,
 } from './planner.ts';
 import { observedServiceTrips, type LiveSnapshot } from './realtime.ts';
+import { closedStops, stopChoices } from './stop-choices.ts';
 import { agencyClock, queryInstant, type Schedule } from './schedule.ts';
 
 const schedule = plannerFixture();
@@ -516,6 +517,70 @@ test('his saved minutes to a stop replace the estimate and reach a stop beyond t
   assert.equal(viaMiddle.access.source, 'saved');
   assert.equal(viaMiddle.access.minutes, 3);
   assert.ok(options.length > 0);
+});
+
+test('leaving now, each stop he can board at keeps its own buses, nearest first, farther when asked', () => {
+  const at = queryInstant(TUESDAY, '08:00');
+  const stops = (result: PlanResult) =>
+    stopChoices(result, null, at).map((choice) => [
+      stopId(choice.stop),
+      choice.walk.minutes,
+      choice.routes.map((route) => route[0]).join(),
+      choice.options.map(describe),
+    ]);
+  assert.deepEqual(stops(plan({ mode: 'now', at })), [
+    [
+      'ORIGIN_SB',
+      1,
+      '92,16',
+      [
+        '07:57 08:26 16S-2:ORIGIN_SB>CORNER_SB 20E-2:CORNER_EB>END_EB',
+        '08:17 08:41 92S-1:ORIGIN_SB>CORNER_SB 20E-3:CORNER_EB>END_EB',
+        '08:27 08:56 16S-4:ORIGIN_SB>CORNER_SB 20E-4:CORNER_EB>END_EB',
+        '08:42 09:11 16S-5:ORIGIN_SB>CORNER_SB 20E-5:CORNER_EB>END_EB',
+      ],
+    ],
+  ]);
+  const far = stops(plan({ mode: 'now', at, accessRadiusM: 3_000 }));
+  assert.deepEqual(
+    far.map(([stop, minutes]) => [stop, minutes]),
+    [
+      ['ORIGIN_SB', 1],
+      ['CORNER_EB', 24],
+    ],
+  );
+  assert.deepEqual(far[1][3], [
+    '07:49 08:26 20E-2:CORNER_EB>END_EB',
+    '08:04 08:41 20E-3:CORNER_EB>END_EB',
+    '08:19 08:56 20E-4:CORNER_EB>END_EB',
+    '08:34 09:11 20E-5:CORNER_EB>END_EB',
+  ]);
+});
+
+test('a stop LTC has closed is not offered to board at, and is listed with how far it is', () => {
+  const at = queryInstant(TUESDAY, '08:00');
+  const result = plan({ mode: 'now', at, accessRadiusM: 3_000, closedStops: ['ORIGIN_SB'] });
+  assert.deepEqual(
+    stopChoices(result, null, at).map((choice) => stopId(choice.stop)),
+    ['MIDDLE_SB', 'CORNER_EB'],
+    'the next stop on the same line takes its place',
+  );
+  assert.ok(
+    result.best.every((option) => stopId(option.rides[0].departure.stopTime[0]) !== 'ORIGIN_SB'),
+  );
+  assert.deepEqual(closedStops(result, ['ORIGIN_SB'], null, at), [
+    {
+      stop: schedule.stops.findIndex((stop) => stop[0] === 'ORIGIN_SB'),
+      metres: 34,
+      minutes: 1,
+      reason: 'LTC lo reportó cerrado hace poco.',
+    },
+  ]);
+  assert.equal(
+    plan({ closedStops: ['END_EB', 'END_WB'] }).issue,
+    'no-destination-stops',
+    'nor to get off at',
+  );
 });
 
 test('the live query asks for the boarding and alighting stops of the best options first', () => {

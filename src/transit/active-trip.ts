@@ -78,7 +78,8 @@ export type Fix = Coordinates & {
 };
 
 export type TripEnd = Coordinates & {
-  kind: 'place' | 'stop';
+  /** A point is where he was or one he chose, not a saved place: no walk is learned to it. */
+  kind: 'place' | 'stop' | 'point';
   id: string;
   name: string;
   /** The stop's public code; empty for a place. */
@@ -120,6 +121,8 @@ export type TripWalk = {
   to: TripEnd;
   minutes: number;
   source: Walk['source'];
+  /** The way he saved for this walk, from end to end, when he has one. */
+  path?: Coordinates[];
 };
 
 export type TripPhase =
@@ -362,14 +365,19 @@ function freezeRide(
   };
 }
 
+/** An end of the trip: a saved place, or with `point` where he was or a point he chose. */
+export type TripPoint = Coordinates & { id: string; name: string; point?: boolean };
+
 /** The trip as he leaves: the chosen option, frozen so it can be followed without the planner. */
 export function freezeTrip(input: {
   id: string;
   journeyId: string | null;
   schedule: Schedule;
   option: PlanOption;
-  origin: Coordinates & { id: string; name: string };
-  destination: Coordinates & { id: string; name: string };
+  origin: TripPoint;
+  destination: TripPoint;
+  /** His saved ways for the walks, by kind. */
+  paths?: Partial<Record<TripWalk['kind'], Coordinates[]>>;
   now: number;
 }): ActiveTrip {
   const { schedule, option, now } = input;
@@ -378,8 +386,8 @@ export function freezeTrip(input: {
     const stop = schedule.stops[index!];
     return { kind: 'stop', id: stop[0], name: stop[2], code: stop[1], lat: stop[3], lng: stop[4] };
   };
-  const placeEnd = (place: Coordinates & { id: string; name: string }): TripEnd => ({
-    kind: 'place',
+  const placeEnd = (place: TripPoint): TripEnd => ({
+    kind: place.point ? 'point' : 'place',
     id: place.id,
     name: place.name,
     code: '',
@@ -392,6 +400,7 @@ export function freezeTrip(input: {
     to,
     minutes: value.minutes,
     source: value.source,
+    ...(input.paths?.[kind] ? { path: input.paths[kind] } : {}),
   });
   const walks: TripWalk[] = [];
   if (!plan.rides.length)
@@ -572,6 +581,18 @@ function rideBus(
   return bus && bus.placedBy === 'gps' && bus.why !== 'other-trip' ? bus.point : null;
 }
 
+/** What is left of the walk he is on from his last reading: straight-line metres and minutes. */
+export function walkAhead(trip: ActiveTrip): { metres: number; minutes: number } | null {
+  const fix = trip.lastFix;
+  if (!fix || !isActive(trip) || !['walking', 'transferring', 'final'].includes(trip.phase))
+    return null;
+  const walk = trip.walks[Math.min(trip.leg, trip.walks.length - 1)];
+  return {
+    metres: Math.round(distanceMetres(fix, walk.to)),
+    minutes: Math.max(1, Math.ceil(remainingWalkMs(walk, fix) / 60_000)),
+  };
+}
+
 /** The share of a walk still ahead, in the minutes the plan gave it. */
 function remainingWalkMs(walk: TripWalk, fix: Fix): number {
   const total = distanceMetres(walk.from, walk.to);
@@ -592,7 +613,15 @@ function observe(
 ) {
   const walk = trip.walks[trip.leg];
   const track = trip.walk;
-  if (!track || !track.usable || !trip.rides.length || endedAt - track.startedAt < MIN_WALK_MS)
+  if (
+    !track ||
+    !track.usable ||
+    !trip.rides.length ||
+    endedAt - track.startedAt < MIN_WALK_MS ||
+    // A walk is learned per saved place; one from where he happened to be teaches nothing.
+    walk.from.kind === 'point' ||
+    walk.to.kind === 'point'
+  )
     return;
   const seconds = (endedAt - track.startedAt) / 1_000;
   const straight = distanceMetres(walk.from, walk.to);
@@ -730,7 +759,7 @@ function walking(trip: ActiveTrip, step: TripStep, fix: Fix, context: TripLive |
       current.usable = false;
     if (current.leftAt === null && away > PLACE_LEFT_M) current.leftAt = fix.at;
   }
-  if (walk.to.kind === 'place') {
+  if (walk.to.kind !== 'stop') {
     if (near(fix, walk.to, PLACE_NEAR_M)) {
       if (trip.phase === 'final') observe(trip, step, fix.at, 'gps', fix.accuracy);
       finish(trip, 'completed', fix.at, 'gps');

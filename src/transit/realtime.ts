@@ -780,6 +780,46 @@ export function mergeLiveDeparture(
   );
 }
 
+const inEffect = (alert: LiveAlert, now: number) =>
+  alert.activePeriods.length === 0 ||
+  alert.activePeriods.some(
+    (p) => (p.start === null || p.start <= now) && (p.end === null || p.end > now),
+  );
+
+// GTFS-Realtime effects that take a stop out of use: NO_SERVICE and STOP_MOVED. LTC also files
+// its stop closures as detours or other effects, with the word in the text.
+const CLOSING_EFFECTS = new Set([1, 9]);
+const CLOSING_WORDS = /\bclos(ed|ure|ing)\b/i;
+
+/**
+ * Why LTC has a stop closed right now: an alert naming the stop that closes it, or every bus it
+ * reports there skipping it. Null when nothing says so, or without a current reading.
+ */
+export function stopClosure(
+  schedule: Schedule,
+  snapshot: LiveSnapshot | null,
+  stopId: string,
+  now: number,
+): string | null {
+  if (!usableSnapshot(snapshot, schedule, now)) return null;
+  const alert = snapshot.alerts.find(
+    (a) =>
+      inEffect(a, now) &&
+      a.selectors.some((s) => s.stopId === stopId && s.tripId === null) &&
+      ((a.effect !== null && CLOSING_EFFECTS.has(a.effect)) ||
+        CLOSING_WORDS.test(`${a.header} ${a.description}`)),
+  );
+  if (alert) return alert.header || 'LTC avisa que está cerrado.';
+  const visits = snapshot.tripUpdates.flatMap((trip) =>
+    trip.relationship === 'canceled'
+      ? []
+      : trip.stops.filter((s) => s.stopId === stopId && s.relationship !== 'no_data'),
+  );
+  return visits.length > 0 && visits.every((s) => s.relationship === 'skipped')
+    ? 'Los buses que LTC reporta no paran ahí.'
+    : null;
+}
+
 export function relevantLiveAlerts(
   schedule: Schedule,
   departure: Departure,
@@ -790,10 +830,7 @@ export function relevantLiveAlerts(
   if (!usableSnapshot(snapshot, schedule, now)) return [];
   return snapshot.alerts.filter(
     (alert) =>
-      (alert.activePeriods.length === 0 ||
-        alert.activePeriods.some(
-          (p) => (p.start === null || p.start <= now) && (p.end === null || p.end > now),
-        )) &&
+      inEffect(alert, now) &&
       (alert.selectors.length === 0 ||
         alert.selectors.some(
           (s) =>

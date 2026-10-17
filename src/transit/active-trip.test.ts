@@ -11,6 +11,7 @@ import {
   parseActiveTrip,
   tripAlarms,
   tripLiveSelection,
+  walkAhead,
   ALARM_AFTER_MS,
   type ActiveTrip,
   type Fix,
@@ -19,6 +20,7 @@ import {
   type WalkObservationDraft,
 } from './active-trip.ts';
 import { plannerFixture } from './fixtures.ts';
+import { tripLayers } from './map.ts';
 import { buildPlannerIndex, liveOptions, startPlan, type PlanOption } from './planner.ts';
 import type { LiveSnapshot } from './realtime.ts';
 import { queryInstant, type Schedule } from './schedule.ts';
@@ -166,6 +168,66 @@ test('a trip walks, boards, gets off, transfers and arrives from his readings al
   assert.equal(transferred.trip.endedAt, second('08:56', 20));
   assert.equal(isActive(transferred.trip), false);
   assert.deepEqual(applyFix(transferred.trip, fix(DESTINATION, at('09:00')), null).events, []);
+});
+
+test('from where he is to a point he chose, the walk left shrinks and the trip ends at the point', () => {
+  const { schedule, option } = setup('16S-4>20E-4');
+  const trip = freezeTrip({
+    id: 'trip',
+    journeyId: null,
+    schedule,
+    option,
+    origin: { ...ORIGIN, id: '@here', name: 'Tu ubicación', point: true },
+    destination: { ...DESTINATION, id: '@point-target', name: 'Punto en el mapa', point: true },
+    paths: { egress: [{ lat: 42.9876, lng: -81.1701 }, DESTINATION] },
+    now: at('08:25'),
+  });
+  assert.deepEqual(
+    [trip.origin.kind, trip.destination.kind, trip.walks[2].path?.length, trip.walks[0].path],
+    ['point', 'point', 2, undefined],
+  );
+  const first = run(trip, walkToStop.slice(0, 2));
+  const ahead = walkAhead(first.trip)!;
+  const later = walkAhead(run(trip, walkToStop.slice(0, 3)).trip)!;
+  assert.ok(
+    later.metres < ahead.metres && ahead.metres < 150,
+    `${ahead.metres} then ${later.metres}`,
+  );
+  assert.deepEqual(
+    tripLayers(first.trip, null, at('08:26')).paths[0].points,
+    [
+      { lat: 43.0011, lng: -81.2001 },
+      { lat: 43.0003, lng: -81.2001 },
+    ],
+    'the walk he is on starts where he last was',
+  );
+  assert.equal(
+    tripLayers(first.trip, null, at('08:26')).paths[2].points.length,
+    2,
+    'a saved way is drawn as he saved it',
+  );
+  const walked = run(trip, walkToStop);
+  assert.equal(walked.trip.phase, 'waiting');
+  assert.deepEqual(walked.observations, [], 'nothing is learned from where he happened to be');
+  const rode = run(walked.trip, rideSouth);
+  const done = run(rode.trip, [
+    fix({ lat: 42.9876, lng: -81.1994 }, second('08:39', 30)),
+    fix({ lat: 42.9876, lng: -81.1993 }, second('08:44', 50)),
+    fix({ lat: 42.9876, lng: -81.195 }, second('08:45', 30), { speed: 9 }),
+    fix({ lat: 42.9876, lng: -81.192 }, second('08:45', 50), { speed: 9 }),
+    fix({ lat: 42.9876, lng: -81.1845 }, second('08:47', 40), { speed: 9 }),
+    fix({ lat: 42.9876, lng: -81.1703 }, second('08:55', 0), { speed: 2 }),
+    fix({ lat: 42.9873, lng: -81.1701 }, second('08:55', 30)),
+    fix({ lat: 42.9871, lng: -81.1701 }, second('08:55', 50)),
+    fix({ lat: 42.987, lng: -81.1701 }, second('08:56', 20)),
+  ]);
+  assert.equal(done.trip.phase, 'completed');
+  assert.deepEqual(
+    done.observations.map((o) => o.kind),
+    ['transfer'],
+    'the transfer between two stops is still learned',
+  );
+  assert.equal(walkAhead(done.trip), null);
 });
 
 test('noisy, early or unmatched movement along the route never claims his bus', () => {

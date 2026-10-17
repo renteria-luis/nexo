@@ -4,6 +4,13 @@
 
 const FALLBACK = '#121212';
 
+// The stops he can board at, nearest first. Each also carries its number, and a closed one a
+// cross, so the colour is never the only way to tell them apart.
+export const STOP_CHOICE_COLORS = ['#17683A', '#3977A5', '#A16B16'];
+export const STOP_CLOSED_COLOR = '#8A8A8A';
+export const stopChoiceColor = (rank: number | null) =>
+  rank === null ? STOP_CLOSED_COLOR : (STOP_CHOICE_COLORS[rank - 1] ?? FALLBACK);
+
 function hsl(hex: string): [number, number, number] {
   const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
   const max = Math.max(r, g, b);

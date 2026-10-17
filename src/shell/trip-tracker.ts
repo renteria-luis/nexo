@@ -4,6 +4,7 @@
 
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import type { Coordinates } from '../core/geo.ts';
 import {
   applyAction,
   applyClock,
@@ -19,7 +20,9 @@ import {
   type TripEvent,
   type TripLive,
   type TripPhase,
+  type TripPoint,
   type TripStep,
+  type TripWalk,
 } from '../transit/active-trip.ts';
 import type { PlanOption } from '../transit/planner.ts';
 import type { LiveSnapshot } from '../transit/realtime.ts';
@@ -249,8 +252,9 @@ export function createTripTracker(deps: TrackerDeps) {
     start: (input: {
       option: PlanOption;
       schedule: Schedule;
-      origin: { id: string; name: string; lat: number; lng: number };
-      destination: { id: string; name: string; lat: number; lng: number };
+      origin: TripPoint;
+      destination: TripPoint;
+      paths?: Partial<Record<TripWalk['kind'], Coordinates[]>>;
       journeyId: string | null;
     }) =>
       serial(async () => {
@@ -266,6 +270,7 @@ export function createTripTracker(deps: TrackerDeps) {
           option: input.option,
           origin: input.origin,
           destination: input.destination,
+          paths: input.paths,
           now,
         });
         await saveTrip(await deps.database(), trip);

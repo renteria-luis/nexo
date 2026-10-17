@@ -6,6 +6,7 @@ import { agencyClock } from '../transit/schedule.ts';
 import { mapRegion } from '../transit/map.ts';
 import { Bus } from './icons.ts';
 import { placeIcon } from './placeIcons.ts';
+import { stopChoiceColor } from './routeColors.ts';
 import type { TransitMapProps } from './TransitMap.types.ts';
 import { font } from './theme.ts';
 
@@ -28,6 +29,9 @@ export const TransitMap = memo(function TransitMap({
   walkPaths = [],
   notes = [],
   location,
+  ends = [],
+  choices = [],
+  onChoice,
   onNote,
   onPlace,
   onStop,
@@ -204,6 +208,47 @@ export const TransitMap = memo(function TransitMap({
                 }
               />
             ))}
+          {ends
+            .filter((end) => visible(end.lat, end.lng))
+            .map((end) => (
+              <Circle
+                key={`end-${end.kind}`}
+                cx={x(end.lng)}
+                cy={y(end.lat)}
+                r={12}
+                fill="#111111"
+                stroke="#FFFFFF"
+                strokeWidth={2}
+              />
+            ))}
+          {choices
+            .filter((choice) => visible(choice.lat, choice.lng))
+            .map((choice) => (
+              <Circle
+                key={`choice-${choice.id}`}
+                cx={x(choice.lng)}
+                cy={y(choice.lat)}
+                r={choice.selected ? 15 : 12}
+                fill={stopChoiceColor(choice.rank)}
+                stroke="#111111"
+                strokeWidth={choice.selected ? 4 : 2}
+              />
+            ))}
+          {choices
+            .filter((choice) => visible(choice.lat, choice.lng))
+            .map((choice) => (
+              <SvgText
+                key={`choice-text-${choice.id}`}
+                x={x(choice.lng)}
+                y={y(choice.lat) + 5}
+                fontSize={14}
+                fontWeight="900"
+                fill="#FFFFFF"
+                textAnchor="middle"
+              >
+                {choice.rank ?? '×'}
+              </SvgText>
+            ))}
           {draft && (
             <Circle
               cx={x(draft.lng)}
@@ -297,6 +342,23 @@ export const TransitMap = memo(function TransitMap({
                 </Pressable>
               );
             })}
+          {choices
+            .filter((choice) => visible(choice.lat, choice.lng))
+            .map((choice) => (
+              <Pressable
+                key={`choice-${choice.id}`}
+                accessibilityRole="button"
+                accessibilityLabel={choice.label}
+                style={[
+                  styles.marker,
+                  { left: x(choice.lng) - 14, top: y(choice.lat) - 14, zIndex: 30 },
+                ]}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  onChoice?.(choice.id);
+                }}
+              />
+            ))}
           {buses
             .filter((bus) => visible(bus.lat, bus.lng))
             .map((bus) => (

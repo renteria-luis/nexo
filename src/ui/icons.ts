@@ -39,6 +39,7 @@ export { default as ExternalLink } from 'lucide-react-native/icons/external-link
 export { default as Eye } from 'lucide-react-native/icons/eye';
 export { default as EyeOff } from 'lucide-react-native/icons/eye-off';
 export { default as FlaskConical } from 'lucide-react-native/icons/flask-conical';
+export { default as Flag } from 'lucide-react-native/icons/flag';
 export { default as Footprints } from 'lucide-react-native/icons/footprints';
 export { default as Globe } from 'lucide-react-native/icons/globe';
 export { default as GraduationCap } from 'lucide-react-native/icons/graduation-cap';
@@ -53,7 +54,9 @@ export { default as Library } from 'lucide-react-native/icons/library';
 export { default as Lightbulb } from 'lucide-react-native/icons/lightbulb';
 export { default as List } from 'lucide-react-native/icons/list';
 export { default as LoaderCircle } from 'lucide-react-native/icons/loader-circle';
+export { default as LocateFixed } from 'lucide-react-native/icons/locate-fixed';
 export { default as MapPin } from 'lucide-react-native/icons/map-pin';
+export { default as MapPinned } from 'lucide-react-native/icons/map-pinned';
 export { default as Menu } from 'lucide-react-native/icons/menu';
 export { default as Minus } from 'lucide-react-native/icons/minus';
 export { default as Moon } from 'lucide-react-native/icons/moon';

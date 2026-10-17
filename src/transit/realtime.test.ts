@@ -14,6 +14,7 @@ import {
   liveFreshness,
   mergeLiveDeparture,
   relevantLiveAlerts,
+  stopClosure,
   tripLiveDetail,
   validateLiveQuery,
   validateLiveSnapshot,
@@ -437,6 +438,37 @@ test('alerts combine selector fields and current periods, with separate alert fr
   assert.equal(liveFreshness(snapshot, 'alerts', snapshot.generatedAt, NOW), true);
   assert.equal(liveFreshness(snapshot, 'alerts', snapshot.generatedAt, NOW + 601_000), false);
   assert.equal(liveFreshness(snapshot, 'trips', NOW - 300_000, NOW), false);
+});
+
+test('a stop reads as closed by an alert that closes it or when every bus LTC reports skips it', () => {
+  const { schedule, snapshot } = fixture();
+  assert.equal(stopClosure(schedule, snapshot, 'A', NOW), null, 'a bus that stops there');
+  const alert = (changes: Partial<LiveSnapshot['alerts'][number]>) => ({
+    id: 'closure',
+    activePeriods: [{ start: NOW - 1_000, end: NOW + 10_000 }],
+    selectors: [{ routeId: null, stopId: 'B', tripId: null, serviceDate: null, directionId: null }],
+    cause: null,
+    effect: 4,
+    header: 'Detour downtown',
+    description: 'Buses run on King.',
+    url: null,
+    ...changes,
+  });
+  snapshot.alerts = [alert({})];
+  assert.equal(stopClosure(schedule, snapshot, 'B', NOW), null, 'a detour alone is not a closure');
+  snapshot.alerts = [alert({ description: 'Stop B is closed until further notice.' })];
+  assert.equal(stopClosure(schedule, snapshot, 'B', NOW), 'Detour downtown');
+  snapshot.alerts = [alert({ effect: 1, header: '' })];
+  assert.equal(stopClosure(schedule, snapshot, 'B', NOW), 'LTC avisa que está cerrado.');
+  assert.equal(stopClosure(schedule, snapshot, 'B', NOW + 10_000), null, 'once the alert ends');
+  assert.equal(stopClosure(schedule, snapshot, 'A', NOW), null, 'only the stop it names');
+  snapshot.alerts = [];
+  snapshot.tripUpdates[0].stops[0].relationship = 'skipped';
+  assert.equal(
+    stopClosure(schedule, snapshot, 'A', NOW),
+    'Los buses que LTC reporta no paran ahí.',
+  );
+  assert.equal(stopClosure(schedule, null, 'A', NOW), null, 'without a reading nothing is known');
 });
 
 test('HTTPS fetch sends bounded public IDs only and rejects redirect, quota, oversized and malformed responses', async () => {

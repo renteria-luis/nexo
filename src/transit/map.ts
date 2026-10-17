@@ -1,9 +1,15 @@
 import type { Coordinates } from '../core/geo.ts';
-import { rideStopLive, stopLabel, type ActiveTrip, type TripLive } from './active-trip.ts';
+import {
+  rideStopLive,
+  stopLabel,
+  walkAhead,
+  type ActiveTrip,
+  type TripLive,
+} from './active-trip.ts';
 import type { Itinerary, Ride, Walk } from './planner.ts';
 import { pathStops } from './realtime.ts';
 import type { Schedule } from './schedule.ts';
-import type { Place, StopWalk, WalkLink } from './store.ts';
+import type { StopWalk, WalkLink } from './store.ts';
 import { parsePath } from './walks.ts';
 
 export type JourneyPath = { id: string; points: Coordinates[]; color: string; dashed: boolean };
@@ -47,8 +53,8 @@ export function ridePath(schedule: Schedule, ride: Ride): Coordinates[] {
 export function itineraryPaths(
   schedule: Schedule,
   plan: Itinerary,
-  origin: Place,
-  target: Place,
+  origin: Coordinates & { id: string },
+  target: Coordinates & { id: string },
   links: WalkLink[],
   transfers: StopWalk[],
 ): JourneyPath[] {
@@ -117,7 +123,8 @@ export function mapRegion(points: Coordinates[]) {
 
 /**
  * A trip in progress as he chose it: each bus in its line's colour with a dot per stop, and the
- * walks dashed. It comes from the frozen trip, so it stays until the trip ends.
+ * walks dashed, along his saved way when he has one. The walk he is on starts where he last was.
+ * It comes from the frozen trip, so it stays until the trip ends.
  */
 export function tripLayers(
   trip: ActiveTrip,
@@ -125,11 +132,15 @@ export function tripLayers(
   now: number,
 ): { paths: JourneyPath[]; dots: StopDot[] } {
   const point = ({ lat, lng }: Coordinates) => ({ lat, lng });
+  const walking = walkAhead(trip) ? Math.min(trip.leg, trip.walks.length - 1) : -1;
   return {
     paths: [
       ...trip.walks.map((walk, i) => ({
         id: `walk-${i}`,
-        points: [point(walk.from), point(walk.to)],
+        points: walk.path ?? [
+          i === walking ? point(trip.lastFix!) : point(walk.from),
+          point(walk.to),
+        ],
         color: '#121212',
         dashed: true,
       })),

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { distanceMetres, readGym, type GymLocation } from './geo.ts';
+import { distanceMetres, headingTo, readGym, type GymLocation } from './geo.ts';
 
 const FANSHAWE: GymLocation = {
   id: 'fanshawe',
@@ -77,4 +77,12 @@ test('a gym without coordinates is skipped, not matched', () => {
     radiusM: 400,
   };
   assert.equal(readGym([unknown], { lat: 43.0138, lng: -81.2015 }, 10).kind, 'elsewhere');
+});
+
+test('which way a point lies is one of eight compass points', () => {
+  const from = { lat: 43, lng: -81.2 };
+  assert.equal(headingTo(from, { lat: 43.001, lng: -81.2 }), 'norte');
+  assert.equal(headingTo(from, { lat: 42.999, lng: -81.2 }), 'sur');
+  assert.equal(headingTo(from, { lat: 43, lng: -81.19 }), 'este');
+  assert.equal(headingTo(from, { lat: 43.001, lng: -81.2014 }), 'noroeste');
 });

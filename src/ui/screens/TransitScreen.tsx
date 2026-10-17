@@ -17,7 +17,13 @@ import { distanceMetres, type Coordinates } from '../../core/geo.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 import { useTransitJourneyLink } from '../../shell/TransitJourney.tsx';
 import type { TransitResponse } from '../../shell/notifications.ts';
-import { loadTransit, refreshTransit, transitHere, transitLocation } from '../../shell/transit.ts';
+import {
+  loadTransit,
+  refreshTransit,
+  transitAddress,
+  transitHere,
+  transitLocation,
+} from '../../shell/transit.ts';
 import {
   agencyClock,
   agencyDate,
@@ -268,10 +274,15 @@ function TransitContent() {
       setStopId(null);
     }
   }
-  const located = useMemo(
-    () => (here && nearest ? { id: nearest.id, at: here.asked } : null),
-    [here, nearest],
-  );
+  const reading = useMemo(() => (here ? { point: here.point, at: here.asked } : null), [here]);
+  const locate = useCallback(() => {
+    const asked = Date.now();
+    transitHere()
+      .then((point) => {
+        if (alive.current && point) setHere({ point, asked });
+      })
+      .catch((error: unknown) => console.error(error));
+  }, []);
   const options = useMemo(() => placeOptions(places), [places]);
   const categories = useMemo(() => placeCategories(places), [places]);
   const schedule = data?.cache.schedule;
@@ -845,11 +856,12 @@ function TransitContent() {
           schedule={schedule}
           stopIndex={index}
           places={places}
-          initialOrigin={located?.id ?? null}
           refreshAt={refreshAt}
           onMapInteraction={setMapActive}
           onPlacesChange={setTripPlaceIds}
-          located={located}
+          here={reading}
+          onLocate={locate}
+          onFindAddress={transitAddress}
           snapshot={live.state.snapshot}
           active={live.active}
           today={today}
@@ -866,6 +878,7 @@ function TransitContent() {
                 origin?.gym_id && origin.gym_id === journey.gymId ? journey.sessionId : null,
             });
           }}
+          onLeave={journey.actions.leave}
         />
       )}
       {!traveling && (

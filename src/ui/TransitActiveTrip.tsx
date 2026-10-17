@@ -3,10 +3,12 @@ import { Linking, Text, View } from 'react-native';
 
 import { useTransitJourney } from '../shell/TransitJourney.tsx';
 import type { GpsStatus } from '../shell/trip-tracker.ts';
+import { headingTo } from '../core/geo.ts';
 import {
   isActive,
   rideStopAt,
   stopLabel,
+  walkAhead,
   type ActiveTrip,
   type TripAction,
   type TripLive,
@@ -44,6 +46,13 @@ export function tripLines(
 ): { title: string; lines: string[]; ride: TripRide | null } {
   const ride = trip.rides[trip.leg] ?? null;
   const walk = trip.walks[Math.min(trip.leg, trip.walks.length - 1)];
+  // From his last reading, so it shrinks as he walks.
+  const ahead = walkAhead(trip);
+  const left = ahead
+    ? [
+        `Te faltan ${ahead.metres} m en línea recta hacia el ${headingTo(trip.lastFix!, walk.to)}, unos ${ahead.minutes} min.`,
+      ]
+    : [];
   const when = (index: number) => {
     const at = rideStopAt(trip, ride!, index, live, now);
     return `${agencyClock(at.at)} (${at.live ? 'en vivo' : 'horario'}, ${relative(at.at, now)})`;
@@ -54,12 +63,16 @@ export function tripLines(
       if (!ride)
         return {
           title: `Camina a ${trip.destination.name}`,
-          lines: [`Unos ${walk.minutes} min a pie.`],
+          lines: [`Unos ${walk.minutes} min a pie.`, ...left],
           ride: null,
         };
       return {
         title: `${trip.phase === 'walking' ? 'Camina' : 'Transbordo: camina'} a ${stopLabel(ride.stops[0])}`,
-        lines: [`El ${ride.route} sale a las ${when(0)}.`, `Caminata de unos ${walk.minutes} min.`],
+        lines: [
+          `El ${ride.route} sale a las ${when(0)}.`,
+          `Caminata de unos ${walk.minutes} min.`,
+          ...left,
+        ],
         ride,
       };
     case 'waiting':
@@ -91,6 +104,7 @@ export function tripLines(
         title: `Camina a ${trip.destination.name}`,
         lines: [
           `Unos ${walk.minutes} min a pie; llegada prevista ${agencyClock(trip.plannedArriveAt)}.`,
+          ...left,
         ],
         ride: null,
       };

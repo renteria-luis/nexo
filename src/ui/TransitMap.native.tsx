@@ -3,8 +3,9 @@ import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
 
 import { agencyClock } from '../transit/schedule.ts';
-import { Bus } from './icons.ts';
+import { Bus, Flag, LocateFixed, X } from './icons.ts';
 import { placeIcon } from './placeIcons.ts';
+import { stopChoiceColor } from './routeColors.ts';
 import { useSwipeLock } from './SwipeLock.tsx';
 import type { TransitMapProps } from './TransitMap.types.ts';
 
@@ -28,6 +29,9 @@ export const TransitMap = memo(function TransitMap({
   notes = [],
   location,
   showsUserLocation = false,
+  ends = [],
+  choices = [],
+  onChoice,
   onNote,
   onPlace,
   onStop,
@@ -256,6 +260,50 @@ export const TransitMap = memo(function TransitMap({
             onPress={() => onStop(s[0])}
           />
         ))}
+        {choices.map((choice) => (
+          <Marker
+            // A stop that closes, reopens or is picked is drawn anew.
+            key={`choice-${choice.id}-${choice.rank}-${choice.selected}`}
+            identifier={`choice-${choice.id}`}
+            coordinate={{ latitude: choice.lat, longitude: choice.lng }}
+            accessibilityLabel={choice.label}
+            anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={choice.selected ? 9 : 8}
+            onPress={() => onChoice?.(choice.id)}
+          >
+            <View
+              style={[
+                styles.choice,
+                { backgroundColor: stopChoiceColor(choice.rank) },
+                choice.selected && styles.choiceSelected,
+              ]}
+            >
+              {choice.rank === null ? (
+                <X size={15} color="#FFFFFF" strokeWidth={3} />
+              ) : (
+                <Text style={styles.choiceText}>{choice.rank}</Text>
+              )}
+            </View>
+          </Marker>
+        ))}
+        {ends.map((end) => (
+          <Marker
+            key={`end-${end.kind}`}
+            identifier={`end-${end.kind}`}
+            coordinate={{ latitude: end.lat, longitude: end.lng }}
+            title={end.label}
+            anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={25}
+          >
+            <View style={styles.end}>
+              {end.kind === 'origin' ? (
+                <LocateFixed size={16} color="#FFFFFF" strokeWidth={2.5} />
+              ) : (
+                <Flag size={16} color="#FFFFFF" strokeWidth={2.5} />
+              )}
+            </View>
+          </Marker>
+        ))}
         {draft && (
           <Marker
             coordinate={{ latitude: draft.lat, longitude: draft.lng }}
@@ -326,6 +374,11 @@ const styles = StyleSheet.create({
   placeChosen: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#17683A' },
   bus: { ...marker, width: 28, height: 28, borderRadius: 14, backgroundColor: '#C34438' },
   busStale: { backgroundColor: '#777777' },
+  // A number, or a cross where it is closed, on top of the colour.
+  choice: { ...marker, width: 30, height: 30, borderRadius: 15, borderColor: '#111111' },
+  choiceSelected: { width: 38, height: 38, borderRadius: 19, borderWidth: 4 },
+  choiceText: { fontSize: 15, fontWeight: '900', color: '#FFFFFF' },
+  end: { ...marker, width: 32, height: 32, borderRadius: 16, backgroundColor: '#111111' },
   // Told apart by size and by fill, not only by colour: white on the line, grey where it does
   // not stop, larger where he gets off.
   dot: {

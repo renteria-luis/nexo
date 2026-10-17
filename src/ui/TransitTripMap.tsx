@@ -59,6 +59,19 @@ export const TransitTripMap = memo(function TransitTripMap({
     () => places.filter((p) => p.id === trip.origin.id || p.id === trip.destination.id),
     [places, trip.origin.id, trip.destination.id],
   );
+  // Where he left from or a point he chose, which are not saved places.
+  const points = useMemo(
+    () =>
+      (
+        [
+          ['origin', trip.origin],
+          ['target', trip.destination],
+        ] as const
+      )
+        .filter(([, end]) => end.kind === 'point')
+        .map(([kind, end]) => ({ kind, label: end.name, lat: end.lat, lng: end.lng })),
+    [trip.origin, trip.destination],
+  );
   const [fits, setFits] = useState(0);
   const viewport = useMemo(
     () => ({
@@ -84,6 +97,7 @@ export const TransitTripMap = memo(function TransitTripMap({
         journeyPaths={paths}
         stopDots={layers.dots}
         followed={bus}
+        ends={points}
         location={fix}
         showsUserLocation
         onPlace={none}

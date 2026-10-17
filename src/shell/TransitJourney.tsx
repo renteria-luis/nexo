@@ -23,14 +23,17 @@ import {
   type TravelPreferences,
 } from '../transit/journey.ts';
 import { readJourneyState, saveJourneyState } from '../transit/journey-store.ts';
+import type { Coordinates } from '../core/geo.ts';
 import {
   isActive,
   tripLiveSelection,
   type ActiveTrip,
   type TripAction,
   type TripLive,
+  type TripPoint,
+  type TripWalk,
 } from '../transit/active-trip.ts';
-import { agencyDate } from '../transit/schedule.ts';
+import { agencyDate, type Schedule } from '../transit/schedule.ts';
 import { listAcceptedWalks } from '../transit/trip-store.ts';
 import { learnedWalks, personalWalks } from '../transit/walks.ts';
 import {
@@ -112,6 +115,14 @@ type Actions = {
   schedule: (value: CachedSchedule) => void;
   /** Leaves now on the trip shown, followed until he arrives, cancels or it times out. */
   startTrip: () => Promise<void>;
+  /** Leaves now on a bus picked in Cómo llegar, from wherever he is, without saving a next trip. */
+  leave: (input: {
+    option: PlanOption;
+    schedule: Schedule;
+    origin: TripPoint;
+    destination: TripPoint;
+    paths?: Partial<Record<TripWalk['kind'], Coordinates[]>>;
+  }) => Promise<void>;
   tripAction: (action: TripAction) => Promise<void>;
   dismissTrip: () => Promise<void>;
 };
@@ -591,6 +602,9 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
         // He is leaving: the reminders to prepare and to leave have done their job.
         if (next.reminders)
           await write({ ...current.current, next: { ...next, reminders: false } });
+      },
+      leave: async (input) => {
+        await tripTracker.start({ ...input, journeyId: null });
       },
       tripAction: (action) => tripTracker.act(action),
       dismissTrip: () => tripTracker.dismiss(),

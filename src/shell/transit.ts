@@ -5,7 +5,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { openDatabase } from '../db/index.ts';
 import { readSchedule, replaceSchedule, type CachedSchedule } from '../transit/store.ts';
 import { syncSchedule } from '../transit/sync.ts';
-import { READING_MAX_ERROR_M, type Coordinates } from '../core/geo.ts';
+import { distanceMetres, READING_MAX_ERROR_M, type Coordinates } from '../core/geo.ts';
 
 const digest = (content: string) =>
   Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, content);
@@ -76,4 +76,20 @@ export function transitHere(): Promise<Coordinates | null> {
     finding = null;
   });
   return finding;
+}
+
+// Apple's geocoder receives the text he types. A match this far from downtown London is another
+// city's street with the same name.
+const ADDRESS_MAX_M = 40_000;
+const LONDON = { lat: 42.9849, lng: -81.2453 };
+
+/** Where an address he typed is, in or around London; null when nothing there matches. */
+export async function transitAddress(text: string): Promise<Coordinates | null> {
+  const query = /london/i.test(text) ? text : `${text}, London, Ontario`;
+  const found = await Location.geocodeAsync(query);
+  return (
+    found
+      .map((result) => ({ lat: result.latitude, lng: result.longitude }))
+      .find((point) => distanceMetres(point, LONDON) <= ADDRESS_MAX_M) ?? null
+  );
 }

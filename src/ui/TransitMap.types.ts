@@ -44,6 +44,11 @@ export type TransitMapProps = {
   location?: (Coordinates & { at: number; accuracy: number | null }) | null;
   /** The phone's own live dot, in place of `location`, where the map can draw it. */
   showsUserLocation?: boolean;
+  /** Ends of a trip that are not saved places: where he is, or a point he chose. */
+  ends?: (Coordinates & { kind: 'origin' | 'target'; label: string })[];
+  /** Stops he can board at, numbered nearest first; no number where LTC has one closed. */
+  choices?: (Coordinates & { id: string; label: string; rank: number | null; selected: boolean })[];
+  onChoice?: (id: string) => void;
   onNote?: (id: string) => void;
   onPlace: (id: string) => void;
   onStop: (id: string) => void;

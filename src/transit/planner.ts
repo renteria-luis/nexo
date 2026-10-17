@@ -129,6 +129,11 @@ export type PlanRequest = {
    * from the origin, `from:stop` to the destination, `from>to` between stops.
    */
   learned?: ReadonlySet<string>;
+  /** How far from each end to look for stops; ACCESS_RADIUS_M unless he is far from all of them. */
+  accessRadiusM?: number;
+  egressRadiusM?: number;
+  /** Stops LTC has closed for now: he is not sent to them to board or to get off. */
+  closedStops?: readonly string[];
   mode: PlanMode;
   /** Now, the time to leave at, or the time to be there by. */
   at: number;
@@ -330,6 +335,8 @@ function placeWalks(
   saved: ReadonlyMap<string, number>,
   toStop: boolean,
   learned: ReadonlySet<string> | undefined,
+  radius: number,
+  closed: ReadonlySet<string>,
 ): Map<number, Walk> {
   const walks = new Map<number, Walk>();
   const add = (stop: number, metres: number, minutes: number, source: Walk['source']) =>
@@ -340,11 +347,12 @@ function placeWalks(
       source,
       metres,
     });
-  for (const { stop, metres } of stopsWithin(index, point, ACCESS_RADIUS_M))
+  const open = (stop: number) => !closed.has(index.schedule.stops[stop][0]);
+  for (const { stop, metres } of stopsWithin(index, point, radius, open))
     add(stop, metres, estimatedWalkMinutes(metres), 'estimate');
   for (const [id, minutes] of saved) {
     const stop = index.stopIds.get(id);
-    if (stop === undefined) continue;
+    if (stop === undefined || closed.has(id)) continue;
     const s = index.schedule.stops[stop];
     add(
       stop,
@@ -505,13 +513,24 @@ export function startPlan(
     savedFrom.set(a, [...(savedFrom.get(a) ?? []), b]);
     savedTo.set(b, [...(savedTo.get(b) ?? []), a]);
   }
-  const access = placeWalks(index, request.origin, request.originWalks, true, request.learned);
+  const closed = new Set(request.closedStops);
+  const access = placeWalks(
+    index,
+    request.origin,
+    request.originWalks,
+    true,
+    request.learned,
+    request.accessRadiusM ?? ACCESS_RADIUS_M,
+    closed,
+  );
   const egress = placeWalks(
     index,
     request.destination,
     request.destinationWalks,
     false,
     request.learned,
+    request.egressRadiusM ?? ACCESS_RADIUS_M,
+    closed,
   );
   const context: PlanContext = {
     index,
