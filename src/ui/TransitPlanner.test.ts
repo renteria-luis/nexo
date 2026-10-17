@@ -201,10 +201,14 @@ test('the pickers offer his places by importance, with their icon and the tags t
   assert.deepEqual(saved('Elegir el origen'), options);
   assert.deepEqual(
     picker(tree, 'Elegir el origen')
-      .options.slice(0, 2)
+      .options.filter((o: { hidden?: boolean }) => !o.hidden)
+      .slice(0, 1)
       .map((o: { label: string }) => o.label),
-    ['Tu ubicación', 'Punto en el mapa'],
+    ['Punto en el mapa'],
+    'where he is has its own button',
   );
+  assert.equal(picker(tree, 'Elegir el origen').value, '@here');
+  assert.equal(byLabel(tree, 'Salir desde tu ubicación').props.accessibilityState.selected, true);
   assert.deepEqual(
     picker(tree, 'Elegir el destino')
       .options.slice(0, 2)
@@ -240,6 +244,17 @@ test('the trip starts where he is, as his saved place when he is at one, unless 
   tree = await screen.settle();
   assert.equal(picker(tree, 'Elegir el origen').value, '@here', 'the next visit reads again');
   assert.equal(mapOf(tree).origin.id, 'zoo');
+  assert.equal(picker(tree, 'Elegir el origen').options[0].label, 'Tu ubicación · Zoo');
+  let located = 0;
+  shown.onLocate = () => {
+    located += 1;
+  };
+  picker(tree, 'Elegir el origen').onChange('end');
+  tree = await screen.settle();
+  byLabel(tree, 'Salir desde tu ubicación').props.onPress();
+  tree = await screen.settle();
+  assert.equal(picker(tree, 'Elegir el origen').value, '@here', 'its button starts where he is');
+  assert.equal(located, 1, 'and reads where he is again');
 });
 
 test('Ver más shows every option, not only ten', async (t) => {

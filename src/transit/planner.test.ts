@@ -15,7 +15,7 @@ import {
   type PlanResult,
 } from './planner.ts';
 import { observedServiceTrips, type LiveSnapshot } from './realtime.ts';
-import { closedStops, stopChoices } from './stop-choices.ts';
+import { closedStops, optionCost, stopChoices } from './stop-choices.ts';
 import { agencyClock, queryInstant, type Schedule } from './schedule.ts';
 
 const schedule = plannerFixture();
@@ -519,7 +519,7 @@ test('his saved minutes to a stop replace the estimate and reach a stop beyond t
   assert.ok(options.length > 0);
 });
 
-test('leaving now, each stop he can board at keeps its own buses, nearest first, farther when asked', () => {
+test('leaving now, each stop he can board at keeps its own buses, best first, farther when asked', () => {
   const at = queryInstant(TUESDAY, '08:00');
   const stops = (result: PlanResult) =>
     stopChoices(result, null, at).map((choice) => [
@@ -541,6 +541,11 @@ test('leaving now, each stop he can board at keeps its own buses, nearest first,
       ],
     ],
   ]);
+  assert.equal(
+    describe(stopChoices(plan({ mode: 'now', at }), null, at)[0].best),
+    '08:17 08:41 92S-1:ORIGIN_SB>CORNER_SB 20E-3:CORNER_EB>END_EB',
+    'the stop shows its best bus, not the one he just missed',
+  );
   const far = stops(plan({ mode: 'now', at, accessRadiusM: 3_000 }));
   assert.deepEqual(
     far.map(([stop, minutes]) => [stop, minutes]),
@@ -555,6 +560,53 @@ test('leaving now, each stop he can board at keeps its own buses, nearest first,
     '08:19 08:56 20E-4:CORNER_EB>END_EB',
     '08:34 09:11 20E-5:CORNER_EB>END_EB',
   ]);
+});
+
+test('a stop costs what its best bus does: arriving first, then fewer transfers and less walking', () => {
+  const at = queryInstant(TUESDAY, '14:00');
+  const option = (arrive: string, rides: number, walk: number, leave = '14:05', tight = false) =>
+    ({
+      itinerary: {
+        rides: Array.from({ length: rides }),
+        access: { minutes: walk },
+        transfer: rides > 1 ? { minutes: 2 } : null,
+        egress: { minutes: 3 },
+      },
+      leaveAt: queryInstant(TUESDAY, leave),
+      arriveAt: queryInstant(TUESDAY, arrive),
+      tight,
+    }) as unknown as PlanOption;
+  const order = (options: Record<string, PlanOption>) =>
+    Object.entries(options)
+      .sort(([, a], [, b]) => optionCost(a, at) - optionCost(b, at))
+      .map(([name]) => name);
+  assert.deepEqual(
+    order({
+      '16+20': option('14:44', 2, 5),
+      '16+10': option('15:19', 2, 4),
+      '91+17': option('14:35', 2, 6),
+    }),
+    ['91+17', '16+20', '16+10'],
+    'arriving first weighs most',
+  );
+  assert.deepEqual(order({ transfer: option('14:40', 2, 5), direct: option('14:44', 1, 5) }), [
+    'direct',
+    'transfer',
+  ]);
+  assert.deepEqual(
+    order({ tight: option('14:40', 2, 5, '14:05', true), safe: option('14:41', 2, 5) }),
+    ['safe', 'tight'],
+  );
+  assert.deepEqual(
+    order({ far: option('14:36', 1, 15, '13:58'), near: option('14:44', 1, 5) }),
+    ['near', 'far'],
+    'ten more minutes on foot to arrive eight earlier does not pay',
+  );
+  assert.deepEqual(
+    order({ now: option('14:40', 1, 5, '14:00'), later: option('14:40', 1, 5, '14:15') }),
+    ['later', 'now'],
+    'waiting at home beats waiting at the stop',
+  );
 });
 
 test('a stop LTC has closed is not offered to board at, and is listed with how far it is', () => {

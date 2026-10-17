@@ -35,6 +35,7 @@ import {
 import { observedServiceTrips, stopClosure, type LiveSnapshot } from '../transit/realtime.ts';
 import {
   closedStops,
+  COST,
   stopChoices,
   STOP_CHOICES,
   STOP_REACH_M,
@@ -377,12 +378,18 @@ export function TransitPlanner({
   const options = useMemo(() => placeOptions(places), [places]);
   const originOptions = useMemo<Option[]>(
     () => [
-      { id: HERE, label: 'Tu ubicación', icon: LocateFixed, keywords: 'aquí gps' },
+      // Its button beside the list picks it.
+      {
+        id: HERE,
+        label: origin?.here ? origin.name : 'Tu ubicación',
+        icon: LocateFixed,
+        hidden: true,
+      },
       ...(originPoint ? [{ id: POINT, label: originPoint.name, icon: MapPin }] : []),
       { id: MAP, label: 'Punto en el mapa', icon: MapPinned },
       ...options,
     ],
-    [options, originPoint],
+    [options, originPoint, origin],
   );
   const targetOptions = useMemo<Option[]>(
     () => [
@@ -796,7 +803,15 @@ export function TransitPlanner({
         placeholder="Elige de dónde sales"
         accessibilityLabel="Elegir el origen"
         onPick={(id) => pick('origin', id)}
-      />
+      >
+        <IconButton
+          icon={LocateFixed}
+          accessibilityLabel="Salir desde tu ubicación"
+          selected={originId === HERE}
+          onPress={() => pick('origin', HERE)}
+          style={styles.swap}
+        />
+      </PlaceRow>
       {originId === HERE && !here && (
         <View style={styles.walkLine}>
           <Text style={[styles.note, styles.grow]}>
@@ -1281,8 +1296,8 @@ function StopPopup({
 }
 
 /**
- * Leaving now, the three nearest stops with a bus that takes him there, and the nearby ones LTC
- * has closed; a stop opens on its lines or its buses. It keeps its own clock, like the list.
+ * Leaving now, the three stops with the bus that suits him best there, and the nearby ones LTC has
+ * closed; a stop opens on its lines or its buses. It keeps its own clock, like the list.
  */
 const StopList = memo(function StopList({
   schedule,
@@ -1367,7 +1382,7 @@ const StopList = memo(function StopList({
   useEffect(() => {
     if (few) onWiden('access');
   }, [few, onWiden]);
-  // LTC closes stops for now: the nearest are checked on each reading, and one closed stays
+  // LTC closes stops for now: the first offered are checked on each reading, and one closed stays
   // checked, so it opens again when LTC says so.
   const watched = [
     ...new Set([...closedIds, ...choices.slice(0, 6).map((c) => schedule.stops[c.stop][0])]),
@@ -1508,7 +1523,7 @@ const StopList = memo(function StopList({
       )}
       {shown.map((choice, i) => {
         const stop = schedule.stops[choice.stop];
-        const next = choice.options.find((o) => !o.problem && !o.notice && !o.missed);
+        const { best } = choice;
         return (
           <Pressable
             key={choice.stop}
@@ -1528,14 +1543,13 @@ const StopList = memo(function StopList({
                   {stopName(stop)} #{stop[1] || stop[0]}
                 </Text>
                 <Text style={styles.note}>{walkText(choice.walk, from, stop)}</Text>
-                {next && (
-                  <Text style={styles.note}>
-                    Próximo: {next.itinerary.rides.map((r) => r.route[1]).join(' → ')} a las{' '}
-                    {clock(next.live[0].board.at)} ·{' '}
-                    {next.leaveAt <= minute ? 'sal ya' : `sal ${relative(next.leaveAt, minute)}`} ·
-                    llegas {clock(next.arriveAt)}
-                  </Text>
-                )}
+                <Text style={styles.note}>
+                  {best.itinerary.rides.length > 1 ? 'Con transbordo' : 'Directo'}:{' '}
+                  {best.itinerary.rides.map((r) => r.route[1]).join(' → ')} a las{' '}
+                  {clock(best.live[0].board.at)} ·{' '}
+                  {best.leaveAt <= minute ? 'sal ya' : `sal ${relative(best.leaveAt, minute)}`} ·
+                  llegas {clock(best.arriveAt)}
+                </Text>
               </View>
               <View style={styles.lines}>
                 {choice.routes.map((route) => (
@@ -1577,6 +1591,11 @@ const StopList = memo(function StopList({
           También puedes ir caminando: {walking.access.minutes} min ({walkSource(walking.access)}).
         </Text>
       )}
+      <Text style={styles.note}>
+        El 1 es el que más te conviene: cuenta sobre todo a qué hora llegas, y suma {COST.transfer}{' '}
+        min por transbordo ({COST.tight} más si es justo), {COST.walk} min por cada minuto a pie y{' '}
+        {COST.trip} min por cada minuto de viaje. Cada paradero muestra su mejor bus.
+      </Text>
       <Text style={styles.note}>
         Toca un paradero para ver sus líneas o elegir su bus. Metros en línea recta desde donde
         sales; sin tus minutos, la caminata se estima a 4.5 km/h sobre 1.3 veces esa distancia.

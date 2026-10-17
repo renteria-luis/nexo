@@ -114,8 +114,8 @@ export function TransitPlanMap({
       </View>
       {!!choices?.length && (
         <Text style={styles.note}>
-          1, 2 y 3: los paraderos que te llevan, del más cercano al más lejano. Gris con ×: cerrado
-          por ahora.{ends.length ? ' Negro: tu ubicación o el punto que elegiste.' : ''}
+          1, 2 y 3: los paraderos que te llevan, del que más te conviene al que menos. Gris con ×:
+          cerrado por ahora.{ends.length ? ' Negro: tu ubicación o el punto que elegiste.' : ''}
         </Text>
       )}
       {paths.length > 0 && (

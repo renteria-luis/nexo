@@ -24,6 +24,8 @@ export type Option = {
   icon?: LucideIcon;
   /** More words that find it, like a food's keywords. */
   keywords?: string;
+  /** Shown on the button when it is the one chosen, but not in the list. */
+  hidden?: boolean;
 };
 
 export function Combobox({
@@ -86,8 +88,8 @@ function List({
   onPick: (id: string) => void;
 }) {
   const [search, setSearch] = useState('');
-  const found = options.filter((option) =>
-    matchesSearch([option.label, option.keywords ?? null], search),
+  const found = options.filter(
+    (option) => !option.hidden && matchesSearch([option.label, option.keywords ?? null], search),
   );
 
   return (
