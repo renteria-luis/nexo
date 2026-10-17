@@ -1,12 +1,12 @@
 {
   "schema": 2,
-  "sourceSha256": "cdc3c816f4fb6eb7070e81ef9abdc48e1b15bb2f265cc1d5c558e7ea89f572ff",
-  "createdAt": 1791765894889,
-  "feedVersion": "2026 September + Trippers_20260924",
+  "sourceSha256": "c50069cd483d7dd9f8896a82e2d0e8e366d49936ef02dc387a7e9ae8c3e8d572",
+  "createdAt": 1792244689592,
+  "feedVersion": "2026 September (D)_20261015",
   "timezone": "America/Toronto",
-  "validFrom": "2026-09-28",
+  "validFrom": "2026-10-19",
   "validTo": "2026-11-28",
-  "sha256": "31ae79d58b3d3ad3de7c4bd5d8c4c8ac531f80801a04736ac5de0640f13b906c",
-  "bytes": 4646828,
+  "sha256": "46cc5c4a3b455097376f62c0ff4ef1599ed9add93a6f71a9fbd5f9adc6b93810",
+  "bytes": 4650099,
   "file": "schedule.json"
 }
