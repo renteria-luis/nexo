@@ -6,15 +6,15 @@ import { NO_DATA_COLOR, colorForScore } from './palettes.ts';
 
 test('score buckets honor exact boundaries without rounding up completion', () => {
   const examples: [number, string][] = [
-    [0, '#D1D5DB'],
-    [0.1, '#A7D9B0'],
-    [25, '#A7D9B0'],
-    [25.1, '#70BB84'],
-    [50, '#70BB84'],
-    [50.1, '#36985B'],
-    [75, '#36985B'],
-    [99.9, '#36985B'],
-    [100, '#17683A'],
+    [0, '#38383C'],
+    [0.1, '#2A6B41'],
+    [25, '#2A6B41'],
+    [25.1, '#3A9659'],
+    [50, '#3A9659'],
+    [50.1, '#5CC47D'],
+    [75, '#5CC47D'],
+    [99.9, '#5CC47D'],
+    [100, '#A8F0C0'],
   ];
   for (const [score, color] of examples) assert.equal(colorForScore(score), color);
   assert.equal(colorForScore(null), NO_DATA_COLOR);
@@ -62,7 +62,7 @@ test('a recorded zero uses solid grey, distinct from no data', () => {
   const cell = buildGrid(days, { from: '2026-09-07', to: '2026-09-13' })[0].cells[0];
 
   assert.equal(cell.score, 0);
-  assert.equal(cell.color, '#D1D5DB');
+  assert.equal(cell.color, '#38383C');
   assert.notEqual(cell.color, NO_DATA_COLOR);
 });
 

@@ -14,6 +14,25 @@ import type { ScorePalette } from './palettes.ts';
 import { settingProblem } from './settings.ts';
 import { buildGrid } from './heatmap.ts';
 
+function luminance(hex: string): number {
+  const channel = (value: number) => {
+    const c = value / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  const n = Number.parseInt(hex.slice(1), 16);
+  return 0.2126 * channel(n >> 16) + 0.7152 * channel((n >> 8) & 255) + 0.0722 * channel(n & 255);
+}
+
+test('every palette gets brighter from the zero grey up, so a higher score stands out more', () => {
+  for (const palette of Object.keys(SCORE_PALETTES) as ScorePalette[]) {
+    const steps = [ZERO_SCORE_COLOR, ...SCORE_PALETTES[palette].colors].map(luminance);
+    for (let i = 1; i < steps.length; i++) {
+      // A contrast ratio of 1.3 between neighbours is the least that still reads as a step.
+      assert.ok((steps[i] + 0.05) / (steps[i - 1] + 0.05) >= 1.3, `${palette} step ${i}`);
+    }
+  }
+});
+
 test('all five palettes share neutral states and respect exact custom limits without rounding', () => {
   for (const palette of Object.keys(SCORE_PALETTES) as ScorePalette[]) {
     const scale = { palette, lowMax: 20.5, mediumMax: 60, topMin: 90 };

@@ -1,12 +1,16 @@
 // Retained for reading settings and backups made before score_scale.
 export type PaletteId = 'deutan' | 'standard' | 'tritan';
 
+// Spec 4.5, for the dark background: each palette runs from dark to bright so a higher
+// score always stands out more, and the zero grey sits below the first intensity. The
+// steps are spaced by lightness, not hue, because the owner reads them with deuteranopia.
+// The id `black` stays because saved scales and backups name it.
 export const SCORE_PALETTES = {
-  green: { name: 'Verde', colors: ['#A7D9B0', '#70BB84', '#36985B', '#17683A'] },
-  pink: { name: 'Rosa', colors: ['#F4BDD5', '#E989B2', '#D34E90', '#9D2360'] },
-  red: { name: 'Roja', colors: ['#F3B7B4', '#E9837D', '#C74942', '#8F2722'] },
-  blue: { name: 'Azul', colors: ['#B8D4F3', '#7AADE0', '#387DBB', '#185087'] },
-  black: { name: 'Negra', colors: ['#BDBDBD', '#929292', '#555555', '#171717'] },
+  green: { name: 'Verde', colors: ['#2A6B41', '#3A9659', '#5CC47D', '#A8F0C0'] },
+  pink: { name: 'Rosa', colors: ['#8A2E5C', '#B93F7A', '#E46AA3', '#FAC2DC'] },
+  red: { name: 'Roja', colors: ['#8C302B', '#BB453E', '#E46C64', '#FBBDB8'] },
+  blue: { name: 'Azul', colors: ['#2A5288', '#3A74B5', '#5F9EE3', '#B5D5F8'] },
+  black: { name: 'Gris', colors: ['#58585C', '#808085', '#ACACB0', '#EEEEF0'] },
 } as const;
 
 export type ScorePalette = keyof typeof SCORE_PALETTES;
@@ -23,7 +27,7 @@ export const DEFAULT_SCORE_SCALE: ScoreScaleOptions = {
   topMin: 100,
 };
 export const NO_DATA_COLOR = 'transparent';
-export const ZERO_SCORE_COLOR = '#D1D5DB';
+export const ZERO_SCORE_COLOR = '#38383C';
 
 export function scoreScaleProblem(value: unknown): string | null {
   if (!value || typeof value !== 'object') return 'La escala no es válida.';
