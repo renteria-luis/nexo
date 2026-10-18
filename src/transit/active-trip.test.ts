@@ -453,8 +453,8 @@ test('a partial delay keeps the earlier direct alighting stop and Ya bajé start
   const result = search.result();
   const pool = result.pool.filter((p) => p.rides[0]?.trip[0] === '16S-3');
   assert.ok(
-    pool.some((p) => p.rides.length === 2),
-    'the search includes a ride past the destination and back',
+    pool.every((p) => p.rides.length === 1),
+    'riding past the destination to come back is not an option',
   );
   const direct = pool.find((p) => p.rides.length === 1)!;
   const ride = direct.rides[0];

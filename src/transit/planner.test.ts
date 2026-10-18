@@ -775,3 +775,42 @@ test('the screens share one planner index and one stop index per schedule', () =
   assert.equal(sharedStopIndex(schedule), sharedStopIndex(schedule));
   assert.notEqual(sharedPlannerIndex(plannerFixture()), sharedPlannerIndex(schedule));
 });
+
+test('riding past his stop to catch a bus coming back is not an option, even once live data breaks it', () => {
+  // The 20 runs on past EAST to END and back, so from the corner he could stay on to END and
+  // take the 20 back to EAST, which only gets him there later.
+  const stretched: Schedule = {
+    ...schedule,
+    stops: schedule.stops.map(([id, code, name, lat, lng]) => [
+      id,
+      code,
+      name,
+      lat,
+      id.startsWith('EAST') ? -81.17 : id.startsWith('END') ? -81.14 : lng,
+    ]),
+  };
+  const at = queryInstant(TUESDAY, '07:40');
+  const search = startPlan(
+    buildPlannerIndex(stretched),
+    request({ origin: CORNER, destination: { lat: 42.9878, lng: -81.17 }, mode: 'now', at }),
+  );
+  while (!search.step(1_000));
+  const result = search.result();
+  assert.ok(result.pool.length > 0);
+  assert.ok(result.pool.every((plan) => plan.rides.length === 1));
+  const late = snapshot(at, [update(stretched, '20E-0', at, {}, 5)]);
+  assert.ok(
+    stopChoices(result, late, at).every((choice) => choice.options.every((o) => !o.notice)),
+  );
+});
+
+test('leaving now, a stop greys out only the buses it listed when live data takes one away', () => {
+  const at = queryInstant(TUESDAY, '08:00');
+  const canceled = snapshot(at, [update(schedule, '20E-3', at, { relationship: 'canceled' }, 0)]);
+  const [stop] = stopChoices(plan({ mode: 'now', at }), canceled, at);
+  assert.deepEqual(
+    stop.options.filter((o) => o.notice).map((o) => o.itinerary.rides[0].trip[0]),
+    ['92S-1'],
+    'the 16 to the same 20, hidden behind the express, was never offered',
+  );
+});

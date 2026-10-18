@@ -795,9 +795,10 @@ export function startPlan(
 
   // One option per bus, or pair of buses, from each stop he boards at leaving now: getting off a
   // stop sooner or later is not another option, and neither is a first bus to one he can walk to
-  // and leave no earlier, which no delay can make better. The other first buses to a last one
-  // stay, to take over if the best is late. Without this the pool filled with ways to catch the
-  // same few buses, and later ones never got listed.
+  // and leave no earlier, nor a second bus after a first one he can get off and walk from as soon
+  // (riding past his stop to catch one coming back); no delay can make either better. The other
+  // first buses to a last one stay, to take over if the best is late. Without this the pool
+  // filled with ways to catch the same few buses, and later ones never got listed.
   const distinctBuses = () => {
     const better = (candidate: Candidate, known: Candidate | undefined) =>
       !known ||
@@ -814,9 +815,10 @@ export function startPlan(
     }
     return [...best.values()].filter((candidate) => {
       if (!candidate.first) return true;
-      const f = candidate.final!;
-      const known = direct.get(tripKey(f.trip, f.day.date));
-      return !known || known.leave < candidate.leave || known.arrive > candidate.arrive;
+      return [firstBus(candidate)!, candidate.final!].every((bus) => {
+        const known = direct.get(tripKey(bus.trip, bus.day.date));
+        return !known || known.leave < candidate.leave || known.arrive > candidate.arrive;
+      });
     });
   };
 
@@ -1120,6 +1122,18 @@ function broken(live: RideLive): 'canceled' | 'skipped' | null {
     if (event.status === 'skipped') return 'skipped';
   }
   return null;
+}
+
+/**
+ * Of `pool`, what the timetable alone lists, as `best` is for the whole search: only these come
+ * back greyed out when live data takes them away.
+ */
+export function timetableListing(request: PlanRequest, pool: readonly Itinerary[]): Itinerary[] {
+  const from = request.mode === 'arrive' ? request.at - MAX_TRIP_MIN * MINUTE : request.at;
+  return worthShowing(
+    pool.filter((plan) => plan.leaveAt >= from - MINUTE),
+    (plan) => listingOf(plan.leaveAt, plan.arriveAt, plan.rides),
+  );
 }
 
 /**

@@ -2,6 +2,7 @@ import { distanceMetres } from '../core/geo.ts';
 import {
   estimatedWalkMinutes,
   liveOptions,
+  timetableListing,
   type Itinerary,
   type PlanOption,
   type PlanResult,
@@ -76,7 +77,11 @@ export function stopChoices(
   }
   const choices: StopChoice[] = [];
   for (const [stop, pool] of byStop) {
-    const options = liveOptions({ ...result, pool, best: pool }, snapshot, now);
+    const options = liveOptions(
+      { ...result, pool, best: timetableListing(result.request, pool) },
+      snapshot,
+      now,
+    );
     const working = options
       .filter((option) => !option.problem && !option.notice && !option.missed)
       .sort((a, b) => a.leaveAt - b.leaveAt);
