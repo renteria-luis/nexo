@@ -191,11 +191,17 @@ export function Screen({
   // teclado le tapa, y nunca mas de lo que hay libre por arriba.
   const [frameHeight, setFrameHeight] = useState(0);
   const [sheetHeights, setSheetHeights] = useState([0, 0]);
-  const sheetHeight = sheetHeights[overlayAbove ? 1 : 0];
+  const maxSheetHeight =
+    frameHeight > 0 && keyboard > 0
+      ? Math.max(0, frameHeight - keyboard - OVERLAY_PADDING * 2)
+      : undefined;
+  const rawSheetHeight = sheetHeights[overlayAbove ? 1 : 0];
+  const sheetHeight =
+    maxSheetHeight === undefined ? rawSheetHeight : Math.min(rawSheetHeight, maxSheetHeight);
   const shift = useMemo(() => {
     if (frameHeight === 0 || sheetHeight === 0) return 0;
     const spare = (frameHeight - sheetHeight) / 2;
-    const covered = keyboard - spare;
+    const covered = keyboard > 0 ? keyboard + OVERLAY_PADDING - spare : 0;
     return -Math.max(0, Math.min(covered, spare - OVERLAY_PADDING));
   }, [frameHeight, sheetHeight, keyboard]);
   // La hoja sube con la misma animacion del teclado: cero en reposo, uno con el teclado
@@ -490,7 +496,11 @@ export function Screen({
                   ]}
                 >
                   <View
-                    style={styles.sheetFrame}
+                    style={[
+                      styles.sheetFrame,
+                      !(index === 0 && overlayAbove) &&
+                        maxSheetHeight !== undefined && { maxHeight: maxSheetHeight },
+                    ]}
                     onLayout={(event) => {
                       const height = event.nativeEvent.layout.height;
                       setSheetHeights((heights) =>
@@ -514,7 +524,7 @@ export function Screen({
 
 const styles = sheet((theme) => ({
   childScrim: { backgroundColor: 'rgba(0,0,0,0.48)' },
-  sheetFrame: { width: '100%', maxHeight: '100%', alignItems: 'center' },
+  sheetFrame: { width: '100%', maxHeight: '100%', flexShrink: 1, alignItems: 'center' },
   stack: {
     flex: 1,
   },

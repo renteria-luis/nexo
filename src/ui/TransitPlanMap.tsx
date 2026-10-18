@@ -78,7 +78,10 @@ export function TransitPlanMap({
       ].filter((end) => !!end),
     [origin, target],
   );
-  const points = [...endpoints, ...(choices ?? []), ...paths.flatMap((path) => path.points)];
+  const choosingStop = !option && !line && !!choices?.length;
+  const points = choosingStop
+    ? [...(origin ? [origin] : []), ...choices]
+    : [...endpoints, ...(choices ?? []), ...paths.flatMap((path) => path.points), ...routePoints];
   const viewport = { key: JSON.stringify(points.map((p) => [p.lat, p.lng])), points };
   return (
     <>

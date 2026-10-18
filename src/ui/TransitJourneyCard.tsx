@@ -228,11 +228,13 @@ export function TransitJourneyCard({
       ]);
       if (token !== locationToken.current) return;
       if (!point) throw new Error('Sin una ubicación precisa. Puedes elegir el origen a mano.');
-      const place = nearestPlace(places, point);
+      const place = nearestPlace(places, point, 200);
       if (place) {
         setOriginId(place.id);
         setEditing(true);
         setProblem(null);
+      } else {
+        setProblem('No estás cerca de un lugar guardado. Elige el origen a mano.');
       }
     } catch (error) {
       if (token === locationToken.current) setProblem(message(error));

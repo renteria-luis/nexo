@@ -17,10 +17,13 @@ import {
   type WalkLink,
   type WalkPathTarget,
 } from '../transit/store.ts';
+import { listAcceptedWalks } from '../transit/trip-store.ts';
 import {
+  learnedWalks,
   parsePath,
   pathFromTrace,
   PATH_MAX_POINTS,
+  walkKey,
   type WalkObservation,
 } from '../transit/walks.ts';
 import { Button } from './Button.tsx';
@@ -32,7 +35,13 @@ import { routeColor } from './routeColors.ts';
 import { font, sheet } from './theme.ts';
 
 export type WalkPreview = { key: number; walk: WalkObservation };
-type PathChoice = { id: string; label: string; target: WalkPathTarget; points: Coordinates[] };
+type PathChoice = {
+  id: string;
+  label: string;
+  target: WalkPathTarget;
+  points: Coordinates[];
+  seedMinutes?: number;
+};
 type NoteDraft = {
   id?: string;
   point: Coordinates | null;
@@ -42,7 +51,9 @@ type NoteDraft = {
   high: string;
 };
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
-const targetOf = (walk: WalkObservation): WalkPathTarget =>
+const targetOf = (
+  walk: Pick<WalkObservation, 'kind' | 'place_id' | 'from_stop' | 'to_stop'>,
+): WalkPathTarget =>
   walk.kind === 'transfer'
     ? { kind: 'transfer', fromStop: walk.from_stop!, toStop: walk.to_stop! }
     : {
@@ -67,6 +78,7 @@ export function TransitPersonalMap({
   const { trip } = useTransitJourney();
   const [links, setLinks] = useState<WalkLink[]>([]);
   const [transfers, setTransfers] = useState<StopWalk[]>([]);
+  const [accepted, setAccepted] = useState<Awaited<ReturnType<typeof listAcceptedWalks>>>([]);
   const [notes, setNotes] = useState<MapNote[]>([]);
   const [pathId, setPathId] = useState<string | null>(null);
   const [drawing, setDrawing] = useState<Coordinates[] | null>(null);
@@ -78,14 +90,15 @@ export function TransitPersonalMap({
   const pending = useRef(false);
   useEffect(() => {
     let alive = true;
-    Promise.all([listWalkLinks(db), listStopWalks(db), listMapNotes(db)])
-      .then(([walks, stops, savedNotes]) => {
+    Promise.all([listWalkLinks(db), listStopWalks(db), listMapNotes(db), listAcceptedWalks(db)])
+      .then(([walks, stops, savedNotes, acceptedWalks]) => {
         // Validate before rendering so a bad restored path leaves the rest of Transit usable.
         [...walks, ...stops].forEach((walk) => parsePath(walk.path));
         if (alive) {
           setLinks(walks);
           setTransfers(stops);
           setNotes(savedNotes);
+          setAccepted(acceptedWalks);
         }
       })
       .catch((error) => {
@@ -98,7 +111,7 @@ export function TransitPersonalMap({
   const choices = useMemo<PathChoice[]>(() => {
     const places = new Map(map.places.map((p) => [p.id, p.name]));
     const stops = new Map(map.schedule.stops.map((s) => [s[0], s[2]]));
-    return [
+    const list: PathChoice[] = [
       ...links.map((walk) => {
         const place = places.get(walk.place_id) ?? walk.place_id;
         const stop = stops.get(walk.stop_id) ?? walk.stop_id;
@@ -129,7 +142,28 @@ export function TransitPersonalMap({
         };
       }),
     ];
-  }, [links, transfers, map.places, map.schedule]);
+    const seen = new Set(list.map((c) => c.id));
+    const pool = preview?.walk.status === 'accepted' ? [preview.walk, ...accepted] : accepted;
+    const learned = learnedWalks(pool);
+    for (const walk of pool) {
+      if (walk.status !== 'accepted') continue;
+      const target = targetOf(walk);
+      const id = JSON.stringify(target);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const seedMinutes =
+        learned.get(walkKey(walk))?.minutes ??
+        Math.min(60, Math.max(1, Math.ceil((walk.ended_at - walk.started_at) / 60_000)));
+      const label =
+        target.kind === 'link'
+          ? target.direction === 'to_stop'
+            ? `${places.get(target.placeId) ?? target.placeId} → ${stops.get(target.stopId) ?? target.stopId}`
+            : `${stops.get(target.stopId) ?? target.stopId} → ${places.get(target.placeId) ?? target.placeId}`
+          : `${stops.get(target.fromStop) ?? target.fromStop} → ${stops.get(target.toStop) ?? target.toStop}`;
+      list.push({ id, label, target, points: [], seedMinutes });
+    }
+    return list;
+  }, [links, transfers, accepted, preview, map.places, map.schedule]);
   const [seenPreview, setSeenPreview] = useState<number | null>(null);
   if (preview && preview.key !== seenPreview) {
     setSeenPreview(preview.key);
@@ -278,7 +312,7 @@ export function TransitPersonalMap({
                   </Text>
                   {!chosen && (
                     <Text style={styles.note}>
-                      Para guardar este recorrido, guarda primero los minutos de esta dirección en
+                      Para guardar este recorrido, acepta antes la caminata o guarda sus minutos en
                       «Tu caminata» o en el transbordo de «Cómo llegar».
                     </Text>
                   )}
@@ -294,7 +328,7 @@ export function TransitPersonalMap({
                       disabled={busy || !chosen || drawing.length === 1}
                       onPress={() =>
                         void act(async () => {
-                          await saveWalkPath(db, chosen!.target, drawing);
+                          await saveWalkPath(db, chosen!.target, drawing, chosen!.seedMinutes);
                           setDrawing(null);
                           onChanged();
                         })

@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { ScrollView, View, useWindowDimensions } from 'react-native';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Keyboard, ScrollView, View, useWindowDimensions } from 'react-native';
 
 import { glass, sheet, shape } from './theme.ts';
 
@@ -16,11 +16,23 @@ export function PopupSheet({
   wide?: boolean;
 }) {
   const { height } = useWindowDimensions();
+  const [keyboard, setKeyboard] = useState(0);
+  useEffect(() => {
+    const shown = Keyboard.addListener?.('keyboardWillShow', (event) =>
+      setKeyboard(event.endCoordinates.height),
+    );
+    const hidden = Keyboard.addListener?.('keyboardWillHide', () => setKeyboard(0));
+    return () => {
+      shown?.remove();
+      hidden?.remove();
+    };
+  }, []);
+  const available = keyboard > 0 ? Math.max(180, height - keyboard - 100) : height - 150;
   return (
     <View
       style={[
         styles.sheet,
-        { maxHeight: Math.min(wide ? 760 : 560, height - 150), maxWidth: wide ? 600 : 400 },
+        { maxHeight: Math.min(wide ? 760 : 560, available), maxWidth: wide ? 600 : 400 },
       ]}
     >
       <ScrollView
@@ -39,6 +51,7 @@ export function PopupSheet({
 const styles = sheet((theme) => ({
   sheet: {
     width: '100%',
+    flexShrink: 1,
     alignSelf: 'center',
     ...glass.panel,
     backgroundColor: theme.surfaceSolid,

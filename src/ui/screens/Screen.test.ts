@@ -23,22 +23,31 @@ function fixture() {
     overlay: undefined as unknown,
     scrollEnabled: true,
   };
+  const listeners = new Map<string, (event: any) => void>();
   const screen = renderModule('src/ui/screens/Screen.tsx', {
     'react-native': {
       ScrollView: 'ScrollView',
       RefreshControl: 'RefreshControl',
       View: 'View',
       Text: 'Text',
+      Easing: { out: (f: unknown) => f, in: (f: unknown) => f, cubic: () => 0 },
       StyleSheet: { absoluteFill: {} },
       Platform: { OS: 'ios' },
-      Keyboard: { addListener: () => ({ remove() {} }), dismiss() {} },
+      Keyboard: {
+        addListener: (name: string, fn: (event: any) => void) => {
+          listeners.set(name, fn);
+          return { remove() {} };
+        },
+        dismiss() {},
+      },
       Animated: {
         View: 'Animated.View',
         ScrollView: 'ScrollView',
         event: () => () => undefined,
+        timing: () => ({ start() {} }),
         Value: class {
-          interpolate() {
-            return 0;
+          interpolate(config: { outputRange: number[] }) {
+            return config.outputRange[1];
           }
           addListener() {
             return '';
@@ -62,6 +71,7 @@ function fixture() {
     screen,
     props,
     scroll,
+    listeners,
     calls: () => calls,
     finish: () => finish(),
     fail: () => fail(new Error('offline database')),
@@ -159,4 +169,22 @@ test('a child sheet keeps its parent mounted, blocks background interaction and 
   assert.equal((await f.scroll()).refreshControl.props.enabled, false);
   await (await f.scroll()).refreshControl.props.onRefresh();
   assert.equal(f.calls(), 0);
+});
+
+test('opening the keyboard shrinks the active overlay sheet frame to fit above the keyboard', async () => {
+  const f = fixture();
+  f.props.overlay = 'place editor';
+  let tree = await f.screen.settle();
+  const layoutViews = () =>
+    nodes(tree).filter((n) => n.type === 'View' && typeof n.props.onLayout === 'function');
+  layoutViews()[0].props.onLayout({ nativeEvent: { layout: { height: 740 } } });
+  layoutViews()[1].props.onLayout({ nativeEvent: { layout: { height: 560 } } });
+  tree = await f.screen.settle();
+  f.listeners.get('keyboardWillShow')!({ endCoordinates: { height: 336 }, duration: 250 });
+  tree = await f.screen.settle();
+  assert.deepEqual(layoutViews()[1].props.style.at(-1), { maxHeight: 376 });
+  const animatedOverlay = nodes(tree).find((n) => n.type === 'Animated.View')!;
+  assert.deepEqual(animatedOverlay.props.style.at(-1), {
+    transform: [{ translateY: -168 }],
+  });
 });

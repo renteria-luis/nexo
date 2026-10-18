@@ -66,6 +66,7 @@ import { TextField } from '../TextField.tsx';
 import { TransitPersonalMap, type WalkPreview } from '../TransitPersonalMap.tsx';
 import { TransitWalkReview } from '../TransitWalkReview.tsx';
 import {
+  stopName,
   TransitStopDepartures,
   TransitStopHeader,
   TransitTripTimeline,
@@ -285,13 +286,26 @@ function TransitContent() {
     }, []),
   );
 
+  const [stopsAtHere, setStopsAtHere] = useState(false);
+  const [pickCenter, setPickCenter] = useState<Coordinates | null>(null);
   const place = places.find((p) => p.id === placeId) ?? places[0];
-  const nearest = useMemo(() => (here ? nearestPlace(places, here.point) : null), [here, places]);
-  if (here && nearest && seenHere !== here.asked) {
+  const nearest = useMemo(
+    () => (here ? nearestPlace(places, here.point, 150) : null),
+    [here, places],
+  );
+  if (here && seenHere !== here.asked) {
     setSeenHere(here.asked);
-    if (pickedAt < here.asked && nearest.id !== place?.id) {
-      setPlaceId(nearest.id);
-      setStopId(null);
+    if (pickedAt < here.asked) {
+      if (nearest) {
+        setStopsAtHere(false);
+        if (nearest.id !== place?.id) {
+          setPlaceId(nearest.id);
+          setStopId(null);
+        }
+      } else {
+        setStopsAtHere(true);
+        setStopId(null);
+      }
     }
   }
   const reading = useMemo(() => (here ? { point: here.point, at: here.asked } : null), [here]);
@@ -316,14 +330,26 @@ function TransitContent() {
   const placeLat = place?.lat;
   const placeLng = place?.lng;
   const center = useMemo(() => {
+    if (picking && pickCenter && validCoordinates(pickCenter)) return pickCenter;
     const point =
-      draftLat?.trim() && draftLng?.trim()
+      !picking && draftLat?.trim() && draftLng?.trim()
         ? { lat: Number(draftLat), lng: Number(draftLng) }
         : null;
-    return point && validCoordinates(point)
-      ? point
-      : { lat: placeLat ?? 43, lng: placeLng ?? -81.24 };
-  }, [draftLat, draftLng, placeLat, placeLng]);
+    if (point && validCoordinates(point)) return point;
+    if (!draft && panel !== 'explore' && stopsAtHere && here) return here.point;
+    return { lat: placeLat ?? 43, lng: placeLng ?? -81.24 };
+  }, [
+    picking,
+    pickCenter,
+    draftLat,
+    draftLng,
+    draft,
+    panel,
+    stopsAtHere,
+    here,
+    placeLat,
+    placeLng,
+  ]);
   const candidates = useMemo(
     () => (schedule ? nearbyStops(schedule, center, 16) : []),
     [schedule, center],
@@ -340,6 +366,12 @@ function TransitContent() {
     const stop = schedule.stops[index];
     return { stop, index, distanceM: distanceMetres(center, { lat: stop[3], lng: stop[4] }) };
   }, [candidates, schedule, stopId, center]);
+  const shownStops = useMemo(() => {
+    const base = [...useful.main, ...(moreStops ? useful.more : [])];
+    return selected && !base.some((c) => c.stop[0] === selected.stop[0])
+      ? [selected, ...base]
+      : base;
+  }, [useful, moreStops, selected]);
   const stop = stopsFolded ? undefined : (selected ?? useful.main[0] ?? candidates[0]);
   const shownStopId = stop?.stop[0] ?? null;
   const stopIndex = stop?.index;
@@ -520,6 +552,7 @@ function TransitContent() {
         if (p) pickPoint(p);
         return;
       }
+      setStopsAtHere(false);
       setPlaceId(id);
       setPickedAt(Date.now());
       setStopId(null);
@@ -662,6 +695,11 @@ function TransitContent() {
               })
             }
             onPickOnMap={() => {
+              setPickCenter(
+                draftPoint && validCoordinates(draftPoint)
+                  ? draftPoint
+                  : { lat: placeLat ?? 43, lng: placeLng ?? -81.24 },
+              );
               setPicking(true);
               setPanel('explore');
               setExploreMapActive(false);
@@ -688,6 +726,7 @@ function TransitContent() {
                 const saved = await listPlaces(data.db);
                 if (alive.current) {
                   setPlaces(saved);
+                  setStopsAtHere(false);
                   setPlaceId(id);
                   setPickedAt(Date.now());
                   setStopId(null);
@@ -848,6 +887,22 @@ function TransitContent() {
                   <Button label="Listo" variant="primary" onPress={() => setPicking(false)} />
                 </View>
               )}
+              {!picking && stop && stopId === stop.stop[0] && (
+                <View style={styles.row}>
+                  <Text style={[styles.note, styles.flex]}>
+                    Parada: {stopName(stop.stop)} #{stop.stop[1] || stop.stop[0]}
+                  </Text>
+                  <Button
+                    label="Ver salidas de esta parada"
+                    variant="ghost"
+                    onPress={() => {
+                      setStopsFolded(false);
+                      if (traveling && !shows('stops')) toggleSection('stops');
+                      setPanel(null);
+                    }}
+                  />
+                </View>
+              )}
             </Card>
           </PopupSheet>
         ) : undefined
@@ -919,6 +974,35 @@ function TransitContent() {
       )}
       {shows('stops') && (
         <Card title="Paradas">
+          <View style={styles.wrap}>
+            <Text style={[styles.note, styles.flex]}>
+              Cerca de: {stopsAtHere && here ? 'Tu ubicación' : place.name}
+            </Text>
+            {here && (
+              <Chip
+                label="Tu ubicación"
+                selected={stopsAtHere}
+                onPress={() => {
+                  setStopsAtHere(true);
+                  setPickedAt(Date.now());
+                  setStopId(null);
+                  locate();
+                }}
+              />
+            )}
+            <Chip
+              label={place.name}
+              selected={!stopsAtHere || !here}
+              onPress={() => {
+                setStopsAtHere(false);
+                setPickedAt(Date.now());
+                setStopId(null);
+              }}
+            />
+            {places.length > 1 && (
+              <Chip label="Otro lugar" selected={false} onPress={() => setPanel('explore')} />
+            )}
+          </View>
           <View style={styles.row}>
             <View style={styles.flex}>
               <TransitWhen
@@ -988,7 +1072,7 @@ function TransitContent() {
               día de servicio válido anterior.
             </Text>
           )}
-          {[...useful.main, ...(moreStops ? useful.more : [])].map((c) => {
+          {shownStops.map((c) => {
             const open = c.stop[0] === shownStopId;
             return (
               <View key={c.stop[0]} style={styles.stopBlock}>
@@ -1021,7 +1105,7 @@ function TransitContent() {
                       onSelect={setDetail}
                     />
                   ))}
-                {open && (
+                {open && (!stopsAtHere || !here) && (
                   <Button
                     label={
                       walkOpen
@@ -1032,7 +1116,7 @@ function TransitContent() {
                     onPress={() => setWalkOpen(!walkOpen)}
                   />
                 )}
-                {open && walkOpen && (
+                {open && (!stopsAtHere || !here) && walkOpen && (
                   <View style={styles.walk}>
                     <View style={styles.wrap}>
                       <Chip

@@ -9,11 +9,13 @@ import {
   listPlaces,
   listStopWalks,
   listWalkLinks,
+  nearestPlace,
   readSchedule,
   replaceSchedule,
   savePlace,
   saveStopWalk,
   saveWalkLink,
+  saveWalkPath,
   sortPlaces,
 } from './store.ts';
 import { SCHEDULE_SCHEMA } from './schedule.ts';
@@ -401,4 +403,36 @@ test('a schedule that has not started yet waits while the saved one still runs t
   assert.equal((await readSchedule(db))?.schedule.feedVersion, cache.schedule.feedVersion);
   assert.equal(await sync('2000-01-02'), 'updated');
   assert.equal((await readSchedule(db))?.schedule.feedVersion, '2000-01-02');
+});
+
+test('nearestPlace respects an optional distance cap and saveWalkPath can seed minutes from an accepted walk', async () => {
+  const { db } = await database();
+  const places = await listPlaces(db);
+  const costco = places.find((p) => p.id === 'costco')!;
+  assert.equal(nearestPlace(places, { lat: costco.lat, lng: costco.lng }, 150)?.id, 'costco');
+  assert.equal(nearestPlace(places, { lat: 43.1, lng: -81.4 }, 150), null);
+  assert.ok(nearestPlace(places, { lat: 43.1, lng: -81.4 }));
+
+  const points = [
+    { lat: 43, lng: -81.2 },
+    { lat: 43.0005, lng: -81.2005 },
+  ];
+  await assert.rejects(
+    saveWalkPath(
+      db,
+      { kind: 'link', placeId: 'costco', stopId: 'S1', direction: 'to_stop' },
+      points,
+    ),
+    /Guarda primero los minutos/,
+  );
+  await saveWalkPath(
+    db,
+    { kind: 'link', placeId: 'costco', stopId: 'S1', direction: 'to_stop' },
+    points,
+    4,
+  );
+  const links = await listWalkLinks(db, 'costco');
+  assert.equal(links.length, 1);
+  assert.equal(links[0].minutes, 4);
+  assert.ok(links[0].path.length > 0);
 });

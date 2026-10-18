@@ -108,7 +108,7 @@ const byLabel = (tree: unknown, label: string | RegExp) =>
 
 const mapOf = (tree: unknown) => nodes(tree).find((n) => n.type === 'TransitPlanMap')!.props;
 
-// Leaving now: tap a stop in the list, then Ver or Elegir in the window over the map.
+// Leaving now: tapping a stop in the list opens its buses at once; Ver líneas switches to lines.
 async function openStop(
   screen: ReturnType<typeof mount>,
   tree: unknown,
@@ -117,8 +117,11 @@ async function openStop(
 ) {
   byLabel(tree, new RegExp(`^Paradero ${rank},`)).props.onPress();
   const shown = await screen.settle();
-  mapOf(shown).popup.props.onView(view);
-  return screen.settle();
+  if (view === 'lines') {
+    byLabel(shown, 'Ver líneas').props.onPress();
+    return screen.settle();
+  }
+  return shown;
 }
 
 test('choosing where to go lists the options with their lines, and a tight one names its backup', async (t) => {
@@ -528,6 +531,30 @@ test('a destination found by its address and a start tapped on the map can be lo
   assert.deepEqual(asked, ['1 End St']);
   assert.equal(picker(tree, 'Elegir el destino').value, '@point');
   assert.equal(mapOf(tree).target.name, '1 End St');
+
+  // Tapping a stop marker on the map still opens StopPopup over the map.
+  mapOf(tree).onChoice('ORIGIN_SB');
+  tree = await screen.settle();
+  assert.ok(mapOf(tree).popup, 'map marker opens StopPopup');
+  mapOf(tree).popup.props.onClose();
+  tree = await screen.settle();
+
+  // Swapping when at Tu ubicación · Start puts Start as the destination and 1 End St as origin.
+  assert.equal(byLabel(tree, 'Invertir origen y destino').props.disabled, false);
+  byLabel(tree, 'Invertir origen y destino').props.onPress();
+  tree = await searched(screen, (current) => !!byLabel(current, /^Paradero 1,/));
+  assert.equal(picker(tree, 'Elegir el origen').value, '@point');
+  assert.equal(picker(tree, 'Elegir el destino').value, 'start');
+
+  // From a saved place to a searched address, the message explains the destination is a map point.
+  byLabel(tree, 'Invertir origen y destino').props.onPress();
+  tree = await searched(screen, (current) => !!byLabel(current, /^Paradero 1,/));
+  assert.equal(picker(tree, 'Elegir el origen').value, 'start');
+  assert.equal(picker(tree, 'Elegir el destino').value, '@point');
+  tree = await openStop(screen, tree, 1, 'buses');
+  byLabel(tree, /^Sales 08:17, llegas 08:41/).props.onPress();
+  tree = await screen.settle();
+  assert.match(textOf(tree), /Hacia una dirección o punto del mapa solo puedes mirar/);
 
   picker(tree, 'Elegir el origen').onChange('@map');
   tree = await screen.settle();

@@ -582,11 +582,9 @@ export function TransitPlanner({
       setOpenKey(null);
       setOpenRide(null);
       setMapFocus(null);
-      if (view === 'menu') {
-        const row = schedule.stops[stop];
-        setPointFocus({ key: Date.now(), point: { lat: row[3], lng: row[4] } });
-        scrollIntoView(mapBlock.current);
-      }
+      const row = schedule.stops[stop];
+      setPointFocus({ key: Date.now(), point: { lat: row[3], lng: row[4] } });
+      if (view === 'menu') scrollIntoView(mapBlock.current);
     },
     [schedule, scrollIntoView],
   );
@@ -678,15 +676,17 @@ export function TransitPlanner({
         setProblem(message(error));
       });
   };
-  // Where he is cannot be the destination, so it stays the start.
-  const canSwap = !!targetId && originId !== HERE;
+  // Where he is cannot be the destination unless it is one of his saved places.
+  const canSwap = !!originId && !!targetId && (originId !== HERE || !!origin?.place);
   const swap = () => {
     if (!canSwap) return;
+    const nextTargetId = originId === HERE ? (origin?.place?.id ?? null) : originId;
+    const nextTargetPoint = originId === HERE ? null : originPoint;
     setOriginId(targetId);
     setOriginPoint(targetPoint);
     setOriginChosenAt(Date.now());
-    setTargetId(originId);
-    setTargetPoint(originPoint);
+    setTargetId(nextTargetId);
+    setTargetPoint(nextTargetPoint);
     resetOpen();
     setProblem(null);
     if (applied.mode === 'now') refreshNow();
@@ -1529,7 +1529,7 @@ const StopList = memo(function StopList({
             key={choice.stop}
             accessibilityRole="button"
             accessibilityLabel={`Paradero ${i + 1}, ${stopName(stop)}`}
-            onPress={() => onPick(choice.stop, 'menu')}
+            onPress={() => onPick(choice.stop, 'buses')}
             style={({ pressed }) => [
               styles.option,
               pick?.stop === choice.stop && styles.chosen,
@@ -1825,8 +1825,9 @@ function StopBuses({
                 ) : (
                   !onSelect && (
                     <Text style={styles.note}>
-                      Desde un punto del mapa solo puedes mirar. Para seguir el viaje, sal desde Tu
-                      ubicación.
+                      {savable.access
+                        ? 'Hacia una dirección o punto del mapa solo puedes mirar o salir desde Tu ubicación.'
+                        : 'Desde un punto del mapa solo puedes mirar. Para seguir el viaje, sal desde Tu ubicación.'}
                     </Text>
                   )
                 )}

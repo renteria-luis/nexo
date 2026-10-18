@@ -161,7 +161,7 @@ test('Training preselects its gym and passes only the session identity to Transi
   assert.deepEqual(f.calls, [{ originId: 'gym', destinationId: 'end', workoutId: 'session' }]);
 });
 
-test('a denied location leaves Today manual origin and destination usable', async () => {
+test('a denied or distant location leaves Today manual origin and destination usable', async () => {
   const f = fixture('today');
   (await f.control('Detectar')).onPress();
   assert.match(textOf(await f.screen.settle()), /elegir el origen a mano/i);

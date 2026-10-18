@@ -96,11 +96,16 @@ export function sortPlaces(places: readonly Place[]): Place[] {
   );
 }
 
-/** The place he is at, or the closest one to where he is. */
-export function nearestPlace(places: readonly Place[], point: Coordinates): Place | null {
+/** The place he is at, or the closest one to where he is (within maxMetres when given). */
+export function nearestPlace(
+  places: readonly Place[],
+  point: Coordinates,
+  maxMetres?: number,
+): Place | null {
   let best: { place: Place; metres: number } | null = null;
   for (const place of places) {
     const metres = distanceMetres(point, place);
+    if (maxMetres !== undefined && metres > maxMetres) continue;
     if (!best || metres < best.metres) best = { place, metres };
   }
   return best?.place ?? null;
@@ -270,26 +275,51 @@ export async function saveStopWalk(
   });
 }
 
-/** Keeps a path on a walk he already gave minutes to; an empty path clears it. */
+/** Keeps a path on a walk he already gave minutes to (or seeds them from an accepted walk); an empty path clears it. */
 export async function saveWalkPath(
   db: SQLiteDatabase,
   target: WalkPathTarget,
   path: readonly Coordinates[],
+  seedMinutes?: number,
 ): Promise<void> {
   const content = serializePath(path);
+  const validSeed =
+    seedMinutes !== undefined &&
+    Number.isInteger(seedMinutes) &&
+    seedMinutes > 0 &&
+    seedMinutes <= 60
+      ? seedMinutes
+      : undefined;
   await inTransaction(db, async () => {
+    const now = Date.now();
     const result =
       target.kind === 'link'
         ? await db.runAsync(
             'UPDATE transit_walk_link SET path = ?, updated_at = ? WHERE place_id = ? AND stop_id = ? AND direction = ?;',
-            [content, Date.now(), target.placeId, target.stopId, target.direction],
+            [content, now, target.placeId, target.stopId, target.direction],
           )
         : await db.runAsync(
             'UPDATE transit_stop_walk SET path = ?, updated_at = ? WHERE from_stop = ? AND to_stop = ?;',
-            [content, Date.now(), target.fromStop, target.toStop],
+            [content, now, target.fromStop, target.toStop],
           );
-    if (!result.changes)
-      throw new Error('Guarda primero los minutos de esa caminata; el camino va con ellos.');
+    if (result.changes) return;
+    if (validSeed !== undefined) {
+      if (target.kind === 'link') {
+        await db.runAsync(
+          `INSERT INTO transit_walk_link (place_id, stop_id, direction, minutes, entrance, path, updated_at)
+          VALUES (?, ?, ?, ?, '', ?, ?);`,
+          [target.placeId, target.stopId, target.direction, validSeed, content, now],
+        );
+      } else {
+        await db.runAsync(
+          `INSERT INTO transit_stop_walk (from_stop, to_stop, minutes, note, path, updated_at)
+          VALUES (?, ?, ?, '', ?, ?);`,
+          [target.fromStop, target.toStop, validSeed, content, now],
+        );
+      }
+      return;
+    }
+    throw new Error('Guarda primero los minutos de esa caminata; el camino va con ellos.');
   });
 }
 

@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import * as activeTrip from '../transit/active-trip.ts';
 import { database, plannerFixture } from '../transit/fixtures.ts';
 import * as store from '../transit/store.ts';
+import * as tripStore from '../transit/trip-store.ts';
 import * as walks from '../transit/walks.ts';
 import { nodes, renderModule, textOf } from './test-render.ts';
 
@@ -24,7 +25,7 @@ async function fixture() {
     minutes: 4,
     entrance: '',
   });
-  const props = {
+  const props: Record<string, any> = {
     db,
     revision: 0,
     onChanged: () => {
@@ -49,6 +50,7 @@ async function fixture() {
     '../shell/TransitJourney.tsx': { useTransitJourney: () => ({ trip: null }) },
     '../transit/active-trip.ts': activeTrip,
     '../transit/store.ts': store,
+    '../transit/trip-store.ts': tripStore,
     '../transit/walks.ts': walks,
     './TransitLiveMap.tsx': { TransitLiveMap: 'TransitLiveMap' },
     './Button.tsx': { Button: 'Button' },
@@ -103,6 +105,44 @@ test('choosing a place point from a stop copies its coordinates instead of chang
   Object.assign(f.props, { onPoint: undefined });
   (await f.map()).onStop('ORIGIN_SB');
   assert.deepEqual(stops, ['ORIGIN_SB'], 'ordinary exploration still selects the stop');
+});
+
+test('an accepted walk preview can save its path and seed minutes even before manual minutes exist', async () => {
+  const f = await fixture();
+  f.props.preview = {
+    key: 1,
+    walk: {
+      id: 'obs-1',
+      trip_id: 'trip-1',
+      kind: 'access',
+      place_id: f.id,
+      from_stop: null,
+      to_stop: 'MIDDLE_SB',
+      started_at: 0,
+      left_at: null,
+      ended_at: 5 * 60_000,
+      start_source: 'tap',
+      end_source: 'gps',
+      accuracy_m: 8,
+      path_m: 320,
+      straight_m: 250,
+      planned_minutes: 4,
+      trace: JSON.stringify([
+        [43, -81.2, 0],
+        [42.994, -81.2001, 5 * 60_000],
+      ]),
+      flag: null,
+      status: 'accepted',
+      created_at: 5 * 60_000,
+    },
+  };
+  const saveButton = await f.control('Guardar camino');
+  assert.equal(saveButton.disabled, false);
+  saveButton.onPress();
+  await f.screen.settle();
+  const saved = (await store.listWalkLinks(f.db, f.id)).find((w) => w.stop_id === 'MIDDLE_SB')!;
+  assert.equal(saved.minutes, 5);
+  assert.equal(walks.parsePath(saved.path).length, 2);
 });
 
 test('crossings validate waits, persist edits and require an explicit delete confirmation', async () => {
