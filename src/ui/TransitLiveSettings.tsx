@@ -165,7 +165,7 @@ const styles = sheet((theme) => ({
   title: { fontFamily: font.black, fontSize: 18, color: theme.text },
   label: { fontFamily: font.bold, fontSize: 13, color: theme.text },
   note: { fontFamily: font.regular, fontSize: 12, color: theme.textFaint },
-  error: { fontFamily: font.bold, fontSize: 13, color: theme.textDim },
+  error: { fontFamily: font.bold, fontSize: 13, color: theme.danger },
   input: {
     fontFamily: font.regular,
     fontSize: 14,

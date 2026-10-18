@@ -477,7 +477,7 @@ test('native itinerary viewport fits both endpoints once, then fits a single end
   const lines = tree.filter((n) => n.type === 'Polyline');
   assert.deepEqual(
     lines.map((n) => n.props.strokeColor),
-    ['#173D6F', '#872378', '#121212'],
+    ['#173D6F', '#872378', '#F5EFEA'],
   );
   assert.equal(lines[0].props.lineDashPattern, undefined);
   assert.deepEqual(lines[2].props.lineDashPattern, [7, 5]);

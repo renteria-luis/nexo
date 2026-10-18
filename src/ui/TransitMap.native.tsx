@@ -9,6 +9,8 @@ import { stopChoiceColor } from './routeColors.ts';
 import { useSwipeLock } from './SwipeLock.tsx';
 import type { TransitMapProps } from './TransitMap.types.ts';
 
+const DARK_MAP_WALK = '#F5EFEA';
+
 export const TransitMap = memo(function TransitMap({
   center,
   places,
@@ -158,7 +160,9 @@ export const TransitMap = memo(function TransitMap({
             <Polyline
               key={path.id}
               coordinates={path.points.map((p) => ({ latitude: p.lat, longitude: p.lng }))}
-              strokeColor={path.color}
+              // The Apple map is dark (app.json) and a walk's near-black vanished on it; the
+              // light web diagram keeps the colour the path carries.
+              strokeColor={path.dashed ? DARK_MAP_WALK : path.color}
               strokeWidth={4}
               lineDashPattern={path.dashed ? [7, 5] : undefined}
             />

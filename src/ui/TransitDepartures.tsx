@@ -638,7 +638,7 @@ export function TransitTripTimeline({
               >
                 <Bus
                   size={14}
-                  color={bus.placedBy === 'gps' ? theme.text : theme.textFaint}
+                  color={bus.placedBy === 'gps' ? theme.accentInk : theme.textFaint}
                   strokeWidth={2.5}
                 />
               </Pressable>
@@ -804,7 +804,7 @@ const styles = sheet((theme) => ({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: theme.surface,
+    backgroundColor: theme.surfaceSolid,
   },
   dotBoarding: {
     top: ROW / 2 - 8,
@@ -812,7 +812,7 @@ const styles = sheet((theme) => ({
     height: 16,
     borderRadius: 8,
     borderWidth: 3,
-    borderColor: theme.line,
+    borderColor: theme.text,
   },
   rowText: {
     flex: 1,
@@ -843,8 +843,12 @@ const styles = sheet((theme) => ({
   },
   // Filled for a current GPS report, hollow for the last one, dashed for an estimate: told apart
   // by shape, not only by colour.
-  busLast: { backgroundColor: theme.surface },
-  busEstimated: { backgroundColor: theme.surface, borderStyle: 'dashed' },
+  busLast: { backgroundColor: theme.surfaceSolid, borderColor: theme.textDim },
+  busEstimated: {
+    backgroundColor: theme.surfaceSolid,
+    borderColor: theme.textDim,
+    borderStyle: 'dashed',
+  },
   busLine: { alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center' },
   link: { color: theme.text, textDecorationLine: 'underline' },
 }));

@@ -14,7 +14,7 @@ import { CalendarClock, ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from
 import { TextField } from './TextField.tsx';
 import { font, shape, sheet, theme } from './theme.ts';
 
-const WEEK = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+const WEEK = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 
 function stepClock(clock: string, minutes: number) {
   const match = /^(\d{1,2}):(\d{2})$/.exec(clock);

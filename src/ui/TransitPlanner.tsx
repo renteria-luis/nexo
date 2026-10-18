@@ -102,7 +102,7 @@ import { RouteBadge, StatusIcons } from './TransitStatus.tsx';
 import { TransitWhen } from './TransitWhen.tsx';
 import { TransitPlanMap, type MapEnd } from './TransitPlanMap.tsx';
 import { useScrollIntoView } from './screens/Screen.tsx';
-import { font, shape, sheet, theme } from './theme.ts';
+import { font, glass, shape, sheet, theme } from './theme.ts';
 
 /** What the planner wants read live: the stops of its best options and a ride he opened. */
 export type PlannerLive = { stops: string[]; ride: Departure | null };
@@ -2332,9 +2332,9 @@ const styles = sheet((theme) => ({
     gap: 8,
     padding: 10,
     borderWidth: shape.border,
-    borderColor: theme.line,
     borderRadius: shape.radiusSmall,
-    backgroundColor: theme.surface,
+    ...glass.panel,
+    backgroundColor: theme.surfaceSolid,
   },
   chosen: { borderWidth: 3, backgroundColor: theme.okBg },
   optionHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },

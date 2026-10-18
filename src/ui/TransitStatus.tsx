@@ -156,10 +156,11 @@ export function TransitLegend() {
           </View>
           <View style={styles.legendRow}>
             <View style={styles.busMark}>
-              <Bus size={12} color={theme.text} strokeWidth={2.5} />
+              <Bus size={12} color={theme.accentInk} strokeWidth={2.5} />
             </View>
             <Text style={styles.legendText}>
-              El bus, donde lo reportó su GPS; en blanco si solo lo ubican las predicciones.
+              El bus, donde lo reportó su GPS; con borde punteado si solo lo ubican las
+              predicciones.
             </Text>
           </View>
         </View>

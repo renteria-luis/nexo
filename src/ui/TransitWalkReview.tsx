@@ -186,7 +186,7 @@ export function TransitWalkReview({
 
 const styles = sheet((theme) => ({
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  walk: { gap: 7, paddingVertical: 10, borderTopWidth: 1, borderColor: theme.textDim },
+  walk: { gap: 7, paddingVertical: 10, borderTopWidth: 1, borderColor: theme.lineSoft },
   label: { fontFamily: font.bold, fontSize: 13, color: theme.text },
   note: { fontFamily: font.regular, fontSize: 12, color: theme.textDim, lineHeight: 18 },
   error: { fontFamily: font.bold, fontSize: 13, color: theme.danger },

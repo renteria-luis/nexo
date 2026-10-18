@@ -74,22 +74,24 @@ export function TopBar({
 
       <View style={styles.right}>
         {dock}
-        {actions ??
-          (action === 'done' ? (
-            <GlassButton
-              icon={Check}
-              tint={theme.accent}
-              accessibilityLabel="Listo"
-              onPress={onPress}
-            />
-          ) : (
-            <GlassButton
-              icon={Settings}
-              label="Ajustes"
-              accessibilityLabel="Ajustes"
-              onPress={onPress}
-            />
-          ))}
+        {/* Junto al boton y no en su lugar: Transit apaga el gesto de volver por su
+            mapa, y sin el boton no habia como salir de ahi. */}
+        {actions}
+        {action === 'done' ? (
+          <GlassButton
+            icon={Check}
+            tint={theme.accent}
+            accessibilityLabel="Listo"
+            onPress={onPress}
+          />
+        ) : (
+          <GlassButton
+            icon={Settings}
+            label="Ajustes"
+            accessibilityLabel="Ajustes"
+            onPress={onPress}
+          />
+        )}
       </View>
     </View>
   );

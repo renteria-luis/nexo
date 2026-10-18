@@ -267,8 +267,9 @@ function Navigation({ navigation }: { navigation: ReturnType<typeof useNavigatio
                 action="done"
                 onPress={navigation.goBack}
                 onMenu={sidebar.open}
-                // En un dia suelto la fecha de arriba competiria con la del dia abierto.
-                showDate={route.name !== 'Día'}
+                // En un dia suelto la fecha de arriba competiria con la del dia abierto. En
+                // Transit, sus dos botones mas el de Listo la partian en dos renglones.
+                showDate={route.name !== 'Día' && route.name !== 'Transit'}
                 actions={options.headerRight?.({ canGoBack: !!back })}
                 screens={screensOf(route.name)}
               />

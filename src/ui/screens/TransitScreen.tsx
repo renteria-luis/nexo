@@ -551,7 +551,7 @@ function TransitContent() {
             icon={ExploreIcon}
             accessibilityLabel="Explorar Transit"
             selected={panel === 'explore'}
-            disabled={!data}
+            disabled={!data || !!draft}
             onPress={() => {
               setPanel('explore');
               setExploreMapActive(false);

@@ -20,7 +20,9 @@ export const ExploreIcon = forwardRef<View, LucideProps>(function ExploreIcon(
           position: 'absolute',
           right: -2,
           bottom: -2,
-          backgroundColor: theme.surface,
+          // Opaque so the globe does not show through the lens; amber when the button is lit,
+          // or the dark lens would hide its dark ink.
+          backgroundColor: color === theme.accentInk ? theme.accent : theme.surfaceSolid,
           borderRadius: side,
         }}
       />
