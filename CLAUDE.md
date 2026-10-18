@@ -93,8 +93,12 @@ These were all found in this app, measured, and fixed. Do not reintroduce them.
   whole screen once a second.
 - **Import icons one at a time** from `src/ui/icons.ts`. The package index carries 1848
   of them.
-- **No chart or gesture library.** They all pull in Reanimated, which crashed the app on
-  2026-09-21. Charts are hand-drawn with `react-native-svg`; drags use `PanResponder`.
+- **Reanimated only at the version the Expo SDK pins.** It crashed the app on 2026-09-21
+  when a library pulled in a newer one. It is installed exactly at what `npx expo install`
+  chose (4.5.1 with `react-native-worklets` 0.10.1 on SDK 57); change it only through
+  `npx expo install`, and reject any library whose peer range wants another version.
+  Charts are still hand-drawn with `react-native-svg` and drags still use `PanResponder`
+  until a decision says otherwise.
 - **Measure, do not guess.** Count SQLite statements with a counting adapter in a test,
   and time renders with React's `Profiler` in the browser. Both are quick and both have
   already contradicted a confident guess.

@@ -1,5 +1,7 @@
 # The look: neobrutalism, and what this app already has for it
 
+> History. The app left this look on 2026-10-18 for dark glass; see `docs/glass-redesign.md`.
+
 Written while rebuilding the Hoy screen (step 3 of the redesign) so the other screens
 do not need the research again. Read this before restyling a screen; everything here is
 either measured in this repo or quoted from the reference the owner picked,
