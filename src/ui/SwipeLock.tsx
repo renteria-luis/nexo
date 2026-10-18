@@ -46,6 +46,25 @@ export function useSwipeLocked(): boolean {
   return useContext(Locked);
 }
 
+/**
+ * Apaga el carrusel y el menu lateral mientras un dedo esta encima de algo: `lock` al
+ * tocar y `unlock` al soltar o al perder el toque. Tocar dos veces no apaga dos veces.
+ * Lo usan la cuadricula, la barra de abajo y el editor de fondos, donde arrastrar de lado
+ * es su propio gesto y no el de cambiar de pestana o abrir el menu.
+ */
+export function useTouchLock() {
+  const { acquire } = useContext(Actions);
+  const release = useRef<(() => void) | null>(null);
+  const unlock = useCallback(() => {
+    release.current?.();
+    release.current = null;
+  }, []);
+  const lock = useCallback(() => {
+    release.current ??= acquire();
+  }, [acquire]);
+  return useMemo(() => ({ lock, unlock }), [lock, unlock]);
+}
+
 export function SwipeLockProvider({ children }: { children: ReactNode }) {
   const [locked, publish] = useState(false);
   const legacy = useRef(false);

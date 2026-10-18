@@ -3,7 +3,7 @@ import { Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { IconButton } from './IconButton.tsx';
 import { Search, X } from './icons.ts';
 import { TextField } from './TextField.tsx';
-import { font, sheet, shape, theme } from './theme.ts';
+import { font, glass, sheet, shape, theme } from './theme.ts';
 
 /**
  * El campo de buscar: la lupa en su sitio y el boton de borrar solo cuando hay algo
@@ -65,10 +65,10 @@ const styles = sheet((theme) => ({
     alignItems: 'center',
     gap: 8,
     borderWidth: shape.border,
-    borderColor: theme.line,
-    borderRadius: shape.radiusSmall,
-    backgroundColor: theme.surface,
-    paddingHorizontal: 10,
+    borderRadius: 22,
+    borderCurve: 'continuous',
+    ...glass.control,
+    paddingHorizontal: 14,
   },
   input: {
     flex: 1,

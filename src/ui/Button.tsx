@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 
 import { LoaderCircle, type LucideIcon } from './icons.ts';
-import { font, hardShadow, pressed as pressedInto, sheet, shape, theme } from './theme.ts';
+import { font, glass, gloss, pressed as pressedInto, sheet, shape, theme } from './theme.ts';
 
 /**
  * El boton de la app, en tres pesos.
@@ -20,8 +20,9 @@ import { font, hardShadow, pressed as pressedInto, sheet, shape, theme } from '.
  * algo se puede tocar es el area, no el color. Apple pide 44 puntos de alto minimo y
  * los dos tamanos de aqui empiezan ahi.
  *
- * Al presionarlo se mete dentro de su propia sombra en vez de aclararse: se nota con
- * el rabillo del ojo y sin mirar la pantalla, que es el punto en el gimnasio.
+ * Es una capsula, como los botones de iOS. Al presionarlo se apaga y se encoge un poco,
+ * que se nota con el rabillo del ojo sin mirar la pantalla, que es el punto en el
+ * gimnasio.
  */
 export type ButtonProps = {
   label: string;
@@ -131,13 +132,13 @@ export function Button({
 const styles = sheet((theme) => ({
   base: {
     minHeight: 44,
-    borderRadius: shape.radius,
+    borderRadius: 26,
+    borderCurve: 'continuous',
     borderWidth: shape.border,
     borderColor: theme.line,
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    ...hardShadow(theme, shape.shadowOffset, 'button'),
   },
   large: {
     minHeight: 52,
@@ -159,26 +160,19 @@ const styles = sheet((theme) => ({
   labelLarge: {
     fontSize: 17,
   },
-  primary: {
-    backgroundColor: theme.accent,
-  },
-  secondary: {
-    backgroundColor: theme.surface,
-  },
+  primary: gloss(theme.accent),
+  secondary: glass.control,
   ghost: {
     backgroundColor: 'transparent',
     borderWidth: 0,
     minHeight: 40,
     paddingHorizontal: 8,
-    shadowOpacity: 0,
   },
-  danger: {
-    backgroundColor: theme.danger,
-  },
+  danger: gloss(theme.danger),
   disabled: {
+    ...glass.none,
     backgroundColor: 'transparent',
     borderColor: theme.lineSoft,
-    shadowOpacity: 0,
   },
   pressed: pressedInto(),
   pressedGhost: {

@@ -34,13 +34,21 @@ function fixture() {
       Keyboard: { addListener: () => ({ remove() {} }), dismiss() {} },
       Animated: {
         View: 'Animated.View',
+        ScrollView: 'ScrollView',
+        event: () => () => undefined,
         Value: class {
           interpolate() {
             return 0;
           }
+          addListener() {
+            return '';
+          }
+          removeListener() {}
         },
       },
     },
+    '@react-navigation/native': { NavigationRouteContext: { value: { name: 'Hoy' } } },
+    '../background-editing.tsx': { useBackgrounds: () => ({}) },
     '../../shell/AppData.tsx': { useAppData: () => app },
     '../../shell/backup-file.ts': {},
     '../Button.tsx': { Button: 'Button' },

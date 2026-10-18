@@ -35,7 +35,7 @@ import {
   Users,
   type LucideIcon,
 } from './icons.ts';
-import { font, hardShadow, pressed as pressedInto, sheet, shape, theme } from './theme.ts';
+import { font, pressed as pressedInto, sheet, shape, theme } from './theme.ts';
 
 const BUDGETS: { id: TimeBudget; label: string }[] = [
   { id: 'completo', label: 'Completo' },
@@ -873,7 +873,7 @@ const styles = sheet((theme) => ({
     marginTop: 2,
   },
   // Hundida en su sombra, como mientras se aprieta, hasta que contesta la ubicacion.
-  locating: pressedInto(3),
+  locating: pressedInto(),
   note: {
     fontSize: 12,
     fontFamily: font.regular,
@@ -907,7 +907,6 @@ const styles = sheet((theme) => ({
     backgroundColor: theme.accent,
     borderRadius: shape.radiusSmall,
     paddingHorizontal: 6,
-    ...hardShadow(theme, 5),
   },
   // Columna estrecha y de todo el alto: facil de agarrar y no le quita sitio al nombre.
   handle: {

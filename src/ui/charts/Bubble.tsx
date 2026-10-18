@@ -1,6 +1,6 @@
 import { Pressable, Text, View } from 'react-native';
 
-import { font, hardShadow, sheet, shape } from '../theme.ts';
+import { font, glass, sheet, shape } from '../theme.ts';
 
 /**
  * El globito de una grafica: que dia es, cuanto marco, y la salida a ese dia.
@@ -50,14 +50,13 @@ const styles = sheet((theme) => ({
     position: 'absolute',
     top: 6,
     borderWidth: shape.border,
-    borderColor: theme.line,
     borderRadius: shape.radiusSmall,
-    backgroundColor: theme.surface,
+    ...glass.panel,
+    backgroundColor: theme.surfaceSolid,
     paddingHorizontal: 10,
     paddingVertical: 8,
     gap: 3,
     alignItems: 'flex-start',
-    ...hardShadow(theme, 3),
   },
   date: {
     fontSize: 11,

@@ -16,47 +16,86 @@ import { settingDefault } from '../../core/settings.ts';
 import { fromKg } from '../../core/units.ts';
 
 import { Button } from '../Button.tsx';
-import { Card, type CardTone } from '../Card.tsx';
+import { Card } from '../Card.tsx';
 import { DealAlert } from '../DealAlert.tsx';
 import { DayDialog } from '../DayDialog.tsx';
 import { DisciplineGrid } from '../DisciplineGrid.tsx';
 import { useInfo } from '../InfoBubble.tsx';
 import { useNow } from '../useNow.ts';
-import { ChevronRight, Dumbbell, Tag, Utensils, Wallet, type LucideIcon } from '../icons.ts';
-import { Star } from '../Star.tsx';
+import { ChevronRight, Dumbbell, Flame, Tag, Utensils, Wallet, type LucideIcon } from '../icons.ts';
 import { HealthArrivalCard } from '../HealthArrivalCard.tsx';
 import { TodayLog } from '../TodayLog.tsx';
 import { TransitJourneyCard } from '../TransitJourneyCard.tsx';
 import { TRANSIT_ENABLED } from '../../transit/index.ts';
-import { font, sheet, shape, theme } from '../theme.ts';
+import Svg, { Circle } from 'react-native-svg';
+
+import { font, sheet, theme } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
 
+const RING = 108;
+const RING_STROKE = 10;
+
 /**
- * Un modulo de la app en una cartilla de color.
+ * La nota de hoy como un anillo que se llena hasta 100. Brilla un poco en ambar: es lo
+ * primero que tiene que ver al abrir la app.
+ */
+function ScoreRing({ score }: { score: number | null }) {
+  const radius = (RING - RING_STROKE) / 2;
+  const around = 2 * Math.PI * radius;
+  const filled = (around * Math.min(Math.max(score ?? 0, 0), 100)) / 100;
+  return (
+    <View style={styles.ring}>
+      <Svg width={RING} height={RING} style={styles.ringDrawing}>
+        <Circle
+          cx={RING / 2}
+          cy={RING / 2}
+          r={radius}
+          fill="none"
+          stroke={theme.surfaceHigh}
+          strokeWidth={RING_STROKE}
+        />
+        {filled > 0 && (
+          <Circle
+            cx={RING / 2}
+            cy={RING / 2}
+            r={radius}
+            fill="none"
+            stroke={theme.accent}
+            strokeWidth={RING_STROKE}
+            strokeLinecap="round"
+            strokeDasharray={`${filled} ${around}`}
+            transform={`rotate(-90 ${RING / 2} ${RING / 2})`}
+          />
+        )}
+      </Svg>
+      <Text style={styles.ringValue}>{score === null ? '—' : scoreText(score)}</Text>
+      <Text style={styles.ringUnit}>de 100</Text>
+    </View>
+  );
+}
+
+/**
+ * Un modulo de la app en una cartilla.
  *
- * Media pantalla cada uno y en dos filas: al pulgar le sirve el area, y el color dice
- * cual es antes de leer la palabra. El que todavia no existe se queda plano y sin
- * relieve, que es como se ve aqui algo que no se puede tocar.
+ * Media pantalla cada uno y en dos filas: al pulgar le sirve el area, y el icono dice
+ * cual es antes de leer la palabra. El que todavia no existe lleva el filo apagado.
  */
 function ModuleCard({
   label,
   value,
   detail,
   icon: Icon,
-  tone,
   onOpen,
 }: {
   label: string;
   value: string;
   detail?: string;
   icon: LucideIcon;
-  tone: CardTone;
   onOpen?: () => void;
 }) {
   return (
     <Card
-      tone={tone}
       raised={onOpen !== undefined}
       accessibilityLabel={onOpen ? `Abrir ${label}` : undefined}
       onPress={onOpen}
@@ -64,7 +103,7 @@ function ModuleCard({
     >
       <View style={styles.moduleHead}>
         <View style={styles.moduleIcon}>
-          <Icon size={17} color={theme.accentInk} strokeWidth={2.5} />
+          <Icon size={17} color={theme.text} strokeWidth={2.25} />
         </View>
         <Text style={styles.moduleLabel}>{label}</Text>
       </View>
@@ -226,6 +265,7 @@ export function TodayScreen({
   const today = loaded.today.date;
   const score = loaded.today.result?.score ?? null;
   const pending = loaded.today.result?.pointsWithoutData ?? 100;
+  const streak = currentStreak(loaded.scoreHistory, today);
 
   const targets = loaded.today.targets;
   const nutrition = loaded.today.nutrition;
@@ -251,32 +291,35 @@ export function TodayScreen({
       }
     >
       {/* Lo primero y lo mas grande, porque es de lo que va la app entera. La racha va
-          dentro de la estrella: es el numero que mas le mueve a no romper el dia. Toda
-          la cartilla abre el dia de hoy con el desglose de donde salio cada punto. */}
-      <Card
-        tone="accent"
-        accessibilityLabel="Ver el detalle de hoy"
-        onPress={() => onOpenDay(today)}
-      >
+          justo al lado: es el numero que mas le mueve a no romper el dia. Toda la
+          cartilla abre el dia de hoy con el desglose de donde salio cada punto. */}
+      <Card accessibilityLabel="Ver el detalle de hoy" onPress={() => onOpenDay(today)}>
         <View style={styles.heroRow}>
+          <ScoreRing score={score} />
           <View style={styles.heroSide}>
-            <Text style={styles.heroEyebrow}>NOTA DE HOY</Text>
-            <Text style={styles.heroScore}>{score === null ? '—' : scoreText(score)}</Text>
-            <Text style={styles.heroNote}>
-              de 100
-              {pending > 0 ? ` · faltan ${Math.round(pending)} por anotar` : ' · día completo'}
+            <Text style={styles.heroEyebrow}>
+              Nota de hoy
+              {pending > 0 ? ` · faltan ${Math.round(pending)}` : ' · día completo'}
             </Text>
+            <View style={styles.heroStat}>
+              <Flame size={20} color={theme.accent} strokeWidth={2.25} />
+              <View>
+                <Text style={styles.heroValue}>
+                  {streak} {streak === 1 ? 'día' : 'días'}
+                </Text>
+                <Text style={styles.heroNote}>de racha</Text>
+              </View>
+            </View>
             {/* Spec 4.4: la racha de semanas con cinco entrenos, junto a la de dias. */}
-            <Text style={styles.heroNote}>
-              entreno: {loaded.trainingStreak}{' '}
-              {loaded.trainingStreak === 1 ? 'semana seguida' : 'semanas seguidas'} con 5
-            </Text>
-          </View>
-          <View style={styles.heroStar}>
-            <Star size={78} color={theme.surface} style={styles.star}>
-              <Text style={styles.starValue}>{currentStreak(loaded.scoreHistory, today)}</Text>
-            </Star>
-            <Text style={styles.starLabel}>días de racha</Text>
+            <View style={styles.heroStat}>
+              <Dumbbell size={20} color={theme.text} strokeWidth={2.25} />
+              <View>
+                <Text style={styles.heroValue}>
+                  {loaded.trainingStreak} {loaded.trainingStreak === 1 ? 'semana' : 'semanas'}
+                </Text>
+                <Text style={styles.heroNote}>seguidas con 5 entrenos</Text>
+              </View>
+            </View>
           </View>
         </View>
       </Card>
@@ -362,7 +405,6 @@ export function TodayScreen({
       <View style={styles.modules}>
         <ModuleCard
           label="ENTRENO"
-          tone="ok"
           icon={Dumbbell}
           value={
             loaded.today.session
@@ -374,7 +416,6 @@ export function TodayScreen({
         />
         <ModuleCard
           label="COMIDA"
-          tone="info"
           icon={Utensils}
           value={nutrition ? `${Math.round(nutrition.kcal)} kcal` : 'Nada aún'}
           detail={
@@ -393,7 +434,6 @@ export function TodayScreen({
             en una hoja que se abre cuando hay algo y se vuelve a abrir a un toque. */}
         <ModuleCard
           label="OFERTAS"
-          tone="danger"
           icon={Tag}
           value={live === 0 ? 'Ninguna' : String(live)}
           detail={
@@ -407,7 +447,6 @@ export function TodayScreen({
         />
         <ModuleCard
           label="FINANZAS"
-          tone="warn"
           icon={Wallet}
           value="—"
           detail="Todavía no construido"
@@ -471,48 +510,61 @@ const styles = sheet((theme) => ({
   heroRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
+    gap: 18,
   },
   heroSide: {
-    flexShrink: 1,
+    flex: 1,
+    gap: 12,
   },
   heroEyebrow: {
-    fontSize: 11,
-    fontFamily: font.black,
-    letterSpacing: 1.2,
-    color: theme.accentInkSoft,
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.textFaint,
   },
-  heroScore: {
-    fontSize: 56,
-    lineHeight: 62,
-    fontFamily: font.display,
-    color: theme.accentInk,
+  heroStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  heroValue: {
+    fontSize: 17,
+    fontFamily: font.black,
+    color: theme.text,
     fontVariant: ['tabular-nums'],
   },
   heroNote: {
     fontSize: 12,
     fontFamily: font.bold,
-    color: theme.accentInkSoft,
+    color: theme.textFaint,
   },
-  heroStar: {
+  ring: {
+    width: RING,
+    height: RING,
     alignItems: 'center',
-    gap: 2,
+    justifyContent: 'center',
+    // El brillo sale del dibujo mismo: iOS hace la sombra con la forma del anillo.
+    shadowColor: theme.accent,
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 0 },
   },
-  star: {
-    // Pegada un poco torcida: es un sticker, no un icono alineado a la rejilla.
-    transform: [{ rotate: '-8deg' }],
+  ringDrawing: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
   },
-  starValue: {
-    fontSize: 26,
-    fontFamily: font.black,
+  ringValue: {
+    fontSize: 34,
+    lineHeight: 38,
+    fontFamily: font.display,
     color: theme.text,
+    letterSpacing: -1,
     fontVariant: ['tabular-nums'],
   },
-  starLabel: {
-    fontSize: 11,
+  ringUnit: {
+    fontSize: 12,
     fontFamily: font.bold,
-    color: theme.accentInkSoft,
+    color: theme.textFaint,
   },
   noticeTitle: {
     fontSize: 15,
@@ -560,7 +612,7 @@ const styles = sheet((theme) => ({
   module: {
     flex: 1,
     gap: 6,
-    padding: 12,
+    padding: 14,
   },
   moduleHead: {
     flexDirection: 'row',
@@ -568,31 +620,30 @@ const styles = sheet((theme) => ({
     gap: 7,
   },
   moduleIcon: {
-    width: 28,
-    height: 28,
+    width: 34,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: shape.border,
-    borderColor: theme.line,
-    borderRadius: 6,
-    backgroundColor: theme.surface,
+    borderRadius: 17,
+    backgroundColor: theme.surfaceHigh,
   },
   moduleLabel: {
     fontSize: 11,
     fontFamily: font.black,
     letterSpacing: 0.8,
-    color: theme.accentInk,
+    color: theme.textFaint,
   },
   moduleValue: {
-    fontSize: 18,
+    fontSize: 20,
     fontFamily: font.black,
-    color: theme.accentInk,
+    color: theme.text,
+    letterSpacing: -0.3,
     fontVariant: ['tabular-nums'],
   },
   moduleDetail: {
     fontSize: 12,
-    fontFamily: font.regular,
-    color: theme.accentInkSoft,
+    fontFamily: font.bold,
+    color: theme.textFaint,
   },
   links: {
     gap: 8,

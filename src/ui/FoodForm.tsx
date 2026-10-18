@@ -18,7 +18,7 @@ import { Trash } from './icons.ts';
 import { NumericField } from './NumericField.tsx';
 import { TextField } from './TextField.tsx';
 import { Toggle } from './Toggle.tsx';
-import { font, hardShadow, sheet, shape } from './theme.ts';
+import { font, sheet, shape } from './theme.ts';
 
 /**
  * La ficha de un alimento: la misma para crear uno nuevo y para corregir uno que ya
@@ -422,7 +422,6 @@ const styles = sheet((theme) => ({
     borderWidth: shape.border,
     borderColor: theme.line,
     borderRadius: shape.radius,
-    ...hardShadow(theme),
   },
   scroll: {
     flexShrink: 1,

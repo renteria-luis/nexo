@@ -5,7 +5,7 @@ import { liveDeals, unitPrice, type WatchedDeal } from '../deals/index.ts';
 import { Button } from './Button.tsx';
 import { X } from './icons.ts';
 import { IconButton } from './IconButton.tsx';
-import { font, hardShadow, sheet, shape } from './theme.ts';
+import { font, glass, sheet, shape } from './theme.ts';
 
 /**
  * Lo que esta en oferta de lo que a el le importa, y nada mas.
@@ -97,11 +97,10 @@ const styles = sheet((theme) => ({
     alignSelf: 'stretch',
     maxWidth: 400,
     maxHeight: 520,
-    backgroundColor: theme.surface,
+    ...glass.panel,
+    backgroundColor: theme.surfaceSolid,
     borderWidth: shape.border,
-    borderColor: theme.line,
     borderRadius: shape.radius,
-    ...hardShadow(theme),
   },
   head: {
     flexDirection: 'row',

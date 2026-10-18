@@ -6,7 +6,7 @@ import {
   useNavigationContainerRef,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Keyboard, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -36,13 +36,12 @@ import { TransitScreen } from './src/ui/screens/TransitScreen.tsx';
 import { TRANSIT_ENABLED } from './src/transit/index.ts';
 import { Dumbbell, LayoutGrid, Utensils, type LucideIcon } from './src/ui/icons.ts';
 
-import { ArchivoBlack_400Regular } from '@expo-google-fonts/archivo-black';
 import {
-  Nunito_400Regular,
-  Nunito_700Bold,
-  Nunito_800ExtraBold,
+  PlusJakartaSans_400Regular,
+  PlusJakartaSans_700Bold,
+  PlusJakartaSans_800ExtraBold,
   useFonts,
-} from '@expo-google-fonts/nunito';
+} from '@expo-google-fonts/plus-jakarta-sans';
 
 import { InfoProvider } from './src/ui/InfoBubble.tsx';
 import { KeyboardBar } from './src/ui/KeyboardBar.tsx';
@@ -50,8 +49,12 @@ import { Assistant } from './src/ui/Assistant.tsx';
 import { goTo, nudgeDestination, type Navigate } from './src/ui/navigation.ts';
 import { SidebarProvider, useSidebar } from './src/ui/Sidebar.tsx';
 import { SwipeLockProvider, useSwipeLocked } from './src/ui/SwipeLock.tsx';
+import { Backdrop, PagerPositionProvider } from './src/ui/Backdrop.tsx';
+import { BackgroundEditorPanel } from './src/ui/BackgroundEditor.tsx';
+import { BackgroundEditingProvider } from './src/ui/background-editing.tsx';
+import { BackgroundsScreen } from './src/ui/screens/BackgroundsScreen.tsx';
 import { FloatingBarSpace, TabBar, tabBarSpace } from './src/ui/TabBar.tsx';
-import { TopBar } from './src/ui/TopBar.tsx';
+import { TopBar, topBarHeight } from './src/ui/TopBar.tsx';
 import { sheet, theme } from './src/ui/theme.ts';
 import { WeekSummaryScreen } from './src/ui/screens/WeekSummaryScreen.tsx';
 
@@ -62,7 +65,6 @@ const RootStack = createNativeStackNavigator();
 // y se ve un destello blanco cada vez que se abre una.
 const navigationTheme = {
   ...DarkTheme,
-  dark: false,
   colors: {
     ...DarkTheme.colors,
     background: theme.bg,
@@ -85,6 +87,20 @@ const registry: ModuleRegistry = {
     { id: 'nutrition', label: 'Comida', enabled: true, screen: NutritionScreen },
   ],
 };
+
+/** Las pestanas comparten la pantalla `nexo`, y su fondo es el de cada una fundido. */
+const TAB_SCREENS = enabledTabs(registry).map((tab) => tab.label);
+const ROUTE_SCREENS = new Map<string, readonly string[]>([['nexo', TAB_SCREENS]]);
+
+/** De que pantallas es el fondo de una ruta, siempre la misma lista para la misma ruta. */
+function screensOf(route: string): readonly string[] {
+  let screens = ROUTE_SCREENS.get(route);
+  if (!screens) {
+    screens = [route];
+    ROUTE_SCREENS.set(route, screens);
+  }
+  return screens;
+}
 
 /** Un icono por pestana: a un metro de distancia se reconoce antes que la palabra. */
 const TAB_ICONS: Record<string, LucideIcon> = {
@@ -136,7 +152,8 @@ function TabsScreen() {
           // La barra va abajo aunque las paginas sean un pager: es donde llega el pulgar.
           tabBarPosition="bottom"
           tabBar={(props) => <TabBar {...props} />}
-          screenOptions={{ swipeEnabled: !locked }}
+          // Transparentes: las paginas se deslizan encima del fondo, que se queda quieto.
+          screenOptions={{ swipeEnabled: !locked, sceneStyle: styles.clear }}
         >
           {tabs.map((tab) => (
             <Tabs.Screen
@@ -145,7 +162,7 @@ function TabsScreen() {
               options={{
                 tabBarIcon: ({ color }) => {
                   const Icon = TAB_ICONS[tab.id] ?? LayoutGrid;
-                  return <Icon size={21} color={color} strokeWidth={2.5} />;
+                  return <Icon size={22} color={color} strokeWidth={2} />;
                 },
               }}
             >
@@ -175,6 +192,7 @@ function SettingsRoute() {
     <SettingsScreen
       transitSettings={TRANSIT_ENABLED ? <TransitTravelSettings /> : undefined}
       onOpenExercises={() => navigation.navigate('Ejercicios')}
+      onOpenBackgrounds={() => navigation.navigate('Fondos')}
       onOpenFoods={() => navigation.navigate('Alimentos')}
       settings={state.loaded.settings}
       onSaveScoreScale={saveScoreScale}
@@ -235,6 +253,9 @@ function Navigation({ navigation }: { navigation: ReturnType<typeof useNavigatio
       onStateChange={() => Keyboard.dismiss()}
     >
       <RootStack.Navigator
+        screenLayout={({ children, route }) => (
+          <ScreenFrame screens={screensOf(route.name)}>{children}</ScreenFrame>
+        )}
         screenOptions={{
           // Nuestra barra en lugar del encabezado nativo, que solo dejaba cambiarle el
           // color. En la pantalla principal lleva a Ajustes; en una apilada la cierra,
@@ -248,9 +269,11 @@ function Navigation({ navigation }: { navigation: ReturnType<typeof useNavigatio
                 // En un dia suelto la fecha de arriba competiria con la del dia abierto.
                 showDate={route.name !== 'Día'}
                 actions={options.headerRight?.({ canGoBack: !!back })}
+                screens={screensOf(route.name)}
               />
             ) : (
               <TopBar
+                screens={screensOf(route.name)}
                 action="settings"
                 onPress={() => navigation.navigate('Ajustes')}
                 onMenu={sidebar.open}
@@ -264,6 +287,7 @@ function Navigation({ navigation }: { navigation: ReturnType<typeof useNavigatio
             Apiladas, las pantallas comparten arbol con el teclado. */}
         <RootStack.Screen name="nexo" component={TabsScreen} />
         <RootStack.Screen name="Ajustes" component={SettingsRoute} />
+        <RootStack.Screen name="Fondos" component={BackgroundsScreen} />
         {/* Ofertas dejo de ser pestana el 2026-09-28: lo que importa se avisa en Hoy y
             la lista entera vive aqui, a un toque de ese aviso. */}
         <RootStack.Screen name="Ofertas" component={DealsScreen} />
@@ -304,10 +328,9 @@ export default function App() {
   // Sin la fuente cargada el primer cuadro sale con la del sistema y salta a la
   // buena, que se ve peor que esperar dos parpadeos.
   const [ready] = useFonts({
-    ArchivoBlack_400Regular,
-    Nunito_400Regular,
-    Nunito_700Bold,
-    Nunito_800ExtraBold,
+    PlusJakartaSans_400Regular,
+    PlusJakartaSans_700Bold,
+    PlusJakartaSans_800ExtraBold,
   });
   // Arriba del navegador porque el menu lateral tambien lo necesita, y vive por fuera
   // para quedar encima de la barra de abajo y del encabezado.
@@ -320,27 +343,54 @@ export default function App() {
         <TransitJourneyProvider>
           <SwipeLockProvider>
             <SidebarProvider navigation={navigation}>
-              {/* El globito de la (i) se dibuja aqui para que no lo recorte la lista
-                dentro de la que vive el boton que lo abre. */}
-              <InfoProvider>
-                <Navigation navigation={navigation} />
-              </InfoProvider>
-              {/* Encima de todo menos del menu lateral, que si la tapa. */}
-              <Assistant />
+              <BackgroundEditingProvider>
+                {/* El globito de la (i) se dibuja aqui para que no lo recorte la lista
+                  dentro de la que vive el boton que lo abre. */}
+                <InfoProvider>
+                  <PagerPositionProvider>
+                    <Navigation navigation={navigation} />
+                  </PagerPositionProvider>
+                </InfoProvider>
+                {/* Encima de todo menos del menu lateral, que si la tapa. */}
+                <Assistant />
+                {/* Y el editor de fondos encima de la bola, sobre la pantalla que prueba. */}
+                <BackgroundEditorPanel />
+              </BackgroundEditingProvider>
             </SidebarProvider>
           </SwipeLockProvider>
           {/* La barra que corona el teclado del sistema, una sola para toda la app. */}
           <KeyboardBar />
-          {/* Una sola paleta, clara: la barra de estado va siempre en oscuro. */}
-          <StatusBar style="dark" />
+          {/* Una sola paleta, oscura: la barra de estado va siempre en claro. */}
+          <StatusBar style="light" />
         </TransitJourneyProvider>
       </AppDataProvider>
     </SafeAreaProvider>
   );
 }
 
+/**
+ * Cada pantalla apilada lleva su propio fondo, opaco: con uno solo detras de todas, la
+ * pantalla de abajo se veia a traves de la nueva mientras entraba deslizandose. Es el
+ * resto del mismo fondo que lleva la barra de arriba, cortado justo donde ella acaba.
+ */
+function ScreenFrame({ children, screens }: { children: ReactNode; screens: readonly string[] }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={styles.frame}>
+      <Backdrop screens={screens} offset={topBarHeight(insets.top)} />
+      {children}
+    </View>
+  );
+}
+
 const styles = sheet((theme) => ({
   tabs: {
+    flex: 1,
+  },
+  clear: {
+    backgroundColor: 'transparent',
+  },
+  frame: {
     flex: 1,
     backgroundColor: theme.bg,
   },

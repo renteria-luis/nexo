@@ -116,9 +116,16 @@ export function renderModule(file: string, mocks: Record<string, any> = {}) {
           ? react
           : name === 'react-native'
             ? native
-            : name.startsWith('.') && /\.tsx?$/.test(name)
-              ? load(resolve(dirname(path), name))
-              : require(name)),
+            : // A native view with nothing to test; its build does not load under Node.
+              name === 'expo-glass-effect'
+              ? {
+                  GlassView: 'GlassView',
+                  isLiquidGlassAvailable: () => false,
+                  isGlassEffectAPIAvailable: () => false,
+                }
+              : name.startsWith('.') && /\.tsx?$/.test(name)
+                ? load(resolve(dirname(path), name))
+                : require(name)),
       module,
       module.exports,
     );

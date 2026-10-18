@@ -24,7 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from './Button.tsx';
 import type { LucideIcon } from './icons.ts';
 import { IconButton } from './IconButton.tsx';
-import { font, hardShadow, sheet, shape } from './theme.ts';
+import { font, glass, sheet, shape } from './theme.ts';
 
 /**
  * La (i) de toda la app, y el globito que abre.
@@ -281,12 +281,11 @@ const styles = sheet((theme) => ({
   bubble: {
     position: 'absolute',
     borderWidth: shape.border,
-    borderColor: theme.line,
     borderRadius: shape.radiusSmall,
-    backgroundColor: theme.surface,
+    ...glass.panel,
+    backgroundColor: theme.surfaceSolid,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    ...hardShadow(theme, 3),
   },
   dot: {
     width: SIZE,

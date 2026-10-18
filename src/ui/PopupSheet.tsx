@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { ScrollView, View, useWindowDimensions } from 'react-native';
 
-import { hardShadow, sheet, shape } from './theme.ts';
+import { glass, sheet, shape } from './theme.ts';
 
 /** The existing place form's sheet, shared by the panels hosted in Screen.overlay. */
 export function PopupSheet({
@@ -40,11 +40,10 @@ const styles = sheet((theme) => ({
   sheet: {
     width: '100%',
     alignSelf: 'center',
-    backgroundColor: theme.surface,
+    ...glass.panel,
+    backgroundColor: theme.surfaceSolid,
     borderWidth: shape.border,
-    borderColor: theme.line,
     borderRadius: shape.radius,
-    ...hardShadow(theme),
   },
   scroll: { flexShrink: 1 },
   body: { gap: 9, padding: 14 },

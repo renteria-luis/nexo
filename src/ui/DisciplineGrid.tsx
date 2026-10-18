@@ -14,8 +14,8 @@ import {
 } from '../core/grid-history.ts';
 import { levelForScore, scoreLevels, type ScoreScaleOptions } from '../core/palettes.ts';
 import { Button } from './Button.tsx';
-import { useSwipeLock } from './SwipeLock.tsx';
-import { font, hardShadow, sheet, shape } from './theme.ts';
+import { useTouchLock } from './SwipeLock.tsx';
+import { font, sheet } from './theme.ts';
 
 const GAP = 2;
 const GUTTER = 24;
@@ -126,16 +126,8 @@ export const DisciplineGrid = memo(function DisciplineGrid({
   const square = Math.max(0, pitch - GAP);
   const list = useRef<FlatList<string>>(null);
   const [offset] = useState(() => new Animated.Value(0));
-  const { acquire } = useSwipeLock();
-  const release = useRef<(() => void) | null>(null);
+  const { lock, unlock } = useTouchLock();
   const focused = useIsFocused();
-  const unlock = useCallback(() => {
-    release.current?.();
-    release.current = null;
-  }, []);
-  const lock = useCallback(() => {
-    release.current ??= acquire();
-  }, [acquire]);
   useEffect(() => {
     if (!focused) unlock();
     const subscription = AppState.addEventListener('change', (state) => {
@@ -378,9 +370,9 @@ const styles = sheet((theme) => ({
   small: { fontSize: 10, color: theme.textDim, fontFamily: font.bold },
   touch: { width: '100%', aspectRatio: 1 },
   weekday: { fontSize: 11, color: theme.text, fontFamily: font.black },
-  cell: { borderRadius: 3, borderWidth: 1, borderColor: theme.lineSoft, overflow: 'hidden' },
+  cell: { borderRadius: 4, borderWidth: 1, borderColor: theme.line, overflow: 'hidden' },
   cellFills: { flex: 1, alignSelf: 'stretch' },
-  cellToday: { borderWidth: shape.border, borderColor: theme.line, ...hardShadow(theme, 2) },
+  cellToday: { borderWidth: 2, borderColor: theme.text },
   loadingCell: { backgroundColor: theme.lineSoft, opacity: 0.35, borderRadius: 3 },
   error: { fontSize: 12, fontFamily: font.bold, color: theme.danger },
 }));

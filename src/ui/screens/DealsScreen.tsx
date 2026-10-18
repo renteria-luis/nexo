@@ -475,7 +475,7 @@ const styles = sheet((theme) => ({
   number: {
     fontSize: 12,
     fontFamily: font.black,
-    color: theme.accentInk,
+    color: theme.text,
     backgroundColor: theme.surfaceHigh,
     borderWidth: shape.border,
     borderColor: theme.line,

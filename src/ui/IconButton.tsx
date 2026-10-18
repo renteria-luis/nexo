@@ -1,10 +1,10 @@
 import { Pressable, type StyleProp, type ViewStyle } from 'react-native';
 
 import type { LucideIcon } from './icons.ts';
-import { hardShadow, pressed as pressedInto, sheet, shape, theme } from './theme.ts';
+import { glass, gloss, pressed as pressedInto, sheet, shape, theme } from './theme.ts';
 
 /**
- * Un boton que solo es un icono: el cuadrito con borde de tinta y su sombra dura.
+ * Un boton que solo es un icono: un circulo de vidrio.
  *
  * Existe porque la (i) de una porcion, el quitar de una fila y el borrar de una
  * busqueda son todos lo mismo, y con el Button normal salian tres botones de anchos
@@ -15,7 +15,7 @@ export type IconButtonProps = {
   icon: LucideIcon;
   onPress: () => void;
   accessibilityLabel: string;
-  /** Prendido se pinta de amarillo, que es lo que dice "esto esta abierto". */
+  /** Prendido se pinta de ambar, que es lo que dice "esto esta abierto". */
   selected?: boolean;
   tone?: 'paper' | 'accent' | 'danger';
   disabled?: boolean;
@@ -33,7 +33,9 @@ export function IconButton({
   disabled = false,
   style,
 }: IconButtonProps) {
-  const tint = disabled ? theme.textGhost : theme.accentInk;
+  // La tinta oscura solo sobre un color lleno; sobre la tarjeta translucida, clara.
+  const filled = selected || tone !== 'paper';
+  const tint = disabled ? theme.textGhost : filled ? theme.accentInk : theme.text;
 
   return (
     <Pressable
@@ -62,27 +64,18 @@ const styles = sheet((theme) => ({
     height: SIZE,
     borderWidth: shape.border,
     borderColor: theme.line,
-    borderRadius: shape.radiusSmall,
+    borderRadius: SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    ...hardShadow(theme, 3, 'button'),
   },
-  paper: {
-    backgroundColor: theme.surface,
-  },
-  accent: {
-    backgroundColor: theme.accent,
-  },
-  danger: {
-    backgroundColor: theme.danger,
-  },
-  on: {
-    backgroundColor: theme.accent,
-  },
+  paper: glass.control,
+  accent: gloss(theme.accent),
+  danger: gloss(theme.danger),
+  on: gloss(theme.accent),
   disabled: {
+    ...glass.none,
     backgroundColor: 'transparent',
     borderColor: theme.lineSoft,
-    shadowOpacity: 0,
   },
-  pressed: pressedInto(3),
+  pressed: pressedInto(),
 }));

@@ -1,32 +1,34 @@
 import type { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
-import { createContext, useMemo, useState } from 'react';
-import { Animated, Pressable, Text, View } from 'react-native';
+import SegmentedControl from '@react-native-segmented-control/segmented-control';
+import { createContext, useContext, useEffect } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { font, hardShadow, sheet, shape, theme } from './theme.ts';
+import { PagerPosition } from './Backdrop.tsx';
+import { Glass } from './Glass.tsx';
+import { useTouchLock } from './SwipeLock.tsx';
+import { font, sheet, theme } from './theme.ts';
 
 /**
- * La barra de abajo, con el bloque amarillo que se desliza a la pestana abierta.
+ * La barra de abajo: una isla de vidrio transparente con el selector de opciones de iOS
+ * dentro (2026-10-18, a peticion suya).
  *
- * La barra que trae React Navigation pinta el icono y la palabra del color de acento,
- * que aqui es amarillo: amarillo sobre papel casi no se ve, y la unica senal de donde
- * estaba parado era una rayita de cuatro puntos. En este estilo lo que dice "estas
- * aqui" es un objeto: un rectangulo de color con su borde de tinta y su sombra dura,
- * y la tinta negra encima se lee igual de bien sobre el amarillo que sobre el papel.
+ * El selector es el que pone la burbuja: en iOS 26 la suya es de vidrio, se desliza sola
+ * a la opcion tocada y se vuelve una lupa cuando se arrastra el dedo por encima, que es
+ * lo que hacen las barras de Reloj o Music. Va invisible, con sus palabras transparentes
+ * (siguen ahi para VoiceOver), y los iconos y palabras de la app van encima sin recibir
+ * toques, que caen al selector. Es el mismo truco de UnionTabView. Una barra nativa
+ * entera haria lo mismo, pero quitaria el deslizar entre pestanas con el dedo.
  *
- * El bloque va pegado al carrusel, no al cambio de pestana: `position` es el mismo
- * valor animado que mueve las paginas, asi que al arrastrar de una pestana a otra el
- * bloque acompana al dedo. Va por el hilo nativo porque solo se desplaza, y desplazar
- * es lo unico que el hilo nativo sabe hacer solo.
+ * Al deslizar las paginas, la burbuja salta a la nueva al terminar: el selector solo
+ * sabe de opciones elegidas, no de medio camino.
  *
- * Y la barra flota: no toca ningun borde, es una isla de papel con su contorno entero y
- * su sombra, y el contenido pasa por debajo. Por eso va colocada encima de las paginas
- * en vez de debajo de ellas, y por eso reparte `FloatingBarSpace`: la pantalla que esta
- * debajo tiene que dejar libre ese hueco al final o su ultima cartilla se queda tapada.
+ * Y la barra flota: no toca ningun borde, es una isla de vidrio y el contenido pasa por
+ * debajo. Por eso va colocada encima de las paginas en vez de debajo de ellas, y por eso
+ * reparte `FloatingBarSpace`: la pantalla que esta debajo tiene que dejar libre ese hueco
+ * al final o su ultima cartilla se queda tapada.
  */
 const ROW_HEIGHT = 48;
-/** El aire a cada lado del bloque, para que dos vecinos no se toquen. */
-const BLOCK_INSET = 4;
 /** El aire de la isla por dentro, entre su contorno y las pestanas. */
 const ISLAND_PADDING = 6;
 /**
@@ -44,7 +46,7 @@ const FLOOR_GAP = 8;
 /** Lo que se mete dentro del area segura de abajo, para no quedar flotando tan arriba. */
 const INTO_SAFE = 14;
 
-const ISLAND_HEIGHT = ROW_HEIGHT + ISLAND_PADDING * 2 + shape.border * 2;
+const ISLAND_HEIGHT = ROW_HEIGHT + ISLAND_PADDING * 2;
 
 /** Lo que la isla deja por debajo de si misma, ya contando la raya del gestor. */
 function floor(bottomInset: number): number {
@@ -62,6 +64,8 @@ export function tabBarSpace(bottomInset: number): number {
 /** Cuanto hay que dejar libre abajo. Cero fuera de las pestanas, que es donde no hay barra. */
 export const FloatingBarSpace = createContext(0);
 
+const CLEAR_TEXT = { color: 'transparent' };
+
 export function TabBar({
   state,
   descriptors,
@@ -70,76 +74,64 @@ export function TabBar({
   jumpTo,
 }: MaterialTopTabBarProps) {
   const insets = useSafeAreaInsets();
-  // El ancho se mide aqui y no se calcula: asi el bloque cae en su sitio en cualquier
-  // telefono sin repetir las cuentas del relleno de la barra.
-  const [width, setWidth] = useState(0);
-  const count = state.routes.length;
-  const item = count > 0 ? width / count : 0;
+  // El fondo de cada pestana se funde con el de la siguiente mientras se desliza.
+  const { setPosition } = useContext(PagerPosition);
+  useEffect(() => setPosition(position), [position, setPosition]);
+  // Arrastrar el dedo por la barra es elegir pestana, no abrir el menu lateral.
+  const { lock, unlock } = useTouchLock();
 
-  const offset = useMemo(() => {
-    const stops = state.routes.map((_, index) => index * item + BLOCK_INSET);
-    // Con una sola pestana no hay recorrido que interpolar, y con dos puntos iguales
-    // Animated se queja.
-    if (count < 2) return stops[state.index] ?? BLOCK_INSET;
-    return position.interpolate({
-      inputRange: state.routes.map((_, index) => index),
-      outputRange: stops,
-      extrapolate: 'clamp',
+  const select = (index: number) => {
+    const route = state.routes[index];
+    if (!route) return;
+    const event = navigation.emit({
+      type: 'tabPress',
+      target: route.key,
+      canPreventDefault: true,
     });
-  }, [count, item, position, state.index, state.routes]);
+    if (!event.defaultPrevented) jumpTo(route.key);
+  };
 
   return (
     // El envoltorio no recibe toques (box-none): ocupa todo el ancho para colocar la
     // isla, y lo que cae fuera de ella es de la pantalla que hay debajo.
     <View pointerEvents="box-none" style={[styles.bar, { paddingBottom: floor(insets.bottom) }]}>
-      <View style={styles.island}>
-        <View style={styles.row} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
-          {item > 0 && (
-            <Animated.View
-              style={[
-                styles.block,
-                { width: item - BLOCK_INSET * 2, transform: [{ translateX: offset }] },
-              ]}
-            />
-          )}
-
-          {state.routes.map((route, index) => {
-            const focused = state.index === index;
-            const { options } = descriptors[route.key];
-            // Sobre el bloque amarillo la tinta es negra; fuera de el, apagada. El
-            // relieve dice donde esta parado, y el color solo lo acompana.
-            const tint = focused ? theme.accentInk : theme.textFaint;
-
-            return (
-              <Pressable
-                key={route.key}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: focused }}
-                accessibilityLabel={options.tabBarAccessibilityLabel ?? route.name}
-                onPress={() => {
-                  const event = navigation.emit({
-                    type: 'tabPress',
-                    target: route.key,
-                    canPreventDefault: true,
-                  });
-                  if (!event.defaultPrevented) jumpTo(route.key);
-                }}
-                style={({ pressed }) => [styles.item, pressed && styles.pressed]}
-              >
-                {options.tabBarIcon?.({ focused, color: tint })}
-                <Text numberOfLines={1} style={[styles.label, { color: tint }]}>
-                  {route.name}
-                </Text>
-              </Pressable>
-            );
-          })}
+      <Glass style={styles.island}>
+        <View style={styles.row} onTouchStart={lock} onTouchEnd={unlock} onTouchCancel={unlock}>
+          <SegmentedControl
+            values={state.routes.map((route) => route.name)}
+            selectedIndex={state.index}
+            onChange={(event) => select(event.nativeEvent.selectedSegmentIndex)}
+            backgroundColor="transparent"
+            tintColor="rgba(255, 255, 255, 0.16)"
+            appearance="dark"
+            fontStyle={CLEAR_TEXT}
+            activeFontStyle={CLEAR_TEXT}
+            // El selector trae 32 de alto fijo: sin esto la burbuja solo cubria los iconos.
+            style={[StyleSheet.absoluteFill, styles.selector]}
+          />
+          <View pointerEvents="none" style={styles.items}>
+            {state.routes.map((route, index) => {
+              const focused = state.index === index;
+              // Dentro de la burbuja, blanco entero; fuera, apagado. La burbuja dice
+              // donde esta parado, y la claridad solo la acompana.
+              const tint = focused ? theme.text : theme.textFaint;
+              return (
+                <View key={route.key} style={styles.item}>
+                  {descriptors[route.key].options.tabBarIcon?.({ focused, color: tint })}
+                  <Text numberOfLines={1} style={[styles.label, { color: tint }]}>
+                    {route.name}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
         </View>
-      </View>
+      </Glass>
     </View>
   );
 }
 
-const styles = sheet((theme) => ({
+const styles = sheet(() => ({
   bar: {
     position: 'absolute',
     left: 0,
@@ -147,31 +139,21 @@ const styles = sheet((theme) => ({
     bottom: 0,
     paddingHorizontal: SIDE_GAP,
   },
-  // Sin esquinas: el radio es casi la mitad de su alto, que es lo que la deja a un pelo
-  // de ser una pastilla sin llegar a serlo.
   island: {
     alignSelf: 'center',
     width: ISLAND_WIDTH,
-    backgroundColor: theme.surfaceWarm,
-    borderWidth: shape.border,
-    borderColor: theme.line,
-    borderRadius: ISLAND_HEIGHT / 2 - 2,
+    borderRadius: ISLAND_HEIGHT / 2,
     padding: ISLAND_PADDING,
-    ...hardShadow(theme),
   },
   row: {
-    flexDirection: 'row',
     height: ROW_HEIGHT,
   },
-  block: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    backgroundColor: theme.accent,
-    borderWidth: shape.border,
-    borderColor: theme.line,
-    borderRadius: ROW_HEIGHT / 2 - 2,
-    ...hardShadow(theme, 3, 'button'),
+  selector: {
+    height: ROW_HEIGHT,
+  },
+  items: {
+    ...StyleSheet.absoluteFill,
+    flexDirection: 'row',
   },
   item: {
     flex: 1,
@@ -179,13 +161,8 @@ const styles = sheet((theme) => ({
     justifyContent: 'center',
     gap: 3,
   },
-  pressed: {
-    opacity: 0.55,
-  },
   label: {
-    fontSize: 10,
-    fontFamily: font.black,
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
+    fontSize: 11,
+    fontFamily: font.bold,
   },
 }));

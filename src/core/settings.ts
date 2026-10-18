@@ -8,6 +8,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { isRealDate, todayIso, type IsoDate } from './dates.ts';
+import { backgroundsProblem } from './backgrounds.ts';
 import { scoreScaleProblem, type PaletteId } from './palettes.ts';
 import type { WeightUnit } from './units.ts';
 import type { Phase, TargetProfile } from './targets.ts';
@@ -35,7 +36,8 @@ export type SettingKey =
   | 'deal_watchlist'
   | 'deal_blocklist'
   | 'deals_seen_at'
-  | 'water_taps';
+  | 'water_taps'
+  | 'backgrounds';
 
 export type Settings = ReadonlyMap<string, string>;
 
@@ -219,6 +221,12 @@ export function settingProblem(
         return scoreScaleProblem(JSON.parse(value));
       } catch {
         return 'La escala no es válida.';
+      }
+    case 'backgrounds':
+      try {
+        return backgroundsProblem(JSON.parse(value));
+      } catch {
+        return 'los fondos no son válidos';
       }
     case 'palette':
       return PALETTES.has(trimmed) ? null : 'no es una de las tres paletas';

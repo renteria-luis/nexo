@@ -80,6 +80,7 @@ export type SettingsScreenProps = {
   /** Llevan a las dos pantallas donde edita los catalogos. */
   onOpenExercises: () => void;
   onOpenFoods: () => void;
+  onOpenBackgrounds: () => void;
 };
 
 /** Los cinco que puede apagar por su lado. El resumen del domingo va con el cierre. */
@@ -133,6 +134,7 @@ export function SettingsScreen({
   onClearSetting,
   onOpenExercises,
   onOpenFoods,
+  onOpenBackgrounds,
   transitSettings,
 }: SettingsScreenProps) {
   const [confirmingReset, setConfirmingReset] = useState(false);
@@ -418,6 +420,19 @@ export function SettingsScreen({
         <Text style={styles.note}>
           Estas mandan: una oferta con una de ellas no sale, aunque vigiles otra que sí tenga.
         </Text>
+      </Card>
+
+      <Card title="Fondos">
+        <Text style={styles.note}>
+          Un color, un degradado o una foto tuya detrás de cada pantalla.
+        </Text>
+        <Button
+          label="Elegir fondos"
+          accessibilityLabel="Elegir los fondos de las pantallas"
+          icon={ChevronRight}
+          block
+          onPress={onOpenBackgrounds}
+        />
       </Card>
 
       <Card title="Catálogo">

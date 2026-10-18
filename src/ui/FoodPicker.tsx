@@ -13,7 +13,7 @@ import { Button } from './Button.tsx';
 import { IconButton } from './IconButton.tsx';
 import { ChevronDown, ChevronUp, Pencil } from './icons.ts';
 import { SearchField } from './SearchField.tsx';
-import { font, hardShadow, pressed as pressedInto, sheet, shape } from './theme.ts';
+import { font, pressed as pressedInto, sheet, shape } from './theme.ts';
 
 /**
  * De donde elige el alimento que va a anotar.
@@ -242,12 +242,11 @@ const styles = sheet((theme) => ({
   },
   rowOn: {
     backgroundColor: theme.accent,
-    ...hardShadow(theme, 3),
   },
   rowOff: {
     backgroundColor: theme.surface,
   },
-  pressed: pressedInto(3),
+  pressed: pressedInto(),
   pressedFlat: {
     opacity: 0.6,
   },

@@ -38,13 +38,17 @@ import {
   Wallet,
   type LucideIcon,
 } from './icons.ts';
-import { font, hardShadow, sheet, shape, theme } from './theme.ts';
+import { Glass } from './Glass.tsx';
+import { font, gloss, sheet, shape, theme } from './theme.ts';
 import { goTo, type Navigate } from './navigation.ts';
 import { useSwipeLock } from './SwipeLock.tsx';
 import { TRANSIT_ENABLED } from '../transit/index.ts';
 
 /**
  * El menu lateral: todo lo que la app sabe hacer, ordenado, sin gastar sitio abajo.
+ *
+ * Es un panel de vidrio que flota separado de los bordes (2026-10-18), y la pantalla
+ * abierta lleva la misma burbuja de vidrio claro que la barra de abajo.
  *
  * La barra de abajo es para el pulgar y para lo de todos los dias, asi que solo lleva
  * tres. Lo demas vive aqui con la forma del sidebar de la referencia: titulo de seccion
@@ -133,6 +137,8 @@ const FOOT: Entry[] = [
 
 /** Lo que mide el panel: casi toda la pantalla, pero dejando ver que hay algo detras. */
 const WIDTH = 300;
+/** Lo que el panel se separa de los bordes de la pantalla. */
+const EDGE = 8;
 const RISE_MS = 220;
 const FALL_MS = 180;
 
@@ -245,79 +251,88 @@ export function SidebarProvider({
     );
   };
 
+  // Un panel de vidrio que flota separado de los bordes, como las barras laterales de
+  // iOS 26. Escondido se corre su ancho mas el aire y la sombra, para no asomar.
   const panel = (
     <Animated.View
       style={[
-        styles.panel,
+        styles.frame,
         {
           width: WIDTH,
-          paddingTop: insets.top + 10,
-          paddingBottom: insets.bottom + 10,
+          top: insets.top + EDGE,
+          bottom: insets.bottom + EDGE,
           transform: [
-            { translateX: slide.interpolate({ inputRange: [0, 1], outputRange: [-WIDTH, 0] }) },
+            {
+              translateX: slide.interpolate({
+                inputRange: [0, 1],
+                outputRange: [-WIDTH - EDGE * 4, 0],
+              }),
+            },
           ],
         },
       ]}
       {...drag.panHandlers}
     >
-      <View style={styles.head}>
-        <View style={styles.brand}>
-          <Text style={styles.brandText}>nexo</Text>
+      <Glass style={styles.panel}>
+        <View style={styles.head}>
+          <View style={styles.brand}>
+            <Text style={styles.brandText}>nexo</Text>
+          </View>
         </View>
-      </View>
 
-      <ScrollView contentContainerStyle={styles.list}>
-        {SECTIONS.map((section) => (
-          <View key={section.title} style={styles.section}>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
-            {section.nodes.map((node) =>
-              isFolder(node) ? (
-                <View key={node.label}>
+        <ScrollView contentContainerStyle={styles.list}>
+          {SECTIONS.map((section) => (
+            <View key={section.title} style={styles.section}>
+              <Text style={styles.sectionTitle}>{section.title}</Text>
+              {section.nodes.map((node) =>
+                isFolder(node) ? (
+                  <View key={node.label}>
+                    <Row
+                      icon={node.icon}
+                      label={node.label}
+                      chevron={unfolded.includes(node.label) ? ChevronDown : ChevronRight}
+                      onPress={() => fold(node.label)}
+                    />
+                    {unfolded.includes(node.label) && (
+                      <View style={styles.children}>
+                        {node.children.map((child) => (
+                          <Row
+                            key={child.route}
+                            icon={child.icon}
+                            label={child.label}
+                            here={child.route === here}
+                            onPress={() => go(child)}
+                          />
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                ) : (
                   <Row
+                    key={node.route}
                     icon={node.icon}
                     label={node.label}
-                    chevron={unfolded.includes(node.label) ? ChevronDown : ChevronRight}
-                    onPress={() => fold(node.label)}
+                    here={node.route === here}
+                    onPress={() => go(node)}
                   />
-                  {unfolded.includes(node.label) && (
-                    <View style={styles.children}>
-                      {node.children.map((child) => (
-                        <Row
-                          key={child.route}
-                          icon={child.icon}
-                          label={child.label}
-                          here={child.route === here}
-                          onPress={() => go(child)}
-                        />
-                      ))}
-                    </View>
-                  )}
-                </View>
-              ) : (
-                <Row
-                  key={node.route}
-                  icon={node.icon}
-                  label={node.label}
-                  here={node.route === here}
-                  onPress={() => go(node)}
-                />
-              ),
-            )}
-          </View>
-        ))}
-      </ScrollView>
+                ),
+              )}
+            </View>
+          ))}
+        </ScrollView>
 
-      <View style={styles.foot}>
-        {FOOT.map((entry) => (
-          <Row
-            key={entry.route}
-            icon={entry.icon}
-            label={entry.label}
-            here={entry.route === here}
-            onPress={() => go(entry)}
-          />
-        ))}
-      </View>
+        <View style={styles.foot}>
+          {FOOT.map((entry) => (
+            <Row
+              key={entry.route}
+              icon={entry.icon}
+              label={entry.label}
+              here={entry.route === here}
+              onPress={() => go(entry)}
+            />
+          ))}
+        </View>
+      </Glass>
     </Animated.View>
   );
 
@@ -355,7 +370,7 @@ function Row({
   here?: boolean;
   chevron?: LucideIcon;
 }) {
-  const ink = here ? theme.accentInk : theme.text;
+  const ink = here ? theme.text : theme.textDim;
   return (
     <Pressable
       accessibilityRole="button"
@@ -384,33 +399,34 @@ const styles = sheet((theme) => ({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+    // Menos oscuro que antes: el vidrio del panel necesita algo detras que se vea.
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  frame: {
+    position: 'absolute',
+    left: EDGE,
   },
   panel: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    bottom: 0,
-    backgroundColor: theme.bg,
-    borderRightWidth: shape.border,
-    borderRightColor: theme.line,
+    flex: 1,
+    borderRadius: 30,
     paddingHorizontal: 12,
+    paddingVertical: 14,
     gap: 10,
-    ...hardShadow(theme),
   },
   head: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 4,
     paddingBottom: 10,
     borderBottomWidth: shape.border,
-    borderBottomColor: theme.line,
+    borderBottomColor: theme.lineSoft,
   },
   brand: {
-    backgroundColor: theme.accent,
+    ...gloss(theme.accent),
     borderWidth: shape.border,
-    borderColor: theme.line,
-    borderRadius: shape.radiusSmall,
-    paddingHorizontal: 10,
+    borderRadius: 16,
+    borderCurve: 'continuous',
+    paddingHorizontal: 14,
     paddingVertical: 3,
   },
   brandText: {
@@ -446,15 +462,18 @@ const styles = sheet((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    minHeight: 40,
-    paddingHorizontal: 8,
+    minHeight: 42,
+    paddingHorizontal: 10,
     borderWidth: shape.border,
     borderColor: 'transparent',
-    borderRadius: shape.radiusSmall,
+    borderRadius: 21,
+    borderCurve: 'continuous',
   },
+  // La pantalla abierta, con la misma burbuja de vidrio claro que la barra de abajo.
   rowHere: {
-    backgroundColor: theme.accent,
-    borderColor: theme.line,
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+    borderColor: 'rgba(255, 255, 255, 0.28)',
+    boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.45), 0 2px 8px rgba(0, 0, 0, 0.2)',
   },
   rowPressed: {
     backgroundColor: theme.surfaceHigh,
@@ -466,11 +485,11 @@ const styles = sheet((theme) => ({
     color: theme.text,
   },
   labelHere: {
-    color: theme.accentInk,
+    color: theme.text,
   },
   foot: {
     borderTopWidth: shape.border,
-    borderTopColor: theme.line,
+    borderTopColor: theme.lineSoft,
     paddingTop: 8,
   },
 }));

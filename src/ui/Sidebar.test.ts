@@ -7,12 +7,13 @@ function fixture() {
   let route = 'Hoy';
   const screen = renderModule('src/ui/Sidebar.tsx', {
     './SwipeLock.tsx': { useSwipeLock: () => ({ isLocked: () => locked }) },
+    './Glass.tsx': { Glass: 'Glass' },
     './icons.ts': new Proxy({}, { get: (_target, name) => String(name) }),
     './theme.ts': {
       font: {},
+      gloss: () => ({}),
       shape: {},
       theme: {},
-      hardShadow: () => ({}),
       sheet: (make: (theme: unknown) => unknown) => make({}),
     },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },

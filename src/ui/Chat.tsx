@@ -22,7 +22,7 @@ import { Button } from './Button.tsx';
 import { List, Plus, Send, X } from './icons.ts';
 import { IconButton } from './IconButton.tsx';
 import { TextField } from './TextField.tsx';
-import { font, hardShadow, sheet, shape } from './theme.ts';
+import { font, sheet, shape } from './theme.ts';
 
 type SetTarget = {
   exerciseId: string | null;
@@ -643,7 +643,6 @@ const styles = sheet((theme) => ({
     borderRadius: shape.radiusLarge,
     padding: 12,
     gap: 10,
-    ...hardShadow(theme),
   },
   head: {
     flexDirection: 'row',

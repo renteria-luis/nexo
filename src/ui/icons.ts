@@ -38,6 +38,7 @@ export { default as Dumbbell } from 'lucide-react-native/icons/dumbbell';
 export { default as ExternalLink } from 'lucide-react-native/icons/external-link';
 export { default as Eye } from 'lucide-react-native/icons/eye';
 export { default as EyeOff } from 'lucide-react-native/icons/eye-off';
+export { default as Flame } from 'lucide-react-native/icons/flame';
 export { default as FlaskConical } from 'lucide-react-native/icons/flask-conical';
 export { default as Flag } from 'lucide-react-native/icons/flag';
 export { default as Footprints } from 'lucide-react-native/icons/footprints';

@@ -22,16 +22,20 @@ import {
   View,
 } from 'react-native';
 
+import { NavigationRouteContext } from '@react-navigation/native';
+
+import { backgroundFor, GENERAL } from '../../core/backgrounds.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 import { exportNote } from '../../shell/backup-file.ts';
+import { useBackgrounds } from '../background-editing.tsx';
 import { Button } from '../Button.tsx';
+import { SceneContext } from '../scene.ts';
 import { FloatingBarSpace } from '../TabBar.tsx';
 import { font, sheet } from '../theme.ts';
 
 /**
- * The frame every tab shares: scrolls, paints the full height so nothing shows
- * through underneath, and refuses to render its contents until the database is
- * open. A screen that opened on a failed database would look empty rather than
+ * The frame every tab shares: scrolls over the app's background, and refuses to
+ * render its contents until the database is open. A screen that opened on a failed database would look empty rather than
  * broken.
  *
  * El teclado se resuelve con las tres propiedades que ya trae el ScrollView de iOS y
@@ -146,6 +150,30 @@ export function Screen({
   const list = useRef<ScrollView>(null);
   const frame = useRef<View>(null);
   const offset = useRef(0);
+  // Lo que las tarjetas necesitan para dibujar el fondo que tapan: el de esta pantalla,
+  // lo desplazado, y una cuenta que sube cuando el contenido cambia de alto.
+  const route = useContext(NavigationRouteContext);
+  const background = backgroundFor(useBackgrounds(), route?.name ?? GENERAL);
+  const [scrollY] = useState(() => new Animated.Value(0));
+  const [epoch, setEpoch] = useState(0);
+  const scene = useMemo(
+    () => ({ background, scrollY, offset, frame, epoch }),
+    [background, scrollY, epoch],
+  );
+  const onScroll = useMemo(
+    () =>
+      Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+        useNativeDriver: true,
+      }),
+    [scrollY],
+  );
+  // Lo desplazado tambien en JS, para subir el campo sobre el teclado y para medir.
+  useEffect(() => {
+    const id = scrollY.addListener(({ value }) => {
+      offset.current = value;
+    });
+    return () => scrollY.removeListener(id);
+  }, [scrollY]);
   // Lo que se subio el contenido para dejar ver el campo, y que hay que devolver
   // cuando el teclado se va: si no, la pantalla se queda mirando un hueco.
   const lifted = useRef(0);
@@ -270,7 +298,7 @@ export function Screen({
   }, [raise, rise]);
 
   const scroll = (
-    <ScrollView
+    <Animated.ScrollView
       ref={list}
       scrollEnabled={scrollEnabled && !hasOverlay}
       accessibilityElementsHidden={hasOverlay}
@@ -287,8 +315,9 @@ export function Screen({
           />
         ) : undefined
       }
-      onScroll={(event) => (offset.current = event.nativeEvent.contentOffset.y)}
-      scrollEventThrottle={32}
+      onScroll={onScroll}
+      onContentSizeChange={() => setEpoch((count) => count + 1)}
+      scrollEventThrottle={16}
       // Un toque en un boton con el teclado abierto lo pulsa a la primera; uno en
       // cualquier otro sitio sigue cerrando el teclado.
       keyboardShouldPersistTaps="handled"
@@ -305,99 +334,101 @@ export function Screen({
         { paddingBottom: CONTENT_BOTTOM + (keyboard > 0 ? keyboard : barSpace) },
       ]}
     >
-      {header ??
-        (title ? (
-          <View style={styles.titleRow}>
-            <Text style={styles.title}>{title}</Text>
-            {action}
+      <SceneContext.Provider value={scene}>
+        {header ??
+          (title ? (
+            <View style={styles.titleRow}>
+              <Text style={styles.title}>{title}</Text>
+              {action}
+            </View>
+          ) : null)}
+        {refreshProblem && state.phase === 'ready' && state.problem === null && (
+          <View style={styles.problem}>
+            <Text style={styles.error}>No se pudo actualizar: {refreshProblem}</Text>
+            <Button label="Reintentar actualización" onPress={refresh} disabled={refreshing} />
           </View>
-        ) : null)}
-      {refreshProblem && state.phase === 'ready' && state.problem === null && (
-        <View style={styles.problem}>
-          <Text style={styles.error}>No se pudo actualizar: {refreshProblem}</Text>
-          <Button label="Reintentar actualización" onPress={refresh} disabled={refreshing} />
-        </View>
-      )}
+        )}
 
-      {state.phase === 'opening' && <ActivityIndicator accessibilityLabel="Abriendo la base" />}
+        {state.phase === 'opening' && <ActivityIndicator accessibilityLabel="Abriendo la base" />}
 
-      {state.phase === 'failed' && (
-        <View style={styles.failure}>
-          <Text style={styles.error}>No se pudo cargar: {state.message}</Text>
-          {/* Sin una carga buena no se llega ni a Ajustes, asi que el respaldo tambien
+        {state.phase === 'failed' && (
+          <View style={styles.failure}>
+            <Text style={styles.error}>No se pudo cargar: {state.message}</Text>
+            {/* Sin una carga buena no se llega ni a Ajustes, asi que el respaldo tambien
               vive aqui: primero reintentar y sacar los datos. Borrar va al final y
               pregunta, porque se pierde lo registrado. */}
-          <View style={styles.failureButtons}>
+            <View style={styles.failureButtons}>
+              <Button
+                label="Reintentar"
+                accessibilityLabel="Reintentar la carga"
+                variant="primary"
+                block
+                onPress={retry}
+              />
+              <Button
+                label="Exportar"
+                accessibilityLabel="Exportar todo a un archivo"
+                loading={exporting}
+                disabled={exporting}
+                block
+                onPress={() => {
+                  setExporting(true);
+                  setExported('Escribiendo…');
+                  exportData()
+                    .then((outcome) => setExported(exportNote(outcome)))
+                    .catch((error: unknown) =>
+                      setExported(error instanceof Error ? error.message : String(error)),
+                    )
+                    .finally(() => setExporting(false));
+                }}
+              />
+              {exported !== null && <Text style={styles.note}>{exported}</Text>}
+              {confirming ? (
+                <>
+                  <Button
+                    label="Sí, borrar y empezar de cero"
+                    accessibilityLabel="Confirmar borrado"
+                    variant="danger"
+                    block
+                    onPress={() => {
+                      setConfirming(false);
+                      resetDatabase();
+                    }}
+                  />
+                  <Button
+                    label="Cancelar"
+                    accessibilityLabel="Cancelar borrado"
+                    block
+                    onPress={() => setConfirming(false)}
+                  />
+                </>
+              ) : (
+                <Button
+                  label="Borrar la base de datos"
+                  accessibilityLabel="Borrar la base de datos"
+                  block
+                  onPress={() => setConfirming(true)}
+                />
+              )}
+            </View>
+          </View>
+        )}
+
+        {state.phase === 'ready' && state.problem !== null && (
+          <View style={styles.problem}>
+            <Text style={styles.error}>No se pudo recargar: {state.problem}</Text>
             <Button
               label="Reintentar"
               accessibilityLabel="Reintentar la carga"
-              variant="primary"
               block
               onPress={retry}
             />
-            <Button
-              label="Exportar"
-              accessibilityLabel="Exportar todo a un archivo"
-              loading={exporting}
-              disabled={exporting}
-              block
-              onPress={() => {
-                setExporting(true);
-                setExported('Escribiendo…');
-                exportData()
-                  .then((outcome) => setExported(exportNote(outcome)))
-                  .catch((error: unknown) =>
-                    setExported(error instanceof Error ? error.message : String(error)),
-                  )
-                  .finally(() => setExporting(false));
-              }}
-            />
-            {exported !== null && <Text style={styles.note}>{exported}</Text>}
-            {confirming ? (
-              <>
-                <Button
-                  label="Sí, borrar y empezar de cero"
-                  accessibilityLabel="Confirmar borrado"
-                  variant="danger"
-                  block
-                  onPress={() => {
-                    setConfirming(false);
-                    resetDatabase();
-                  }}
-                />
-                <Button
-                  label="Cancelar"
-                  accessibilityLabel="Cancelar borrado"
-                  block
-                  onPress={() => setConfirming(false)}
-                />
-              </>
-            ) : (
-              <Button
-                label="Borrar la base de datos"
-                accessibilityLabel="Borrar la base de datos"
-                block
-                onPress={() => setConfirming(true)}
-              />
-            )}
           </View>
-        </View>
-      )}
+        )}
 
-      {state.phase === 'ready' && state.problem !== null && (
-        <View style={styles.problem}>
-          <Text style={styles.error}>No se pudo recargar: {state.problem}</Text>
-          <Button
-            label="Reintentar"
-            accessibilityLabel="Reintentar la carga"
-            block
-            onPress={retry}
-          />
-        </View>
-      )}
-
-      {state.phase === 'ready' && children}
-    </ScrollView>
+        {state.phase === 'ready' && children}
+      </SceneContext.Provider>
+    </Animated.ScrollView>
   );
 
   return (
@@ -507,11 +538,9 @@ const styles = sheet((theme) => ({
   },
   scroll: {
     flex: 1,
-    backgroundColor: theme.bg,
   },
   content: {
     flexGrow: 1,
-    backgroundColor: theme.bg,
     paddingHorizontal: 20,
     paddingTop: 14,
     paddingBottom: CONTENT_BOTTOM,

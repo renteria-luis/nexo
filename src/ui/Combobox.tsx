@@ -5,7 +5,7 @@ import { matchesSearch } from '../nutrition/index.ts';
 import { Check, ChevronDown, type LucideIcon } from './icons.ts';
 import { useInfo } from './InfoBubble.tsx';
 import { SearchField } from './SearchField.tsx';
-import { font, hardShadow, pressed as pressedInto, sheet, shape, theme } from './theme.ts';
+import { font, glass, pressed as pressedInto, sheet, shape, theme } from './theme.ts';
 
 /**
  * Elegir uno de una lista larga: el boton dice cual esta puesto y al tocarlo se abre la
@@ -126,14 +126,13 @@ const styles = sheet((theme) => ({
     alignItems: 'center',
     gap: 10,
     minHeight: 42,
-    paddingHorizontal: 12,
-    backgroundColor: theme.surface,
+    paddingHorizontal: 14,
     borderWidth: shape.border,
-    borderColor: theme.line,
-    borderRadius: shape.radiusSmall,
-    ...hardShadow(theme, 3, 'button'),
+    borderRadius: 21,
+    borderCurve: 'continuous',
+    ...glass.control,
   },
-  triggerPressed: pressedInto(3),
+  triggerPressed: pressedInto(),
   value: {
     flex: 1,
     fontSize: 15,

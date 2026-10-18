@@ -1,7 +1,7 @@
 import { InputAccessoryView, Keyboard, Platform, Pressable, Text, View } from 'react-native';
 
 import { Check } from './icons.ts';
-import { font, hardShadow, pressed, sheet, shape, theme } from './theme.ts';
+import { font, pressed, sheet, shape, theme } from './theme.ts';
 
 /**
  * La barra que va pegada encima del teclado de iOS.
@@ -59,9 +59,8 @@ const styles = sheet((theme) => ({
     borderWidth: shape.border,
     borderColor: theme.line,
     borderRadius: shape.radiusSmall,
-    ...hardShadow(theme, 3),
   },
-  donePressed: pressed(3),
+  donePressed: pressed(),
   label: {
     fontSize: 15,
     fontFamily: font.black,

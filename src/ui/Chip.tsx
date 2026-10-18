@@ -1,14 +1,14 @@
 import { Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { LucideIcon } from './icons.ts';
 
-import { font, hardShadow, pressed as pressedInto, sheet, shape, theme } from './theme.ts';
+import { font, glass, gloss, pressed as pressedInto, sheet, shape, theme } from './theme.ts';
 
 /**
  * Una opcion de una lista corta: la fase, la unidad, los filtros, los avisos.
  *
- * Elegida se levanta del papel y se pinta de amarillo; sin elegir se queda plana. El
- * relieve es la senal, no el color, que es lo mismo que pide la spec 4.5 para los
- * cuadritos y vale igual aqui.
+ * Elegida se llena de ambar con tinta oscura; sin elegir es translucida con letra
+ * clara. La senal es la claridad, no el tono, que es lo mismo que pide la spec 4.5 para
+ * los cuadritos y vale igual aqui.
  */
 export type ChipProps = {
   label: string;
@@ -42,7 +42,7 @@ export function Chip({
         styles.chip,
         selected ? styles.on : styles.off,
         disabled && styles.disabled,
-        pressed && !disabled && (selected ? styles.pressed : styles.pressedFlat),
+        pressed && !disabled && styles.pressed,
         style,
       ]}
     >
@@ -60,8 +60,8 @@ const styles = sheet((theme) => ({
     minHeight: 38,
     borderWidth: shape.border,
     borderColor: theme.line,
-    borderRadius: shape.radiusSmall,
-    paddingHorizontal: 12,
+    borderRadius: 19,
+    paddingHorizontal: 14,
     justifyContent: 'center',
   },
   inner: {
@@ -73,20 +73,12 @@ const styles = sheet((theme) => ({
     fontSize: 13,
     fontFamily: font.bold,
   },
-  on: {
-    backgroundColor: theme.accent,
-    ...hardShadow(theme, 3, 'button'),
-  },
-  off: {
-    backgroundColor: theme.surface,
-  },
+  on: gloss(theme.accent),
+  off: glass.control,
   disabled: {
+    ...glass.none,
     backgroundColor: 'transparent',
     borderColor: theme.lineSoft,
-    shadowOpacity: 0,
   },
-  pressed: pressedInto(3),
-  pressedFlat: {
-    opacity: 0.7,
-  },
+  pressed: pressedInto(),
 }));

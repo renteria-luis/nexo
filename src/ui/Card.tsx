@@ -1,15 +1,15 @@
 import type { ReactNode } from 'react';
-import { Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { font, hardShadow, pressed as pressedInto, sheet, shape } from './theme.ts';
+import { CardFrost } from './CardFrost.tsx';
+import { font, glass, gloss, pressed as pressedInto, sheet, shape } from './theme.ts';
 
 /**
- * La cartilla: una hoja de papel con borde de tinta y sombra dura debajo.
+ * La cartilla: un panel de vidrio con su brillo y su sombra, encima del fondo de la app.
  *
- * Todo lo que en la app es "un bloque de informacion" pasa por aqui, porque la unica
- * forma de que el relieve se lea es que todos los bloques lo tengan igual. Una que se
- * toca se mete dentro de su propia sombra, lo mismo que un boton: si se hunde, se
- * puede tocar.
+ * Todo lo que en la app es "un bloque de informacion" pasa por aqui, para que todos los
+ * bloques se vean iguales. Una que se toca se apaga y se encoge un poco al presionarla,
+ * lo mismo que un boton.
  */
 export type CardTone = 'paper' | 'accent' | 'ok' | 'warn' | 'info' | 'danger';
 
@@ -18,12 +18,9 @@ export type CardProps = {
   title?: string;
   /** Algo pequeno pegado a la derecha del titulo, como el rango de una grafica. */
   action?: ReactNode;
-  /**
-   * El color de la hoja, plano y saturado como manda el estilo. Sobre cualquiera que
-   * no sea papel la tinta es negra en los dos modos, porque el color es el mismo.
-   */
+  /** Un color lleno para lo que tiene que llamar la atencion. Encima va tinta oscura. */
   tone?: CardTone;
-  /** Sin relieve, para lo que esta apagado o solo acompana. */
+  /** Con el filo apagado, para lo que esta apagado o solo acompana. */
   raised?: boolean;
   onPress?: () => void;
   accessibilityLabel?: string;
@@ -40,8 +37,16 @@ export function Card({
   accessibilityLabel,
   style,
 }: CardProps) {
+  // El panel de vidrio desenfoca y oscurece un poco lo que tiene detras, sea cual sea el
+  // fondo elegido (2026-10-18, a peticion suya): sobre una foto, la tarjeta se separa de
+  // ella y lo de encima se lee. Un color lleno ya tapa lo de detras y no lo necesita.
+  const frost = tone === 'paper';
   const inside = (
     <>
+      {/* Capas propias y no el fondo de la tarjeta: si la tarjeta recortara, se comeria
+          su sombra. La luz del vidrio va encima del esmerilado, que si no la apagaria. */}
+      {frost && <CardFrost radius={shape.radius - shape.border} />}
+      {frost && <View pointerEvents="none" style={styles.frostLight} />}
       {title && action ? (
         <View style={styles.head}>
           <Text style={[styles.title, styles.grow, tone !== 'paper' && styles.titleOnColor]}>
@@ -60,7 +65,7 @@ export function Card({
     return (
       <View
         accessibilityLabel={accessibilityLabel}
-        style={[styles.card, styles[tone], !raised && styles.flat, style]}
+        style={[styles.card, styles[tone], !raised && styles.flat, frost && styles.frosted, style]}
       >
         {inside}
       </View>
@@ -76,8 +81,8 @@ export function Card({
         styles.card,
         styles[tone],
         !raised && styles.flat,
-        pressed && raised && styles.pressed,
-        pressed && !raised && styles.pressedFlat,
+        frost && styles.frosted,
+        pressed && styles.pressed,
         style,
       ]}
     >
@@ -92,17 +97,24 @@ const styles = sheet((theme) => ({
     borderWidth: shape.border,
     borderColor: theme.line,
     borderRadius: shape.radius,
-    padding: 14,
+    borderCurve: 'continuous',
+    padding: 16,
     gap: 8,
-    ...hardShadow(theme),
   },
   flat: {
-    shadowOpacity: 0,
+    borderColor: theme.lineSoft,
+  },
+  frosted: {
+    backgroundColor: 'transparent',
+    experimental_backgroundImage: [],
+  },
+  frostLight: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: shape.radius,
+    borderCurve: 'continuous',
+    experimental_backgroundImage: glass.panel.experimental_backgroundImage,
   },
   pressed: pressedInto(),
-  pressedFlat: {
-    opacity: 0.75,
-  },
   head: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -119,22 +131,10 @@ const styles = sheet((theme) => ({
   titleOnColor: {
     color: theme.accentInk,
   },
-  paper: {
-    backgroundColor: theme.surface,
-  },
-  accent: {
-    backgroundColor: theme.accent,
-  },
-  ok: {
-    backgroundColor: theme.ok,
-  },
-  warn: {
-    backgroundColor: theme.warn,
-  },
-  info: {
-    backgroundColor: theme.info,
-  },
-  danger: {
-    backgroundColor: theme.danger,
-  },
+  paper: glass.panel,
+  accent: gloss(theme.accent),
+  ok: gloss(theme.ok),
+  warn: gloss(theme.warn),
+  info: gloss(theme.info),
+  danger: gloss(theme.danger),
 }));

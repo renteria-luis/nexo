@@ -6,7 +6,7 @@
     "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.luisrenteria.nexo",
@@ -26,6 +26,14 @@
     },
     "plugins": [
       "expo-sqlite",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Nexo abre tus fotos solo para que elijas el fondo de una pantalla.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
       [
         "expo-location",
         {
