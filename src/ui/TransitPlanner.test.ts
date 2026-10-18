@@ -87,7 +87,8 @@ function props(lives: unknown[], changes: Record<string, unknown> = {}): Record<
 
 // The search yields to the screen between slices with timers, which settle() alone does not run.
 async function searched(screen: ReturnType<typeof mount>, done: (tree: unknown) => boolean) {
-  for (let i = 0; i < 50; i++) {
+  // Generous, since a loaded machine slows the search's slices; it returns as soon as it is done.
+  for (let i = 0; i < 250; i++) {
     await new Promise((resolve) => setTimeout(resolve, 2));
     const tree = await screen.settle();
     if (done(tree)) return tree;

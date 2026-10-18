@@ -25,7 +25,8 @@ const toFix = (location: Location.LocationObject): Fix => ({
   accuracy: location.coords.accuracy ?? null,
   speed:
     location.coords.speed !== null && location.coords.speed >= 0 ? location.coords.speed : null,
-  at: location.timestamp,
+  // iOS stamps a reading with a fraction of a millisecond, which the INTEGER columns refuse.
+  at: Math.round(location.timestamp),
 });
 
 let watch: Location.LocationSubscription | null = null;

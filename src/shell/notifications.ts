@@ -314,7 +314,7 @@ export async function syncTripAlarms(
       for (const alarm of permission && trip ? due : []) {
         await db.runAsync(
           'INSERT INTO transit_trip_notice (trip_id, event, fires_at, consumed) VALUES (?, ?, ?, 0) ON CONFLICT(trip_id, event) DO UPDATE SET fires_at = excluded.fires_at;',
-          [trip!.id, alarm.key, alarm.at],
+          [trip!.id, alarm.key, Math.round(alarm.at)],
         );
       }
     });

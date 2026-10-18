@@ -589,3 +589,45 @@ test('the bus on the line can be tapped to see it on the map, and its source sho
   assert.match(textOf(tree), /posición estimada con las predicciones de LTC · sin GPS/);
   assert.match(textOf(tree), /Es una estimación, no un GPS/);
 });
+
+test('on his trip the line glows from where he boards to where he gets off, with no other departures', async (t) => {
+  const schedule = scheduleFixture();
+  const trip = schedule.trips[1];
+  const at = (index: number): Departure => ({
+    trip,
+    route: schedule.routes[0],
+    stopTime: schedule.patterns[0][index],
+    serviceDate: '2026-10-11',
+    at: scheduledTime('2026-10-11', trip[7] + schedule.patterns[0][index][3]),
+  });
+  t.mock.method(Date, 'now', () => at(0).at - 60_000);
+  const props: Record<string, unknown> = {
+    schedule,
+    departure: at(0),
+    choices: [at(0)],
+    snapshot: null,
+    active: false,
+    onSelect: () => undefined,
+    onClose: () => undefined,
+  };
+  const mount = () =>
+    renderModule('src/ui/TransitDepartures.tsx', {
+      '../transit/realtime.ts': realtime,
+      './icons.ts': ICONS,
+    }).mount('TransitTripTimeline', props);
+  const glows = (tree: Parameters<typeof nodes>[0]) =>
+    nodes(tree).filter((node) => node.type === 'Animated.View').length;
+  let tree = await mount().settle();
+  assert.equal(glows(tree), 0, 'Paradas keeps its plain line');
+  const departures = (tree: Parameters<typeof nodes>[0]) =>
+    nodes(tree).filter((node) => /^Salida de las /.test(node.props.accessibilityLabel ?? ''))
+      .length;
+  assert.ok(departures(tree) > 0);
+
+  props.alighting = at(1);
+  tree = await mount().settle();
+  assert.equal(glows(tree), 2, 'below his stop and above the one where he gets off');
+  assert.match(textOf(tree), /Aquí subes/);
+  assert.match(textOf(tree), /Aquí bajas/);
+  assert.equal(departures(tree), 0);
+});

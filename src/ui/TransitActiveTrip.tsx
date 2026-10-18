@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Linking, Text, View } from 'react-native';
 
 import { useTransitJourney } from '../shell/TransitJourney.tsx';
 import type { GpsStatus } from '../shell/trip-tracker.ts';
 import { headingTo } from '../core/geo.ts';
 import {
+  departureOf,
   isActive,
   rideStopAt,
   stopLabel,
@@ -17,7 +18,7 @@ import {
 import { agencyClock } from '../transit/schedule.ts';
 import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
-import { relative } from './TransitDepartures.tsx';
+import { relative, TransitTripTimeline } from './TransitDepartures.tsx';
 import { RouteBadge } from './TransitStatus.tsx';
 import { TransitTripMap } from './TransitTripMap.tsx';
 import { font, sheet } from './theme.ts';
@@ -129,6 +130,51 @@ export function tripLines(
   }
 }
 
+/**
+ * His bus's whole route as Paradas shows it, its line lit from where he boards to where he gets
+ * off; a list of his stops when the saved schedule no longer has his bus.
+ */
+function TripStops({
+  trip,
+  ride,
+  live,
+  now,
+  onClose,
+}: {
+  trip: ActiveTrip;
+  ride: TripRide;
+  live: TripLive | null;
+  now: number;
+  onClose: () => void;
+}) {
+  const schedule = live?.schedule;
+  const ends = useMemo(() => {
+    if (!schedule) return null;
+    const board = departureOf(trip, ride, 0, schedule);
+    const alight = departureOf(trip, ride, ride.stops.length - 1, schedule);
+    return board && alight ? { board, alight, choices: [board] } : null;
+  }, [trip, ride, schedule]);
+  if (schedule && ends)
+    return (
+      <TransitTripTimeline
+        schedule={schedule}
+        departure={ends.board}
+        choices={ends.choices}
+        alighting={ends.alight}
+        snapshot={live.snapshot}
+        active
+        onSelect={() => undefined}
+        onClose={onClose}
+      />
+    );
+  return ride.stops.map((stop, index) => (
+    <Text key={`${stop.id}:${stop.position}`} style={styles.note}>
+      {index + 1}. {stopLabel(stop)} · {agencyClock(rideStopAt(trip, ride, index, live, now).at)}
+      {index === ride.stops.length - 1 ? ' · Aquí bajas' : ''}
+    </Text>
+  ));
+}
+
 export function TransitActiveTrip({
   map = false,
   onMapInteraction,
@@ -201,14 +247,15 @@ export function TransitActiveTrip({
             variant="ghost"
             onPress={() => setShowStops(!showStops)}
           />
-          {showStops &&
-            ride.stops.map((stop, index) => (
-              <Text key={`${stop.id}:${stop.position}`} style={styles.note}>
-                {index + 1}. {stopLabel(stop)} ·{' '}
-                {agencyClock(rideStopAt(trip, ride, index, tripLive, now).at)}
-                {index === ride.stops.length - 1 ? ' · Aquí bajas' : ''}
-              </Text>
-            ))}
+          {showStops && (
+            <TripStops
+              trip={trip}
+              ride={ride}
+              live={tripLive}
+              now={now}
+              onClose={() => setShowStops(false)}
+            />
+          )}
         </>
       )}
       {active && ahead && tripLive?.snapshot == null && (

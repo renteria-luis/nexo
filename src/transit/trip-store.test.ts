@@ -147,6 +147,18 @@ test('measured walks wait for review, are kept once, and only accepted ones teac
   );
 });
 
+test('readings stamped with a fraction of a millisecond, as the iPhone does, still save', async () => {
+  const { db, trip } = await setup();
+  const { trip: current, observations } = walked(trip('fraction'), 0.375);
+  assert.ok(observations.length && !Number.isInteger(observations[0].endedAt));
+  await saveTrip(db, current, observations);
+  const done = applyAction(current, 'finish', current.lastFix!.at).trip;
+  await saveTrip(db, done);
+  const [walk] = await listWalkObservations(db);
+  assert.equal(walk.ended_at, Math.round(observations[0].endedAt));
+  assert.equal((await readLastTrip(db))?.endedAt, done.endedAt);
+});
+
 test('crossing notes and kept paths are his data and survive a backup', async () => {
   const { db, raw, origin } = await setup();
   const note = await saveMapNote(db, {

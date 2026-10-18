@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Pressable, ScrollView, Text, View } from 'react-native';
+import { Animated, AppState, Pressable, ScrollView, Text, View } from 'react-native';
 
 import {
   mergeLiveDeparture,
@@ -24,7 +24,7 @@ import {
 } from '../transit/schedule.ts';
 import { Chip } from './Chip.tsx';
 import { Bus, ChevronDown, ChevronUp, TriangleAlert, X } from './icons.ts';
-import { routeColor } from './routeColors.ts';
+import { rideGlow, routeColor } from './routeColors.ts';
 import { font, shape, sheet, theme } from './theme.ts';
 import { RouteBadge, StatusIcons } from './TransitStatus.tsx';
 
@@ -358,6 +358,7 @@ const TimelineRow = memo(function TimelineRow({
   fadedAbove,
   fadedBelow,
   color,
+  glow = null,
 }: {
   color: string;
   name: string;
@@ -370,7 +371,13 @@ const TimelineRow = memo(function TimelineRow({
   boarding: boolean;
   fadedAbove: boolean;
   fadedBelow: boolean;
+  /** The stretch he rides, glowing above or below the stop's dot. */
+  glow?: { color: string; pulse: Animated.Value; above: boolean; below: boolean } | null;
 }) {
+  const shine = glow && [
+    styles.glow,
+    { backgroundColor: glow.color, shadowColor: glow.color, opacity: glow.pulse },
+  ];
   return (
     <View style={styles.row} accessibilityLabel={`${name}, ${time}, ${note}`}>
       <View style={styles.rail}>
@@ -381,7 +388,9 @@ const TimelineRow = memo(function TimelineRow({
             first && styles.hidden,
             fadedAbove && styles.faded,
           ]}
-        />
+        >
+          {glow?.above && <Animated.View style={shine} />}
+        </View>
         <View
           style={[
             styles.segment,
@@ -389,7 +398,9 @@ const TimelineRow = memo(function TimelineRow({
             last && styles.hidden,
             fadedBelow && styles.faded,
           ]}
-        />
+        >
+          {glow?.below && <Animated.View style={shine} />}
+        </View>
         <View style={[styles.dot, boarding && styles.dotBoarding]} />
       </View>
       <View style={styles.rowText}>
@@ -450,6 +461,7 @@ export function TransitTripTimeline({
   choices,
   snapshot,
   active,
+  alighting = null,
   onSelect,
   onClose,
   onFocusBus,
@@ -459,6 +471,8 @@ export function TransitTripTimeline({
   choices: Departure[];
   snapshot: LiveSnapshot | null;
   active: boolean;
+  /** On his trip, where he gets off: the stretch from `departure` to it glows and pulses. */
+  alighting?: Departure | null;
   onSelect: (departure: Departure) => void;
   onClose: () => void;
   /** Shows this trip's bus on the map; tapping the bus on the line asks for it. */
@@ -487,7 +501,35 @@ export function TransitTripTimeline({
       : window;
   }, [times, now, departure]);
   const boarding = detail.stops.findIndex((s) => s.stopTime[1] === departure.stopTime[1]);
+  const alight = alighting
+    ? detail.stops.findIndex((s) => s.stopTime[1] === alighting.stopTime[1])
+    : -1;
+  const riding = boarding >= 0 && alight > boarding;
+  const [pulse] = useState(() => new Animated.Value(1));
+  useEffect(() => {
+    if (!riding) return;
+    const beat = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 0.25, duration: 700, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 700, useNativeDriver: true }),
+      ]),
+    );
+    beat.start();
+    return () => beat.stop();
+  }, [riding, pulse]);
   const lineColor = routeColor(departure.route[3]);
+  const glowColor = rideGlow(departure.route[3]);
+  const stopCount = detail.stops.length;
+  // Kept between ticks so the rows of his stretch do not redraw every second.
+  const glows = useMemo(
+    () =>
+      Array.from({ length: stopCount }, (_, index) =>
+        riding && index >= boarding && index <= alight
+          ? { color: glowColor, pulse, above: index > boarding, below: index < alight }
+          : null,
+      ),
+    [stopCount, riding, boarding, alight, glowColor, pulse],
+  );
   const scroll = useRef<ScrollView>(null);
   const placedFor = useRef<string | null>(null);
   const key = `${departure.trip[0]}/${departure.serviceDate}/${departure.stopTime[1]}`;
@@ -512,21 +554,24 @@ export function TransitTripTimeline({
           <X size={18} color={theme.text} strokeWidth={2.5} />
         </Pressable>
       </View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.choices}
-      >
-        {shownChoices.map(({ d, at }) => (
-          <Chip
-            key={`${d.trip[0]}-${d.serviceDate}-${d.stopTime[1]}`}
-            label={agencyClock(at)}
-            accessibilityLabel={`Salida de las ${agencyClock(at)}`}
-            selected={sameDeparture(d, departure)}
-            onPress={() => onSelect(d)}
-          />
-        ))}
-      </ScrollView>
+      {/* On his trip there is no other departure to switch to. */}
+      {!alighting && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.choices}
+        >
+          {shownChoices.map(({ d, at }) => (
+            <Chip
+              key={`${d.trip[0]}-${d.serviceDate}-${d.stopTime[1]}`}
+              label={agencyClock(at)}
+              accessibilityLabel={`Salida de las ${agencyClock(at)}`}
+              selected={sameDeparture(d, departure)}
+              onPress={() => onSelect(d)}
+            />
+          ))}
+        </ScrollView>
+      )}
       {focus ? (
         <Pressable
           accessibilityRole="button"
@@ -556,17 +601,24 @@ export function TransitTripTimeline({
                 key={s.stopTime[1]}
                 name={s.stop[2]}
                 time={agencyClock(s.progress === 'passed' ? s.scheduledAt : s.at)}
-                note={stopNote(s, now)}
+                note={
+                  riding && index === boarding
+                    ? `Aquí subes · ${stopNote(s, now)}`
+                    : riding && index === alight
+                      ? `Aquí bajas · ${stopNote(s, now)}`
+                      : stopNote(s, now)
+                }
                 live={s.status === 'live' && s.progress !== 'passed'}
                 warning={
                   s.progress !== 'passed' && (s.status === 'skipped' || s.status === 'canceled')
                 }
                 first={index === 0}
                 last={index === detail.stops.length - 1}
-                boarding={index === boarding}
+                boarding={index === boarding || (riding && index === alight)}
                 fadedAbove={index <= boarding}
                 fadedBelow={index < boarding}
                 color={lineColor}
+                glow={glows[index]}
               />
             ))}
             {bus && along && (
@@ -735,6 +787,17 @@ const styles = sheet((theme) => ({
   segment: { width: 8, flex: 1, backgroundColor: theme.line },
   faded: { backgroundColor: theme.lineSoft },
   hidden: { backgroundColor: 'transparent' },
+  // Wider than the line, with a halo of its own colour, so it reads as lit.
+  glow: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: -3,
+    right: -3,
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+  },
   dot: {
     position: 'absolute',
     top: ROW / 2 - 3,

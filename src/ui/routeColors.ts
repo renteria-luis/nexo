@@ -65,6 +65,13 @@ export function routeColor(color: string): string {
   ]);
 }
 
+/** The line at its most vivid, for the stretch he rides: LTC's hue at full strength and bright. */
+export function rideGlow(color: string): string {
+  if (!/^[0-9A-F]{6}$/i.test(color)) return FALLBACK;
+  const [hue, saturation] = hsl(color);
+  return hex([hue, saturation < 0.15 ? saturation : 1, 0.55]);
+}
+
 /** Black or white, whichever reads better on the line's colour. */
 export function routeInk(color: string): string {
   const [r, g, b] = [1, 3, 5].map((i) => {

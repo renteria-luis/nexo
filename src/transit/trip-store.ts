@@ -56,7 +56,14 @@ export async function saveTrip(
       `INSERT INTO transit_trip (id, status, started_at, ended_at, content) VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET status = excluded.status, ended_at = excluded.ended_at,
       content = excluded.content;`,
-      [trip.id, active ? 'active' : trip.phase, trip.startedAt, trip.endedAt, JSON.stringify(kept)],
+      // A trip saved before readings were rounded can still hold fractions of a millisecond.
+      [
+        trip.id,
+        active ? 'active' : trip.phase,
+        Math.round(trip.startedAt),
+        trip.endedAt === null ? null : Math.round(trip.endedAt),
+        JSON.stringify(kept),
+      ],
     );
     for (const walk of observations) {
       const row = {
@@ -78,9 +85,9 @@ export async function saveTrip(
           walk.placeId,
           walk.fromStop,
           walk.toStop,
-          walk.startedAt,
-          walk.leftAt,
-          walk.endedAt,
+          Math.round(walk.startedAt),
+          walk.leftAt === null ? null : Math.round(walk.leftAt),
+          Math.round(walk.endedAt),
           walk.startSource,
           walk.endSource,
           walk.accuracy,

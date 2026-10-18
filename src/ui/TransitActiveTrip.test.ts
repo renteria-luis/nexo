@@ -58,6 +58,7 @@ function render(journey: Record<string, unknown>, props: Record<string, unknown>
     '../transit/schedule.ts': schedules,
     './TransitDepartures.tsx': {
       relative: (when: number, now: number) => `en ${Math.round((when - now) / 60_000)} min`,
+      TransitTripTimeline: 'TransitTripTimeline',
     },
     './TransitStatus.tsx': { RouteBadge: 'RouteBadge' },
     './TransitTripMap.tsx': { TransitTripMap: 'TransitTripMap' },
@@ -131,4 +132,26 @@ test('on Transit the trip in progress has its own map, and an ended trip does no
   assert.ok(!(await mapped({ trip: trip() }, {})), 'Hoy keeps the card without a map');
   const ended = activeTrip.applyAction(trip(), 'finish', at('08:57')).trip;
   assert.ok(!(await mapped({ trip: ended }, { map: true })));
+});
+
+test('the stops of his trip open as Paradas shows them, lit from where he boards to where he gets off', async () => {
+  const schedule = plannerFixture();
+  const riding = activeTrip.applyAction(trip(), 'boarded', at('08:30')).trip;
+  const ride = riding.rides[0];
+  const f = render({ trip: riding, now: at('08:31'), tripLive: { schedule, snapshot: null } });
+  await f.press('Ver paradas del viaje');
+  const timeline = async () =>
+    nodes(await f.screen.settle()).find((node) => node.type === 'TransitTripTimeline');
+  const shown = (await timeline())!;
+  assert.ok(shown, 'the same timeline as Paradas');
+  const stopOf = (departure: { stopTime: number[] }) => schedule.stops[departure.stopTime[0]][0];
+  assert.equal(shown.props.departure.trip[0], ride.tripId);
+  assert.equal(stopOf(shown.props.departure), ride.stops[0].id);
+  assert.equal(stopOf(shown.props.alighting), ride.stops.at(-1)!.id);
+  shown.props.onClose();
+  assert.equal(await timeline(), undefined);
+
+  const listed = render({ trip: riding, now: at('08:31') });
+  await listed.press('Ver paradas del viaje');
+  assert.match(textOf(await listed.screen.settle()), /Aquí bajas/, 'without the schedule, a list');
 });
