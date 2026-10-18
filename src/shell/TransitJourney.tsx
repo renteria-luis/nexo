@@ -37,10 +37,10 @@ import { agencyDate, type Schedule } from '../transit/schedule.ts';
 import { listAcceptedWalks } from '../transit/trip-store.ts';
 import { learnedWalks, personalWalks } from '../transit/walks.ts';
 import {
-  buildPlannerIndex,
   liveOptions,
   planLiveStops,
   runPlan,
+  sharedPlannerIndex,
   startPlan,
   type PlanOption,
   type PlanResult,
@@ -141,13 +141,14 @@ const LinkContext = createContext<
 >(null);
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const pause = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+const REPLAN_MS = 10 * 60_000;
 // The trip card changes size when a trip is chosen, starts, changes step or ends: it slides into
 // place instead of jumping the screen under his finger.
 const smoothly = () => LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
 const tripShape = (state: TrackerState) => `${state.trip?.id}/${state.trip?.phase}`;
 
 export function TransitJourneyProvider({ children }: { children: ReactNode }) {
-  const { state, dataRevision, loadSessionTiming } = useAppData();
+  const { state, dataRevision, restoreRevision, loadSessionTiming } = useAppData();
   const loaded = state.phase === 'ready' ? state.loaded : null;
   const [saved, setSaved] = useState(initial);
   const [places, setPlaces] = useState<Place[]>([]);
@@ -219,9 +220,10 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
     }
   }, []);
   const ready = loaded !== null && TRANSIT_ENABLED;
+  // A reset or a failed open passes through not ready; a restored backup only changes the data.
   useEffect(() => {
     if (ready) void Promise.resolve().then(refresh);
-  }, [ready, refresh]);
+  }, [ready, restoreRevision, refresh]);
   useEffect(() => {
     const listener = AppState.addEventListener('change', (next) => {
       setActive(next === 'active');
@@ -310,13 +312,47 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
   const observedKey = JSON.stringify(
     schedule ? observedServiceTrips(schedule, snapshot, snapshot?.generatedAt ?? 0) : [],
   );
-  const index = useMemo(() => (schedule ? buildPlannerIndex(schedule) : null), [schedule]);
+  const index = schedule ? sharedPlannerIndex(schedule) : null;
   const minute = Math.floor(now / 60_000) * 60_000;
-  const at =
+  const plan =
+    result && result.tripId === tripId && result.value.context.index.schedule === schedule
+      ? result.value
+      : null;
+  const adviceFor = useCallback(
+    (option: PlanOption) =>
+      travelAdvice(
+        option,
+        saved.preferences.preparationMinutes,
+        workout,
+        now,
+        trip?.mode === 'arrive' ? trip.at : undefined,
+        option.scheduleKey === trip?.selectedKey ? trip.selectedAt : null,
+      ),
+    [saved.preferences.preparationMinutes, workout, now, trip],
+  );
+  const choices = useMemo(
+    () => (plan ? liveOptions(plan, snapshot, now, true).map(adviceFor) : []),
+    [plan, snapshot, now, adviceFor],
+  );
+  const readyAt =
     trip?.selectedKey || trip?.mode !== 'now'
-      ? trip?.at
+      ? undefined
       : Math.ceil(departureReadyAt(saved.preferences.preparationMinutes, workout, now) / 60_000) *
         60_000;
+  // Leaving now, the buses found are judged again each minute from the live times, so the search
+  // itself runs again only once it is REPLAN_MS old, when he is ready earlier than it assumed, or
+  // when none of its buses can still be caught. During a trip it waits: the card follows the trip.
+  const searched = plan?.request.at;
+  const fresh =
+    searched !== undefined &&
+    readyAt !== undefined &&
+    (!!followingId ||
+      (searched <= readyAt &&
+        readyAt < searched + REPLAN_MS &&
+        choices.some((choice) => choice.feasible && choice.option.itinerary.rides.length > 0)));
+  const at = readyAt === undefined ? trip?.at : fresh ? searched : readyAt;
+  // His walks are read once per refresh, not again by every search the clock or live data starts.
+  const walks = useRef<{ key: string; value: ReturnType<typeof personalWalks> } | null>(null);
   useEffect(() => {
     let alive = true;
     if (!tripId || !index || !origin || !destination || at === undefined) return;
@@ -325,24 +361,31 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
         await pause();
         if (!alive) return;
         setSearching(true);
-        const db = await openDatabase();
-        const [from, to, stops, accepted] = await Promise.all([
-          listWalkLinks(db, origin.id),
-          listWalkLinks(db, destination.id),
-          listStopWalks(db),
-          listAcceptedWalks(db),
-        ]);
+        const key = `${origin.id}/${destination.id}/${walkRevision}`;
+        if (walks.current?.key !== key) {
+          const db = await openDatabase();
+          const [from, to, stops, accepted] = await Promise.all([
+            listWalkLinks(db, origin.id),
+            listWalkLinks(db, destination.id),
+            listStopWalks(db),
+            listAcceptedWalks(db),
+          ]);
+          walks.current = {
+            key,
+            value: personalWalks({
+              originId: origin.id,
+              destinationId: destination.id,
+              origin: from,
+              destination: to,
+              stops,
+              learned: learnedWalks(accepted),
+            }),
+          };
+        }
         const request = {
           origin,
           destination,
-          ...personalWalks({
-            originId: origin.id,
-            destinationId: destination.id,
-            origin: from,
-            destination: to,
-            stops,
-            learned: learnedWalks(accepted),
-          }),
+          ...walks.current.value,
           // Leaving now also searches the late buses, so one he chose is found again.
           mode: trip?.mode ?? ('depart' as const),
           at,
@@ -364,26 +407,6 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
       alive = false;
     };
   }, [tripId, trip?.mode, index, origin, destination, at, walkRevision, observedKey]);
-  const plan =
-    result && result.tripId === tripId && result.value.context.index.schedule === schedule
-      ? result.value
-      : null;
-  const adviceFor = useCallback(
-    (option: PlanOption) =>
-      travelAdvice(
-        option,
-        saved.preferences.preparationMinutes,
-        workout,
-        now,
-        trip?.mode === 'arrive' ? trip.at : undefined,
-        option.scheduleKey === trip?.selectedKey ? trip.selectedAt : null,
-      ),
-    [saved.preferences.preparationMinutes, workout, now, trip],
-  );
-  const choices = useMemo(
-    () => (plan ? liveOptions(plan, snapshot, now, true).map(adviceFor) : []),
-    [plan, snapshot, now, adviceFor],
-  );
   const selected = useMemo(() => {
     const itinerary = plan?.pool.find((option) => option.key === trip?.selectedKey);
     if (!plan || !itinerary) return null;

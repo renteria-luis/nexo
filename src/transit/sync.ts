@@ -104,7 +104,10 @@ export async function syncSchedule(
     ) {
       throw new Error('El horario no coincide con su versión. Se conserva el anterior.');
     }
-    return { kind: 'updated', cache: await replaceSchedule(db, content, manifest.sha256, now) };
+    return {
+      kind: 'updated',
+      cache: await replaceSchedule(db, content, manifest.sha256, now, schedule),
+    };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     await scheduleCheck(db, now, reason);

@@ -4,6 +4,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { openDatabase } from '../db/index.ts';
 import { readSchedule, replaceSchedule, type CachedSchedule } from '../transit/store.ts';
+import { validateSchedule } from '../transit/schedule.ts';
 import { syncSchedule } from '../transit/sync.ts';
 import { distanceMetres, READING_MAX_ERROR_M, type Coordinates } from '../core/geo.ts';
 
@@ -17,7 +18,13 @@ export async function loadTransit() {
     // Deferred so unused Transit does not parse the citywide schedule at app startup.
     const bundled = require('../../transit/schedule.json');
     const content = JSON.stringify(bundled);
-    cache = await replaceSchedule(db, content, await digest(content));
+    cache = await replaceSchedule(
+      db,
+      content,
+      await digest(content),
+      Date.now(),
+      validateSchedule(bundled),
+    );
     // Bootstrap does not claim that the phone has checked the remote publisher.
     await db.runAsync('UPDATE transit_schedule_cache SET checked_at = NULL WHERE id = 1;');
     cache.checked_at = null;

@@ -352,6 +352,17 @@ export function buildStopIndex(
   return index;
 }
 
+const stopIndexes = new WeakMap<Schedule, ReturnType<typeof buildStopIndex>>();
+/** The stop index of a schedule, built once however many times Transit opens. */
+export function sharedStopIndex(schedule: Schedule): ReturnType<typeof buildStopIndex> {
+  let index = stopIndexes.get(schedule);
+  if (!index) {
+    index = buildStopIndex(schedule);
+    stopIndexes.set(schedule, index);
+  }
+  return index;
+}
+
 export function departures(
   schedule: Schedule,
   index: ReturnType<typeof buildStopIndex>,

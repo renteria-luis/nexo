@@ -9,6 +9,7 @@ import {
   liveOptions,
   planLiveStops,
   runPlan,
+  sharedPlannerIndex,
   startPlan,
   type PlanOption,
   type PlanRequest,
@@ -16,7 +17,7 @@ import {
 } from './planner.ts';
 import { observedServiceTrips, type LiveSnapshot } from './realtime.ts';
 import { closedStops, optionCost, stopChoices } from './stop-choices.ts';
-import { agencyClock, queryInstant, type Schedule } from './schedule.ts';
+import { agencyClock, queryInstant, sharedStopIndex, type Schedule } from './schedule.ts';
 
 const schedule = plannerFixture();
 const index = buildPlannerIndex(schedule);
@@ -766,4 +767,11 @@ test('the search runs in slices that can be cancelled between them', async () =>
     cancelled: () => ++calls > 2,
   });
   assert.equal(cancelled, null);
+});
+
+test('the screens share one planner index and one stop index per schedule', () => {
+  const schedule = plannerFixture();
+  assert.equal(sharedPlannerIndex(schedule), sharedPlannerIndex(schedule));
+  assert.equal(sharedStopIndex(schedule), sharedStopIndex(schedule));
+  assert.notEqual(sharedPlannerIndex(plannerFixture()), sharedPlannerIndex(schedule));
 });

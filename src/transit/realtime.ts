@@ -749,9 +749,22 @@ function stopDeparture(
   };
 }
 
+/** LTC's report on the trip of a departure, from a current reading. */
+export function liveTripUpdate(
+  schedule: Schedule,
+  departure: Departure,
+  snapshot: LiveSnapshot | null,
+  now: number,
+): LiveTripUpdate | undefined {
+  return usableSnapshot(snapshot, schedule, now)
+    ? snapshot.tripUpdates.find((t) => sameTrip(t, departure, schedule))
+    : undefined;
+}
+
 /**
  * The departure as LTC reports it. With `arrival`, when the bus gets to the stop instead, which
  * is where he gets off: a bus holding at a stop to keep its timetable leaves minutes later.
+ * `update` spares the search for the trip's report when every stop of a trip is merged.
  */
 export function mergeLiveDeparture(
   schedule: Schedule,
@@ -759,10 +772,8 @@ export function mergeLiveDeparture(
   snapshot: LiveSnapshot | null,
   now = Date.now(),
   event: 'departure' | 'arrival' = 'departure',
+  update = liveTripUpdate(schedule, departure, snapshot, now),
 ): LiveDeparture {
-  const update = usableSnapshot(snapshot, schedule, now)
-    ? snapshot.tripUpdates.find((t) => sameTrip(t, departure, schedule))
-    : undefined;
   const stopId = schedule.stops[departure.stopTime[0]][0];
   const stop = update?.stops.find(
     (s) => s.stopSequence === departure.stopTime[1] && s.stopId === stopId,

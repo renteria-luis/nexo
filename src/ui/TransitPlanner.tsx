@@ -17,17 +17,16 @@ import type { TripPoint, TripWalk } from '../transit/active-trip.ts';
 import { itineraryPaths } from '../transit/map.ts';
 import {
   ACCESS_RADIUS_M,
-  buildPlannerIndex,
   liveOptions,
   planLiveStops,
   rideAlerts,
   runPlan,
+  sharedPlannerIndex,
   startPlan,
   type PlanMode,
   type PlanOption,
   type PlanRequest,
   type PlanResult,
-  type PlannerIndex,
   type Ride,
   type RideLive,
   type Walk,
@@ -111,16 +110,6 @@ const SHOWN = 5;
 // Live data only helps for buses about to run; a plan for tomorrow asks LTC for nothing.
 const LIVE_HORIZON_MS = 3 * 3_600_000;
 const STALE_NOW_MS = 5 * 60_000;
-
-const indexes = new WeakMap<Schedule, PlannerIndex>();
-function plannerIndex(schedule: Schedule): PlannerIndex {
-  let index = indexes.get(schedule);
-  if (!index) {
-    index = buildPlannerIndex(schedule);
-    indexes.set(schedule, index);
-  }
-  return index;
-}
 
 const pause = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 const samePlaces = (a: PlanRequest, b: PlanRequest) =>
@@ -510,7 +499,7 @@ export function TransitPlanner({
         // between slices.
         await pause();
         if (cancelled()) return;
-        const found = await runPlan(startPlan(plannerIndex(schedule), request), {
+        const found = await runPlan(startPlan(sharedPlannerIndex(schedule), request), {
           pause,
           cancelled,
         });
@@ -590,7 +579,7 @@ export function TransitPlanner({
   );
   const onChoice = useCallback(
     (id: string) => {
-      const stop = plannerIndex(schedule).stopIds.get(id);
+      const stop = sharedPlannerIndex(schedule).stopIds.get(id);
       if (stop !== undefined) pickStop(stop, 'menu');
     },
     [schedule, pickStop],

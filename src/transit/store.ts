@@ -371,16 +371,32 @@ export async function deleteMapNote(db: SQLiteDatabase, id: string): Promise<voi
   });
 }
 
+// Parsing the 4.6 MB package blocks the screen for a moment, so each database keeps the schedule
+// it last parsed: the screens and the trip in progress share one copy, parsed again only when the
+// saved package changes.
+const parsed = new WeakMap<SQLiteDatabase, { sha256: string; schedule: Schedule }>();
+type SavedSchedule = Omit<CachedSchedule, 'schedule'>;
+const SAVED = 'sha256, saved_at, checked_at, last_error';
+
 export async function readSchedule(db: SQLiteDatabase): Promise<CachedSchedule | null> {
   await whenIdle(db);
-  const row = await db.getFirstAsync<{ content: string } & Omit<CachedSchedule, 'schedule'>>(
-    'SELECT * FROM transit_schedule_cache WHERE id = 1;',
+  const saved = await db.getFirstAsync<SavedSchedule>(
+    `SELECT ${SAVED} FROM transit_schedule_cache WHERE id = 1;`,
+  );
+  if (!saved) return null;
+  const known = parsed.get(db);
+  if (known?.sha256 === saved.sha256) return { ...saved, schedule: known.schedule };
+  const row = await db.getFirstAsync<SavedSchedule & { content: string }>(
+    `SELECT ${SAVED}, content FROM transit_schedule_cache WHERE id = 1;`,
   );
   if (!row) return null;
-  const content = JSON.parse(row.content);
+  const { content: text, ...meta } = row;
+  const content = JSON.parse(text);
   // A package saved by an older version of the app gives way to the one this version ships.
   if (typeof content?.schema === 'number' && content.schema < SCHEDULE_SCHEMA) return null;
-  return { ...row, schedule: validateSchedule(content) };
+  const schedule = validateSchedule(content);
+  parsed.set(db, { sha256: meta.sha256, schedule });
+  return { ...meta, schedule };
 }
 
 export async function replaceSchedule(
@@ -388,8 +404,9 @@ export async function replaceSchedule(
   content: string,
   sha256: string,
   now = Date.now(),
+  // A download is parsed to be checked before it is saved; parsing it again doubles the wait.
+  schedule = validateSchedule(JSON.parse(content)),
 ): Promise<CachedSchedule> {
-  const schedule = validateSchedule(JSON.parse(content));
   await inTransaction(db, async () => {
     await db.runAsync(
       `INSERT INTO transit_schedule_cache (id, sha256, content, saved_at, checked_at, last_error)
@@ -398,6 +415,7 @@ export async function replaceSchedule(
       [sha256, content, now, now],
     );
   });
+  parsed.set(db, { sha256, schedule });
   return { sha256, schedule, saved_at: now, checked_at: now, last_error: null };
 }
 

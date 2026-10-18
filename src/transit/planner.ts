@@ -2,6 +2,7 @@ import { addDays, type IsoDate } from '../core/dates.ts';
 import { distanceMetres, type Coordinates } from '../core/geo.ts';
 import type { LiveAlert } from './realtime-contract.ts';
 import {
+  liveTripUpdate,
   mergeLiveDeparture,
   observedServiceTrips,
   relevantLiveAlerts,
@@ -87,6 +88,17 @@ export function buildPlannerIndex(schedule: Schedule): PlannerIndex {
     else grid.set(key, [stop]);
   }
   return { schedule, patternTrips, visits, stopIds, grid };
+}
+
+const plannerIndexes = new WeakMap<Schedule, PlannerIndex>();
+/** The planner index of a schedule, built once however many screens search it. */
+export function sharedPlannerIndex(schedule: Schedule): PlannerIndex {
+  let index = plannerIndexes.get(schedule);
+  if (!index) {
+    index = buildPlannerIndex(schedule);
+    plannerIndexes.set(schedule, index);
+  }
+  return index;
 }
 
 function stopsWithin(
@@ -1050,6 +1062,7 @@ function rideLive(
   timelines: Map<string, Timeline>,
 ): RideLive {
   const usable = snapshot && liveTrips.has(ride.trip[0]) ? snapshot : null;
+  const update = liveTripUpdate(schedule, ride.departure, usable, now);
   const key = tripKey(ride.trip, ride.serviceDate);
   const pattern = schedule.patterns[ride.trip[6]];
   const at = (seconds: number) => ride.departure.at + (seconds - pattern[ride.board][3]) * 1_000;
@@ -1060,6 +1073,7 @@ function rideLive(
       usable,
       now,
       event,
+      update,
     );
   let timeline = timelines.get(key);
   if (!timeline) {

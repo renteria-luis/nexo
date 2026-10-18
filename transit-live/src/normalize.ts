@@ -474,6 +474,7 @@ export function normalizeAlerts(
   issues: Issues,
 ): LiveAlert[] {
   const result: LiveAlert[] = [];
+  const undated = { ...query, trips: query.trips.map((ref) => ({ ...ref, serviceDate: '' })) };
   const candidates = schedule.trips.filter((trip) =>
     relevant(
       {
@@ -485,7 +486,7 @@ export function normalizeAlerts(
       },
       trip,
       index,
-      { ...query, trips: query.trips.map((ref) => ({ ...ref, serviceDate: '' })) },
+      undated,
     ),
   );
   for (const entity of feed.entity) {

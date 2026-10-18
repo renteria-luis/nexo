@@ -253,6 +253,26 @@ test('atomic cache replacement preserves last-good schedules and personal data a
   assert.deepEqual(await listPlaces(db), before);
 });
 
+test('the saved schedule is parsed once and shared until the saved package changes', async (t) => {
+  const { db, raw } = await database();
+  const text = JSON.stringify(scheduleFixture());
+  const saved = await replaceSchedule(db, text, await hash(text));
+  const statements = t.mock.method(db, 'getFirstAsync');
+  const parses = t.mock.method(JSON, 'parse');
+  assert.equal((await readSchedule(db))?.schedule, saved.schedule, 'every screen gets one copy');
+  assert.equal(statements.mock.callCount(), 1, 'without reading the package');
+  assert.equal(parses.mock.callCount(), 0);
+  raw.exec('UPDATE transit_schedule_cache SET checked_at = 5 WHERE id = 1;');
+  assert.equal((await readSchedule(db))?.checked_at, 5);
+  const next = JSON.stringify({ ...scheduleFixture(), feedVersion: 'next' });
+  raw
+    .prepare('UPDATE transit_schedule_cache SET sha256 = ?, content = ? WHERE id = 1;')
+    .run(await hash(next), next);
+  const changed = await readSchedule(db);
+  assert.equal(changed?.schedule.feedVersion, 'next');
+  assert.equal((await readSchedule(db))?.schedule, changed?.schedule);
+});
+
 test('personal Transit data round-trips through backups without replaceable citywide data', async () => {
   const source = await database();
   const target = await database();
@@ -305,7 +325,7 @@ test('pre-Transit backups gain the new seeds while retaining their historical gy
   );
 });
 
-test('updates verify hashes, skip unchanged downloads and preserve last-good data on network or format failures', async () => {
+test('updates verify hashes, skip unchanged downloads and preserve last-good data on network or format failures', async (t) => {
   const { db } = await database();
   const original = JSON.stringify(scheduleFixture());
   const cache = await replaceSchedule(db, original, await hash(original));
@@ -336,8 +356,16 @@ test('updates verify hashes, skip unchanged downloads and preserve last-good dat
       );
     },
   };
+  const parses = t.mock.method(JSON, 'parse');
   const result = await syncSchedule(db, cache, transport);
   assert.equal(result.kind, 'updated');
+  assert.equal(parses.mock.calls.filter((call) => call.arguments[0] === content).length, 1);
+  parses.mock.restore();
+  assert.equal(
+    (await readSchedule(db))?.schedule,
+    result.kind === 'updated' ? result.cache.schedule : null,
+    'the download it checked is the copy the screens get',
+  );
   assert.equal((await readSchedule(db))?.schedule.feedVersion, 'new');
   calls.length = 0;
   assert.equal((await syncSchedule(db, (await readSchedule(db))!, transport)).kind, 'unchanged');

@@ -32,7 +32,6 @@ import {
 import {
   agencyClock,
   agencyDate,
-  buildStopIndex,
   departures,
   listPlaces,
   listWalkLinks,
@@ -47,7 +46,12 @@ import {
   type Place,
   type WalkLink,
 } from '../../transit/index.ts';
-import { stopLines, usefulStops, validCoordinates } from '../../transit/schedule.ts';
+import {
+  sharedStopIndex,
+  stopLines,
+  usefulStops,
+  validCoordinates,
+} from '../../transit/schedule.ts';
 import { buildLiveQuery, observedServiceTrips } from '../../transit/realtime.ts';
 import { placeCategories } from '../../transit/place-categories.ts';
 
@@ -320,7 +324,7 @@ function TransitContent() {
   const options = useMemo(() => placeOptions(places), [places]);
   const categories = useMemo(() => placeCategories(places), [places]);
   const schedule = data?.cache.schedule;
-  const index = useMemo(() => (schedule ? buildStopIndex(schedule) : null), [schedule]);
+  const index = schedule ? sharedStopIndex(schedule) : null;
   const draftPoint =
     draft && draft.lat.trim() && draft.lng.trim()
       ? { lat: Number(draft.lat), lng: Number(draft.lng) }
@@ -723,6 +727,8 @@ function TransitContent() {
                   category: draft.category,
                   importance: draft.importance.trim() ? Number(draft.importance) : null,
                 });
+                // The saved trip may start or end at this place.
+                void journey.actions.refresh();
                 const saved = await listPlaces(data.db);
                 if (alive.current) {
                   setPlaces(saved);

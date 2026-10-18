@@ -16,10 +16,12 @@ async function fixture(
   t: TestContext,
   existingWorkout: boolean,
   cleanupProblem: string | null = null,
+  options: { trip?: Partial<journey.NextTrip>; following?: boolean } = {},
 ) {
   const { db } = await database();
   const now = queryInstant('2026-10-13', '08:00');
-  t.mock.method(Date, 'now', () => now);
+  let clock = now;
+  t.mock.method(Date, 'now', () => clock);
   const clocks: (() => void)[] = [];
   let ticks = 0;
   t.mock.method(globalThis, 'setInterval', ((callback: () => void) => {
@@ -50,6 +52,7 @@ async function fixture(
     selectedKey: option.scheduleKey,
     selectedAt: now,
     reminders: true,
+    ...options.trip,
   };
   await storage.saveJourneyState(db, {
     preferences: journey.DEFAULT_TRAVEL_PREFERENCES,
@@ -68,6 +71,9 @@ async function fixture(
   });
   const reads: unknown[][] = [];
   const syncs: journey.TravelReminder[][] = [];
+  let searches = 0;
+  let walkReads = 0;
+  let placeReads = 0;
   const app = {
     state: {
       phase: 'ready',
@@ -79,6 +85,7 @@ async function fixture(
       },
     },
     dataRevision: 1,
+    restoreRevision: 0,
     loadSessionTiming: (...args: unknown[]) => {
       reads.push(args);
       return timing;
@@ -93,7 +100,13 @@ async function fixture(
     '../training/read.ts': training,
     '../transit/journey.ts': journey,
     '../transit/journey-store.ts': storage,
-    '../transit/planner.ts': planner,
+    '../transit/planner.ts': {
+      ...planner,
+      startPlan: (...args: Parameters<typeof planner.startPlan>) => {
+        searches++;
+        return planner.startPlan(...args);
+      },
+    },
     '../transit/realtime.ts': realtime,
     '../transit/index.ts': { TRANSIT_ENABLED: true },
     '../transit/active-trip.ts': activeTrip,
@@ -102,7 +115,11 @@ async function fixture(
     '../transit/trip-store.ts': { listAcceptedWalks: async () => [] },
     './trip-task.ts': {
       tripTracker: {
-        getState: () => ({ trip: null, gps: 'off', problem: cleanupProblem }),
+        getState: () => ({
+          trip: options.following ? { id: 'riding', phase: 'riding', sourceSha256: '' } : null,
+          gps: 'off',
+          problem: cleanupProblem,
+        }),
         subscribe: () => () => undefined,
         reconcile: async () => undefined,
         tick: async () => {
@@ -113,8 +130,14 @@ async function fixture(
       },
     },
     '../transit/store.ts': {
-      listPlaces: async () => [origin, destination],
-      listWalkLinks: async () => [],
+      listPlaces: async () => {
+        placeReads++;
+        return [origin, destination];
+      },
+      listWalkLinks: async () => {
+        walkReads++;
+        return [];
+      },
       listStopWalks: async () => [],
     },
     './AppData.tsx': { useAppData: () => app },
@@ -149,8 +172,20 @@ async function fixture(
     )?.props.value;
   };
   return {
+    app,
     clocks,
+    /** Moves the clock on by whole minutes, each with the screen's own tick. */
+    wait: async (minutes: number) => {
+      for (let i = 0; i < minutes; i++) {
+        clock += 60_000;
+        clocks.at(-1)!();
+        await settle();
+      }
+    },
     ticks: () => ticks,
+    searches: () => searches,
+    walkReads: () => walkReads,
+    placeReads: () => placeReads,
     settle,
     syncs,
     reads,
@@ -199,4 +234,37 @@ test('a saved journey whose workout is gone cancels its reminders instead of wai
   assert.ok(f.syncs.length > 0);
   assert.ok(f.syncs.every((reminders) => reminders.length === 0));
   assert.equal(view.advice.feasible, false);
+});
+
+const leavingNow = { selectedKey: null, selectedAt: null, workoutId: null, reminders: false };
+
+test('leaving now, the minute re-judges the buses found and the search runs again every ten minutes', async (t) => {
+  const f = await fixture(t, false, null, { trip: leavingNow });
+  assert.ok((await f.settle()).advice?.feasible);
+  const searches = f.searches();
+  const walkReads = f.walkReads();
+  assert.ok(searches > 0 && walkReads > 0);
+  await f.wait(9);
+  assert.equal(f.searches(), searches, 'nine minutes without a new search');
+  await f.wait(1);
+  assert.equal(f.searches(), searches + 1);
+  assert.equal(f.walkReads(), walkReads, 'the clock does not read his walks again');
+});
+
+test('during a trip in progress the clock does not search the next trip again', async (t) => {
+  const f = await fixture(t, false, null, { trip: leavingNow, following: true });
+  await f.settle();
+  const searches = f.searches();
+  assert.ok(searches > 0);
+  await f.wait(15);
+  assert.equal(f.searches(), searches);
+});
+
+test('a restored backup reads the saved trip and places again', async (t) => {
+  const f = await fixture(t, false);
+  await f.settle();
+  const placeReads = f.placeReads();
+  f.app.restoreRevision++;
+  await f.settle();
+  assert.equal(f.placeReads(), placeReads + 1);
 });

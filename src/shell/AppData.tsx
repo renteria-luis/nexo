@@ -285,6 +285,8 @@ function withSetting(loaded: Loaded, key: SettingKey, value: string): Loaded {
 export type AppData = {
   state: AppState;
   dataRevision: number;
+  /** Changes when a backup replaces the data, for what keeps its own copy of it. */
+  restoreRevision: number;
   healthArrival: HealthArrival | null;
   /**
    * Spec 16.5: si la oferta es de verdad el alimento con que se encontro. Vale para todas
@@ -487,6 +489,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const startingSession = useRef<Promise<void> | null>(null);
   const manualRefresh = useRef<Promise<void> | null>(null);
   const [dataRevision, setDataRevision] = useState(0);
+  const [restoreRevision, setRestoreRevision] = useState(0);
 
   // El primer arranque de un dia nuevo rehace los ultimos siete dias aunque lo pida una
   // escritura que no los necesita: ayer siguio abierto hasta medianoche, y su falta de
@@ -890,7 +893,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const actions = useMemo<
-    Omit<AppData, 'state' | 'exerciseId' | 'nudgeTarget' | 'dataRevision' | 'healthArrival'>
+    Omit<
+      AppData,
+      'state' | 'exerciseId' | 'nudgeTarget' | 'dataRevision' | 'restoreRevision' | 'healthArrival'
+    >
   >(() => {
     const tapsToday = () => {
       const date = todayIso();
@@ -1262,7 +1268,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       },
       importData: async () => {
         const result = await importFromFile();
-        if (result !== null) refresh(true, REREAD_ALL);
+        if (result !== null) {
+          setRestoreRevision((revision) => revision + 1);
+          refresh(true, REREAD_ALL);
+        }
         return result;
       },
       resetDatabase: () => {
@@ -1461,8 +1470,16 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   ]);
 
   const value: AppData = useMemo(
-    () => ({ state, exerciseId, nudgeTarget, dataRevision, healthArrival, ...actions }),
-    [state, exerciseId, nudgeTarget, dataRevision, healthArrival, actions],
+    () => ({
+      state,
+      exerciseId,
+      nudgeTarget,
+      dataRevision,
+      restoreRevision,
+      healthArrival,
+      ...actions,
+    }),
+    [state, exerciseId, nudgeTarget, dataRevision, restoreRevision, healthArrival, actions],
   );
 
   return <Context.Provider value={value}>{children}</Context.Provider>;

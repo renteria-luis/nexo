@@ -13,7 +13,6 @@ export type { Place, PlaceIcon, WalkLink, StopWalk, CachedSchedule } from './sto
 export {
   nearbyStops,
   departures,
-  buildStopIndex,
   agencyDate,
   agencyClock,
   queryInstant,
