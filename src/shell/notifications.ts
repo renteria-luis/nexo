@@ -17,7 +17,7 @@ import {
   type NotificationOwner,
 } from '../core/notification-plan.ts';
 import type { ActiveTrip, TripAlarm, TripEvent } from '../transit/active-trip.ts';
-import type { NextTrip, TravelReminder } from '../transit/journey.ts';
+import { LEAVE_GRACE_MS, type NextTrip, type TravelReminder } from '../transit/journey.ts';
 import { readJourneyState } from '../transit/journey-store.ts';
 import { inTransaction } from '../db/transaction.ts';
 
@@ -43,7 +43,7 @@ if (supported) {
       const expired =
         data?.notificationOwner === 'transit' &&
         typeof data.expiresAt === 'number' &&
-        Date.now() > data.expiresAt + 60_000;
+        Date.now() > data.expiresAt + LEAVE_GRACE_MS;
       return {
         shouldShowBanner: !expired,
         shouldShowList: !expired,
@@ -338,7 +338,7 @@ export function listenToTransitReminders(
     onResponse({
       kind: 'reminder',
       journeyId: data.journeyId,
-      expired: typeof data.expiresAt === 'number' && Date.now() > data.expiresAt,
+      expired: typeof data.expiresAt === 'number' && Date.now() > data.expiresAt + LEAVE_GRACE_MS,
     });
     return true;
   };

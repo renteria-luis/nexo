@@ -456,8 +456,21 @@ test('a stop reads as closed by an alert that closes it or when every bus LTC re
   });
   snapshot.alerts = [alert({})];
   assert.equal(stopClosure(schedule, snapshot, 'B', NOW), null, 'a detour alone is not a closure');
-  snapshot.alerts = [alert({ description: 'Stop B is closed until further notice.' })];
-  assert.equal(stopClosure(schedule, snapshot, 'B', NOW), 'Detour downtown');
+  // LTC's detours list the stops they close and name one they still serve, often a temporary one.
+  snapshot.alerts = [
+    alert({
+      header: 'DETOUR',
+      description:
+        'The following stops will be closed:\r\nMain at First EB\r\n\r\nAlternate stops can be found at:\r\nRoad SB',
+    }),
+  ];
+  assert.equal(stopClosure(schedule, snapshot, 'B', NOW), null, 'the stop a detour names stays');
+  snapshot.alerts = [
+    alert({ header: 'STOP CLOSURE', description: 'Road SB will be closed until further notice.' }),
+  ];
+  assert.equal(stopClosure(schedule, snapshot, 'B', NOW), 'STOP CLOSURE');
+  snapshot.alerts = [alert({ effect: 7, header: 'Notice', description: 'Road SB is closed.' })];
+  assert.equal(stopClosure(schedule, snapshot, 'B', NOW), 'Notice');
   snapshot.alerts = [alert({ effect: 1, header: '' })];
   assert.equal(stopClosure(schedule, snapshot, 'B', NOW), 'LTC avisa que está cerrado.');
   assert.equal(stopClosure(schedule, snapshot, 'B', NOW + 10_000), null, 'once the alert ends');

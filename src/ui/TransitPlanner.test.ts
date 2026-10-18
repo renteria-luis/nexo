@@ -477,8 +477,10 @@ test('from where he is, a stop shows its lines and their route, and he leaves on
     mapOf(tree).choices.map((c: { id: string; rank: number }) => [c.id, c.rank]),
     [
       ['ORIGIN_SB', 1],
-      ['CORNER_EB', 2],
+      ['MIDDLE_SB', 2],
+      ['CORNER_EB', 3],
     ],
+    'the next stop down his own line counts as a stop of its own',
   );
 
   tree = await openStop(screen, tree, 1, 'lines');

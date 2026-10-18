@@ -549,7 +549,16 @@ export function rideStopLive(
   now: number,
 ): LiveDeparture | null {
   const departure = context && departureOf(trip, ride, index, context.schedule);
-  return departure ? mergeLiveDeparture(context.schedule, departure, context.snapshot, now) : null;
+  // Past the stop he boards at, what matters is when the bus gets to each stop, not when it leaves.
+  return departure
+    ? mergeLiveDeparture(
+        context.schedule,
+        departure,
+        context.snapshot,
+        now,
+        index > 0 ? 'arrival' : 'departure',
+      )
+    : null;
 }
 
 /** When the bus is expected at a stop of the ride: a current prediction, else the plan. */

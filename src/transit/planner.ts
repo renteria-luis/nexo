@@ -180,13 +180,17 @@ type ServiceDay = { date: IsoDate; start: number; active: Set<string>; observed:
 type Boarding = { trip: Trip; day: ServiceDay; board: number; walk: Walk };
 type Front = {
   key: number;
+  /** The stop he boards the first bus at, leaving now; -1 otherwise. */
+  origin: number;
+  /** The line from that stop: a first ride per line and stop is kept for each last bus. */
+  line: number;
   arrival: number[];
   leave: number[];
   boarding: number[];
   alight: number[];
 };
 type Feeder = {
-  key: number;
+  origin: number;
   leave: number;
   board: number;
   boarding: number;
@@ -195,6 +199,8 @@ type Feeder = {
   slack: number;
 };
 type Candidate = {
+  /** As in `Front`. */
+  origin: number;
   leave: number;
   arrive: number;
   rides: number;
@@ -218,6 +224,11 @@ type PlanContext = {
   learned: Set<string>;
   savedFrom: Map<number, number[]>;
   savedTo: Map<number, number[]>;
+  /**
+   * What to take after losing a connection, by stop, time and lost bus. It is timetable only, so
+   * every live re-ranking of the search shares it, and each stop he can board at leaving now.
+   */
+  continued: Map<string, NextRide | null>;
 };
 
 export type PlanResult = {
@@ -374,12 +385,12 @@ function makeRide(
   const pattern = schedule.patterns[trip[6]];
   const route = schedule.routes[trip[1]];
   const at = (seconds: number) => day.start + (trip[7] + seconds) * 1_000;
-  const stopAt = (position: number): Departure => ({
+  const stopAt = (position: number, seconds: number): Departure => ({
     trip,
     route,
     stopTime: pattern[position],
     serviceDate: day.date,
-    at: at(pattern[position][3]),
+    at: at(seconds),
   });
   return {
     trip,
@@ -387,8 +398,9 @@ function makeRide(
     serviceDate: day.date,
     board,
     alight,
-    departure: stopAt(board),
-    arrival: stopAt(alight),
+    departure: stopAt(board, pattern[board][3]),
+    // A bus can wait minutes at a stop to keep its timetable; he gets off when it arrives.
+    arrival: stopAt(alight, pattern[alight][2]),
     arriveAt: at(pattern[alight][2]),
   };
 }
@@ -455,14 +467,12 @@ function worthShowing<T>(options: T[], view: (option: T) => Listing): T[] {
   const sorted = options
     .map((option) => ({ option, ...view(option) }))
     .sort((a, b) => a.arriveAt - b.arriveAt || b.leaveAt - a.leaveAt || a.buses - b.buses);
-  const kept: T[] = [];
-  // Only an option sorted before another arrives no later, so only it can hide the other.
-  for (let i = 0; i < sorted.length; i++) {
-    const x = sorted[i];
-    let hidden = false;
-    for (let k = 0; k < i && !hidden; k++) {
-      const other = sorted[k];
-      hidden =
+  const kept: typeof sorted = [];
+  // Only an option sorted before another arrives no later, so only it can hide the other. A
+  // hidden one hides nothing: it would take a first bus off the list for an option not shown.
+  for (const x of sorted) {
+    const hidden = kept.some(
+      (other) =>
         (other.buses <= x.buses &&
           other.leaveAt >= x.leaveAt &&
           (other.first === x.first ||
@@ -471,11 +481,11 @@ function worthShowing<T>(options: T[], view: (option: T) => Listing): T[] {
             (x.buses > 1 && x.arriveAt - other.arriveAt >= SOONER_WORTH_MIN * MINUTE))) ||
         (other.buses > 0 &&
           other.buses < x.buses &&
-          x.leaveAt - other.leaveAt < TRANSFER_WORTH_MIN * MINUTE);
-    }
-    if (!hidden) kept.push(x.option);
+          x.leaveAt - other.leaveAt < TRANSFER_WORTH_MIN * MINUTE),
+    );
+    if (!hidden) kept.push(x);
   }
-  return kept;
+  return kept.map((entry) => entry.option);
 }
 
 export type PlanSearch = {
@@ -494,6 +504,10 @@ export function startPlan(
   const arriving = request.mode === 'arrive';
   const from = arriving ? request.at - MAX_TRIP_MIN * MINUTE : request.at;
   const searchFrom = request.mode === 'now' ? from - LATE_LOOKBACK_MIN * MINUTE : from;
+  // Leaving now each stop he can board at is judged on its own buses, so the search keeps the
+  // best way from each one, not only from the stop that lets him leave last.
+  const perStop = request.mode === 'now';
+  const lines = schedule.routes.length * 3;
   const boardBy = arriving
     ? request.at - ARRIVE_EARLY_MIN * MINUTE
     : request.at + FIRST_WINDOW_MIN * MINUTE;
@@ -541,6 +555,7 @@ export function startPlan(
     learned,
     savedFrom,
     savedTo,
+    continued: new Map(),
   };
   const days = context.days;
   for (const [stop] of egress) {
@@ -600,12 +615,22 @@ export function startPlan(
       const order: number[] = [];
       for (let e = 0; e < flat.length; e += 5) order.push(e);
       order.sort((a, b) => flat[a] - flat[b] || flat[b + 1] - flat[a + 1]);
-      const fronts: Front[] = [];
+      const fronts = new Map<number, Front>();
       for (const e of order) {
-        let front = fronts.find((f) => f.key === flat[e + 2]);
+        const origin = perStop ? boardings[flat[e + 3]].walk.to! : -1;
+        const line = origin * lines + flat[e + 2];
+        let front = fronts.get(line);
         if (!front) {
-          front = { key: flat[e + 2], arrival: [], leave: [], boarding: [], alight: [] };
-          fronts.push(front);
+          front = {
+            key: flat[e + 2],
+            origin,
+            line,
+            arrival: [],
+            leave: [],
+            boarding: [],
+            alight: [],
+          };
+          fronts.set(line, front);
         }
         if (front.leave.length && front.leave[front.leave.length - 1] >= flat[e + 1]) continue;
         front.arrival.push(flat[e]);
@@ -613,7 +638,7 @@ export function startPlan(
         front.boarding.push(flat[e + 3]);
         front.alight.push(flat[e + 4]);
       }
-      feeds.set(stop, fronts);
+      feeds.set(stop, [...fronts.values()]);
     }
     reached.clear();
   };
@@ -637,10 +662,10 @@ export function startPlan(
           if (door > arriveBy) break;
           if (!day.active.has(trip[2]) && !day.observed.has(trip[0])) continue;
           const key = routeKey(trip);
-          let direct: { leave: number; board: number } | null = null;
+          const directs: { origin: number; leave: number; board: number }[] = [];
           // The best first ride of each line, so a late bus on one still leaves the others to
           // re-rank with live data.
-          const feeders: Feeder[] = [];
+          const feeders = new Map<number, Feeder>();
           for (let board = alight - 1; board >= 0; board--) {
             work++;
             const time = pattern[board];
@@ -650,8 +675,12 @@ export function startPlan(
             const walk = access.get(time[0]);
             if (walk && departs <= boardBy) {
               const leave = departs - (BOARD_MARGIN_MIN + walk.minutes) * MINUTE;
-              if (leave >= searchFrom && (!direct || leave > direct.leave))
-                direct = { leave, board };
+              const origin = perStop ? time[0] : -1;
+              const known = directs.find((direct) => direct.origin === origin);
+              if (leave >= searchFrom && (!known || leave > known.leave)) {
+                if (known) Object.assign(known, { leave, board });
+                else directs.push({ origin, leave, board });
+              }
             }
             let into = walksInto.get(time[0]);
             if (!into) {
@@ -669,30 +698,29 @@ export function startPlan(
                 const e = lastAtOrBefore(front.arrival, deadline);
                 if (e < 0 || deadline - front.arrival[e] > MAX_TRANSFER_WAIT_MIN * MINUTE) continue;
                 const slack = deadline + TRANSFER_MARGIN_MIN * MINUTE - front.arrival[e];
-                const known = feeders.find((feeder) => feeder.key === front.key);
+                const known = feeders.get(front.line);
                 if (
                   known &&
                   (known.leave > front.leave[e] ||
                     (known.leave === front.leave[e] && known.slack >= slack))
                 )
                   continue;
-                const feeder: Feeder = {
-                  key: front.key,
+                feeders.set(front.line, {
+                  origin: front.origin,
                   leave: front.leave[e],
                   board,
                   boarding: front.boarding[e],
                   alight: front.alight[e],
                   transfer,
                   slack,
-                };
-                if (known) feeders[feeders.indexOf(known)] = feeder;
-                else feeders.push(feeder);
+                });
               }
             }
           }
           const final = { trip, day, alight };
-          if (direct)
+          for (const direct of directs)
             candidates.push({
+              origin: direct.origin,
               leave: direct.leave,
               arrive: door,
               rides: 1,
@@ -701,8 +729,9 @@ export function startPlan(
               first: null,
               walkOnly: null,
             });
-          for (const feeder of feeders)
+          for (const feeder of feeders.values())
             candidates.push({
+              origin: feeder.origin,
               leave: feeder.leave,
               arrive: door,
               rides: 2,
@@ -744,30 +773,38 @@ export function startPlan(
   const firstBus = (candidate: Candidate) =>
     candidate.first ? boardings[candidate.first.boarding] : null;
 
-  // One option per bus, or pair of buses: getting off a stop sooner or later is not another
-  // option, and neither is a first bus to one he can walk to and leave no earlier, which no delay
-  // can make better. The other first buses to a last one stay, to take over if the best is late.
-  // Without this the pool filled with ways to catch the same few buses, and later ones never got
-  // listed.
+  /** The bus, or pair of buses, whatever stop he boards at. */
+  const busesOf = (candidate: Candidate) => {
+    const f = candidate.final;
+    if (!f) return 'walk';
+    const b = firstBus(candidate);
+    return `${b ? `${tripKey(b.trip, b.day.date)}|` : ''}${tripKey(f.trip, f.day.date)}`;
+  };
+
+  // One option per bus, or pair of buses, from each stop he boards at leaving now: getting off a
+  // stop sooner or later is not another option, and neither is a first bus to one he can walk to
+  // and leave no earlier, which no delay can make better. The other first buses to a last one
+  // stay, to take over if the best is late. Without this the pool filled with ways to catch the
+  // same few buses, and later ones never got listed.
   const distinctBuses = () => {
+    const better = (candidate: Candidate, known: Candidate | undefined) =>
+      !known ||
+      candidate.arrive < known.arrive ||
+      (candidate.arrive === known.arrive && candidate.leave > known.leave);
     const best = new Map<string, Candidate>();
+    // The bus he can walk to from any stop: a first bus to it is no use from any of them.
+    const direct = new Map<string, Candidate>();
     for (const candidate of candidates) {
-      const f = candidate.final!;
-      const b = firstBus(candidate);
-      const key = `${b ? `${tripKey(b.trip, b.day.date)}|` : ''}${tripKey(f.trip, f.day.date)}`;
-      const known = best.get(key);
-      if (
-        !known ||
-        candidate.arrive < known.arrive ||
-        (candidate.arrive === known.arrive && candidate.leave > known.leave)
-      )
-        best.set(key, candidate);
+      const buses = busesOf(candidate);
+      const key = `${candidate.origin}>${buses}`;
+      if (better(candidate, best.get(key))) best.set(key, candidate);
+      if (!candidate.first && better(candidate, direct.get(buses))) direct.set(buses, candidate);
     }
     return [...best.values()].filter((candidate) => {
       if (!candidate.first) return true;
       const f = candidate.final!;
-      const direct = best.get(tripKey(f.trip, f.day.date));
-      return !direct || direct.leave < candidate.leave || direct.arrive > candidate.arrive;
+      const known = direct.get(tripKey(f.trip, f.day.date));
+      return !known || known.leave < candidate.leave || known.arrive > candidate.arrive;
     });
   };
 
@@ -795,6 +832,7 @@ export function startPlan(
       // Walking can start at any time, so a bus that takes as long as the walk is never better.
       kept = kept.filter((c) => c.arrive - c.leave < minutes * MINUTE);
       kept.push({
+        origin: -1,
         leave,
         arrive: leave + minutes * MINUTE,
         rides: 0,
@@ -810,15 +848,23 @@ export function startPlan(
         ? b.leave - a.leave || a.arrive - b.arrive || a.rides - b.rides
         : a.arrive - b.arrive || b.leave - a.leave || a.rides - b.rides,
     );
-    // The pool keeps every option the schedule lists, even past the nearest POOL. Buses the
-    // timetable has leaving before he asked are in the pool only for live data to judge.
+    // The pool keeps every option the schedule lists, even past the nearest POOL buses, which
+    // count once from however many stops he can board them at. Buses the timetable has leaving
+    // before he asked are in the pool only for live data to judge.
     const listed = worthShowing(
       kept.filter((c) => c.leave >= from - MINUTE),
       listing,
     );
     const shown = new Set(listed);
+    const pooled = new Set<string>();
     const built = new Map(
-      kept.filter((c, i) => i < POOL || shown.has(c)).map((c) => [c, build(c)] as const),
+      kept
+        .filter((c) => {
+          const buses = busesOf(c);
+          if (pooled.size < POOL) pooled.add(buses);
+          return pooled.has(buses) || shown.has(c);
+        })
+        .map((c) => [c, build(c)] as const),
     );
     const pool = [...built.values()];
     const day = agencyDate(request.at);
@@ -964,48 +1010,76 @@ export type PlanOption = {
   scheduleKey: string;
 };
 
+type Anchor = { live: LiveDeparture; scheduledAt: number };
+/** A trip's departures from each stop, the delay each carries, and its arrivals once asked. */
+type Timeline = {
+  departures: LiveDeparture[];
+  anchors: (Anchor | null)[];
+  arrivals: Map<number, LiveDeparture>;
+};
+
+// A partial stop query must not turn a delayed bus back into an on-time bus further on. Only a
+// fresh prediction anchors this estimate; a later coherent prediction replaces it.
+function anchored(live: LiveDeparture, scheduledAt: number, anchor: Anchor | null): LiveDeparture {
+  if (
+    !anchor ||
+    !(live.status === 'live'
+      ? live.at < anchor.live.at
+      : ['schedule', 'no-data', 'unassigned'].includes(live.status) &&
+        anchor.live.at > anchor.scheduledAt)
+  )
+    return live;
+  return {
+    ...live,
+    at: Math.max(anchor.live.at, scheduledAt + anchor.live.at - anchor.scheduledAt),
+    source: 'estimate',
+    status: 'estimated',
+    measuredAt: anchor.live.measuredAt,
+    reportedAt: anchor.live.reportedAt,
+    uncertainty: null,
+    eventKind: 'schedule',
+  };
+}
+
 function rideLive(
   schedule: Schedule,
   ride: Ride,
   snapshot: LiveSnapshot | null,
   liveTrips: Set<string>,
   now: number,
-  timelines: Map<string, LiveDeparture[]>,
+  timelines: Map<string, Timeline>,
 ): RideLive {
   const usable = snapshot && liveTrips.has(ride.trip[0]) ? snapshot : null;
   const key = tripKey(ride.trip, ride.serviceDate);
-  let times = timelines.get(key);
-  if (!times) {
-    const pattern = schedule.patterns[ride.trip[6]];
-    let anchor: { live: LiveDeparture; scheduledAt: number } | null = null;
-    times = pattern.map((stopTime) => {
-      const at = ride.departure.at + (stopTime[3] - pattern[ride.board][3]) * 1_000;
-      const live = mergeLiveDeparture(schedule, { ...ride.departure, stopTime, at }, usable, now);
-      // A partial stop query must not turn a delayed bus back into an on-time bus further on.
-      // Only a fresh prediction anchors this estimate; a later coherent prediction replaces it.
-      if (
-        anchor &&
-        (live.status === 'live'
-          ? live.at < anchor.live.at
-          : ['schedule', 'no-data', 'unassigned'].includes(live.status) &&
-            anchor.live.at > anchor.scheduledAt)
-      )
-        return {
-          ...live,
-          at: Math.max(anchor.live.at, at + anchor.live.at - anchor.scheduledAt),
-          source: 'estimate',
-          status: 'estimated',
-          measuredAt: anchor.live.measuredAt,
-          reportedAt: anchor.live.reportedAt,
-          uncertainty: null,
-          eventKind: 'schedule',
-        };
-      if (live.status === 'live') anchor = { live, scheduledAt: at };
-      return live;
-    });
-    timelines.set(key, times);
+  const pattern = schedule.patterns[ride.trip[6]];
+  const at = (seconds: number) => ride.departure.at + (seconds - pattern[ride.board][3]) * 1_000;
+  const merge = (stopTime: (typeof pattern)[number], event?: 'arrival') =>
+    mergeLiveDeparture(
+      schedule,
+      { ...ride.departure, stopTime, at: at(stopTime[3]) },
+      usable,
+      now,
+      event,
+    );
+  let timeline = timelines.get(key);
+  if (!timeline) {
+    timeline = { departures: [], anchors: [], arrivals: new Map() };
+    let anchor: Anchor | null = null;
+    for (const stopTime of pattern) {
+      timeline.anchors.push(anchor);
+      const live = anchored(merge(stopTime), at(stopTime[3]), anchor);
+      if (live.status === 'live') anchor = { live, scheduledAt: at(stopTime[3]) };
+      timeline.departures.push(live);
+    }
+    timelines.set(key, timeline);
   }
-  return { board: times[ride.board], alight: times[ride.alight] };
+  let alight = timeline.arrivals.get(ride.alight);
+  if (!alight) {
+    const stopTime = pattern[ride.alight];
+    alight = anchored(merge(stopTime, 'arrival'), at(stopTime[2]), timeline.anchors[ride.alight]);
+    timeline.arrivals.set(ride.alight, alight);
+  }
+  return { board: timeline.departures[ride.board], alight };
 }
 
 /** LTC's alerts for the ride's line and the part of its trip he actually takes. */
@@ -1066,7 +1140,7 @@ export function liveOptions(
   const liveTrips = new Set(snapshot?.tripUpdates.map((t) => t.tripId) ?? []);
   // Options share their buses, and what follows a stop at a given time is the same for all.
   const merged = new Map<string, RideLive>();
-  const timelines = new Map<string, LiveDeparture[]>();
+  const timelines = new Map<string, Timeline>();
   const ridden = (ride: Ride) => {
     const key = rideKey(ride);
     let found = merged.get(key);
@@ -1076,7 +1150,7 @@ export function liveOptions(
     }
     return found;
   };
-  const continued = new Map<string, NextRide | null>();
+  const continued = context.continued;
   const after = (first: Ride, readyAt: number, skip: Ride) => {
     const key = `${first.arrival.stopTime[0]}/${readyAt}/${rideKey(skip)}`;
     if (!continued.has(key))

@@ -210,6 +210,82 @@ test('every bus is listed, also another line that leaves a minute earlier and ar
   ]);
 });
 
+test('an option the list hides does not hide another first bus', () => {
+  // The 92 then the 20 hides the 92 then a new line L, which arrives later on the same first
+  // bus; that one, unlisted, used to hide the 16 then the L, the only way on the 16.
+  const network = plannerFixture();
+  const at = (id: string) => network.stops.findIndex((s) => s[0] === id);
+  network.patterns.push([
+    [at('CORNER_EB'), 1, 0, 0, 0, 1, 1, ''],
+    [at('END_EB'), 2, 720, 720, 1, 0, 1, ''],
+  ]);
+  network.routes.push(['L', 'L', 'Line', '808080']);
+  network.trips.push([
+    'L-0',
+    network.routes.length - 1,
+    'daily',
+    'End',
+    0,
+    '',
+    network.patterns.length - 1,
+    (8 * 60 + 31) * 60,
+  ]);
+  const search = startPlan(buildPlannerIndex(network), request());
+  while (!search.step(1_000));
+  const listed = liveOptions(search.result(), null, 0).map(describe);
+  assert.ok(listed.includes('08:17 08:41 92S-1:ORIGIN_SB>CORNER_SB 20E-3:CORNER_EB>END_EB'));
+  assert.ok(!listed.some((o) => o.includes('92S-1') && o.includes('L-0')));
+  assert.ok(listed.includes('08:12 08:44 16S-3:ORIGIN_SB>CORNER_SB L-0:CORNER_EB>END_EB'));
+});
+
+test('a bus holding at the stop he gets off at counts from when it arrives', () => {
+  // A line H that waits five minutes at the corner, as LTC's timepoints do: by its arrival he
+  // makes the 08:30 20 with four minutes to spare; by its departure he would miss it.
+  const network = plannerFixture();
+  const at = (id: string) => network.stops.findIndex((s) => s[0] === id);
+  network.patterns.push([
+    [at('ORIGIN_SB'), 1, 0, 0, 0, 1, 1, ''],
+    [at('CORNER_SB'), 2, 600, 900, 0, 0, 1, ''],
+    [at('CORNER_NB'), 3, 1_200, 1_200, 1, 0, 1, ''],
+  ]);
+  network.routes.push(['H', 'H', 'Holding', '808080']);
+  network.trips.push([
+    'H-0',
+    network.routes.length - 1,
+    'daily',
+    'Holding',
+    1,
+    '',
+    network.patterns.length - 1,
+    (8 * 60 + 14) * 60,
+  ]);
+  const search = startPlan(buildPlannerIndex(network), request());
+  while (!search.step(1_000));
+  const result = search.result();
+  const plan = result.pool.find((p) => p.rides.map((r) => r.trip[0]).join() === 'H-0,20E-3');
+  assert.ok(plan, 'the timetable search already counts the arrival');
+  const only = { ...result, pool: [plan], best: [plan] };
+  const now = request().at;
+  const [scheduled] = liveOptions(only, null, now);
+  assert.equal(scheduled.problem, null);
+  assert.equal(scheduled.replaced, null);
+  assert.equal(agencyClock(scheduled.live[0].alight.at), '08:24');
+  assert.equal(scheduled.slack, 4 * 60_000);
+  const reading = update(network, 'H-0', now, {}, 1);
+  const event = reading.stops[1].arrival!;
+  reading.stops[1].arrival = { ...event, time: queryInstant(TUESDAY, '08:25') };
+  reading.stops[1].departure = { ...event, time: queryInstant(TUESDAY, '08:30') };
+  const [live] = liveOptions(only, snapshot(now, [reading]), now);
+  assert.equal(
+    agencyClock(live.live[0].alight.at),
+    '08:25',
+    'its predicted arrival, not departure',
+  );
+  assert.equal(live.live[0].alight.eventKind, 'arrival');
+  assert.equal(live.problem, null);
+  assert.equal(live.tight, true);
+});
+
 test('later buses are not crowded out by other stops to get off the same ones', () => {
   // A line that stops twelve times within walking distance of the end: each stop used to count
   // as an option, and the first 120 of them filled the list with the first few buses.
@@ -546,15 +622,35 @@ test('leaving now, each stop he can board at keeps its own buses, best first, fa
     '08:17 08:41 92S-1:ORIGIN_SB>CORNER_SB 20E-3:CORNER_EB>END_EB',
     'the stop shows its best bus, not the one he just missed',
   );
+  // The middle stop is on the origin's line: its buses leave him earlier than from his own
+  // stop, and it used to vanish behind it. It is a stop of its own, so three are found at 1.5 km.
+  const wider = stops(plan({ mode: 'now', at, accessRadiusM: 1_500 }));
+  assert.deepEqual(
+    wider.map(([stop, minutes]) => [stop, minutes]),
+    [
+      ['ORIGIN_SB', 1],
+      ['MIDDLE_SB', 12],
+      ['CORNER_EB', 24],
+    ],
+  );
+  assert.deepEqual(wider[1][3], [
+    '07:50 08:26 16S-2:MIDDLE_SB>CORNER_SB 20E-2:CORNER_EB>END_EB',
+    '08:05 08:41 16S-3:MIDDLE_SB>CORNER_SB 20E-3:CORNER_EB>END_EB',
+    '08:20 08:56 16S-4:MIDDLE_SB>CORNER_SB 20E-4:CORNER_EB>END_EB',
+    '08:35 09:11 16S-5:MIDDLE_SB>CORNER_SB 20E-5:CORNER_EB>END_EB',
+  ]);
   const far = stops(plan({ mode: 'now', at, accessRadiusM: 3_000 }));
   assert.deepEqual(
     far.map(([stop, minutes]) => [stop, minutes]),
     [
       ['ORIGIN_SB', 1],
+      ['MIDDLE_SB', 12],
       ['CORNER_EB', 24],
+      ['EAST_EB', 32],
     ],
+    'no ride west to come back east: the 20 is boarded where it passes',
   );
-  assert.deepEqual(far[1][3], [
+  assert.deepEqual(far[2][3], [
     '07:49 08:26 20E-2:CORNER_EB>END_EB',
     '08:04 08:41 20E-3:CORNER_EB>END_EB',
     '08:19 08:56 20E-4:CORNER_EB>END_EB',
@@ -614,7 +710,7 @@ test('a stop LTC has closed is not offered to board at, and is listed with how f
   const result = plan({ mode: 'now', at, accessRadiusM: 3_000, closedStops: ['ORIGIN_SB'] });
   assert.deepEqual(
     stopChoices(result, null, at).map((choice) => stopId(choice.stop)),
-    ['MIDDLE_SB', 'CORNER_EB'],
+    ['MIDDLE_SB', 'CORNER_EB', 'EAST_EB'],
     'the next stop on the same line takes its place',
   );
   assert.ok(

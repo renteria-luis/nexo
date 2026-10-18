@@ -694,9 +694,10 @@ function stopDeparture(
   reportedAt: number | null = null,
   controlFresh = fresh,
   askedStop = true,
+  event: 'departure' | 'arrival' = 'departure',
 ): LiveDeparture {
   const fallback: LiveDeparture = {
-    at: scheduled,
+    at: event === 'arrival' ? scheduledArrival : scheduled,
     source: 'schedule',
     status: 'schedule',
     measuredAt: update?.measuredAt ?? null,
@@ -723,15 +724,17 @@ function stopDeparture(
   if (!askedStop) return fallback;
   const departurePrediction = prediction(stop?.departure ?? null, scheduled);
   const arrivalPrediction = prediction(stop?.arrival ?? null, scheduledArrival);
-  const at = departurePrediction ?? arrivalPrediction;
+  // Each event falls back to the other when LTC predicts only one.
+  const byArrival = event === 'arrival' ? arrivalPrediction !== null : departurePrediction === null;
+  const at = byArrival ? arrivalPrediction : departurePrediction;
   if (at === null) return { ...fallback, status: 'no-data' };
-  const event = departurePrediction !== null ? stop?.departure : stop?.arrival;
+  const predicted = byArrival ? stop?.arrival : stop?.departure;
   // LTC also lists trips no bus is running yet, with the timetable time and no delay: that is the
   // schedule restated, not a live prediction.
   if (
     update.vehicleId === null &&
-    event?.delay === null &&
-    at === (departurePrediction !== null ? scheduled : scheduledArrival)
+    predicted?.delay === null &&
+    at === (byArrival ? scheduledArrival : scheduled)
   )
     return { ...fallback, status: fresh ? 'unassigned' : 'schedule' };
   return {
@@ -740,20 +743,22 @@ function stopDeparture(
     status: fresh ? 'live' : 'stale',
     measuredAt: update.measuredAt,
     reportedAt: update.measuredAt,
-    uncertainty:
-      departurePrediction !== null
-        ? (stop?.departure?.uncertainty ?? null)
-        : (stop?.arrival?.uncertainty ?? null),
-    eventKind: departurePrediction !== null ? 'departure' : 'arrival',
+    uncertainty: predicted?.uncertainty ?? null,
+    eventKind: byArrival ? 'arrival' : 'departure',
     relationship,
   };
 }
 
+/**
+ * The departure as LTC reports it. With `arrival`, when the bus gets to the stop instead, which
+ * is where he gets off: a bus holding at a stop to keep its timetable leaves minutes later.
+ */
 export function mergeLiveDeparture(
   schedule: Schedule,
   departure: Departure,
   snapshot: LiveSnapshot | null,
   now = Date.now(),
+  event: 'departure' | 'arrival' = 'departure',
 ): LiveDeparture {
   const update = usableSnapshot(snapshot, schedule, now)
     ? snapshot.tripUpdates.find((t) => sameTrip(t, departure, schedule))
@@ -777,6 +782,7 @@ export function mergeLiveDeparture(
         now,
       ),
     !snapshot || asked(snapshot, departure, stopId),
+    event,
   );
 }
 
@@ -787,8 +793,11 @@ const inEffect = (alert: LiveAlert, now: number) =>
   );
 
 // GTFS-Realtime effects that take a stop out of use: NO_SERVICE and STOP_MOVED. LTC also files
-// its stop closures as detours or other effects, with the word in the text.
+// its stop closures as detours or other effects, with the word in the text. A DETOUR lists the
+// stops it closes in its description but names a stop the detour still serves, often a temporary
+// one (its feed on 2026-10-18), so there only a header like "STOP CLOSURE" counts.
 const CLOSING_EFFECTS = new Set([1, 9]);
+const DETOUR = 4;
 const CLOSING_WORDS = /\bclos(ed|ure|ing)\b/i;
 
 /**
@@ -807,7 +816,7 @@ export function stopClosure(
       inEffect(a, now) &&
       a.selectors.some((s) => s.stopId === stopId && s.tripId === null) &&
       ((a.effect !== null && CLOSING_EFFECTS.has(a.effect)) ||
-        CLOSING_WORDS.test(`${a.header} ${a.description}`)),
+        CLOSING_WORDS.test(a.effect === DETOUR ? a.header : `${a.header} ${a.description}`)),
   );
   if (alert) return alert.header || 'LTC avisa que está cerrado.';
   const visits = snapshot.tripUpdates.flatMap((trip) =>

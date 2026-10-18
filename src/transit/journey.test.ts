@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import type { WorkoutFinish } from '../training/read.ts';
 import {
   DEFAULT_TRAVEL_PREFERENCES,
+  LEAVE_GRACE_MS,
   parseJourneyState,
   travelAdvice,
   travelReminders,
@@ -113,13 +114,28 @@ test('completing Training allows the already prepared departure until leave time
     true,
   );
   assert.equal(
-    travelAdvice(option, 5, null, option.leaveAt + 1, undefined, prepared).feasible,
-    false,
+    travelAdvice(option, 5, null, option.leaveAt + 5_000, undefined, prepared).feasible,
+    true,
+    'seconds after the leaving time the bus is still his',
   );
   assert.equal(
-    travelAdvice(option, 5, null, prepared + 4 * 60_000, undefined, prepared + 4 * 60_000).feasible,
+    travelAdvice(option, 5, null, option.leaveAt + LEAVE_GRACE_MS + 1, undefined, prepared)
+      .feasible,
     false,
-    'selecting a bus does not remove preparation time',
+  );
+  const late = travelAdvice(
+    option,
+    5,
+    null,
+    prepared + 4 * 60_000,
+    undefined,
+    prepared + 4 * 60_000,
+  );
+  assert.equal(late.feasible, true, 'a bus chosen late stays chosen');
+  assert.equal(
+    late.reason,
+    'Vas con menos tiempo de preparación del habitual.',
+    'selecting a bus does not hide that preparation is short',
   );
   assert.equal(
     travelAdvice(
@@ -130,6 +146,29 @@ test('completing Training allows the already prepared departure until leave time
     ).feasible,
     true,
     'finishing the final set starts preparation even before closing the session',
+  );
+});
+test('the leave reminder survives the preparation reminder, with Training open or just finished', () => {
+  const finishBy = option.leaveAt - 5 * 60_000;
+  const kinds = (current: number, training: WorkoutFinish) =>
+    travelReminders(
+      trip,
+      travelAdvice(option, 5, training, current, undefined, trip.selectedAt),
+      DEFAULT_TRAVEL_PREFERENCES,
+      '',
+      current,
+    ).map((reminder) => reminder.kind);
+  const open = { ...workout, finishAt: finishBy };
+  assert.deepEqual(kinds(finishBy - 60_000, open), ['prepare', 'leave']);
+  for (const current of [finishBy, finishBy + 30_000, finishBy + 60_000]) {
+    assert.deepEqual(kinds(current, open), ['leave'], 'still training when it rang');
+    const done = { ...open, endedAt: current, finishAt: current, evidence: 'complete' as const };
+    assert.deepEqual(kinds(current, done), ['leave'], 'finished after it rang');
+  }
+  assert.equal(
+    travelAdvice(option, 5, { ...workout, finishAt: finishBy + 1 }, now, undefined, now).feasible,
+    false,
+    'before preparation time, a workout forecast to end late still rules the bus out',
   );
 });
 test('arrive-by includes the final walk and keeps its arrival margin after delays', () => {

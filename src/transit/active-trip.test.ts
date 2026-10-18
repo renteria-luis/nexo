@@ -9,6 +9,7 @@ import {
   freezeTrip,
   isActive,
   parseActiveTrip,
+  rideStopAt,
   tripAlarms,
   tripLiveSelection,
   walkAhead,
@@ -312,6 +313,39 @@ function withBus(schedule: Schedule, now: number, position: Coordinates): TripLi
   };
   return { schedule, snapshot };
 }
+
+test('where he gets off, the bus is due when LTC says it arrives, not when it leaves', () => {
+  const { trip, schedule } = setup('16S-4>20E-4');
+  const now = second('08:32', 0);
+  const live = withBus(schedule, now, { lat: 42.9949, lng: -81.2001 });
+  const ride = trip.rides[0];
+  const pattern = schedule.patterns[schedule.trips.find((t) => t[0] === ride.tripId)![6]];
+  const event = (clock: string) => ({ time: at(clock), delay: null, uncertainty: null });
+  live.snapshot!.tripUpdates = [
+    {
+      tripId: ride.tripId,
+      serviceDate: ride.serviceDate,
+      routeId: '16',
+      directionId: 1,
+      startTime: null,
+      entityId: 'bus',
+      vehicleId: '3001',
+      measuredAt: now,
+      relationship: 'scheduled',
+      delay: null,
+      stops: ride.stops.map((stop, index) => ({
+        stopId: stop.id,
+        stopSequence: pattern[stop.position][1],
+        relationship: 'scheduled' as const,
+        arrival: index === 0 ? null : event(index === 2 ? '08:39' : '08:35'),
+        departure: event(index === 0 ? '08:30' : index === 2 ? '08:42' : '08:35'),
+      })),
+    },
+  ];
+  const last = ride.stops.length - 1;
+  assert.deepEqual(rideStopAt(trip, ride, last, live, now), { at: at('08:39'), live: true });
+  assert.deepEqual(rideStopAt(trip, ride, 0, live, now), { at: at('08:30'), live: true });
+});
 
 test('a walk that did not start at the origin is not learned from', () => {
   const { trip } = setup('16S-4>20E-4');

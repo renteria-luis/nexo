@@ -1,4 +1,9 @@
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import {
+  useFocusEffect,
+  useNavigation,
+  useRoute,
+  type NavigationProp,
+} from '@react-navigation/native';
 import {
   Component,
   useCallback,
@@ -110,12 +115,27 @@ export function TransitScreen() {
 
 function TransitContent() {
   const journey = useTransitJourneyLink();
-  const navigation = useNavigation();
+  const navigation = useNavigation<NavigationProp<{ Transit: { reminder?: TransitResponse } }>>();
   const [panel, setPanel] = useState<'explore' | 'live' | null>(null);
   const [exploreMapActive, setExploreMapActive] = useState(false);
   const [refreshAt, setRefreshAt] = useState(0);
   const route = useRoute<{ key: string; name: string; params?: { reminder?: TransitResponse } }>();
   const reminder = route.params?.reminder;
+  // A tapped reminder is judged once, against the trip saved when it came in, and then cleared:
+  // choosing another trip afterwards must not make it read as an old calculation.
+  const [handledReminder, setHandledReminder] = useState<TransitResponse | undefined>(undefined);
+  const [staleFor, setStaleFor] = useState<string | null>(null);
+  if (reminder !== handledReminder && !journey.reading) {
+    setHandledReminder(reminder);
+    if (reminder?.kind === 'reminder') {
+      const saved = journey.saved.next?.id ?? '';
+      setStaleFor(reminder.expired || reminder.journeyId !== saved ? saved : null);
+    }
+  }
+  useEffect(() => {
+    if (reminder !== undefined && reminder === handledReminder)
+      navigation.setParams({ reminder: undefined });
+  }, [reminder, handledReminder, navigation]);
   const [data, setData] = useState<{ db: SQLiteDatabase; cache: CachedSchedule } | null>(null);
   useEffect(() => {
     if (data) journey.actions.schedule(data.cache);
@@ -839,13 +859,12 @@ function TransitContent() {
         </Text>
       )}
       {notice && <Text style={styles.note}>{notice}</Text>}
-      {reminder?.kind === 'reminder' &&
-        (reminder.expired || reminder.journeyId !== journey.saved.next?.id) && (
-          <Text style={styles.note}>
-            Ese aviso corresponde a un cálculo anterior. Revisa el viaje y las horas actuales antes
-            de salir.
-          </Text>
-        )}
+      {staleFor !== null && staleFor === (journey.saved.next?.id ?? '') && !traveling && (
+        <Text style={styles.note}>
+          Ese aviso corresponde a un cálculo anterior. Revisa el viaje y las horas actuales antes de
+          salir.
+        </Text>
+      )}
       <TransitJourneyCard surface="transit" onMapInteraction={setMapActive} />
       {traveling && (
         <FoldRow title="Cómo llegar" open={shows('plan')} onPress={() => toggleSection('plan')} />

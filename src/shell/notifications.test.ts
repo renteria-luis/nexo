@@ -6,6 +6,7 @@ import { database } from '../transit/fixtures.ts';
 import * as journeyStore from '../transit/journey-store.ts';
 import {
   DEFAULT_TRAVEL_PREFERENCES,
+  LEAVE_GRACE_MS,
   type NextTrip,
   type TravelReminder,
 } from '../transit/journey.ts';
@@ -61,6 +62,7 @@ async function fixture() {
     '../core/notification-plan.ts': coordinator,
     '../db/transaction.ts': { inTransaction },
     '../transit/journey-store.ts': journeyStore,
+    '../transit/journey.ts': { LEAVE_GRACE_MS },
     '../core/throttle.ts': {
       throttled: (work: (...args: any[]) => void) => ({ call: work, flush() {} }),
     },
@@ -225,7 +227,11 @@ test('a cold Transit tap survives health listener startup and is routed independ
     notification: {
       request: {
         content: {
-          data: { notificationOwner: 'transit', journeyId: 'one', expiresAt: f.now() - 1 },
+          data: {
+            notificationOwner: 'transit',
+            journeyId: 'one',
+            expiresAt: f.now() - LEAVE_GRACE_MS - 1,
+          },
         },
       },
     },
@@ -238,6 +244,18 @@ test('a cold Transit tap survives health listener startup and is routed independ
   assert.deepEqual(travel, [{ kind: 'reminder', journeyId: 'one', expired: true }]);
   assert.equal(health.length, 0);
   assert.equal(f.last(), null);
+  const tap = (expiresAt: number) => ({
+    actionIdentifier: 'default',
+    notification: {
+      request: { content: { data: { notificationOwner: 'transit', journeyId: 'one', expiresAt } } },
+    },
+  });
+  for (const listener of f.listeners) listener(tap(f.now() - 5_000));
+  assert.deepEqual(
+    travel.at(-1),
+    { kind: 'reminder', journeyId: 'one', expired: false },
+    'tapped seconds after it rang, the reminder still holds',
+  );
 });
 
 test('a trip in progress shows each event once and holds its warnings apart from reminders', async (t) => {

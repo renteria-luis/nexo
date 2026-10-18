@@ -71,6 +71,10 @@ export function parseJourneyState(content: string): JourneyState {
   return value;
 }
 
+// He taps "Es hora de salir" a few seconds after it rings: the bus is still his for a minute, as
+// a "sal ya" option in the planner is.
+export const LEAVE_GRACE_MS = 60_000;
+
 export type TravelAdvice = {
   option: PlanOption;
   finishBy: number;
@@ -113,6 +117,12 @@ export function travelAdvice(
   const preparationStarted =
     selectedAt === null ? null : Math.max(selectedAt, Math.min(now, finishBy));
   const ready = departureReadyAt(preparationMinutes, workout, now, preparationStarted);
+  // A bus he chose stays his once preparation time has come: falling short of it only warns, so
+  // the "Es hora de salir" reminder is not taken away right when he needs it.
+  const short =
+    ready > option.leaveAt && selectedAt !== null && now >= finishBy
+      ? 'Vas con menos tiempo de preparación del habitual.'
+      : null;
   const reason =
     option.problem === 'canceled'
       ? 'LTC canceló este viaje.'
@@ -125,9 +135,9 @@ export function travelAdvice(
             ? 'Ya no llegas con el margen de 3 min antes de tu hora límite.'
             : workout && workout.finishAt === null
               ? 'Entreno todavía no puede estimar cuándo terminas.'
-              : option.leaveAt < now
+              : option.leaveAt + LEAVE_GRACE_MS < now
                 ? 'La hora de salir ya pasó.'
-                : ready > option.leaveAt
+                : ready > option.leaveAt && !short
                   ? 'Con la preparación y lo que falta, este bus ya no se alcanza con margen.'
                   : null;
   const source = !board
@@ -155,7 +165,7 @@ export function travelAdvice(
     walkMinutes: option.itinerary.access.minutes,
     boardingMinutes: board ? BOARD_MARGIN_MIN : 0,
     feasible: reason === null,
-    reason,
+    reason: reason ?? short,
     source,
   };
 }

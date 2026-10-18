@@ -134,6 +134,8 @@ const LinkContext = createContext<
       actions: Actions;
       /** The trip in progress, while there is one. */
       traveling: string | null;
+      /** Until the saved trip has been read. */
+      reading: boolean;
     })
   | null
 >(null);
@@ -653,8 +655,8 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
   const gymId = session?.gym_id ?? null;
   const traveling = followingId ?? null;
   const link = useMemo(
-    () => ({ saved, gymId, sessionId, query, actions, traveling }),
-    [saved, gymId, sessionId, query, actions, traveling],
+    () => ({ saved, gymId, sessionId, query, actions, traveling, reading: loading }),
+    [saved, gymId, sessionId, query, actions, traveling, loading],
   );
   return (
     <ActionsContext.Provider value={actions}>
