@@ -7,9 +7,9 @@ import type { NewPantryItem, PantryItem } from '../pantry/index.ts';
 import { useAppData } from '../shell/AppData.tsx';
 
 import { Button } from './Button.tsx';
-import { Card } from './Card.tsx';
 import { Chip } from './Chip.tsx';
 import { NumericField } from './NumericField.tsx';
+import { PopupSheet } from './PopupSheet.tsx';
 import { SearchField } from './SearchField.tsx';
 import { TextField } from './TextField.tsx';
 import { font, sheet, shape } from './theme.ts';
@@ -84,7 +84,8 @@ export function PantryForm({
   };
 
   return (
-    <Card title={item === null ? 'Algo nuevo' : item.name}>
+    <PopupSheet>
+      <Text style={styles.title}>{item === null ? 'Algo nuevo' : item.name}</Text>
       <Text style={styles.label}>Qué es</Text>
       <TextField
         value={name}
@@ -231,11 +232,12 @@ export function PantryForm({
         />
         <Button label="Cancelar" accessibilityLabel="Cancelar" variant="ghost" onPress={onCancel} />
       </View>
-    </Card>
+    </PopupSheet>
   );
 }
 
 const styles = sheet((theme) => ({
+  title: { fontSize: 18, fontFamily: font.black, color: theme.text },
   label: {
     fontSize: 11,
     fontFamily: font.black,

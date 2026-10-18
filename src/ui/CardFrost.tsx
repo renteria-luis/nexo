@@ -1,7 +1,7 @@
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Animated, Image, StyleSheet, View, useWindowDimensions } from 'react-native';
 
-import { photoFrame } from '../core/backgrounds.ts';
+import { photoFrame, type Photo } from '../core/backgrounds.ts';
 
 import { SceneContext } from './scene.ts';
 
@@ -13,7 +13,7 @@ const CARD_DIM = 0.25;
  * El pedazo desenfocado se dibuja a un cuarto del tamano y se agranda: desenfocado no
  * se nota, y cada tarjeta desenfoca una foto cuatro veces mas chica, en memoria y tiempo.
  */
-const QUALITY = 4;
+export const QUALITY = 4;
 
 /**
  * El esmerilado de una tarjeta (2026-10-18, a peticion suya): detras de ella, el mismo
@@ -31,7 +31,6 @@ const QUALITY = 4;
  */
 export function CardFrost({ radius }: { radius: number }) {
   const scene = useContext(SceneContext);
-  const window = useWindowDimensions();
   const self = useRef<View>(null);
   const [spot, setSpot] = useState<{ left: number; top: number } | null>(null);
   const photo = scene?.background.kind === 'photo' ? scene.background : null;
@@ -62,30 +61,58 @@ export function CardFrost({ radius }: { radius: number }) {
       style={[StyleSheet.absoluteFill, styles.clip, { borderRadius: radius }]}
     >
       {photo && spot && scene && (
-        <Animated.View
-          style={[
-            styles.copy,
-            {
-              left: spot.left,
-              top: spot.top,
-              width: window.width / QUALITY,
-              height: window.height / QUALITY,
-              transform: [{ translateY: scene.scrollY }, { scale: QUALITY }],
-            },
-          ]}
-        >
-          <Image
-            source={{ uri: photo.uri }}
-            blurRadius={(photo.blur + CARD_BLUR) / QUALITY}
-            style={[styles.photo, scaled(photoFrame(photo, window))]}
-          />
-          <View
-            style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(0, 0, 0, ${photo.dim})` }]}
-          />
-        </Animated.View>
+        <PhotoCopy
+          photo={photo}
+          left={spot.left}
+          top={spot.top}
+          blur={CARD_BLUR}
+          scrollY={scene.scrollY}
+        />
       )}
       <View style={[StyleSheet.absoluteFill, styles.dim]} />
     </View>
+  );
+}
+
+/**
+ * La foto de fondo del tamano de la ventana, desenfocada `blur` puntos mas que ella y
+ * con su oscurecido, puesta en `left` y `top` de quien la contiene y movida por el
+ * scroll si lo hay. La usan las tarjetas y lo que va detras de las hojas.
+ */
+export function PhotoCopy({
+  photo,
+  left,
+  top,
+  blur,
+  scrollY,
+}: {
+  photo: Photo;
+  left: number;
+  top: number;
+  blur: number;
+  scrollY?: Animated.Value;
+}) {
+  const window = useWindowDimensions();
+  return (
+    <Animated.View
+      style={[
+        styles.copy,
+        {
+          left,
+          top,
+          width: window.width / QUALITY,
+          height: window.height / QUALITY,
+          transform: scrollY ? [{ translateY: scrollY }, { scale: QUALITY }] : [{ scale: QUALITY }],
+        },
+      ]}
+    >
+      <Image
+        source={{ uri: photo.uri }}
+        blurRadius={(photo.blur + blur) / QUALITY}
+        style={[styles.photo, scaled(photoFrame(photo, window))]}
+      />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(0, 0, 0, ${photo.dim})` }]} />
+    </Animated.View>
   );
 }
 

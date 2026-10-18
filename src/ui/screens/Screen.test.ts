@@ -53,6 +53,7 @@ function fixture() {
     '../../shell/backup-file.ts': {},
     '../Button.tsx': { Button: 'Button' },
     '../TabBar.tsx': { FloatingBarSpace: { value: 0 } },
+    '../ScreenBlur': { ScreenBlur: 'ScreenBlur' },
     '../theme.ts': { font: {}, sheet: (make: (theme: unknown) => unknown) => make({}) },
   }).mount('Screen', props);
   const scroll = async () =>

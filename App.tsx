@@ -46,6 +46,7 @@ import {
 import { InfoProvider } from './src/ui/InfoBubble.tsx';
 import { KeyboardBar } from './src/ui/KeyboardBar.tsx';
 import { Assistant } from './src/ui/Assistant.tsx';
+import { AssistantDockProvider, AssistantDockSlot } from './src/ui/assistant-dock.tsx';
 import { goTo, nudgeDestination, type Navigate } from './src/ui/navigation.ts';
 import { SidebarProvider, useSidebar } from './src/ui/Sidebar.tsx';
 import { SwipeLockProvider, useSwipeLocked } from './src/ui/SwipeLock.tsx';
@@ -277,6 +278,7 @@ function Navigation({ navigation }: { navigation: ReturnType<typeof useNavigatio
                 action="settings"
                 onPress={() => navigation.navigate('Ajustes')}
                 onMenu={sidebar.open}
+                dock={<AssistantDockSlot navigation={navigation} />}
               />
             ),
           contentStyle: { backgroundColor: theme.bg },
@@ -344,15 +346,19 @@ export default function App() {
           <SwipeLockProvider>
             <SidebarProvider navigation={navigation}>
               <BackgroundEditingProvider>
-                {/* El globito de la (i) se dibuja aqui para que no lo recorte la lista
-                  dentro de la que vive el boton que lo abre. */}
-                <InfoProvider>
-                  <PagerPositionProvider>
-                    <Navigation navigation={navigation} />
-                  </PagerPositionProvider>
-                </InfoProvider>
-                {/* Encima de todo menos del menu lateral, que si la tapa. */}
-                <Assistant />
+                {/* La barra de arriba aparta el hueco donde se guarda la bola, y la bola
+                  vive por fuera del navegador: los dos se hablan por aqui. */}
+                <AssistantDockProvider>
+                  {/* El globito de la (i) se dibuja aqui para que no lo recorte la lista
+                    dentro de la que vive el boton que lo abre. */}
+                  <InfoProvider>
+                    <PagerPositionProvider>
+                      <Navigation navigation={navigation} />
+                    </PagerPositionProvider>
+                  </InfoProvider>
+                  {/* Encima de todo menos del menu lateral, que si la tapa. */}
+                  <Assistant />
+                </AssistantDockProvider>
                 {/* Y el editor de fondos encima de la bola, sobre la pantalla que prueba. */}
                 <BackgroundEditorPanel />
               </BackgroundEditingProvider>

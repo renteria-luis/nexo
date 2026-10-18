@@ -30,6 +30,7 @@ import { exportNote } from '../../shell/backup-file.ts';
 import { useBackgrounds } from '../background-editing.tsx';
 import { Button } from '../Button.tsx';
 import { SceneContext } from '../scene.ts';
+import { ScreenBlur } from '../ScreenBlur';
 import { FloatingBarSpace } from '../TabBar.tsx';
 import { font, sheet } from '../theme.ts';
 
@@ -442,6 +443,7 @@ export function Screen({
           style={styles.stack}
         >
           {scroll}
+          {hasOverlay && <ScreenBlur target={list} frame={frame} background={background} />}
           {/* Con el teclado abierto la capa se encoge por arriba de el: si no, los
             botones de guardar y confirmar quedan justo debajo de las teclas. */}
           {[overlay, overlayAbove].map((content, index) =>
@@ -522,7 +524,8 @@ const styles = sheet((theme) => ({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+    // Mas claro que antes de desenfocar lo de detras: con 72% no se notaba el desenfoque.
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   overlay: {
     position: 'absolute',

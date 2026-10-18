@@ -262,6 +262,7 @@ const LOOK_ONLY: ReadonlySet<SettingKey> = new Set([
   'chart_ranges',
   'chart_gaps_hidden',
   'backgrounds',
+  'assistant_docked',
 ]);
 
 /**

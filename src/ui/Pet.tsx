@@ -20,10 +20,13 @@ export const PET_SIZE = 56;
 
 export function Ball({
   pos,
+  scale,
   lit,
   handlers,
 }: {
   pos: Animated.ValueXY;
+  /** Chica cuando esta guardada en la barra de arriba. */
+  scale: Animated.Value;
   lit: boolean;
   handlers: ComponentProps<typeof Animated.View>;
 }) {
@@ -31,7 +34,7 @@ export function Ball({
     <Animated.View
       accessibilityRole="button"
       accessibilityLabel="Asistente"
-      style={[styles.ball, { transform: pos.getTranslateTransform() }]}
+      style={[styles.ball, { transform: [...pos.getTranslateTransform(), { scale }] }]}
       {...handlers}
     >
       {lit ? (

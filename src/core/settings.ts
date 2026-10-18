@@ -37,7 +37,8 @@ export type SettingKey =
   | 'deal_blocklist'
   | 'deals_seen_at'
   | 'water_taps'
-  | 'backgrounds';
+  | 'backgrounds'
+  | 'assistant_docked';
 
 export type Settings = ReadonlyMap<string, string>;
 
@@ -152,6 +153,11 @@ export function nudgesEnabled(settings: Settings): boolean {
   return raw(settings, 'nudges_enabled') !== 'false';
 }
 
+/** La bola del asistente guardada junto a Ajustes, fuera de las demas pantallas. */
+export function assistantDocked(settings: Settings): boolean {
+  return raw(settings, 'assistant_docked') === 'true';
+}
+
 /** Las palabras que tiran una oferta aunque coincida, o las de fabrica si nunca las toco. */
 export function dealBlocklistFrom(settings: Settings): string {
   return raw(settings, 'deal_blocklist') ?? '';
@@ -242,6 +248,7 @@ export function settingProblem(
     case 'targets_change_seen':
       return dateProblem(trimmed);
     case 'nudges_enabled':
+    case 'assistant_docked':
       return trimmed === 'true' || trimmed === 'false' ? null : 'solo true o false';
     // Lo escribe la app al apagar un tipo de aviso, no el.
     case 'nudges_off':

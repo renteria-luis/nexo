@@ -18,7 +18,7 @@ import { Trash } from './icons.ts';
 import { NumericField } from './NumericField.tsx';
 import { TextField } from './TextField.tsx';
 import { Toggle } from './Toggle.tsx';
-import { font, sheet, shape } from './theme.ts';
+import { font, glass, sheet, shape } from './theme.ts';
 
 /**
  * La ficha de un alimento: la misma para crear uno nuevo y para corregir uno que ya
@@ -418,9 +418,9 @@ const styles = sheet((theme) => ({
     // Tope para que nunca llegue a parecer una pantalla entera. Lo que no entre se
     // desplaza dentro de la hoja.
     maxHeight: 520,
-    backgroundColor: theme.surface,
+    ...glass.panel,
+    backgroundColor: theme.surfaceSolid,
     borderWidth: shape.border,
-    borderColor: theme.line,
     borderRadius: shape.radius,
   },
   scroll: {

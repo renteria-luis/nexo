@@ -47,6 +47,7 @@ export function TopBar({
   onMenu,
   showDate = true,
   actions,
+  dock,
   screens,
 }: {
   action: 'settings' | 'done';
@@ -54,6 +55,8 @@ export function TopBar({
   onMenu: () => void;
   showDate?: boolean;
   actions?: ReactNode;
+  /** El hueco donde se guarda la bola del asistente, a la izquierda del boton. */
+  dock?: ReactNode;
   /** De que pantalla es el fondo que lleva detras; varias si son las pestanas. */
   screens: readonly string[];
 }) {
@@ -69,22 +72,25 @@ export function TopBar({
         {showDate && today !== null && <Text style={styles.today}>{today}</Text>}
       </View>
 
-      {actions ??
-        (action === 'done' ? (
-          <GlassButton
-            icon={Check}
-            tint={theme.accent}
-            accessibilityLabel="Listo"
-            onPress={onPress}
-          />
-        ) : (
-          <GlassButton
-            icon={Settings}
-            label="Ajustes"
-            accessibilityLabel="Ajustes"
-            onPress={onPress}
-          />
-        ))}
+      <View style={styles.right}>
+        {dock}
+        {actions ??
+          (action === 'done' ? (
+            <GlassButton
+              icon={Check}
+              tint={theme.accent}
+              accessibilityLabel="Listo"
+              onPress={onPress}
+            />
+          ) : (
+            <GlassButton
+              icon={Settings}
+              label="Ajustes"
+              accessibilityLabel="Ajustes"
+              onPress={onPress}
+            />
+          ))}
+      </View>
     </View>
   );
 }
@@ -137,6 +143,11 @@ const styles = sheet((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  right: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   today: {
     flex: 1,

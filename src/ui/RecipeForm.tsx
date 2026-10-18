@@ -5,11 +5,11 @@ import { matchesSearch } from '../nutrition/index.ts';
 import type { Ingredient, NewRecipe, PantryItem, Recipe } from '../pantry/index.ts';
 
 import { Button } from './Button.tsx';
-import { Card } from './Card.tsx';
 import { Chip } from './Chip.tsx';
 import { ConfirmButton } from './InfoBubble.tsx';
 import { Trash } from './icons.ts';
 import { NumericField } from './NumericField.tsx';
+import { PopupSheet } from './PopupSheet.tsx';
 import { SearchField } from './SearchField.tsx';
 import { TextField } from './TextField.tsx';
 import { font, sheet, shape } from './theme.ts';
@@ -66,7 +66,8 @@ export function RecipeForm({
   };
 
   return (
-    <Card title={recipe === null ? 'Receta nueva' : recipe.name}>
+    <PopupSheet>
+      <Text style={styles.title}>{recipe === null ? 'Receta nueva' : recipe.name}</Text>
       <Text style={styles.label}>Cómo se llama</Text>
       <TextField
         value={name}
@@ -178,11 +179,12 @@ export function RecipeForm({
         />
         <Button label="Cancelar" accessibilityLabel="Cancelar" variant="ghost" onPress={onCancel} />
       </View>
-    </Card>
+    </PopupSheet>
   );
 }
 
 const styles = sheet((theme) => ({
+  title: { fontSize: 18, fontFamily: font.black, color: theme.text },
   label: {
     fontSize: 11,
     fontFamily: font.black,
