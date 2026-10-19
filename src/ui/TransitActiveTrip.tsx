@@ -140,12 +140,14 @@ function TripStops({
   live,
   now,
   onClose,
+  onFocusBus,
 }: {
   trip: ActiveTrip;
   ride: TripRide;
   live: TripLive | null;
   now: number;
   onClose: () => void;
+  onFocusBus?: () => void;
 }) {
   const schedule = live?.schedule;
   const ends = useMemo(() => {
@@ -165,6 +167,7 @@ function TripStops({
         active
         onSelect={() => undefined}
         onClose={onClose}
+        onFocusBus={onFocusBus}
       />
     );
   return ride.stops.map((stop, index) => (
@@ -187,6 +190,7 @@ export function TransitActiveTrip({
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [showStops, setShowStops] = useState(false);
+  const [busFocus, setBusFocus] = useState<number | null>(null);
   if (!trip) return null;
   const active = isActive(trip);
   const { title, lines, ride } = tripLines(trip, tripLive, now);
@@ -229,6 +233,7 @@ export function TransitActiveTrip({
           live={tripLive}
           now={now}
           places={places}
+          focusKey={busFocus}
           onInteraction={onMapInteraction}
         />
       )}
@@ -254,6 +259,7 @@ export function TransitActiveTrip({
               live={tripLive}
               now={now}
               onClose={() => setShowStops(false)}
+              onFocusBus={map ? () => setBusFocus(Date.now()) : undefined}
             />
           )}
         </>

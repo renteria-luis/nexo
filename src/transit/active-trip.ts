@@ -757,16 +757,23 @@ function alight(
   record(trip, at, source);
 }
 
-function walking(trip: ActiveTrip, step: TripStep, fix: Fix, context: TripLive | null) {
+function walking(
+  trip: ActiveTrip,
+  step: TripStep,
+  fix: Fix,
+  speed: number | null,
+  context: TripLive | null,
+) {
   const walk = trip.walks[trip.leg];
   const current = (trip.walk ??= track(fix.at, 'gps', fix.accuracy));
+  const hadLeft = current.leftAt !== null;
   remember(current, fix);
   current.accuracy ??= fix.accuracy;
   if (walk.kind === 'access' && walk.from.kind === 'place') {
     const away = distanceMetres(fix, walk.from) - (fix.accuracy ?? 0);
     if (current.trace.length === 1 && current.source === 'tap' && away > START_AWAY_M)
       current.usable = false;
-    if (current.leftAt === null && away > PLACE_LEFT_M) current.leftAt = fix.at;
+    if (current.usable && current.leftAt === null && away > PLACE_LEFT_M) current.leftAt = fix.at;
   }
   if (walk.to.kind !== 'stop') {
     if (near(fix, walk.to, PLACE_NEAR_M)) {
@@ -785,6 +792,27 @@ function walking(trip: ActiveTrip, step: TripStep, fix: Fix, context: TripLive |
     return;
   }
   const ride = trip.rides[trip.leg];
+  if (trip.leg === 0 && !hadLeft && fix.at - trip.startedAt <= 3 * 60_000) {
+    const first = { lat: current.trace[0][0], lng: current.trace[0][1] };
+    const place = locateOnPath(ride.path, fix, null);
+    const onRoute =
+      place.off <= ON_ROUTE_M + (fix.accuracy ?? 0) && place.at - ride.along[0] >= STOP_NEAR_M;
+    const bus = rideBus(trip, ride, context, fix.at);
+    const matched = bus !== null && distanceMetres(bus, fix) <= MATCH_BUS_M + (fix.accuracy ?? 0);
+    if (
+      distanceMetres(first, walk.to) <= STOP_NEAR_M * 4 &&
+      onRoute &&
+      ((speed !== null && speed >= BUS_SPEED_MS) || matched)
+    ) {
+      trip.walk = null;
+      trip.phase = 'waiting';
+      trip.nearStopAt = trip.startedAt;
+      trip.boarding = { hits: 0, doubt: null };
+      record(trip, fix.at, 'gps');
+      waiting(trip, step, fix, speed, context);
+      return;
+    }
+  }
   const due = rideStopAt(trip, ride, 0, context, fix.at);
   const short = fix.at + remainingWalkMs(walk, fix) - due.at;
   if (short > 30_000) {
@@ -834,8 +862,12 @@ function waiting(
   const place = locateOnPath(ride.path, fix, null);
   const onRoute =
     place.off <= ON_ROUTE_M + (fix.accuracy ?? 0) && place.at - ride.along[0] >= BOARD_PROGRESS_M;
-  if (!recent || !onRoute || speed === null || speed < BUS_SPEED_MS) {
+  if (!recent || !onRoute) {
     trip.boarding = { hits: 0, doubt: null };
+    return;
+  }
+  if (speed === null || speed < BUS_SPEED_MS) {
+    trip.boarding = { hits: 0, doubt: trip.boarding.doubt };
     return;
   }
   const doubt = (kind: 'other-bus' | 'early') => {
@@ -904,10 +936,30 @@ function riding(
     });
     return;
   }
-  if (near(fix, target, STOP_NEAR_M)) trip.progress.atStopSince ??= fix.at;
+  const finalStretch =
+    last <= 0 || (progress ?? place.at) >= ride.along[last - 1] - STOP_NEAR_M * 2;
+  if (finalStretch && near(fix, target, STOP_NEAR_M)) trip.progress.atStopSince ??= fix.at;
   const since = trip.progress.atStopSince;
-  if (since === null) return;
   const away = place.off > ALIGHT_OFF_M + (fix.accuracy ?? 0);
+  if (since === null) {
+    if (leg === trip.rides.length - 1 && near(fix, trip.destination, PLACE_NEAR_M) && !fast) {
+      alight(trip, step, fix.at, 'gps', fix.accuracy, context);
+      finish(trip, 'completed', fix.at, 'gps');
+      return;
+    }
+    if (
+      Math.max(progress ?? 0, place.at) >= ride.along[Math.max(0, last - 1)] &&
+      away &&
+      !fast &&
+      speed !== null &&
+      speed < WALK_MAX_MS
+    ) {
+      alight(trip, step, fix.at, 'gps', fix.accuracy, context);
+      if (trip.walk && distanceMetres(fix, target) - (fix.accuracy ?? 0) > START_AWAY_M)
+        trip.walk.usable = false;
+    }
+    return;
+  }
   const lingering =
     !fast &&
     (speed === null || speed < WALK_MAX_MS) &&
@@ -916,15 +968,35 @@ function riding(
   if (away || lingering) alight(trip, step, since, 'gps', fix.accuracy, context);
 }
 
-// A walk that began from an inferred alighting, while he keeps going along the bus's path at bus
-// speed, was the bus waiting at his stop: he is still on it.
+function resumeRide(trip: ActiveTrip, leg: number, at: number, source: TripSource) {
+  trip.leg = leg;
+  trip.phase = 'riding';
+  trip.walk = null;
+  trip.progress = { at: null, atStopSince: null };
+  trip.notified = trip.notified.filter(
+    (key) => key !== `transfer:${leg}` && key !== `passed:${leg}`,
+  );
+  record(trip, at, source);
+}
+
+// A walk or same-stop wait that began from an inferred alighting, while he keeps going along the
+// bus's path at bus speed, was the bus waiting at his stop: he is still on it.
 function stillRiding(trip: ActiveTrip, fix: Fix, speed: number | null): boolean {
   const leg = trip.phase === 'final' ? trip.rides.length - 1 : trip.leg - 1;
   const ride = trip.rides[leg];
+  const startedAt =
+    trip.walk?.source === 'gps'
+      ? trip.walk.startedAt
+      : trip.phase === 'waiting' &&
+          trip.leg > 0 &&
+          trip.boarded[trip.leg] === null &&
+          trip.log.at(-1)?.source === 'gps'
+        ? trip.nearStopAt
+        : null;
   if (
     !ride ||
-    trip.walk?.source !== 'gps' ||
-    fix.at - trip.walk.startedAt > 3 * 60_000 ||
+    startedAt === null ||
+    fix.at - startedAt > 3 * 60_000 ||
     speed === null ||
     speed < BUS_SPEED_MS
   )
@@ -960,18 +1032,19 @@ export function applyFix(trip: ActiveTrip, fix: Fix, context: TripLive | null): 
           fix.at - previous.at >= 3_000
         ? distanceMetres(previous, fix) / ((fix.at - previous.at) / 1_000)
         : null;
-  if ((next.phase === 'transferring' || next.phase === 'final') && stillRiding(next, fix, speed)) {
-    next.leg = next.phase === 'final' ? next.rides.length - 1 : next.leg - 1;
-    next.phase = 'riding';
-    next.walk = null;
-    next.progress = { at: null, atStopSince: null };
-    record(next, fix.at, 'gps');
+  if (
+    (next.phase === 'transferring' ||
+      next.phase === 'final' ||
+      (next.phase === 'waiting' && next.leg > 0 && next.boarded[next.leg] === null)) &&
+    stillRiding(next, fix, speed)
+  ) {
+    resumeRide(next, next.phase === 'final' ? next.rides.length - 1 : next.leg - 1, fix.at, 'gps');
   }
   switch (next.phase) {
     case 'walking':
     case 'transferring':
     case 'final':
-      walking(next, step, fix, context);
+      walking(next, step, fix, speed, context);
       break;
     case 'waiting':
       waiting(next, step, fix, speed, context);
@@ -1039,11 +1112,7 @@ export function applyAction(
       const previous = phase === 'final' ? next.rides.length - 1 : leg - 1;
       if (!['transferring', 'final', 'waiting'].includes(phase) || previous < 0) break;
       if (phase === 'waiting' && next.boarded[leg] !== null) break;
-      next.leg = previous;
-      next.phase = 'riding';
-      next.walk = null;
-      next.progress = { at: null, atStopSince: null };
-      record(next, at, 'tap');
+      resumeRide(next, previous, at, 'tap');
       break;
     }
     case 'arrived':

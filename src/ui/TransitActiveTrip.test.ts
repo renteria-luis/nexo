@@ -138,16 +138,24 @@ test('the stops of his trip open as Paradas shows them, lit from where he boards
   const schedule = plannerFixture();
   const riding = activeTrip.applyAction(trip(), 'boarded', at('08:30')).trip;
   const ride = riding.rides[0];
-  const f = render({ trip: riding, now: at('08:31'), tripLive: { schedule, snapshot: null } });
+  const f = render(
+    { trip: riding, now: at('08:31'), places: [], tripLive: { schedule, snapshot: null } },
+    { map: true },
+  );
   await f.press('Ver paradas del viaje');
   const timeline = async () =>
     nodes(await f.screen.settle()).find((node) => node.type === 'TransitTripTimeline');
+  const tripMap = async () =>
+    nodes(await f.screen.settle()).find((node) => node.type === 'TransitTripMap');
   const shown = (await timeline())!;
   assert.ok(shown, 'the same timeline as Paradas');
   const stopOf = (departure: { stopTime: number[] }) => schedule.stops[departure.stopTime[0]][0];
   assert.equal(shown.props.departure.trip[0], ride.tripId);
   assert.equal(stopOf(shown.props.departure), ride.stops[0].id);
   assert.equal(stopOf(shown.props.alighting), ride.stops.at(-1)!.id);
+  assert.equal((await tripMap())!.props.focusKey, null);
+  shown.props.onFocusBus();
+  assert.equal(typeof (await tripMap())!.props.focusKey, 'number');
   shown.props.onClose();
   assert.equal(await timeline(), undefined);
 

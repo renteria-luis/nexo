@@ -47,7 +47,16 @@ test('the trip map shows only the trip: its lines, a dot per stop, the phone dot
     '../transit/map.ts': map,
     '../transit/realtime.ts': realtime,
     './TransitMap': { TransitMap: 'TransitMap' },
-    './TransitLiveMap.tsx': { followedMarker: () => null },
+    './TransitLiveMap.tsx': {
+      followedMarker: () => ({
+        lat: 42.995,
+        lng: -81.2001,
+        label: 'Bus',
+        tag: 'Bus',
+        placedBy: 'gps',
+        measuredAt: at('08:26'),
+      }),
+    },
     './routeColors.ts': routeColors,
     './Button.tsx': { Button: 'Button' },
   }).mount('TransitTripMap', {
@@ -58,11 +67,13 @@ test('the trip map shows only the trip: its lines, a dot per stop, the phone dot
     live: { schedule, snapshot: null },
     now: at('08:26'),
     places: [],
+    focusKey: 42,
   });
   let tree = await screen.settle();
   const shown = () => nodes(tree).find((n) => n.type === 'TransitMap')!.props;
   assert.deepEqual(shown().stops, [], 'no other stops');
   assert.equal(shown().showsUserLocation, true);
+  assert.deepEqual(shown().focus, { key: 42, point: { lat: 42.995, lng: -81.2001 } });
   assert.equal(
     shown().stopDots.length,
     frozen.rides.reduce((sum, ride) => sum + ride.stops.length, 0),

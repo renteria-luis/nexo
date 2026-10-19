@@ -23,12 +23,14 @@ export const TransitTripMap = memo(function TransitTripMap({
   live,
   now,
   places,
+  focusKey = null,
   onInteraction,
 }: {
   trip: ActiveTrip;
   live: TripLive | null;
   now: number;
   places: Place[];
+  focusKey?: number | null;
   onInteraction?: (active: boolean) => void;
 }) {
   // A stop closing does not need the second.
@@ -81,6 +83,11 @@ export const TransitTripMap = memo(function TransitTripMap({
     [trip.id, trip.origin, trip.destination, paths, fits],
   );
   const [focus, setFocus] = useState<{ key: number; point: Coordinates } | null>(null);
+  const [seenBusKey, setSeenBusKey] = useState<number | null>(null);
+  if (focusKey !== null && focusKey !== seenBusKey) {
+    setSeenBusKey(focusKey);
+    if (bus) setFocus({ key: focusKey, point: { lat: bus.lat, lng: bus.lng } });
+  }
   const fix = trip.lastFix;
   return (
     <View style={styles.block}>

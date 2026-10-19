@@ -613,3 +613,121 @@ test('running late, a lost connection and a missed bus are each told once', () =
     ['connection:1'],
   );
 });
+
+test('a boarding doubt survives a red light on the route and clears only off it', () => {
+  const { trip, schedule } = setup('16S-4>20E-4');
+  const waiting = run(trip, [fix({ lat: 43.0003, lng: -81.2001 }, second('08:29', 30))]).trip;
+  const live = withBus(schedule, second('08:30', 35), { lat: 43.0003, lng: -81.2001 });
+  const doubted = run(
+    waiting,
+    [fix({ lat: 42.9949, lng: -81.2001 }, second('08:30', 40), { speed: 11 })],
+    live,
+  ).trip;
+  assert.equal(doubted.boarding.doubt, 'other-bus');
+  const stoppedAtLight = run(
+    doubted,
+    [fix({ lat: 42.9949, lng: -81.2001 }, second('08:30', 50), { speed: 0 })],
+    live,
+  ).trip;
+  assert.equal(stoppedAtLight.boarding.doubt, 'other-bus');
+  const leftRoute = run(
+    stoppedAtLight,
+    [fix({ lat: 42.9949, lng: -81.198 }, second('08:31', 0), { speed: 0 })],
+    live,
+  ).trip;
+  assert.equal(leftRoute.boarding.doubt, null);
+});
+
+test('undoing an early alighting restores the transfer notification for the real stop', () => {
+  const { trip } = setup('16S-4>20E-4');
+  const riding = applyAction(trip, 'boarded', second('08:30', 0)).trip;
+  const earlyOff = applyAction(riding, 'alighted', second('08:34', 0));
+  assert.deepEqual(
+    earlyOff.events.map((e) => e.key),
+    ['transfer:0'],
+  );
+  const backOn = applyAction(earlyOff.trip, 'still-riding', second('08:34', 15)).trip;
+  assert.equal(backOn.phase, 'riding');
+  assert.equal(backOn.leg, 0);
+  assert.ok(!backOn.notified.includes('transfer:0'));
+  const realOff = applyAction(backOn, 'alighted', second('08:38', 0));
+  assert.deepEqual(
+    realOff.events.map((e) => e.key),
+    ['transfer:0'],
+  );
+});
+
+test('a loop route passing near its final stop early in the ride does not latch alighting', () => {
+  const { trip } = setup('16S-4>20E-4');
+  const riding = applyAction(trip, 'boarded', second('08:30', 0)).trip;
+  // Simulate a loop where the final stop (index 2) is geographically near the start of the ride
+  // before the bus has reached the second-to-last stop (along[1] = ~667 m).
+  riding.rides[0].stops[2] = { ...riding.rides[0].stops[2], lat: 42.9995, lng: -81.2001 };
+  const earlyPass = run(riding, [
+    fix({ lat: 42.9995, lng: -81.2001 }, second('08:30', 20), { speed: 8 }),
+  ]).trip;
+  assert.equal(earlyPass.progress.atStopSince, null);
+});
+
+test('a same-stop transfer recovers to riding if the first bus was only waiting at the stop', () => {
+  const { trip } = setup('16S-4>20E-4');
+  trip.walks[1] = {
+    ...trip.walks[1],
+    to: trip.walks[1].from,
+    minutes: 0,
+    source: 'same',
+  };
+  trip.rides[0].after = [{ lat: 42.984, lng: -81.2001 }];
+  const rode = run(run(trip, walkToStop).trip, rideSouth.slice(0, 5));
+  const lingered = run(rode.trip, [
+    fix({ lat: 42.988, lng: -81.2001 }, second('08:37', 50), { speed: 0 }),
+    fix({ lat: 42.988, lng: -81.2001 }, second('08:38', 40), { speed: 0 }),
+  ]);
+  assert.equal(lingered.trip.phase, 'waiting');
+  assert.equal(lingered.trip.leg, 1);
+  assert.equal(lingered.trip.walk, null);
+  assert.ok(lingered.trip.notified.includes('transfer:0'));
+  const keptGoing = run(lingered.trip, [
+    fix({ lat: 42.986, lng: -81.2001 }, second('08:39', 0), { speed: 9 }),
+  ]);
+  assert.equal(keptGoing.trip.phase, 'riding');
+  assert.equal(keptGoing.trip.leg, 0);
+  assert.ok(!keptGoing.trip.notified.includes('transfer:0'));
+});
+
+test('getting off a stop early or missing the stop pole still alights when walking off the route or arriving', () => {
+  const { trip } = setup('16S-4>20E-4');
+  const rodeToMiddle = run(run(trip, walkToStop).trip, rideSouth.slice(0, 5)).trip;
+  assert.equal(rodeToMiddle.phase, 'riding');
+  assert.equal(rodeToMiddle.progress.atStopSince, null);
+  // Walks east off the route from the middle stop (second-to-last stop of leg 0) at walking speed.
+  const walkedOff = run(rodeToMiddle, [
+    fix({ lat: 42.9937, lng: -81.199 }, second('08:34', 30), { speed: 1.4 }),
+  ]);
+  assert.equal(walkedOff.trip.phase, 'transferring');
+  assert.equal(walkedOff.trip.leg, 1);
+  assert.equal(walkedOff.trip.walk?.usable, false);
+  assert.deepEqual(
+    walkedOff.events.map((e) => e.key),
+    ['transfer:0'],
+  );
+
+  // On the final ride, reaching the destination without a reading inside the stop pole completes the trip.
+  const onSecondRide = applyAction(walkedOff.trip, 'boarded', second('08:45', 0)).trip;
+  const arrivedDirect = run(onSecondRide, [fix(DESTINATION, second('08:56', 0), { speed: 1.2 })]);
+  assert.equal(arrivedDirect.trip.phase, 'completed');
+});
+
+test('starting Salgo ahora while boarding transitions from walking and boards the ride', () => {
+  const { trip } = setup('16S-4>20E-4', at('08:30'));
+  assert.equal(trip.phase, 'walking');
+  assert.equal(trip.nearStopAt, null);
+  // First fix is already 75 m south of ORIGIN_SB along the route as the bus pulls away.
+  const boarded = run(trip, [
+    fix({ lat: 42.9996, lng: -81.2001 }, second('08:30', 10), { speed: 10 }),
+    fix({ lat: 42.9978, lng: -81.2001 }, second('08:30', 25), { speed: 11 }),
+    fix({ lat: 42.996, lng: -81.2001 }, second('08:30', 40), { speed: 11 }),
+  ]);
+  assert.equal(boarded.trip.phase, 'riding');
+  assert.equal(boarded.trip.boarded[0], 'inferred');
+});

@@ -53,12 +53,15 @@ import {
   type LiveSnapshot,
   type TransitLiveState,
 } from '../transit/realtime.ts';
+import { itineraryPaths } from '../transit/map.ts';
 import {
   listPlaces,
   listStopWalks,
   listWalkLinks,
   type CachedSchedule,
   type Place,
+  type StopWalk,
+  type WalkLink,
 } from '../transit/store.ts';
 import { TRANSIT_ENABLED } from '../transit/index.ts';
 import { useAppData } from './AppData.tsx';
@@ -352,7 +355,12 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
         choices.some((choice) => choice.feasible && choice.option.itinerary.rides.length > 0)));
   const at = readyAt === undefined ? trip?.at : fresh ? searched : readyAt;
   // His walks are read once per refresh, not again by every search the clock or live data starts.
-  const walks = useRef<{ key: string; value: ReturnType<typeof personalWalks> } | null>(null);
+  const walks = useRef<{
+    key: string;
+    links: WalkLink[];
+    stops: StopWalk[];
+    value: ReturnType<typeof personalWalks>;
+  } | null>(null);
   useEffect(() => {
     let alive = true;
     if (!tripId || !index || !origin || !destination || at === undefined) return;
@@ -372,6 +380,8 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
           ]);
           walks.current = {
             key,
+            links: [...from, ...to],
+            stops,
             value: personalWalks({
               originId: origin.id,
               destinationId: destination.id,
@@ -617,12 +627,24 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
         const { advice: choice, plan: found, origin: from, destination: to } = latest.current;
         if (!next || !choice || !found || !from || !to)
           throw new Error('Elige primero el viaje y espera a que se calcule.');
+        const paths: Partial<Record<TripWalk['kind'], Coordinates[]>> = {};
+        for (const path of itineraryPaths(
+          found.context.index.schedule,
+          choice.option.itinerary,
+          from,
+          to,
+          walks.current?.links ?? [],
+          walks.current?.stops ?? [],
+        ))
+          if (path.dashed && path.points.length > 2)
+            paths[path.id as TripWalk['kind']] = path.points;
         await tripTracker.start({
           option: choice.option,
           schedule: found.context.index.schedule,
           origin: from,
           destination: to,
           journeyId: next.id,
+          paths,
         });
         // He is leaving: the reminders to prepare and to leave have done their job.
         if (next.reminders)

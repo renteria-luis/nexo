@@ -4,6 +4,7 @@ import * as training from '../training/read.ts';
 import { database, plannerFixture } from '../transit/fixtures.ts';
 import * as journey from '../transit/journey.ts';
 import * as storage from '../transit/journey-store.ts';
+import * as map from '../transit/map.ts';
 import * as planner from '../transit/planner.ts';
 import * as realtime from '../transit/realtime.ts';
 import * as activeTrip from '../transit/active-trip.ts';
@@ -74,6 +75,7 @@ async function fixture(
   let searches = 0;
   let walkReads = 0;
   let placeReads = 0;
+  const starts: Record<string, any>[] = [];
   const app = {
     state: {
       phase: 'ready',
@@ -100,6 +102,7 @@ async function fixture(
     '../training/read.ts': training,
     '../transit/journey.ts': journey,
     '../transit/journey-store.ts': storage,
+    '../transit/map.ts': map,
     '../transit/planner.ts': {
       ...planner,
       startPlan: (...args: Parameters<typeof planner.startPlan>) => {
@@ -125,6 +128,9 @@ async function fixture(
         tick: async () => {
           ticks++;
         },
+        start: async (input: Record<string, any>) => {
+          starts.push(input);
+        },
         setSchedule() {},
         setLive() {},
       },
@@ -134,9 +140,26 @@ async function fixture(
         placeReads++;
         return [origin, destination];
       },
-      listWalkLinks: async () => {
+      listWalkLinks: async (_db: unknown, placeId: string) => {
         walkReads++;
-        return [];
+        return placeId === 'from'
+          ? [
+              {
+                place_id: 'from',
+                stop_id: 'ORIGIN_SB',
+                direction: 'to_stop',
+                minutes: 3,
+                available: 1,
+                note: '',
+                path: JSON.stringify([
+                  [43.0005, -81.2002],
+                  [43.0004, -81.2001],
+                ]),
+                crossings: '[]',
+                updated_at: now,
+              },
+            ]
+          : [];
       },
       listStopWalks: async () => [],
     },
@@ -171,6 +194,8 @@ async function fixture(
       (node) => node.props.value?.saved && 'advice' in node.props.value,
     )?.props.value;
   };
+  const actions = async () =>
+    nodes(await module.settle()).find((node) => node.props.value?.startTrip)?.props.value;
   return {
     app,
     clocks,
@@ -186,6 +211,8 @@ async function fixture(
     searches: () => searches,
     walkReads: () => walkReads,
     placeReads: () => placeReads,
+    starts,
+    actions,
     settle,
     syncs,
     reads,
@@ -267,4 +294,14 @@ test('a restored backup reads the saved trip and places again', async (t) => {
   f.app.restoreRevision++;
   await f.settle();
   assert.equal(f.placeReads(), placeReads + 1);
+});
+
+test('starting the saved trip passes his saved walk paths to the tracker', async (t) => {
+  const f = await fixture(t, false, null, { trip: leavingNow });
+  await f.settle();
+  const act = await f.actions();
+  await act.startTrip();
+  assert.equal(f.starts.length, 1);
+  assert.equal(f.starts[0].paths?.access?.length, 4);
+  assert.deepEqual(f.starts[0].paths.access[1], { lat: 43.0005, lng: -81.2002 });
 });
