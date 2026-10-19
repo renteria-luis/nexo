@@ -263,6 +263,7 @@ const LOOK_ONLY: ReadonlySet<SettingKey> = new Set([
   'chart_gaps_hidden',
   'backgrounds',
   'assistant_docked',
+  'transit_same_bus_stops',
 ]);
 
 /**

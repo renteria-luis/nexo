@@ -38,7 +38,8 @@ export type SettingKey =
   | 'deals_seen_at'
   | 'water_taps'
   | 'backgrounds'
-  | 'assistant_docked';
+  | 'assistant_docked'
+  | 'transit_same_bus_stops';
 
 export type Settings = ReadonlyMap<string, string>;
 
@@ -158,6 +159,11 @@ export function assistantDocked(settings: Settings): boolean {
   return raw(settings, 'assistant_docked') === 'true';
 }
 
+/** Saliendo ya, los paraderos repiten el mismo bus de uno de arriba. Apagado de entrada. */
+export function sameBusStops(settings: Settings): boolean {
+  return raw(settings, 'transit_same_bus_stops') === 'true';
+}
+
 /** Las palabras que tiran una oferta aunque coincida, o las de fabrica si nunca las toco. */
 export function dealBlocklistFrom(settings: Settings): string {
   return raw(settings, 'deal_blocklist') ?? '';
@@ -249,6 +255,7 @@ export function settingProblem(
       return dateProblem(trimmed);
     case 'nudges_enabled':
     case 'assistant_docked':
+    case 'transit_same_bus_stops':
       return trimmed === 'true' || trimmed === 'false' ? null : 'solo true o false';
     // Lo escribe la app al apagar un tipo de aviso, no el.
     case 'nudges_off':

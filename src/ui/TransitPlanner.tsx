@@ -35,6 +35,7 @@ import { observedServiceTrips, stopClosure, type LiveSnapshot } from '../transit
 import {
   closedStops,
   COST,
+  distinctStops,
   stopChoices,
   STOP_CHOICES,
   STOP_REACH_M,
@@ -89,6 +90,7 @@ import { IconButton } from './IconButton.tsx';
 import { placeOptions } from './placeIcons.ts';
 import { stopChoiceColor } from './routeColors.ts';
 import { TextField } from './TextField.tsx';
+import { Toggle } from './Toggle.tsx';
 import {
   dayOf,
   destination,
@@ -223,6 +225,8 @@ export function TransitPlanner({
   today,
   walksVersion,
   onWalkChanged,
+  sameBus,
+  onSameBus,
   onLive,
   onFocusBus,
   journey,
@@ -251,6 +255,9 @@ export function TransitPlanner({
   /** Changes when a walk is saved elsewhere on the screen. */
   walksVersion: number;
   onWalkChanged?: () => void;
+  /** Leaving now, stops whose best bus is that of a stop above are listed too. */
+  sameBus: boolean;
+  onSameBus: (on: boolean) => void;
   onLive: (live: PlannerLive) => void;
   /** Shows an opened bus on the screen's map. */
   onFocusBus?: (departure: Departure) => void;
@@ -957,6 +964,8 @@ export function TransitPlanner({
           originName={origin.name}
           targetName={target.name}
           closedIds={closedIds}
+          sameBus={sameBus}
+          onSameBus={onSameBus}
           pick={stopPick}
           line={line}
           savable={savable}
@@ -1300,6 +1309,8 @@ const StopList = memo(function StopList({
   originName,
   targetName,
   closedIds,
+  sameBus,
+  onSameBus,
   pick,
   line,
   savable,
@@ -1333,6 +1344,8 @@ const StopList = memo(function StopList({
   originName: string;
   targetName: string;
   closedIds: readonly string[];
+  sameBus: boolean;
+  onSameBus: (on: boolean) => void;
   pick: { stop: number; view: StopView } | null;
   line: Departure | null;
   savable: { access: boolean; egress: boolean };
@@ -1361,12 +1374,14 @@ const StopList = memo(function StopList({
     if (stale) onStale();
   }, [stale, onStale]);
   const choices = useMemo(() => stopChoices(result, snapshot, now), [result, snapshot, now]);
-  const shown = useMemo(() => choices.slice(0, STOP_CHOICES), [choices]);
+  const listed = useMemo(() => (sameBus ? choices : distinctStops(choices)), [choices, sameBus]);
+  const shown = useMemo(() => listed.slice(0, STOP_CHOICES), [listed]);
   const closed = useMemo(
     () => closedStops(result, closedIds, snapshot, now),
     [result, closedIds, snapshot, now],
   );
-  // Fewer stops than he is offered: the search looks farther.
+  // Fewer stops than he is offered: the search looks farther. Counted before the ones with the
+  // same bus are left out, so hiding them never sends the search farther.
   const few = final && choices.length < STOP_CHOICES;
   useEffect(() => {
     if (few) onWiden('access');
@@ -1374,7 +1389,7 @@ const StopList = memo(function StopList({
   // LTC closes stops for now: the first offered are checked on each reading, and one closed stays
   // checked, so it opens again when LTC says so.
   const watched = [
-    ...new Set([...closedIds, ...choices.slice(0, 6).map((c) => schedule.stops[c.stop][0])]),
+    ...new Set([...closedIds, ...listed.slice(0, 6).map((c) => schedule.stops[c.stop][0])]),
   ].join();
   useEffect(() => {
     if (!snapshot) return;
@@ -1411,7 +1426,7 @@ const StopList = memo(function StopList({
       ...new Set([
         ...closedIds,
         ...(picked ? [id(picked.stop)] : []),
-        ...choices.slice(0, 5).map((choice) => id(choice.stop)),
+        ...listed.slice(0, 5).map((choice) => id(choice.stop)),
         ...ridden,
       ]),
     ].slice(0, 7);
@@ -1420,7 +1435,7 @@ const StopList = memo(function StopList({
       live,
     ]);
     return { key, stops, live };
-  }, [shown, choices, closed, closedIds, picked, schedule]);
+  }, [shown, listed, closed, closedIds, picked, schedule]);
   useEffect(() => {
     onSummary(summary);
   }, [summary, onSummary]);
@@ -1509,6 +1524,16 @@ const StopList = memo(function StopList({
         <Text style={styles.body}>
           Ahora no sale ningún bus que te lleve desde los paraderos cercanos. Prueba «Salir a las…».
         </Text>
+      )}
+      {shown.length > 0 && (
+        <View style={styles.walkLine}>
+          <Text style={[styles.body, styles.grow]}>Mostrar paraderos con el mismo bus</Text>
+          <Toggle
+            value={sameBus}
+            onChange={onSameBus}
+            accessibilityLabel="Mostrar paraderos con el mismo bus"
+          />
+        </View>
       )}
       {shown.map((choice, i) => {
         const stop = schedule.stops[choice.stop];

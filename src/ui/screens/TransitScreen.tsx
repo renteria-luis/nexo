@@ -19,6 +19,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { addDays, daysBetween } from '../../core/dates.ts';
 import { distanceMetres, type Coordinates } from '../../core/geo.ts';
+import { sameBusStops } from '../../core/settings.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 import { useTransitJourneyLink } from '../../shell/TransitJourney.tsx';
 import type { TransitResponse } from '../../shell/notifications.ts';
@@ -119,6 +120,12 @@ export function TransitScreen() {
 }
 
 function TransitContent() {
+  const { state, saveSetting } = useAppData();
+  const sameBus = state.phase === 'ready' && sameBusStops(state.loaded.settings);
+  const showSameBus = useCallback(
+    (on: boolean) => saveSetting('transit_same_bus_stops', String(on)),
+    [saveSetting],
+  );
   const journey = useTransitJourneyLink();
   const navigation = useNavigation<NavigationProp<{ Transit: { reminder?: TransitResponse } }>>();
   const [panel, setPanel] = useState<'explore' | 'live' | null>(null);
@@ -947,6 +954,8 @@ function TransitContent() {
           today={today}
           walksVersion={walkEdits}
           onWalkChanged={walksChanged}
+          sameBus={sameBus}
+          onSameBus={showSameBus}
           onLive={onPlannerLive}
           journey={journey.saved.next}
           onSelectJourney={async (choice, option) => {

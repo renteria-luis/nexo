@@ -104,6 +104,21 @@ export function stopChoices(
   );
 }
 
+/**
+ * The stops whose best bus no stop above them has as its best: the same lines, transfer
+ * included, by number as he reads them. Along a street every stop has the same bus, and this lets
+ * a stop with another one into the first few.
+ */
+export function distinctStops(choices: readonly StopChoice[]): StopChoice[] {
+  const seen = new Set<string>();
+  return choices.filter((choice) => {
+    const lines = choice.best.itinerary.rides.map((ride) => ride.route[0]).join('>');
+    if (seen.has(lines)) return false;
+    seen.add(lines);
+    return true;
+  });
+}
+
 /** The closed stops among `ids`, with why and how far from where he leaves, nearest first. */
 export function closedStops(
   result: PlanResult,

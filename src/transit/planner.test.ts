@@ -16,7 +16,7 @@ import {
   type PlanResult,
 } from './planner.ts';
 import { observedServiceTrips, type LiveSnapshot } from './realtime.ts';
-import { closedStops, optionCost, stopChoices } from './stop-choices.ts';
+import { closedStops, distinctStops, optionCost, stopChoices } from './stop-choices.ts';
 import { agencyClock, queryInstant, sharedStopIndex, type Schedule } from './schedule.ts';
 
 const schedule = plannerFixture();
@@ -703,6 +703,31 @@ test('a stop costs what its best bus does: arriving first, then fewer transfers 
     order({ now: option('14:40', 1, 5, '14:00'), later: option('14:40', 1, 5, '14:15') }),
     ['later', 'now'],
     'waiting at home beats waiting at the stop',
+  );
+});
+
+test('leaving now, a stop whose best bus is the best of a stop above can be left out', () => {
+  const at = queryInstant(TUESDAY, '08:00');
+  const lines = (choices: ReturnType<typeof stopChoices>) =>
+    choices.map((choice) => [
+      stopId(choice.stop),
+      choice.best.itinerary.rides.map((ride) => ride.route[0]).join('>'),
+    ]);
+  const choices = stopChoices(plan({ mode: 'now', at, accessRadiusM: 3_000 }), null, at);
+  assert.deepEqual(lines(choices), [
+    ['ORIGIN_SB', '92>20'],
+    ['MIDDLE_SB', '16>20'],
+    ['CORNER_EB', '20'],
+    ['EAST_EB', '20'],
+  ]);
+  assert.deepEqual(
+    lines(distinctStops(choices)),
+    [
+      ['ORIGIN_SB', '92>20'],
+      ['MIDDLE_SB', '16>20'],
+      ['CORNER_EB', '20'],
+    ],
+    'the same 20 farther down its street is left out, a transfer to it from another line is not',
   );
 });
 

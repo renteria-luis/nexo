@@ -47,6 +47,7 @@ function mount(saved: unknown[], changes: Record<string, unknown>) {
     '../transit/trip-store.ts': { listAcceptedWalks: async () => [] },
     './icons.ts': new Proxy({}, { get: (_, name) => String(name) }),
     './TextField.tsx': { TextField: 'TextField' },
+    './Toggle.tsx': { Toggle: 'Toggle' },
     './Combobox.tsx': { Combobox: 'Combobox' },
     './TransitPlanMap.tsx': { TransitPlanMap: 'TransitPlanMap' },
     './screens/Screen.tsx': { useScrollIntoView: () => () => undefined },
@@ -80,6 +81,8 @@ function props(lives: unknown[], changes: Record<string, unknown> = {}): Record<
     active: false,
     today: '2026-10-13',
     walksVersion: 0,
+    sameBus: false,
+    onSameBus: () => undefined,
     onLive: (live: unknown) => lives.push(live),
     ...changes,
   };
@@ -505,6 +508,39 @@ test('from where he is, a stop shows its lines and their route, and he leaves on
     [true, 'Tu ubicación', 'end'],
   );
   assert.equal(left[0].option.itinerary.rides[0].trip[0], '92S-1');
+});
+
+test('leaving now, a stop with the same bus as one above shows only once he asks for it', async (t) => {
+  const now = queryInstant('2026-10-13', '08:00');
+  t.mock.method(Date, 'now', () => now);
+  // At the middle stop: its 16 and the corner's 20 come first, then the 20 again farther east.
+  const given = props([], { here: { point: { lat: 42.994, lng: -81.2001 }, at: 0 } });
+  given.onSameBus = (on: boolean) => {
+    given.sameBus = on;
+  };
+  const screen = mount([], given);
+  let tree = await screen.settle();
+  picker(tree, 'Elegir el destino').onChange('end');
+  tree = await searched(
+    screen,
+    (current) => !!byLabel(current, /^Paradero 2,/) && !/Actualizando/.test(textOf(current)),
+  );
+  const ranks = (current: unknown) =>
+    mapOf(current).choices.map((c: { id: string; rank: number }) => [c.id, c.rank]);
+  assert.deepEqual(ranks(tree), [
+    ['MIDDLE_SB', 1],
+    ['CORNER_EB', 2],
+  ]);
+  const toggle = byLabel(tree, 'Mostrar paraderos con el mismo bus');
+  assert.equal(toggle.props.value, false, 'off until he turns it on');
+  toggle.props.onChange(true);
+  tree = await screen.settle();
+  assert.deepEqual(ranks(tree), [
+    ['MIDDLE_SB', 1],
+    ['CORNER_EB', 2],
+    ['EAST_EB', 3],
+  ]);
+  assert.equal(byLabel(tree, 'Mostrar paraderos con el mismo bus').props.value, true);
 });
 
 test('a destination found by its address and a start tapped on the map can be looked at only', async (t) => {
