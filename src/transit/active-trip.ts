@@ -1,7 +1,19 @@
 import { addDays, type IsoDate } from '../core/dates.ts';
 import { distanceMetres, type Coordinates } from '../core/geo.ts';
-import { WALK_DETOUR, WALK_METRES_PER_MINUTE, type PlanOption, type Walk } from './planner.ts';
 import {
+  estimatedWalkMinutes,
+  liveOptions,
+  sharedPlannerIndex,
+  startPlan,
+  WALK_DETOUR,
+  WALK_METRES_PER_MINUTE,
+  type PlanOption,
+  type Walk,
+} from './planner.ts';
+import {
+  LIVE_ROUTES_MAX,
+  LIVE_STOPS_MAX,
+  LIVE_TRIPS_MAX,
   mergeLiveDeparture,
   pathStops,
   tripLiveDetail,
@@ -52,6 +64,8 @@ export const MISSED_MS = 4 * 60_000;
 export const ALIGHT_OFF_M = 60;
 /** Walking pace near the alighting stop for this long: he got off. */
 export const ALIGHT_DWELL_MS = 45 * 1_000;
+/** The warning to get off goes out this many stops before his; one left him too little time. */
+export const WARN_STOPS_AHEAD = 2;
 /** Past the alighting stop along the path by this much at bus speed: he stayed on. */
 export const PASSED_M = 300;
 /** A walk shorter than this is not a walk worth learning from. */
@@ -66,6 +80,11 @@ export const EXPIRE_AFTER_MS = 45 * 60_000;
 export const MOVING_GRACE_MS = 20 * 60_000;
 /** No trip is followed longer than this. */
 export const MAX_TRIP_MS = 4 * 3_600_000;
+/** Other buses for his last ride are looked for this far from him, at most this many. */
+export const ALTERNATIVE_REACH_M = 200;
+const MAX_ALTERNATIVES = 3;
+/** And looked for again this often, or with each new live reading. */
+export const ALTERNATIVES_EVERY_MS = 60_000;
 const MAX_TRACE = 150;
 const MAX_LOG = 40;
 
@@ -125,6 +144,15 @@ export type TripWalk = {
   path?: Coordinates[];
 };
 
+/** Another bus that takes him to the end no later than his last one. */
+export type TripAlternative = {
+  ride: TripRide;
+  /** The walk to its stop: his own when it leaves from the stop he was heading to. */
+  walk: TripWalk;
+  egress: TripWalk;
+  arriveAt: number;
+};
+
 export type TripPhase =
   | 'walking'
   | 'waiting'
@@ -181,6 +209,17 @@ export type ActiveTrip = {
   notified: string[];
   /** An explicitly corrected boarding gets a fresh warning without replaying the old one. */
   warningVersions?: number[];
+  /**
+   * Waiting for his last bus or walking to it, the others around him that get him there no
+   * later; the GPS follows one he boards instead.
+   */
+  alternatives?: {
+    leg: number;
+    checkedAt: number;
+    /** The live reading they were judged with. */
+    liveAt: number | null;
+    options: TripAlternative[];
+  };
   /** What following the trip cost, for measuring it on the phone. */
   stats: {
     fixes: number;
@@ -195,7 +234,16 @@ export type ActiveTrip = {
 
 export type TripEvent = {
   key: string;
-  kind: 'alight' | 'passed' | 'transfer' | 'late' | 'connection' | 'missed' | 'doubt' | 'expired';
+  kind:
+    | 'alight'
+    | 'passed'
+    | 'transfer'
+    | 'late'
+    | 'connection'
+    | 'missed'
+    | 'doubt'
+    | 'earlier'
+    | 'expired';
   title: string;
   body: string;
 };
@@ -368,6 +416,11 @@ function freezeRide(
 /** An end of the trip: a saved place, or with `point` where he was or a point he chose. */
 export type TripPoint = Coordinates & { id: string; name: string; point?: boolean };
 
+function stopEnd(schedule: Schedule, index: number): TripEnd {
+  const stop = schedule.stops[index];
+  return { kind: 'stop', id: stop[0], name: stop[2], code: stop[1], lat: stop[3], lng: stop[4] };
+}
+
 /** The trip as he leaves: the chosen option, frozen so it can be followed without the planner. */
 export function freezeTrip(input: {
   id: string;
@@ -382,10 +435,6 @@ export function freezeTrip(input: {
 }): ActiveTrip {
   const { schedule, option, now } = input;
   const plan = option.itinerary;
-  const stopEnd = (index: number | null): TripEnd => {
-    const stop = schedule.stops[index!];
-    return { kind: 'stop', id: stop[0], name: stop[2], code: stop[1], lat: stop[3], lng: stop[4] };
-  };
   const placeEnd = (place: TripPoint): TripEnd => ({
     kind: place.point ? 'point' : 'place',
     id: place.id,
@@ -406,14 +455,28 @@ export function freezeTrip(input: {
   if (!plan.rides.length)
     walks.push(walk('access', plan.access, placeEnd(input.origin), placeEnd(input.destination)));
   else {
-    walks.push(walk('access', plan.access, placeEnd(input.origin), stopEnd(plan.access.to)));
+    walks.push(
+      walk('access', plan.access, placeEnd(input.origin), stopEnd(schedule, plan.access.to!)),
+    );
     if (plan.rides.length === 2 && plan.transfer)
       walks.push(
-        walk('transfer', plan.transfer, stopEnd(plan.transfer.from), stopEnd(plan.transfer.to)),
+        walk(
+          'transfer',
+          plan.transfer,
+          stopEnd(schedule, plan.transfer.from!),
+          stopEnd(schedule, plan.transfer.to!),
+        ),
       );
     if (!plan.egress)
       throw new Error('El viaje elegido no dice cómo llegar desde la última parada.');
-    walks.push(walk('egress', plan.egress, stopEnd(plan.egress.from), placeEnd(input.destination)));
+    walks.push(
+      walk(
+        'egress',
+        plan.egress,
+        stopEnd(schedule, plan.egress.from!),
+        placeEnd(input.destination),
+      ),
+    );
   }
   const rides = plan.rides.map((ride, i) => freezeRide(schedule, ride, option.live[i]));
   return {
@@ -690,10 +753,11 @@ function alightKey(trip: ActiveTrip) {
 
 function alightEvent(trip: ActiveTrip, step: TripStep) {
   const ride = trip.rides[trip.leg];
+  const ahead = Math.min(WARN_STOPS_AHEAD, ride.stops.length - 1);
   emit(step, {
     key: alightKey(trip),
     kind: 'alight',
-    title: 'Bájate en la próxima',
+    title: ahead === 1 ? 'Bájate en la próxima' : `Bájate en ${ahead} paradas`,
     body: `${stopLabel(ride.stops.at(-1)!)} · línea ${ride.route}.`,
   });
 }
@@ -711,8 +775,8 @@ function board(
   trip.progress = { at: null, atStopSince: null };
   trip.walk = null;
   record(trip, at, source);
-  // With no stop in between, his stop is the next one from the moment he boards.
-  if (trip.rides[trip.leg].stops.length === 2) alightEvent(trip, step);
+  // With too few stops in between, the warning is due from the moment he boards.
+  if (trip.rides[trip.leg].stops.length <= WARN_STOPS_AHEAD + 1) alightEvent(trip, step);
 }
 
 function alight(
@@ -766,6 +830,12 @@ function walking(
 ) {
   const walk = trip.walks[trip.leg];
   const current = (trip.walk ??= track(fix.at, 'gps', fix.accuracy));
+  if (
+    trip.phase === 'transferring' &&
+    fix.at - current.startedAt <= WAIT_STOP_MS &&
+    tookOther(trip, step, fix, speed, context)
+  )
+    return;
   const hadLeft = current.leftAt !== null;
   remember(current, fix);
   current.accuracy ??= fix.accuracy;
@@ -836,6 +906,60 @@ function walking(
   }
 }
 
+function switchRide(trip: ActiveTrip, alternative: TripAlternative) {
+  const leg = trip.leg;
+  trip.rides = [...trip.rides.slice(0, leg), alternative.ride];
+  trip.walks = [...trip.walks.slice(0, leg), alternative.walk, alternative.egress];
+  trip.plannedArriveAt = alternative.arriveAt;
+  trip.alternatives = undefined;
+}
+
+// One of `alternatives` he boarded instead of his bus, which becomes his ride: he moves along its
+// street at bus speed, beside its GPS, or once it is due while his own is still minutes away.
+function tookOther(
+  trip: ActiveTrip,
+  step: TripStep,
+  fix: Fix,
+  speed: number | null,
+  context: TripLive | null,
+): boolean {
+  const options = trip.alternatives?.leg === trip.leg ? trip.alternatives.options : [];
+  if (!options.length || speed === null || speed < BUS_SPEED_MS) return false;
+  const ride = trip.rides[trip.leg];
+  const error = fix.accuracy ?? 0;
+  const own = rideBus(trip, ride, context, fix.at);
+  const fromOwn = own && distanceMetres(own, fix);
+  if (fromOwn !== null && fromOwn <= MATCH_BUS_M + error) return false;
+  const ownFits =
+    locateOnPath(ride.path, fix, null).off <= ON_ROUTE_M + error &&
+    fix.at >= rideStopAt(trip, ride, 0, context, fix.at).at - EARLY_BOARD_MS &&
+    (fromOwn === null || fromOwn <= OTHER_BUS_M + error);
+  for (const option of options) {
+    const place = locateOnPath(option.ride.path, fix, null);
+    if (place.off > ON_ROUTE_M + error || place.at - option.ride.along[0] < BOARD_PROGRESS_M)
+      continue;
+    const bus = rideBus(trip, option.ride, context, fix.at);
+    const matched = bus !== null && distanceMetres(bus, fix) <= MATCH_BUS_M + error;
+    if (
+      !matched &&
+      (ownFits ||
+        bus !== null ||
+        fix.at < rideStopAt(trip, option.ride, 0, context, fix.at).at - EARLY_BOARD_MS)
+    )
+      continue;
+    if (!matched && trip.boarding.hits + 1 < BOARD_HITS) {
+      trip.boarding = { hits: trip.boarding.hits + 1, doubt: null };
+      return true;
+    }
+    const boardedAt = trip.phase === 'waiting' ? (trip.nearStopAt ?? fix.at) : fix.at;
+    switchRide(trip, option);
+    board(trip, step, matched ? 'matched' : 'inferred', boardedAt, 'gps');
+    riding(trip, step, fix, speed, context);
+    return true;
+  }
+  return false;
+}
+
 function waiting(
   trip: ActiveTrip,
   step: TripStep,
@@ -859,6 +983,7 @@ function waiting(
     return;
   }
   const recent = trip.nearStopAt !== null && fix.at - trip.nearStopAt <= WAIT_STOP_MS;
+  if (recent && tookOther(trip, step, fix, speed, context)) return;
   const place = locateOnPath(ride.path, fix, null);
   const onRoute =
     place.off <= ON_ROUTE_M + (fix.accuracy ?? 0) && place.at - ride.along[0] >= BOARD_PROGRESS_M;
@@ -924,7 +1049,7 @@ function riding(
   if (onPath) trip.progress.at = Math.max(trip.progress.at ?? place.at, place.at);
   const progress = trip.progress.at;
   const fast = speed !== null && speed >= BUS_SPEED_MS;
-  if (progress !== null && progress >= ride.along[Math.max(0, last - 1)] + 20)
+  if (progress !== null && progress >= ride.along[Math.max(0, last - WARN_STOPS_AHEAD)] + 20)
     alightEvent(trip, step);
   if (progress !== null && progress >= ride.along[last] + PASSED_M && fast) {
     trip.progress.atStopSince = null;
@@ -1006,6 +1131,135 @@ function stillRiding(trip: ActiveTrip, fix: Fix, speed: number | null): boolean 
     place.off <= ON_ROUTE_M + (fix.accuracy ?? 0) &&
     place.at >= (ride.along.at(-1) ?? 0) + PASSED_M / 2
   );
+}
+
+/**
+ * Waiting for his last bus, or walking to it, the other buses around him that get him to the end
+ * no later. Each is told once; the screen offers to take it and the GPS follows one he boards.
+ */
+export function refreshAlternatives(
+  trip: ActiveTrip,
+  context: TripLive | null,
+  now: number,
+): TripStep {
+  const leg = trip.leg;
+  const known = trip.alternatives;
+  if (
+    !context ||
+    context.schedule.sourceSha256 !== trip.sourceSha256 ||
+    !isActive(trip) ||
+    (trip.phase !== 'waiting' && trip.phase !== 'transferring') ||
+    leg !== trip.rides.length - 1 ||
+    trip.boarded[leg] !== null
+  )
+    return {
+      trip: known ? { ...trip, alternatives: undefined } : trip,
+      events: [],
+      observations: [],
+    };
+  const liveAt = context.snapshot?.generatedAt ?? null;
+  if (
+    known?.leg === leg &&
+    now - known.checkedAt < ALTERNATIVES_EVERY_MS &&
+    known.liveAt === liveAt
+  )
+    return { trip, events: [], observations: [] };
+  const { schedule, snapshot } = context;
+  const ride = trip.rides[leg];
+  const own = trip.walks[leg];
+  const egress = trip.walks[leg + 1];
+  const last = ride.stops[ride.stops.length - 1];
+  const boardAt = rideStopAt(trip, ride, 0, context, now).at;
+  const arriveAt =
+    rideStopAt(trip, ride, ride.stops.length - 1, context, now).at + egress.minutes * 60_000;
+  const from = trip.phase === 'waiting' ? ride.stops[0] : (trip.lastFix ?? own.from);
+  const kept = egress.source === 'saved' || egress.source === 'learned';
+  const search = startPlan(sharedPlannerIndex(schedule), {
+    origin: { lat: from.lat, lng: from.lng },
+    destination: { lat: trip.destination.lat, lng: trip.destination.lng },
+    originWalks: new Map(),
+    destinationWalks: new Map(kept ? [[last.id, egress.minutes]] : []),
+    stopWalks: [],
+    learned: new Set(egress.source === 'learned' ? [`from:${last.id}`] : []),
+    accessRadiusM: ALTERNATIVE_REACH_M,
+    here: true,
+    mode: 'now',
+    at: now,
+  });
+  while (!search.step(1_000));
+  const options = liveOptions(search.result(), snapshot, now)
+    .filter((option) => {
+      const first = option.itinerary.rides[0];
+      return (
+        option.itinerary.rides.length === 1 &&
+        !option.problem &&
+        !option.missed &&
+        !option.notice &&
+        !(first.trip[0] === ride.tripId && first.serviceDate === ride.serviceDate) &&
+        option.arriveAt <= arriveAt &&
+        (option.live[0].board.at < boardAt || option.arriveAt < arriveAt)
+      );
+    })
+    .slice(0, MAX_ALTERNATIVES)
+    .map((option): TripAlternative => {
+      const plan = option.itinerary;
+      const first = plan.rides[0];
+      const stop = stopEnd(schedule, first.departure.stopTime[0]);
+      const end = stopEnd(schedule, first.arrival.stopTime[0]);
+      return {
+        ride: freezeRide(schedule, first, option.live[0]),
+        walk:
+          stop.id === own.to.id
+            ? own
+            : {
+                kind: own.kind,
+                from: own.from,
+                to: stop,
+                minutes: estimatedWalkMinutes(distanceMetres(own.from, stop)),
+                source: 'estimate',
+              },
+        egress: {
+          kind: 'egress',
+          from: end,
+          to: trip.destination,
+          minutes: plan.egress!.minutes,
+          source: plan.egress!.source,
+          ...(end.id === last.id && egress.path ? { path: egress.path } : {}),
+        },
+        arriveAt: option.arriveAt,
+      };
+    });
+  const next = editable(trip);
+  const step: TripStep = { trip: next, events: [], observations: [] };
+  next.alternatives = { leg, checkedAt: now, liveAt, options };
+  for (const option of options)
+    emit(step, {
+      key: `earlier:${leg}:${option.ride.tripId}`,
+      kind: 'earlier',
+      title: `También te sirve el ${option.ride.route}`,
+      body: `Sale de ${stopLabel(option.ride.stops[0])} a las ${agencyClock(option.ride.boardAt)} y llegas a las ${agencyClock(option.arriveAt)}, no más tarde que con el ${ride.route}. Si subes, Nexo lo sigue.`,
+    });
+  return step;
+}
+
+/** He takes one of the other buses for his last ride instead of his own. */
+export function takeAlternative(trip: ActiveTrip, tripId: string, at: number): TripStep {
+  const option =
+    trip.alternatives?.leg === trip.leg
+      ? trip.alternatives.options.find((o) => o.ride.tripId === tripId)
+      : undefined;
+  if (!isActive(trip) || !option) return { trip, events: [], observations: [] };
+  const next = editable(trip);
+  const moved = option.walk.to.id !== next.walks[next.leg].to.id;
+  switchRide(next, option);
+  // From the stop he waited at, its stop is a walk away.
+  if (moved && next.phase === 'waiting') {
+    next.phase = next.leg ? 'transferring' : 'walking';
+    next.walk = { ...track(at, 'tap', null), usable: false };
+    next.nearStopAt = null;
+  }
+  record(next, at, 'tap');
+  return { trip: next, events: [], observations: [] };
 }
 
 export function applyFix(trip: ActiveTrip, fix: Fix, context: TripLive | null): TripStep {
@@ -1132,7 +1386,7 @@ export function applyAction(
 /** Notifications the phone should hold for a time, in case no reading arrives to send them. */
 export type TripAlarm = { key: string; at: number; title: string; body: string };
 
-/** A held warning gives the GPS one for passing the stop before his this long to come first. */
+/** A held warning gives the GPS's own, for passing the stop that starts it, this long first. */
 export const ALARM_AFTER_MS = 60_000;
 
 export function tripAlarms(trip: ActiveTrip, context: TripLive | null, now: number): TripAlarm[] {
@@ -1140,21 +1394,26 @@ export function tripAlarms(trip: ActiveTrip, context: TripLive | null, now: numb
   const alarms: TripAlarm[] = [];
   const ride = trip.rides[trip.leg];
   const last = ride ? ride.stops.length - 1 : 0;
-  // With adjacent stops the warning goes out as he boards; there is nothing to hold.
-  if (trip.phase === 'riding' && last >= 2 && !trip.notified.includes(alightKey(trip))) {
+  // With few stops the warning goes out as he boards; there is nothing to hold.
+  if (
+    trip.phase === 'riding' &&
+    last > WARN_STOPS_AHEAD &&
+    !trip.notified.includes(alightKey(trip))
+  ) {
     let boardedAt = now;
     for (const entry of trip.log) if (entry.phase === 'riding') boardedAt = entry.at;
-    const predicted = rideStopAt(trip, ride, last - 1, context, now);
+    const from = last - WARN_STOPS_AHEAD;
+    const predicted = rideStopAt(trip, ride, from, context, now);
     const at =
       (predicted.live
         ? predicted.at
-        : ride.stops[last - 1].arrival + Math.max(0, boardedAt - ride.stops[0].departure)) +
+        : ride.stops[from].arrival + Math.max(0, boardedAt - ride.stops[0].departure)) +
       ALARM_AFTER_MS;
     if (at > now)
       alarms.push({
         key: alightKey(trip),
         at,
-        title: 'Bájate pronto',
+        title: `Bájate en ${WARN_STOPS_AHEAD} paradas`,
         body: `Tu parada es ${stopLabel(ride.stops[last])}, línea ${ride.route}. Calculado con la hora ${predicted.live ? 'predicha por LTC' : 'del horario'}, sin el GPS.`,
       });
   }
@@ -1178,13 +1437,25 @@ export function tripLiveSelection(
     routeIds: [] as string[],
   };
   if (!trip || !isActive(trip)) return selection;
-  for (const ride of trip.rides.slice(trip.leg)) {
+  const others =
+    trip.alternatives?.leg === trip.leg ? trip.alternatives.options.map((o) => o.ride) : [];
+  for (const ride of [...trip.rides.slice(trip.leg), ...others]) {
     // The service only answers for trips from two days back to tomorrow.
     if (ride.serviceDate < addDays(today, -2) || ride.serviceDate > addDays(today, 1)) continue;
-    for (const stop of [ride.stops[0], ride.stops.at(-1)!])
-      if (!selection.stopIds.includes(stop.id)) selection.stopIds.push(stop.id);
+    const stops = [ride.stops[0].id, ride.stops.at(-1)!.id].filter(
+      (id) => !selection.stopIds.includes(id),
+    );
+    const route = selection.routeIds.includes(ride.routeId) ? 0 : 1;
+    // What one live query may name; his own rides come first.
+    if (
+      selection.trips.length >= LIVE_TRIPS_MAX ||
+      selection.stopIds.length + stops.length > LIVE_STOPS_MAX ||
+      selection.routeIds.length + route > LIVE_ROUTES_MAX
+    )
+      continue;
+    selection.stopIds.push(...stops);
     selection.trips.push({ tripId: ride.tripId, serviceDate: ride.serviceDate });
-    if (!selection.routeIds.includes(ride.routeId)) selection.routeIds.push(ride.routeId);
+    if (route) selection.routeIds.push(ride.routeId);
   }
   return selection;
 }

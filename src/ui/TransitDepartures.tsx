@@ -318,9 +318,11 @@ export function TransitStopDepartures({
   );
 }
 
-// Eight and a half rows: the half row says there is more to scroll inside the card.
+// Eight and a half rows: the half row says there is more to scroll inside the card. On his trip
+// five and a half, so the next bus's line fits below.
 const ROW = 52;
 const SHOWN_ROWS = 8.5;
+const TRIP_ROWS = 5.5;
 const RAIL = 34;
 const BUS_SIZE = 26;
 
@@ -587,7 +589,7 @@ export function TransitTripTimeline({
       <View style={styles.timeline}>
         <ScrollView
           ref={scroll}
-          style={{ height: ROW * SHOWN_ROWS }}
+          style={{ height: ROW * (alighting ? TRIP_ROWS : SHOWN_ROWS) }}
           nestedScrollEnabled
           onContentSizeChange={() => {
             if (placedFor.current === key) return;

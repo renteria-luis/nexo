@@ -127,6 +127,8 @@ type Actions = {
     paths?: Partial<Record<TripWalk['kind'], Coordinates[]>>;
   }) => Promise<void>;
   tripAction: (action: TripAction) => Promise<void>;
+  /** Takes another bus the trip found for its last ride, by its trip id. */
+  takeAlternative: (tripId: string) => Promise<void>;
   dismissTrip: () => Promise<void>;
 };
 const initial: JourneyState = { preferences: DEFAULT_TRAVEL_PREFERENCES, next: null };
@@ -654,6 +656,7 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
         await tripTracker.start({ ...input, journeyId: null });
       },
       tripAction: (action) => tripTracker.act(action),
+      takeAlternative: (tripId) => tripTracker.take(tripId),
       dismissTrip: () => tripTracker.dismiss(),
       visible: (surface, value) =>
         setSurfaces((old) => (old[surface] === value ? old : { ...old, [surface]: value })),

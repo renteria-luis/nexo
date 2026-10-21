@@ -9,7 +9,9 @@ import {
   freezeTrip,
   isActive,
   parseActiveTrip,
+  refreshAlternatives,
   rideStopAt,
+  takeAlternative,
   tripAlarms,
   tripLiveSelection,
   walkAhead,
@@ -33,8 +35,24 @@ const DESTINATION = { id: 'destination', name: 'Destination', lat: 42.987, lng: 
 const at = (clock: string) => queryInstant('2026-10-13', clock);
 const second = (clock: string, seconds: number) => at(clock) + seconds * 1_000;
 
-function setup(trips: string, start = at('08:25'), destination = DESTINATION) {
+// The fixture with a stop added on the 16 south between the origin and the middle, so its ride
+// to the corner has two stops before his and a warning to hold.
+function longer(): Schedule {
   const schedule = plannerFixture();
+  const upper = schedule.stops.push(['UPPER_SB', '109', 'UPPER SB', 42.997, -81.2001]) - 1;
+  const [origin, middle, corner] = schedule.patterns[0];
+  schedule.patterns[0] = [origin, [upper, 2, 120, 120, 0, 0, 1, ''], middle, corner].map(
+    (time, i) => [time[0], i + 1, ...time.slice(2)] as Schedule['patterns'][number][number],
+  );
+  return schedule;
+}
+
+function setup(
+  trips: string,
+  start = at('08:25'),
+  destination = DESTINATION,
+  schedule = plannerFixture(),
+) {
   const search = startPlan(buildPlannerIndex(schedule), {
     origin: ORIGIN,
     destination,
@@ -137,7 +155,7 @@ test('a trip walks, boards, gets off, transfers and arrives from his readings al
     rode.events.map((e) => e.key),
     ['alight:0', 'transfer:0'],
   );
-  assert.equal(rode.events[0].title, 'Bájate en la próxima');
+  assert.equal(rode.events[0].title, 'Bájate en 2 paradas', 'with one stop between, at boarding');
   assert.match(rode.events[0].body, /CORNER SB/);
   assert.equal(rode.trip.phase, 'transferring');
   assert.equal(rode.trip.leg, 1);
@@ -519,16 +537,24 @@ test('adjacent stops warn as he boards; the clock ends a forgotten trip once', (
   assert.deepEqual(applyClock(expired.trip, trip.expiresAt + 60_000).events, []);
 });
 
-test('held warnings follow the plan and give way to the GPS', () => {
-  const { trip, schedule } = setup('16S-4>20E-4');
+test('held warnings follow the plan two stops ahead and give way to the GPS', () => {
+  const { trip, schedule } = setup('16S-4>20E-4', at('08:25'), DESTINATION, longer());
+  assert.equal(trip.rides[0].stops.length, 4);
   const riding = applyAction(trip, 'boarded', second('08:32', 0)).trip;
   const [alight, expiry] = tripAlarms(riding, { schedule, snapshot: null }, second('08:32', 5));
-  // Two minutes late at the first stop: the middle stop at 08:36, plus the GPS's head start.
+  // Two minutes late at the first stop: the added stop at 08:34, plus the GPS's head start.
   assert.equal(alight.key, 'alight:0');
-  assert.equal(alight.at, at('08:36') + ALARM_AFTER_MS);
+  assert.equal(alight.at, at('08:34') + ALARM_AFTER_MS);
+  assert.equal(alight.title, 'Bájate en 2 paradas');
   assert.match(alight.body, /hora del horario/);
   assert.equal(expiry.key, 'expiry');
-  const warned = run(riding, [fix({ lat: 42.9937, lng: -81.2001 }, second('08:36', 0))]);
+  const passing = run(riding, [fix({ lat: 42.9985, lng: -81.2001 }, second('08:33', 0))]);
+  assert.deepEqual(passing.events, [], 'before the added stop it waits');
+  const warned = run(passing.trip, [fix({ lat: 42.9965, lng: -81.2001 }, second('08:34', 0))]);
+  assert.deepEqual(
+    warned.events.map((e) => [e.key, e.title]),
+    [['alight:0', 'Bájate en 2 paradas']],
+  );
   assert.deepEqual(
     tripAlarms(warned.trip, null, second('08:36', 5)).map((a) => a.key),
     ['expiry'],
@@ -536,7 +562,7 @@ test('held warnings follow the plan and give way to the GPS', () => {
 });
 
 test('manual boarding retains the walk and a corrected boarding gets a fresh warning', () => {
-  const { trip } = setup('16S-4>20E-4');
+  const { trip } = setup('16S-4>20E-4', at('08:25'), DESTINATION, longer());
   const boarded = applyAction(trip, 'boarded', at('08:30'));
   assert.equal(boarded.observations.length, 1);
   assert.equal(boarded.observations[0].endSource, 'tap');
@@ -730,4 +756,88 @@ test('starting Salgo ahora while boarding transitions from walking and boards th
   ]);
   assert.equal(boarded.trip.phase, 'riding');
   assert.equal(boarded.trip.boarded[0], 'inferred');
+});
+
+// The fixture with a 99 that leaves the corner at 08:41 and reaches the end at 08:50, ahead of
+// the 20 of 08:45 that the trip planned, on the same street.
+function withOtherLine(): Schedule {
+  const schedule = plannerFixture();
+  const stop = (id: string) => schedule.stops.findIndex((s) => s[0] === id);
+  const route = schedule.routes.push(['99', '99', 'Ninety nine', '75AAAE']) - 1;
+  const pattern =
+    schedule.patterns.push([
+      [stop('CORNER_EB'), 1, 0, 0, 0, 1, 1, ''],
+      [stop('END_EB'), 2, 540, 540, 1, 0, 1, ''],
+    ]) - 1;
+  schedule.trips.push(['99-0', route, 'daily', 'East', 0, '', pattern, (8 * 60 + 41) * 60]);
+  return schedule;
+}
+
+function atTheCorner() {
+  const { trip, schedule } = setup('16S-4>20E-4', at('08:25'), DESTINATION, withOtherLine());
+  const there = run(run(run(trip, walkToStop).trip, rideSouth).trip, [
+    fix({ lat: 42.9876, lng: -81.1994 }, second('08:39', 30)),
+  ]).trip;
+  assert.equal(there.phase, 'waiting');
+  assert.equal(there.leg, 1);
+  return { trip: there, schedule };
+}
+
+test('waiting for his last bus, another that gets him there sooner is told once', () => {
+  const { trip, schedule } = atTheCorner();
+  const context = { schedule, snapshot: null };
+  const found = refreshAlternatives(trip, context, second('08:39', 40));
+  assert.deepEqual(
+    found.trip.alternatives?.options.map((o) => [o.ride.tripId, o.walk.to.id, o.egress.from.id]),
+    [['99-0', 'CORNER_EB', 'END_EB']],
+  );
+  assert.deepEqual(
+    found.events.map((e) => [e.key, e.title]),
+    [['earlier:1:99-0', 'También te sirve el 99']],
+  );
+  assert.match(
+    found.events[0].body,
+    /a las 08:41 y llegas a las 08:52, no más tarde que con el 20/,
+  );
+  const again = refreshAlternatives(found.trip, context, second('08:40', 50));
+  assert.equal(again.events.length, 0);
+  assert.deepEqual(
+    tripLiveSelection(again.trip, '2026-10-13').trips.map((t) => t.tripId),
+    ['20E-4', '99-0'],
+    'its bus is read live too',
+  );
+  const riding = applyAction(again.trip, 'boarded', second('08:45', 0)).trip;
+  assert.equal(
+    refreshAlternatives(riding, context, second('08:45', 5)).trip.alternatives,
+    undefined,
+  );
+});
+
+test('moving along with the other bus before his is due, the trip follows the other bus', () => {
+  const { trip, schedule } = atTheCorner();
+  const found = refreshAlternatives(trip, { schedule, snapshot: null }, second('08:39', 40)).trip;
+  const rode = run(found, [
+    fix({ lat: 42.9876, lng: -81.195 }, second('08:41', 30), { speed: 9 }),
+    fix({ lat: 42.9876, lng: -81.192 }, second('08:41', 50), { speed: 9 }),
+  ]);
+  assert.equal(rode.trip.phase, 'riding');
+  assert.equal(rode.trip.rides[1].tripId, '99-0');
+  assert.equal(rode.trip.boarded[1], 'inferred');
+  assert.equal(rode.trip.walks[2].from.id, 'END_EB');
+  assert.equal(rode.trip.plannedArriveAt, at('08:52'));
+  assert.ok(!rode.events.some((e) => e.kind === 'doubt'), 'no asking whether he is on the 20');
+});
+
+test('he can take the other bus with a tap, and board it as his', () => {
+  const { trip, schedule } = atTheCorner();
+  const found = refreshAlternatives(trip, { schedule, snapshot: null }, second('08:39', 40)).trip;
+  const taken = takeAlternative(found, '99-0', second('08:40', 0)).trip;
+  assert.equal(taken.phase, 'waiting', 'it leaves from the stop he is at');
+  assert.equal(taken.rides[1].tripId, '99-0');
+  assert.equal(taken.alternatives, undefined);
+  const boarded = applyAction(taken, 'boarded', second('08:41', 0));
+  assert.deepEqual(
+    boarded.events.map((e) => [e.key, e.title]),
+    [['alight:1', 'Bájate en la próxima']],
+  );
 });

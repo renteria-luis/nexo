@@ -207,9 +207,14 @@ test('without location permission the trip is followed by his taps', async () =>
   assert.deepEqual(f.calls, []);
   await f.tracker.act('boarded');
   assert.equal(f.tracker.getState().trip?.phase, 'riding');
+  // One stop between his and the boarding one: the warning goes out as he boards.
+  assert.deepEqual(
+    f.presented.map((e) => e.key),
+    ['alight:0'],
+  );
   assert.deepEqual(
     f.alarms.at(-1)?.map((a) => a.key),
-    ['alight:0', 'expiry'],
+    ['expiry'],
   );
   assert.equal(f.tracker.getState().gps, 'denied');
 });

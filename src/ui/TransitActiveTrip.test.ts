@@ -47,6 +47,9 @@ function render(journey: Record<string, unknown>, props: Record<string, unknown>
       tripAction: async (action: string) => {
         taps.push(action);
       },
+      takeAlternative: async (tripId: string) => {
+        taps.push(`take:${tripId}`);
+      },
       dismissTrip: async () => {
         taps.push('dismiss');
       },
@@ -162,4 +165,39 @@ test('the stops of his trip open as Paradas shows them, lit from where he boards
   const listed = render({ trip: riding, now: at('08:31') });
   await listed.press('Ver paradas del viaje');
   assert.match(textOf(await listed.screen.settle()), /Aquí bajas/, 'without the schedule, a list');
+});
+
+test('another bus that gets him there no later can be taken from the card', async () => {
+  const base = trip();
+  const other = { ...base.rides[1], tripId: '99-0', route: '99', boardAt: at('08:41') };
+  const waiting: activeTrip.ActiveTrip = {
+    ...base,
+    phase: 'waiting',
+    leg: 1,
+    boarded: ['inferred', null],
+    alternatives: {
+      leg: 1,
+      checkedAt: at('08:40'),
+      liveAt: null,
+      options: [{ ride: other, walk: base.walks[1], egress: base.walks[2], arriveAt: at('08:52') }],
+    },
+  };
+  const f = render({ trip: waiting, now: at('08:40') });
+  const text = textOf(await f.screen.settle());
+  assert.match(text, /También te dejan igual o antes/);
+  assert.match(text, /Sale 08:41 \(horario\) de CORNER EB \(#109\) · llegas 08:52/);
+  await f.press('Tomar el 99');
+  assert.deepEqual(f.taps, ['take:99-0']);
+});
+
+test("the trip's stops show each bus still ahead, the first on top", async () => {
+  const f = render({ trip: trip(), tripLive: { schedule: plannerFixture(), snapshot: null } });
+  await f.press('Ver paradas del viaje');
+  const lines = nodes(await f.screen.settle()).filter(
+    (node) => node.type === 'TransitTripTimeline',
+  );
+  assert.deepEqual(
+    lines.map((node) => node.props.departure.trip[0]),
+    ['16S-4', '20E-4'],
+  );
 });

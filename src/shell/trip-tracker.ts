@@ -11,6 +11,8 @@ import {
   applyFix,
   freezeTrip,
   isActive,
+  refreshAlternatives,
+  takeAlternative,
   tripAlarms,
   tripLiveSelection,
   type ActiveTrip,
@@ -295,9 +297,14 @@ export function createTripTracker(deps: TrackerDeps) {
           await shutdown();
           return;
         }
+        // Found before the readings, so one that shows him on another bus can follow it.
+        const found = refreshAlternatives(trip, context(), deps.now());
         const step: TripStep = {
-          trip: { ...trip, stats: { ...trip.stats, batches: trip.stats.batches + 1 } },
-          events: [],
+          trip: {
+            ...found.trip,
+            stats: { ...found.trip.stats, batches: found.trip.stats.batches + 1 },
+          },
+          events: found.events,
           observations: [],
         };
         for (const fix of [...fixes].sort((a, b) => a.at - b.at)) {
@@ -309,6 +316,10 @@ export function createTripTracker(deps: TrackerDeps) {
         const clocked = applyClock(step.trip, deps.now());
         step.trip = clocked.trip;
         step.events.push(...clocked.events);
+        // The readings may have brought him to the stop of his last bus, or onto it.
+        const after = refreshAlternatives(step.trip, context(), deps.now());
+        step.trip = after.trip;
+        step.events.push(...after.events);
         await commit(step);
         void liveIfDue(step.trip);
       }).catch((error: unknown) => {
@@ -324,6 +335,15 @@ export function createTripTracker(deps: TrackerDeps) {
         await commit(applyAction(trip, action, deps.now(), context()), true);
       }),
 
+    /** He takes another bus for his last ride, one of those the trip found. */
+    take: (tripId: string) =>
+      serial(async () => {
+        await load();
+        const trip = state.trip;
+        if (!trip || !isActive(trip)) return;
+        await commit(takeAlternative(trip, tripId, deps.now()), true);
+      }),
+
     /** The clock's turn: only a trip that outlived its time ends. */
     tick: () =>
       serial(async () => {
@@ -335,7 +355,13 @@ export function createTripTracker(deps: TrackerDeps) {
           return;
         }
         const step = applyClock(trip, deps.now());
-        if (step.trip !== trip) await commit(step, true);
+        if (step.trip !== trip) {
+          await commit(step, true);
+          return;
+        }
+        // Without readings, as with the GPS off, the other buses still change with the clock.
+        const found = refreshAlternatives(trip, context(), deps.now());
+        if (found.trip !== trip) await commit(found);
         else await syncAlarms(trip);
       }),
 

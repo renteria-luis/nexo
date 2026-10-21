@@ -71,7 +71,7 @@ export function tripLines(
         title: `${trip.phase === 'walking' ? 'Camina' : 'Transbordo: camina'} a ${stopLabel(ride.stops[0])}`,
         lines: [
           `El ${ride.route} sale a las ${when(0)}.`,
-          `Caminata de unos ${walk.minutes} min.`,
+          ...(walk.minutes ? [`Caminata de unos ${walk.minutes} min.`] : []),
           ...left,
         ],
         ride,
@@ -131,7 +131,7 @@ export function tripLines(
 }
 
 /**
- * His bus's whole route as Paradas shows it, its line lit from where he boards to where he gets
+ * A bus's whole route as Paradas shows it, its line lit from where he boards to where he gets
  * off; a list of his stops when the saved schedule no longer has his bus.
  */
 function TripStops({
@@ -206,6 +206,7 @@ export function TransitActiveTrip({
   const ahead = trip.leg < trip.rides.length;
   const doubt = trip.boarding.doubt;
   const fix = trip.lastFix;
+  const others = trip.alternatives?.leg === trip.leg ? trip.alternatives.options : [];
   return (
     <Card title={active ? 'Viaje en curso' : 'Último viaje'}>
       <Text style={styles.label}>
@@ -226,6 +227,30 @@ export function TransitActiveTrip({
             ? `Te mueves por la ruta del ${ride.route} antes de que pase tu bus. Si subiste a uno, toca «Ya subí».`
             : `Te mueves por la ruta del ${ride.route}, pero tu bus está lejos de ti. Si subiste a uno, toca «Ya subí».`}
         </Text>
+      )}
+      {active && others.length > 0 && (
+        <>
+          <Text style={styles.label}>También te dejan igual o antes</Text>
+          {others.map((other) => {
+            const board = rideStopAt(trip, other.ride, 0, tripLive, now);
+            return (
+              <View key={`${other.ride.tripId}/${other.ride.serviceDate}`} style={styles.row}>
+                <RouteBadge route={[...routeOf(other.ride)]} />
+                <Text style={[styles.note, styles.grow]}>
+                  Sale {agencyClock(board.at)} ({board.live ? 'en vivo' : 'horario'}) de{' '}
+                  {stopLabel(other.ride.stops[0])} · llegas {agencyClock(other.arriveAt)}
+                </Text>
+                <Button
+                  label={`Tomar el ${other.ride.route}`}
+                  variant="ghost"
+                  disabled={busy}
+                  onPress={() => act(() => actions.takeAlternative(other.ride.tripId))}
+                />
+              </View>
+            );
+          })}
+          <Text style={styles.note}>Si subes a uno, el GPS lo nota y sigue ese.</Text>
+        </>
       )}
       {active && map && (
         <TransitTripMap
@@ -252,16 +277,19 @@ export function TransitActiveTrip({
             variant="ghost"
             onPress={() => setShowStops(!showStops)}
           />
-          {showStops && (
-            <TripStops
-              trip={trip}
-              ride={ride}
-              live={tripLive}
-              now={now}
-              onClose={() => setShowStops(false)}
-              onFocusBus={map ? () => setBusFocus(Date.now()) : undefined}
-            />
-          )}
+          {showStops &&
+            trip.rides.slice(trip.leg).map((next, k) => (
+              <TripStops
+                key={`${next.tripId}/${next.serviceDate}`}
+                trip={trip}
+                ride={next}
+                live={tripLive}
+                now={now}
+                onClose={() => setShowStops(false)}
+                // The map follows only the bus he is on or waits for.
+                onFocusBus={map && k === 0 ? () => setBusFocus(Date.now()) : undefined}
+              />
+            ))}
         </>
       )}
       {active && ahead && tripLive?.snapshot == null && (
@@ -351,5 +379,6 @@ const styles = sheet((theme) => ({
   label: { fontFamily: font.bold, fontSize: 14, color: theme.text },
   note: { fontFamily: font.regular, fontSize: 12, color: theme.textDim, lineHeight: 18 },
   warn: { fontFamily: font.bold, fontSize: 13, color: theme.text, lineHeight: 18 },
+  grow: { flex: 1, minWidth: 160 },
   error: { fontFamily: font.bold, fontSize: 13, color: theme.danger, lineHeight: 18 },
 }));
