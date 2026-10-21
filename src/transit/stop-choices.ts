@@ -3,6 +3,9 @@ import {
   estimatedWalkMinutes,
   liveOptions,
   timetableListing,
+  TRANSFER_WEIGHT_MIN,
+  walkedMinutes,
+  WALK_WEIGHT,
   type Itinerary,
   type PlanOption,
   type PlanResult,
@@ -34,7 +37,7 @@ export type StopChoice = {
 // What a trip costs him, counted in minutes of arriving later. When he arrives weighs most; the
 // rest settles options that arrive close together. Walking already delays the arrival, so its
 // weight is only the effort on top.
-export const COST = { transfer: 7, tight: 3, walk: 1, trip: 0.25 };
+export const COST = { transfer: TRANSFER_WEIGHT_MIN, tight: 3, walk: WALK_WEIGHT, trip: 0.25 };
 
 /**
  * How much an option costs him from `now`, in minutes, lower being better: when he arrives, plus a
@@ -42,13 +45,11 @@ export const COST = { transfer: 7, tight: 3, walk: 1, trip: 0.25 };
  * door, so waiting at home for a better bus beats waiting at a stop.
  */
 export function optionCost(option: PlanOption, now: number): number {
-  const { rides, access, transfer, egress } = option.itinerary;
-  const walk = access.minutes + (transfer?.minutes ?? 0) + (egress?.minutes ?? 0);
   return (
     (option.arriveAt - now) / 60_000 +
-    COST.transfer * Math.max(0, rides.length - 1) +
+    COST.transfer * Math.max(0, option.itinerary.rides.length - 1) +
     (option.tight ? COST.tight : 0) +
-    COST.walk * walk +
+    COST.walk * walkedMinutes(option.itinerary) +
     (COST.trip * (option.arriveAt - option.leaveAt)) / 60_000
   );
 }

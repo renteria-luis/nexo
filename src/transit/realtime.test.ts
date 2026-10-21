@@ -662,7 +662,7 @@ test('opening a departure keeps the stop data and asks for the trip after five s
   client.dispose();
 });
 
-test('failure backoff retains last-good cache, expires stored data and recovers without reinstall', async (t) => {
+test('a lost connection keeps the last-good cache, retries every 15 s and expires stored data', async (t) => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: NOW });
   const { schedule, query, snapshot } = fixture();
   let raw: string | null = JSON.stringify({ schema: 1, query, snapshot, storedAt: NOW });
@@ -695,15 +695,17 @@ test('failure backoff retains last-good cache, expires stored data and recovers 
   const initialCache = raw;
   await client.refresh();
   assert.equal(calls, 1);
-  t.mock.timers.tick(45_000);
+  assert.equal(client.getState().nextRefreshAt, NOW + 15_000);
+  t.mock.timers.tick(15_000);
   await flush();
   assert.equal(calls, 2);
-  assert.equal(client.getState().nextRefreshAt, NOW + 135_000);
+  assert.equal(client.getState().nextRefreshAt, NOW + 30_000, 'the wait does not grow');
   assert.equal(raw, initialCache);
   fail = false;
-  t.mock.timers.tick(90_000);
+  t.mock.timers.tick(15_000);
   await flush();
   assert.equal(calls, 3);
+  assert.equal(client.getState().nextRefreshAt, NOW + 75_000, 'back to the usual pace');
   assert.equal(client.getState().reason, null);
   assert.equal(client.getState().snapshot!.tripUpdates[0].measuredAt, NOW - 10_000);
   client.dispose();
@@ -712,6 +714,11 @@ test('failure backoff retains last-good cache, expires stored data and recovers 
   restored.setQuery(query);
   await flush();
   assert.equal(restored.getState().snapshot, null);
+  assert.equal(
+    restored.getState().reason,
+    'Configura la conexión de Transit para consultar datos en vivo.',
+    'an old reading is not reported as invalid over the real reason',
+  );
   restored.dispose();
 });
 
@@ -988,7 +995,7 @@ test('a followed bus a new reading leaves out keeps its last report, not when it
   client.dispose();
 });
 
-test('trouble in one LTC file keeps the pace; a failed connection backs off; a return retries at once unless paused', async (t) => {
+test('trouble in one LTC file keeps the pace; a failed connection retries in 15 s; a return retries at once unless paused', async (t) => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: NOW });
   const { schedule, query, snapshot } = fixture();
   const answers: (() => Response)[] = [
@@ -1026,7 +1033,7 @@ test('trouble in one LTC file keeps the pace; a failed connection backs off; a r
   t.mock.timers.tick(45_000);
   await flush();
   assert.equal(calls, 2);
-  assert.equal(client.getState().nextRefreshAt, NOW + 90_000, 'no connection: wait before trying');
+  assert.equal(client.getState().nextRefreshAt, NOW + 60_000, 'no connection: again in 15 s');
   client.setForeground(false);
   t.mock.timers.tick(20_000);
   client.setForeground(true);

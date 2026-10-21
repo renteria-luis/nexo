@@ -39,6 +39,10 @@ export type TransitLiveConfig = { endpoint: string; credential: string };
 export const LIVE_LOCAL_MAX_BYTES = REALTIME_MAX_RESPONSE_BYTES + 8_000;
 export const LIVE_LOCAL_MAX_AGE_MS = 30 * 60_000;
 export const LIVE_MANUAL_MIN_MS = 15_000;
+/** What one live query may name. */
+export const LIVE_STOPS_MAX = 8;
+export const LIVE_TRIPS_MAX = 4;
+export const LIVE_ROUTES_MAX = 4;
 // A new selection needs its own data sooner than a repeated tap does; five seconds still keeps
 // rapid taps inside the service's twelve requests a minute.
 export const LIVE_CHANGE_MIN_MS = 5_000;
@@ -201,9 +205,9 @@ export function validateLiveQuery(raw: unknown, schedule: Schedule): LiveQuery {
     q.includeReportedTrips === undefined || q.includeReportedTrips === true,
     'capacidad de consulta',
   );
-  list(q.stopIds, 8);
-  list(q.trips, 4);
-  list(q.routeIds, 4);
+  list(q.stopIds, LIVE_STOPS_MAX);
+  list(q.trips, LIVE_TRIPS_MAX);
+  list(q.routeIds, LIVE_ROUTES_MAX);
   requireValid(q.stopIds.length + q.trips.length + q.routeIds.length > 0, 'selección vacía');
   const stopIds = new Set(schedule.stops.map((s) => s[0]));
   const routeIds = new Set(schedule.routes.map((r) => r[0]));
@@ -1352,6 +1356,10 @@ async function boundedJson(
 }
 
 /** The service asked to wait, at its limit or switched off, for as long as it said. */
+// No answer at all: the network dropped or the service did not reply in time. It comes back on
+// its own, often while he waits at a stop for a bus due in two minutes.
+class LiveUnreachable extends Error {}
+
 class LivePaused extends Error {
   waitMs: number;
   constructor(waitMs: number) {
@@ -1386,7 +1394,9 @@ export async function fetchLiveSnapshot(
   options.signal?.addEventListener('abort', cancel, { once: true });
   const timer = setTimeout(() => {
     controller.abort();
-    rejectDeadline(new Error('La conexión en vivo tardó demasiado. Se conserva el horario.'));
+    rejectDeadline(
+      new LiveUnreachable('La conexión en vivo tardó demasiado. Se conserva el horario.'),
+    );
   }, options.timeoutMs ?? 12_000);
   try {
     return await Promise.race([
@@ -1404,10 +1414,9 @@ export async function fetchLiveSnapshot(
             signal: controller.signal,
           });
         } catch {
-          throw new Error(
-            controller.signal.aborted
-              ? 'Consulta en vivo cancelada.'
-              : 'No hay conexión en vivo. Revisa internet. Se conserva el horario.',
+          if (controller.signal.aborted) throw new Error('Consulta en vivo cancelada.');
+          throw new LiveUnreachable(
+            'No hay conexión en vivo. Revisa internet. Se conserva el horario.',
           );
         }
         if (response.url && response.url !== checked.endpoint)
@@ -1421,7 +1430,7 @@ export async function fetchLiveSnapshot(
           throw new LivePaused(Number.isFinite(seconds) && seconds > 0 ? seconds * 1_000 : 0);
         }
         if (!response.ok)
-          throw new Error(
+          throw new LiveUnreachable(
             `No hay datos en vivo ahora (HTTP ${response.status}). Se conserva el horario.`,
           );
         const snapshot = validateLiveSnapshot(
@@ -1479,6 +1488,7 @@ export function createLiveClient(options: LiveClientOptions) {
     timer = null;
   };
   const useful = () => foreground && !!state.query && !!options.config && !disposed;
+  const nextAt = () => (failures ? retryAfter : Math.max(lastAttempt + REFRESH_MS, retryAfter));
   // From half an hour before the chosen departure until its trip is over: following a bus that
   // left his stop ten minutes ago is still useful while it runs.
   const near = () =>
@@ -1574,7 +1584,13 @@ export function createLiveClient(options: LiveClientOptions) {
     } catch (error) {
       if (token !== generation || controller.signal.aborted || !useful()) return;
       failures += 1;
-      retryAfter = now() + Math.min(5 * 60_000, REFRESH_MS * 2 ** Math.min(failures - 1, 4));
+      // A lost connection is tried again every 15 s: backing off kept him on the timetable for
+      // minutes after the network was back. An answer that something is wrong still backs off.
+      retryAfter =
+        now() +
+        (error instanceof LiveUnreachable
+          ? LIVE_MANUAL_MIN_MS
+          : Math.min(5 * 60_000, REFRESH_MS * 2 ** Math.min(failures - 1, 4)));
       if (error instanceof LivePaused)
         pausedUntil = retryAfter = Math.max(retryAfter, now() + Math.min(5 * 60_000, error.waitMs));
       emit({
@@ -1586,7 +1602,7 @@ export function createLiveClient(options: LiveClientOptions) {
       if (request === controller) request = null;
       if (token === generation && !disposed) {
         emit({ loading: false });
-        schedule(Math.max(lastAttempt + REFRESH_MS, retryAfter));
+        schedule(nextAt());
       }
     }
   };
@@ -1601,17 +1617,16 @@ export function createLiveClient(options: LiveClientOptions) {
       );
       const value = object(JSON.parse(content));
       requireValid(
-        value.schema === 1 &&
-          integer(value.storedAt, now() - LIVE_LOCAL_MAX_AGE_MS, now() + FUTURE_ALLOWANCE_MS),
-        'lectura local vencida',
+        value.schema === 1 && integer(value.storedAt, 1, now() + FUTURE_ALLOWANCE_MS),
+        'lectura local dañada',
       );
+      // An old reading is just not used. Calling it invalid covered the reason the new one failed.
+      if (value.storedAt < now() - LIVE_LOCAL_MAX_AGE_MS) return;
       const cachedQuery = validateLiveQuery(value.query, options.schedule);
       if (liveQueryKey(query) !== liveQueryKey(cachedQuery)) return;
       const snapshot = validateLiveSnapshot(value.snapshot, options.schedule, query, now());
-      requireValid(
-        snapshot.staticCompatible && snapshot.generatedAt >= now() - LIVE_LOCAL_MAX_AGE_MS,
-        'lectura antigua',
-      );
+      requireValid(snapshot.staticCompatible, 'lectura de otro horario');
+      if (snapshot.generatedAt < now() - LIVE_LOCAL_MAX_AGE_MS) return;
       if (token === generation && !state.snapshot)
         emit({
           snapshot: {
@@ -1645,7 +1660,7 @@ export function createLiveClient(options: LiveClientOptions) {
       if (
         (query ? liveQueryKey(query) : null) === (state.query ? liveQueryKey(state.query) : null)
       ) {
-        if (useful()) schedule(Math.max(lastAttempt + REFRESH_MS, retryAfter));
+        if (useful()) schedule(nextAt());
         return;
       }
       generation += 1;

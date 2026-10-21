@@ -477,6 +477,7 @@ export function TransitPlanner({
       accessRadiusM: STOP_REACH_M[accessReach],
       egressRadiusM: STOP_REACH_M[egressReach],
       closedStops: closedKey ? closedKey.split(',') : [],
+      here: originId === HERE,
       mode: applied.mode,
       at: applied.at,
       observedTrips: JSON.parse(observedKey),
@@ -1234,7 +1235,10 @@ function walkText(walk: StopSummary['stops'][number]['walk'], from: Coordinates,
       : walk.source === 'learned'
         ? 'según tus caminatas'
         : 'estimado';
-  return `${walk.minutes} min a pie (${source}) · ${Math.round(walk.metres)} m al ${headingTo(from, { lat: stop[3], lng: stop[4] })}`;
+  const where = `${Math.round(walk.metres)} m al ${headingTo(from, { lat: stop[3], lng: stop[4] })}`;
+  return walk.minutes
+    ? `${walk.minutes} min a pie (${source}) · ${where}`
+    : `Ya estás aquí · ${where}`;
 }
 
 function StopBadge({ rank }: { rank: number | null }) {
@@ -1816,10 +1820,11 @@ function StopBuses({
                 />
                 <View style={styles.wrap}>
                   {onLeave && (
+                    // A bus he would "probably not make" may still be his: only one that left is not.
                     <Button
                       label="Salgo ahora"
                       variant="primary"
-                      disabled={busy || gone || !!option.missed}
+                      disabled={busy || !!option.problem || option.missed === 'passed'}
                       onPress={() => run(() => onLeave(option))}
                     />
                   )}
@@ -2056,8 +2061,16 @@ function PlanSteps({
   return (
     <View style={styles.steps}>
       <WalkStep
-        title={`Sal ${clock(option.leaveAt)} y camina ${plan.access.minutes} min a ${at(plan.access.to)}`}
-        detail={`#${code(plan.access.to!)} · ${walkSource(plan.access)} · llegas ${clock(reachStop)}`}
+        title={
+          plan.access.minutes
+            ? `Sal ${clock(option.leaveAt)} y camina ${plan.access.minutes} min a ${at(plan.access.to)}`
+            : `Ya estás en ${at(plan.access.to)}`
+        }
+        detail={
+          plan.access.minutes
+            ? `#${code(plan.access.to!)} · ${walkSource(plan.access)} · llegas ${clock(reachStop)}`
+            : `#${code(plan.access.to!)} · a ${Math.round(plan.access.metres)} m de tu ubicación`
+        }
         edit={savable.access ? { kind: 'access', walk: plan.access } : null}
         onSave={onSaveWalk}
       />

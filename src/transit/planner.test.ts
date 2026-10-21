@@ -201,13 +201,14 @@ test('every bus is listed, also another line that leaves a minute earlier and ar
   );
   while (!search.step(1_000));
   const options = liveOptions(search.result(), null, 0);
+  // Walking the whole 24 minutes counts as 48 against the buses, so it comes last.
   assert.deepEqual(options.map(describe), [
     '08:13 08:22 92S-X:ORIGIN_SB>CORNER_SB',
     '08:12 08:24 16S-3:ORIGIN_SB>CORNER_SB',
     '08:17 08:26 92S-1:ORIGIN_SB>CORNER_SB',
-    '08:10 08:34',
     '08:27 08:39 16S-4:ORIGIN_SB>CORNER_SB',
     '08:42 08:54 16S-5:ORIGIN_SB>CORNER_SB',
+    '08:10 08:34',
   ]);
 });
 
@@ -838,4 +839,93 @@ test('leaving now, a stop greys out only the buses it listed when live data take
     ['92S-1'],
     'the 16 to the same 20, hidden behind the express, was never offered',
   );
+});
+
+test('walking counts double: home 5 minutes later on foot for 3 beats 5 sooner on foot for 14', () => {
+  // 2026-10-20: the first option was a transfer with 14 minutes on foot, and the same first bus
+  // then another line, 5 minutes later with 3 on foot, was not listed.
+  const stop = (id: string, lat: number, lng: number): Schedule['stops'][number] => [
+    id,
+    id,
+    id,
+    lat,
+    lng,
+  ];
+  const stops = [
+    stop('W', 43, -81.2),
+    stop('Q', 43, -81.18),
+    stop('A', 43, -81.17),
+    stop('Q2', 43, -81.1757),
+    stop('H17', 42.99, -81.1563),
+    stop('A2', 43.0003, -81.17),
+    stop('H16', 42.9903, -81.16),
+  ];
+  const pattern = (...visits: [string, number][]): Schedule['patterns'][number] =>
+    visits.map(([id, minute], i) => [
+      stops.findIndex((s) => s[0] === id),
+      i + 1,
+      minute * 60,
+      minute * 60,
+      i === visits.length - 1 ? 1 : 0,
+      i === 0 ? 1 : 0,
+      1,
+      '',
+    ]);
+  const start = 8 * 3600;
+  const network: Schedule = {
+    ...plannerFixture(),
+    stops,
+    routes: [
+      ['F', 'F', 'First', 'A0A000'],
+      ['L', 'L', 'Long walk', '00A0E0'],
+      ['S', 'S', 'Short walk', 'E000E0'],
+    ],
+    patterns: [
+      pattern(['W', 0], ['Q', 6], ['A', 9]),
+      pattern(['Q2', 0], ['H17', 6]),
+      pattern(['A2', 0], ['H16', 19]),
+    ],
+    trips: [
+      ['F-0', 0, 'daily', 'East', 0, '', 0, start],
+      ['L-0', 1, 'daily', 'South', 1, '', 1, start + 16 * 60],
+      ['S-0', 2, 'daily', 'South', 1, '', 2, start + 13 * 60],
+    ],
+  };
+  const search = startPlan(
+    buildPlannerIndex(network),
+    request({
+      origin: { lat: 43.0002, lng: -81.2 },
+      destination: { lat: 42.99, lng: -81.16 },
+      at: queryInstant(TUESDAY, '07:50'),
+    }),
+  );
+  while (!search.step(1_000));
+  const options = liveOptions(search.result(), null, 0);
+  assert.deepEqual(
+    options.map((option) => [
+      agencyClock(option.arriveAt),
+      option.itinerary.rides.map((ride) => ride.trip[0]).join(' '),
+    ]),
+    [['08:33', 'F-0 S-0']],
+  );
+});
+
+test('from where he stands, a stop within 30 m is one he is at: no walk and no margin', () => {
+  // 2026-10-19: across the street from his stop, the bus due in two minutes read as one he would
+  // probably not make, and «Salgo ahora» was off.
+  const now = queryInstant(TUESDAY, '08:14');
+  const nearStop = { lat: 43.00043, lng: -81.2001 };
+  const first = (here: boolean) =>
+    liveOptions(
+      plan({ origin: nearStop, destination: MIDDLE, mode: 'now', at: now, here }),
+      null,
+      now,
+    ).find((option) => option.itinerary.rides[0]?.trip[0] === '16S-3')!;
+  const at = first(true);
+  assert.equal(at.itinerary.access.minutes, 0);
+  assert.equal(agencyClock(at.leaveAt), '08:15');
+  assert.equal(at.missed, null);
+  const planned = first(false);
+  assert.equal(planned.itinerary.access.minutes, 1, 'a saved place or a map point still walks');
+  assert.equal(planned.missed, 'late');
 });

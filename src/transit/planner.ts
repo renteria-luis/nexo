@@ -28,6 +28,17 @@ export const BOARD_MARGIN_MIN = 2;
 export const TRANSFER_MARGIN_MIN = 3;
 export const TIGHT_TRANSFER_MIN = 5;
 export const ARRIVE_EARLY_MIN = 3;
+// Where he stands by GPS, a stop this close is one he is at: the phone often puts him across the
+// street from it, and a minute's walk plus the boarding margin turned the bus pulling in into one
+// he would "probably not make".
+export const AT_STOP_M = 30;
+// Each minute on foot counts this much more when options are compared: the walk already delays
+// the arrival, and this is the effort on top. Comparing arrivals alone listed first a bus that
+// got him home 5 minutes sooner after 15 minutes of walking, and hid the one with 2.
+export const WALK_WEIGHT = 1;
+// And each transfer this many minutes when the list is put in order, so a transfer does not go
+// above a direct bus for a minute less on foot.
+export const TRANSFER_WEIGHT_MIN = 7;
 
 // Search bounds. The two-sided search was benchmarked on October 2026 data in desktop Hermes;
 // the prototype's naive search took seconds. These are not physical iPhone measurements.
@@ -57,6 +68,18 @@ const CELL_M = 550;
 
 export function estimatedWalkMinutes(metres: number): number {
   return Math.max(1, Math.ceil((metres * WALK_DETOUR) / WALK_METRES_PER_MINUTE));
+}
+
+/** Every minute on foot of an option: to the first stop, between buses and after the last. */
+export function walkedMinutes(plan: Itinerary): number {
+  return plan.access.minutes + (plan.transfer?.minutes ?? 0) + (plan.egress?.minutes ?? 0);
+}
+
+const walkWeight = (minutes: number) => WALK_WEIGHT * minutes * MINUTE;
+
+/** The minutes to be at the stop before the bus: none when he is already there. */
+export function boardMargin(access: Walk): number {
+  return access.minutes ? BOARD_MARGIN_MIN : 0;
 }
 
 export type PlannerIndex = {
@@ -146,6 +169,8 @@ export type PlanRequest = {
   egressRadiusM?: number;
   /** Stops LTC has closed for now: he is not sent to them to board or to get off. */
   closedStops?: readonly string[];
+  /** The origin is where he stands by GPS, so a stop within AT_STOP_M is one he is at. */
+  here?: boolean;
   mode: PlanMode;
   /** Now, the time to leave at, or the time to be there by. */
   at: number;
@@ -209,6 +234,8 @@ type Feeder = {
   alight: number;
   transfer: Walk;
   slack: number;
+  /** Minutes on foot to the first bus and between the two. */
+  walked: number;
 };
 type Candidate = {
   /** As in `Front`. */
@@ -220,6 +247,8 @@ type Candidate = {
   egress: Walk | null;
   first: { boarding: number; alight: number; transfer: Walk } | null;
   walkOnly: Walk | null;
+  /** Every minute on foot, as `walkedMinutes`. */
+  walked: number;
 };
 
 export type PlanIssue =
@@ -360,6 +389,7 @@ function placeWalks(
   learned: ReadonlySet<string> | undefined,
   radius: number,
   closed: ReadonlySet<string>,
+  here = false,
 ): Map<number, Walk> {
   const walks = new Map<number, Walk>();
   const add = (stop: number, metres: number, minutes: number, source: Walk['source']) =>
@@ -372,7 +402,7 @@ function placeWalks(
     });
   const open = (stop: number) => !closed.has(index.schedule.stops[stop][0]);
   for (const { stop, metres } of stopsWithin(index, point, radius, open))
-    add(stop, metres, estimatedWalkMinutes(metres), 'estimate');
+    add(stop, metres, here && metres <= AT_STOP_M ? 0 : estimatedWalkMinutes(metres), 'estimate');
   for (const [id, minutes] of saved) {
     const stop = index.stopIds.get(id);
     if (stop === undefined || closed.has(id)) continue;
@@ -446,6 +476,7 @@ function itinerary(
 /** What tells two options apart when choosing which to list. */
 type Listing = {
   leaveAt: number;
+  /** When he gets there, each minute on foot counted WALK_WEIGHT more. */
   arriveAt: number;
   buses: number;
   /** The first and the last bus, by trip and service day, empty for walking. */
@@ -455,12 +486,13 @@ type Listing = {
   lines: string;
 };
 
-function listingOf(leaveAt: number, arriveAt: number, rides: readonly Ride[]): Listing {
+function listingOf(leaveAt: number, arriveAt: number, plan: Itinerary): Listing {
+  const rides = plan.rides;
   const first = rides[0];
   const last = rides.at(-1);
   return {
     leaveAt,
-    arriveAt,
+    arriveAt: arriveAt + walkWeight(walkedMinutes(plan)),
     buses: rides.length,
     first: first ? tripKey(first.trip, first.serviceDate) : '',
     last: last ? tripKey(last.trip, last.serviceDate) : '',
@@ -548,6 +580,7 @@ export function startPlan(
     request.learned,
     request.accessRadiusM ?? ACCESS_RADIUS_M,
     closed,
+    request.here,
   );
   const egress = placeWalks(
     index,
@@ -589,7 +622,7 @@ export function startPlan(
   // First rides: every bus he can catch near the origin in the window, and when it reaches each
   // later stop. Per stop and line only a staircase survives: arriving later only to leave later.
   const firstRides = (stop: number, walk: Walk) => {
-    const ready = searchFrom + (walk.minutes + BOARD_MARGIN_MIN) * MINUTE;
+    const ready = searchFrom + (walk.minutes + boardMargin(walk)) * MINUTE;
     const visits = index.visits[stop];
     for (let v = 0; v < visits.length; v += 2) {
       const pattern = patterns[visits[v]];
@@ -604,7 +637,7 @@ export function startPlan(
           const departs = day.start + (trip[7] + pattern[board][3]) * 1_000;
           if (departs > boardBy) break;
           if (!day.active.has(trip[2]) && !day.observed.has(trip[0])) continue;
-          const leave = departs - (BOARD_MARGIN_MIN + walk.minutes) * MINUTE;
+          const leave = departs - (boardMargin(walk) + walk.minutes) * MINUTE;
           const id = boardings.push({ trip, day, board, walk }) - 1;
           const key = routeKey(trip);
           for (let alight = board + 1; alight < pattern.length; alight++) {
@@ -674,7 +707,7 @@ export function startPlan(
           if (door > arriveBy) break;
           if (!day.active.has(trip[2]) && !day.observed.has(trip[0])) continue;
           const key = routeKey(trip);
-          const directs: { origin: number; leave: number; board: number }[] = [];
+          const directs: { origin: number; leave: number; board: number; walked: number }[] = [];
           // The best first ride of each line, so a late bus on one still leaves the others to
           // re-rank with live data.
           const feeders = new Map<number, Feeder>();
@@ -686,12 +719,16 @@ export function startPlan(
             if (departs < searchFrom) break;
             const walk = access.get(time[0]);
             if (walk && departs <= boardBy) {
-              const leave = departs - (BOARD_MARGIN_MIN + walk.minutes) * MINUTE;
+              const leave = departs - (boardMargin(walk) + walk.minutes) * MINUTE;
               const origin = perStop ? time[0] : -1;
               const known = directs.find((direct) => direct.origin === origin);
-              if (leave >= searchFrom && (!known || leave > known.leave)) {
-                if (known) Object.assign(known, { leave, board });
-                else directs.push({ origin, leave, board });
+              if (
+                leave >= searchFrom &&
+                (!known ||
+                  leave - walkWeight(walk.minutes) > known.leave - walkWeight(known.walked))
+              ) {
+                if (known) Object.assign(known, { leave, board, walked: walk.minutes });
+                else directs.push({ origin, leave, board, walked: walk.minutes });
               }
             }
             let into = walksInto.get(time[0]);
@@ -710,11 +747,13 @@ export function startPlan(
                 const e = lastAtOrBefore(front.arrival, deadline);
                 if (e < 0 || deadline - front.arrival[e] > MAX_TRANSFER_WAIT_MIN * MINUTE) continue;
                 const slack = deadline + TRANSFER_MARGIN_MIN * MINUTE - front.arrival[e];
+                const walked = boardings[front.boarding[e]].walk.minutes + transfer.minutes;
+                const value = front.leave[e] - walkWeight(walked);
                 const known = feeders.get(front.line);
+                const knownValue = known && known.leave - walkWeight(known.walked);
                 if (
-                  known &&
-                  (known.leave > front.leave[e] ||
-                    (known.leave === front.leave[e] && known.slack >= slack))
+                  knownValue !== undefined &&
+                  (knownValue > value || (knownValue === value && known!.slack >= slack))
                 )
                   continue;
                 feeders.set(front.line, {
@@ -725,6 +764,7 @@ export function startPlan(
                   alight: front.alight[e],
                   transfer,
                   slack,
+                  walked,
                 });
               }
             }
@@ -740,6 +780,7 @@ export function startPlan(
               egress: out,
               first: null,
               walkOnly: null,
+              walked: direct.walked + out.minutes,
             });
           for (const feeder of feeders.values())
             candidates.push({
@@ -755,6 +796,7 @@ export function startPlan(
                 transfer: feeder.transfer,
               },
               walkOnly: null,
+              walked: feeder.walked + out.minutes,
             });
         }
       }
@@ -784,6 +826,7 @@ export function startPlan(
 
   const firstBus = (candidate: Candidate) =>
     candidate.first ? boardings[candidate.first.boarding] : null;
+  const weighed = (candidate: Candidate) => candidate.arrive + walkWeight(candidate.walked);
 
   /** The bus, or pair of buses, whatever stop he boards at. */
   const busesOf = (candidate: Candidate) => {
@@ -802,8 +845,8 @@ export function startPlan(
   const distinctBuses = () => {
     const better = (candidate: Candidate, known: Candidate | undefined) =>
       !known ||
-      candidate.arrive < known.arrive ||
-      (candidate.arrive === known.arrive && candidate.leave > known.leave);
+      weighed(candidate) < weighed(known) ||
+      (weighed(candidate) === weighed(known) && candidate.leave > known.leave);
     const best = new Map<string, Candidate>();
     // The bus he can walk to from any stop: a first bus to it is no use from any of them.
     const direct = new Map<string, Candidate>();
@@ -817,7 +860,7 @@ export function startPlan(
       if (!candidate.first) return true;
       return [firstBus(candidate)!, candidate.final!].every((bus) => {
         const known = direct.get(tripKey(bus.trip, bus.day.date));
-        return !known || known.leave < candidate.leave || known.arrive > candidate.arrive;
+        return !known || known.leave < candidate.leave || weighed(known) > weighed(candidate);
       });
     });
   };
@@ -828,7 +871,7 @@ export function startPlan(
     const last = f ? tripKey(f.trip, f.day.date) : '';
     return {
       leaveAt: candidate.leave,
-      arriveAt: candidate.arrive,
+      arriveAt: weighed(candidate),
       buses: candidate.rides,
       first: b ? tripKey(b.trip, b.day.date) : last,
       last,
@@ -854,13 +897,17 @@ export function startPlan(
         egress: null,
         first: null,
         walkOnly: { from: null, to: null, minutes, source: 'estimate', metres },
+        walked: minutes,
       });
     }
-    // What matters is arriving early when leaving at a time, and leaving late when arriving by one.
+    // What matters is arriving early when leaving at a time, and leaving late when arriving by one,
+    // each minute on foot counting against it.
     kept.sort((a, b) =>
       arriving
-        ? b.leave - a.leave || a.arrive - b.arrive || a.rides - b.rides
-        : a.arrive - b.arrive || b.leave - a.leave || a.rides - b.rides,
+        ? b.leave - walkWeight(b.walked) - (a.leave - walkWeight(a.walked)) ||
+          weighed(a) - weighed(b) ||
+          a.rides - b.rides
+        : weighed(a) - weighed(b) || b.leave - a.leave || a.rides - b.rides,
     );
     // The pool keeps every option the schedule lists, even past the nearest POOL buses, which
     // count once from however many stops he can board them at. Buses the timetable has leaving
@@ -956,6 +1003,7 @@ function continueFrom(
 ): NextRide | null {
   const schedule = context.index.schedule;
   let best: NextRide | null = null;
+  let bestWeighed = Infinity;
   for (const transfer of transferWalks(context, stop, 'out')) {
     const ready = readyAt + (transfer.minutes + TRANSFER_MARGIN_MIN) * MINUTE;
     const visits = context.index.visits[transfer.to!];
@@ -978,13 +1026,16 @@ function continueFrom(
             const egress = context.egress.get(pattern[alight][0])!;
             const arriveAt =
               day.start + (trip[7] + pattern[alight][2]) * 1_000 + egress.minutes * MINUTE;
-            if (!best || arriveAt < best.arriveAt)
+            const weighed = arriveAt + walkWeight(transfer.minutes + egress.minutes);
+            if (weighed < bestWeighed) {
+              bestWeighed = weighed;
               best = {
                 ride: makeRide(schedule, trip, day, board, alight),
                 transfer,
                 egress,
                 arriveAt,
               };
+            }
           }
           break;
         }
@@ -1132,7 +1183,7 @@ export function timetableListing(request: PlanRequest, pool: readonly Itinerary[
   const from = request.mode === 'arrive' ? request.at - MAX_TRIP_MIN * MINUTE : request.at;
   return worthShowing(
     pool.filter((plan) => plan.leaveAt >= from - MINUTE),
-    (plan) => listingOf(plan.leaveAt, plan.arriveAt, plan.rides),
+    (plan) => listingOf(plan.leaveAt, plan.arriveAt, plan),
   );
 }
 
@@ -1219,7 +1270,7 @@ export function liveOptions(
     const last = live.at(-1);
     // Walking the whole way can start whenever he does.
     const leaveAt = first
-      ? first.board.at - (BOARD_MARGIN_MIN + current.access.minutes) * MINUTE
+      ? first.board.at - (boardMargin(current.access) + current.access.minutes) * MINUTE
       : mode === 'now'
         ? Math.max(current.leaveAt, now)
         : current.leaveAt;
@@ -1275,8 +1326,11 @@ export function liveOptions(
     const seen = unique.get(option.itinerary.key);
     if (!seen || option.leaveAt > seen.leaveAt) unique.set(option.itinerary.key, option);
   }
-  const view = (option: PlanOption) =>
-    listingOf(option.leaveAt, option.arriveAt, option.itinerary.rides);
+  const view = (option: PlanOption) => listingOf(option.leaveAt, option.arriveAt, option.itinerary);
+  const weighed = (option: PlanOption) =>
+    option.arriveAt +
+    walkWeight(walkedMinutes(option.itinerary)) +
+    TRANSFER_WEIGHT_MIN * Math.max(0, option.itinerary.rides.length - 1) * MINUTE;
   const working = worthShowing(
     [...unique.values()].filter((option) => !option.problem),
     view,
@@ -1292,7 +1346,7 @@ export function liveOptions(
     )
       notices.set(option.scheduleKey, { ...option, notice: true });
   const sorted = [...working, ...notices.values()].sort(
-    (a, b) => a.arriveAt - b.arriveAt || b.leaveAt - a.leaveAt,
+    (a, b) => weighed(a) - weighed(b) || b.leaveAt - a.leaveAt,
   );
   if (mode !== 'now' || includeOutsideWindow) return sorted;
   // Of the buses he no longer makes, the last to leave that would be listed beside the ones he

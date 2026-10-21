@@ -1,6 +1,6 @@
 import type { WorkoutFinish } from '../training/read.ts';
 import { agencyClock } from './schedule.ts';
-import { BOARD_MARGIN_MIN, ARRIVE_EARLY_MIN, type PlanMode, type PlanOption } from './planner.ts';
+import { ARRIVE_EARLY_MIN, boardMargin, type PlanMode, type PlanOption } from './planner.ts';
 
 export type TravelPreferences = {
   preparationMinutes: number;
@@ -160,10 +160,10 @@ export function travelAdvice(
     finishBy,
     leaveAt: option.leaveAt,
     boardAt: board?.at ?? null,
-    reachStopBy: board ? board.at - BOARD_MARGIN_MIN * 60_000 : null,
+    reachStopBy: board ? board.at - boardMargin(option.itinerary.access) * 60_000 : null,
     preparationMinutes,
     walkMinutes: option.itinerary.access.minutes,
-    boardingMinutes: board ? BOARD_MARGIN_MIN : 0,
+    boardingMinutes: board ? boardMargin(option.itinerary.access) : 0,
     feasible: reason === null,
     reason: reason ?? short,
     source,
