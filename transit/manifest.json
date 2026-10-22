@@ -1,12 +1,12 @@
 {
   "schema": 2,
-  "sourceSha256": "c50069cd483d7dd9f8896a82e2d0e8e366d49936ef02dc387a7e9ae8c3e8d572",
-  "createdAt": 1792407141918,
-  "feedVersion": "2026 September (D)_20261015",
+  "sourceSha256": "a58c18f3b5a91cbafa67b1db64e6ef0a3d76026bf91d5d9f46be126314d21f7d",
+  "createdAt": 1792664251795,
+  "feedVersion": "2026 September (D)_20261021",
   "timezone": "America/Toronto",
   "validFrom": "2026-10-19",
   "validTo": "2026-11-28",
-  "sha256": "58e86915763e885526df7489e0ee45d40cb3ce8273e9a0224e375fa00b04670f",
-  "bytes": 4650099,
+  "sha256": "e88884e39b5d787281fb35b4328de1541da6d67ea2d2f5654e9ee896f883e6e7",
+  "bytes": 4650267,
   "file": "schedule.json"
 }
