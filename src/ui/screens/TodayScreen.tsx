@@ -299,7 +299,9 @@ export function TodayScreen({
           <View style={styles.heroSide}>
             <Text style={styles.heroEyebrow}>
               Nota de hoy
-              {pending > 0 ? ` · faltan ${Math.round(pending)}` : ' · día completo'}
+              {/* Lo mismo que dice el detalle del dia: puntos sin anotar, no lo que falta
+                  para llegar a 100 (2026-10-23). */}
+              {pending > 0 ? ` · ${Math.round(pending)} sin anotar` : ' · día completo'}
             </Text>
             <View style={styles.heroStat}>
               <Flame size={20} color={theme.accent} strokeWidth={2.25} />
@@ -324,7 +326,6 @@ export function TodayScreen({
         </View>
       </Card>
 
-      {TRANSIT_ENABLED && <TransitJourneyCard surface="today" />}
       {healthArrival && (
         <HealthArrivalCard
           arrival={healthArrival}
@@ -377,6 +378,37 @@ export function TodayScreen({
         </Card>
       )}
 
+      {/* Lo que anota varias veces al dia va pegado a la nota, y no debajo del viaje y de
+          la cuadricula, que se miran una vez (2026-10-23). */}
+      <Card title="Registro del día">
+        <TodayLog
+          editing
+          // Un dia nuevo es otro registro: sin esto los campos seguian con lo de ayer.
+          key={loaded.today.date}
+          log={loaded.today.log}
+          lastWeight={loaded.lastWeight}
+          healthImports={loaded.healthImports}
+          containers={loaded.containers}
+          waterTargetMl={
+            targets
+              ? loaded.today.trained === true
+                ? targets.waterMlTraining
+                : targets.waterMlRest
+              : null
+          }
+          onLog={logDay}
+          onAdd={addToDay}
+          onTapWater={tapWater}
+          onUndoWater={undoWater}
+          onPullHealth={pullHealth}
+          canUndoWater={
+            parseWaterTaps(loaded.settings.get('water_taps'), loaded.today.date).length > 0
+          }
+        />
+      </Card>
+
+      {TRANSIT_ENABLED && <TransitJourneyCard surface="today" />}
+
       <Card>
         <View style={styles.gridHead}>
           <Text style={styles.gridTitle}>{WEEKS_SHOWN} semanas</Text>
@@ -422,7 +454,7 @@ export function TodayScreen({
             nutrition
               ? `${Math.round(nutrition.proteinG)} g de proteína`
               : band
-                ? `Meta ${band.from} a ${band.to} g`
+                ? `Meta ${band.from} g o más`
                 : 'Faltan tus metas'
           }
           onOpen={() => onOpen('Comida')}
@@ -453,33 +485,6 @@ export function TodayScreen({
           onOpen={() => onOpen('Finanzas')}
         />
       </View>
-
-      <Card title="Registro del día">
-        <TodayLog
-          editing
-          // Un dia nuevo es otro registro: sin esto los campos seguian con lo de ayer.
-          key={loaded.today.date}
-          log={loaded.today.log}
-          lastWeight={loaded.lastWeight}
-          healthImports={loaded.healthImports}
-          containers={loaded.containers}
-          waterTargetMl={
-            targets
-              ? loaded.today.trained === true
-                ? targets.waterMlTraining
-                : targets.waterMlRest
-              : null
-          }
-          onLog={logDay}
-          onAdd={addToDay}
-          onTapWater={tapWater}
-          onUndoWater={undoWater}
-          onPullHealth={pullHealth}
-          canUndoWater={
-            parseWaterTaps(loaded.settings.get('water_taps'), loaded.today.date).length > 0
-          }
-        />
-      </Card>
 
       <View style={styles.links}>
         <Button

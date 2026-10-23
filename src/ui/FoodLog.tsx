@@ -68,18 +68,20 @@ function Stat({
   /** Sola en su linea. */
   wide?: boolean;
 }) {
+  // Un solo cuadrito para todos: las dos metas llevan su color con tinta oscura encima,
+  // y lo que se pasa de su limite lo dice en la nota y no con otro fondo (2026-10-23).
+  const filled = tint !== undefined;
   return (
-    <View
-      style={[
-        styles.stat,
-        wide && styles.statWide,
-        tint !== undefined && { backgroundColor: tint },
-        alert && styles.statAlert,
-      ]}
-    >
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, tint !== undefined && styles.statValueBig]}>{value}</Text>
-      {note ? <Text style={styles.statNote}>{note}</Text> : null}
+    <View style={[styles.stat, wide && styles.statWide, filled && { backgroundColor: tint }]}>
+      <Text style={[styles.statLabel, filled && styles.onTintSoft]}>{label}</Text>
+      <Text style={[styles.statValue, filled && styles.statValueBig, filled && styles.onTint]}>
+        {value}
+      </Text>
+      {note ? (
+        <Text style={[styles.statNote, filled && styles.onTintSoft, alert && styles.statAlert]}>
+          {note}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -157,7 +159,7 @@ function NutritionStats({
           label="Proteína"
           value={`${protein}${mark('protein_g')} g`}
           note={proteinBand === null ? undefined : proteinAgainstBand(protein, proteinBand)}
-          tint={theme.danger}
+          tint={theme.protein}
         />
         <Stat
           label="Carbos"
@@ -395,8 +397,13 @@ export function FoodLog({
       onStartShouldSetResponder={foodId === null ? undefined : () => true}
       onResponderRelease={foodId === null ? undefined : () => setFoodId(null)}
     >
-      <Card title="Lo que llevas">
-        {totals ? (
+      {/* Anotar primero: es a lo que entra dos o tres veces al dia, y los totales y la
+          lista, que crecen con el dia, lo empujaban hacia abajo. Sin nada anotado no hay
+          totales ni lista que mostrar (2026-10-23). */}
+      <Card title="Anotar">{picker}</Card>
+
+      {totals && (
+        <Card title="Lo que llevas">
           <NutritionStats
             totals={totals}
             proteinBand={proteinBand}
@@ -404,14 +411,10 @@ export function FoodLog({
             fatBand={fatBand}
             record={record}
           />
-        ) : (
-          <Text style={styles.empty}>Todavía no anotaste nada.</Text>
-        )}
-      </Card>
+        </Card>
+      )}
 
-      <Card title="Lo anotado">{eaten}</Card>
-
-      <Card title="Anotar">{picker}</Card>
+      {portions.length > 0 && <Card title="Lo anotado">{eaten}</Card>}
     </View>
   );
 }
@@ -460,7 +463,7 @@ const styles = sheet((theme) => ({
     borderWidth: shape.border,
     borderColor: theme.line,
     borderRadius: shape.radiusSmall,
-    backgroundColor: theme.bg,
+    backgroundColor: theme.surface,
     paddingHorizontal: 8,
     paddingVertical: 7,
     gap: 1,
@@ -469,7 +472,14 @@ const styles = sheet((theme) => ({
     flexBasis: '100%',
   },
   statAlert: {
-    backgroundColor: theme.warnBg,
+    fontFamily: font.bold,
+    color: theme.warn,
+  },
+  onTint: {
+    color: theme.accentInk,
+  },
+  onTintSoft: {
+    color: theme.accentInkSoft,
   },
   statLabel: {
     fontSize: 10,

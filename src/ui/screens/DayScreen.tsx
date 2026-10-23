@@ -176,7 +176,12 @@ export function DayScreen() {
               <Text style={styles.criterionValue}>
                 {line.value}
                 {line.target === null ? null : (
-                  <Text style={styles.criterionTarget}> de {line.target}</Text>
+                  // El sueño se puntua contra las 8 h de la curva, que no es la meta de 7 h
+                  // de Ajustes: "de 8 h" se leia como otra meta (2026-10-23).
+                  <Text style={styles.criterionTarget}>
+                    {line.id === 'sleep' ? ' · ideal ' : ' de '}
+                    {line.target}
+                  </Text>
                 )}
               </Text>
             </View>

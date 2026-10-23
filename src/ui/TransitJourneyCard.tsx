@@ -188,7 +188,9 @@ export function TransitJourneyCard({
   const [problem, setProblem] = useState<string | null>(null);
   const [detecting, setDetecting] = useState(false);
   const [settings, setSettings] = useState(false);
-  const [details, setDetails] = useState(surface !== 'training');
+  // Fuera de Transit el viaje acompana a otra cosa, asi que abre en lo justo: cuando
+  // salir, el bus y Salgo ahora. Lo demas queda a un toque (2026-10-23).
+  const [details, setDetails] = useState(surface === 'transit');
   const locationToken = useRef(0);
   const retireLocation = useCallback(() => {
     locationToken.current++;
@@ -399,7 +401,7 @@ export function TransitJourneyCard({
                     : 'No hay una salida alcanzable en esta búsqueda. Cambia la hora o busca en Transit.'}
               </Text>
             )}
-            {alternative && (
+            {alternative && (details || !advice) && (
               <Button
                 variant="ghost"
                 label={`Alternativa: ${alternative.option.itinerary.rides.map((r) => r.route[1]).join(' → ') || 'a pie'} · sal ${agencyClock(alternative.leaveAt)}`}
@@ -415,7 +417,7 @@ export function TransitJourneyCard({
                 onPress={() => void act(() => actions.startTrip())}
               />
             )}
-            {advice && !advice.option.problem && (
+            {details && advice && !advice.option.problem && (
               <Text style={styles.note}>
                 Sigue tu viaje con el GPS hasta que llegues: avisa cuándo bajarte y mide tus
                 caminatas.
@@ -498,14 +500,15 @@ export function TransitJourneyCard({
               onPress={() => navigation.navigate(...goTo('Transit', false))}
             />
           )}
-          {surface === 'training' && (
+          {/* Sin viaje elegido no hay detalle que abrir: los avisos van a la vista. */}
+          {surface !== 'transit' && !selecting && (
             <Button
               label={details ? 'Menos detalle' : 'Detalles del viaje'}
               variant="ghost"
               onPress={() => setDetails(!details)}
             />
           )}
-          {details && (
+          {(details || selecting) && (
             <Button
               label={settings ? 'Cerrar ajustes de avisos' : 'Ajustar avisos'}
               variant="ghost"

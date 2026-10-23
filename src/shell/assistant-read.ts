@@ -6,6 +6,7 @@ import { daysBetween, shortDate, type DateRange, type IsoDate } from '../core/da
 import { currentStreak } from '../core/discipline.ts';
 import { resolveQuestionDates, type ReadRequest } from '../core/questions.ts';
 import { targetsInForceOn } from '../core/snapshots.ts';
+import { proteinBand } from '../core/targets.ts';
 import { withUnit, type WeightUnit } from '../core/units.ts';
 import type { CoreDailyLogRow, TrainingExerciseRow } from '../db/types.ts';
 import { fold } from '../nutrition/picker.ts';
@@ -204,8 +205,11 @@ async function nutrition(
   }
   if (range.from === range.to) {
     const targets = await targetsInForceOn(db, range.from);
-    if (targets !== null)
-      answer += ` Meta de ese día: ${Math.round(targets.proteinG)} g de proteína${unknownProtein.length === 0 ? `; ${Math.max(0, Math.round(targets.proteinG - totals.proteinG))} g por completar` : ''}.`;
+    // La misma meta que la nota y que Hoy: el piso de la banda, sin techo (spec 3.3).
+    // Antes decia la cifra del centro, 146, y cada pantalla daba un numero distinto.
+    const floor = targets === null ? null : proteinBand(targets).from;
+    if (floor !== null)
+      answer += ` Meta de ese día: ${floor} g o más de proteína${unknownProtein.length === 0 ? `; ${Math.max(0, floor - Math.round(totals.proteinG))} g por completar` : ''}.`;
   } else {
     const missing = daysBetween(range.from, range.to) + 1 - byDate.size;
     answer += ` ${byDate.size} ${byDate.size === 1 ? 'día con comida registrada' : 'días con comida registrada'}${missing > 0 ? `; ${missing} días sin registros, no contados como consumo cero` : ''}.`;

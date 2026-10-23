@@ -1,0 +1,554 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-23T12:59:20Z",
+  "title": "Design System: nexo",
+  "extensions": {
+    "colorMeta": {
+      "accent": {
+        "role": "primary",
+        "displayName": "Lantern Amber",
+        "canonical": "#ffb36b",
+        "oklch": "oklch(82.5% 0.125 63.1)",
+        "tonalRamp": [
+          "#190500",
+          "#3a1d00",
+          "#603705",
+          "#8b520f",
+          "#b66f21",
+          "#dc924a",
+          "#ffb877",
+          "#feebda"
+        ]
+      },
+      "accent-ink": {
+        "role": "neutral",
+        "displayName": "Amber Ink",
+        "canonical": "#1d1510",
+        "oklch": "oklch(20.4% 0.016 53.6)",
+        "tonalRamp": [
+          "#110905",
+          "#2c231e",
+          "#49403a",
+          "#695f59",
+          "#8b8079",
+          "#aea39c",
+          "#d2c7c0",
+          "#f8ece5"
+        ]
+      },
+      "bg": {
+        "role": "neutral",
+        "displayName": "Night Umber",
+        "canonical": "#17110d",
+        "oklch": "oklch(18.4% 0.013 55.5)",
+        "tonalRamp": [
+          "#0f0a06",
+          "#2a241f",
+          "#48403c",
+          "#675f5a",
+          "#89807b",
+          "#aca39e",
+          "#d0c7c1",
+          "#f6ece6"
+        ]
+      },
+      "surface-solid": {
+        "role": "neutral",
+        "displayName": "Sheet Umber",
+        "canonical": "#271e18",
+        "oklch": "oklch(24.4% 0.018 55.4)",
+        "tonalRamp": [
+          "#110905",
+          "#2c231d",
+          "#4a4039",
+          "#6a5f58",
+          "#8b8078",
+          "#aea29b",
+          "#d3c6be",
+          "#f9ece3"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Candle White",
+        "canonical": "#fbf7f3",
+        "oklch": "oklch(97.8% 0.007 67.7)",
+        "tonalRamp": [
+          "#0d0b08",
+          "#272422",
+          "#44413e",
+          "#64615d",
+          "#85827e",
+          "#a8a4a1",
+          "#ccc8c4",
+          "#f2eeea"
+        ]
+      },
+      "ok": {
+        "role": "status",
+        "displayName": "Sage",
+        "canonical": "#8fdca6",
+        "oklch": "oklch(83.0% 0.108 153.0)",
+        "tonalRamp": [
+          "#001102",
+          "#002e13",
+          "#005027",
+          "#237243",
+          "#499563",
+          "#6db985",
+          "#91dea8",
+          "#c8fed6"
+        ]
+      },
+      "warn": {
+        "role": "status",
+        "displayName": "Butter",
+        "canonical": "#ffe08a",
+        "oklch": "oklch(91.4% 0.111 90.3)",
+        "tonalRamp": [
+          "#120a00",
+          "#302300",
+          "#514007",
+          "#765e12",
+          "#9c7f24",
+          "#c0a24c",
+          "#e5c671",
+          "#feeec0"
+        ]
+      },
+      "danger": {
+        "role": "status",
+        "displayName": "Coral",
+        "canonical": "#ff9f9a",
+        "oklch": "oklch(79.8% 0.115 23.2)",
+        "tonalRamp": [
+          "#210001",
+          "#4c0009",
+          "#732123",
+          "#984241",
+          "#be6461",
+          "#e48783",
+          "#ffb2ae",
+          "#fee9e7"
+        ]
+      },
+      "info": {
+        "role": "status",
+        "displayName": "Periwinkle",
+        "canonical": "#a9c4ff",
+        "oklch": "oklch(82.1% 0.089 265.4)",
+        "tonalRamp": [
+          "#010330",
+          "#10214f",
+          "#2b3f71",
+          "#495f94",
+          "#6981b8",
+          "#8aa4dd",
+          "#b2c9fb",
+          "#e7efff"
+        ]
+      },
+      "protein": {
+        "role": "goal",
+        "displayName": "Aqua",
+        "canonical": "#76dbda",
+        "oklch": "oklch(83.0% 0.095 194.6)",
+        "tonalRamp": [
+          "#000f0f",
+          "#002c2c",
+          "#064c4c",
+          "#106f6f",
+          "#249493",
+          "#51b8b7",
+          "#78dddc",
+          "#b3fffd"
+        ]
+      },
+      "blob-ember": {
+        "role": "background",
+        "displayName": "Ember",
+        "canonical": "#ff9646",
+        "oklch": "oklch(77.0% 0.156 54.8)",
+        "tonalRamp": [
+          "#1b0400",
+          "#3d1a00",
+          "#673100",
+          "#944a01",
+          "#c26614",
+          "#ee8734",
+          "#feb788",
+          "#ffeadc"
+        ]
+      },
+      "blob-rose": {
+        "role": "background",
+        "displayName": "Rose",
+        "canonical": "#d65878",
+        "oklch": "oklch(63.0% 0.160 7.2)",
+        "tonalRamp": [
+          "#200006",
+          "#4b001c",
+          "#7c0534",
+          "#a72b51",
+          "#ce5171",
+          "#f67593",
+          "#fdb1bf",
+          "#ffe8eb"
+        ]
+      },
+      "blob-dusk": {
+        "role": "background",
+        "displayName": "Dusk",
+        "canonical": "#5484c4",
+        "oklch": "oklch(60.7% 0.111 256.0)",
+        "tonalRamp": [
+          "#000829",
+          "#002351",
+          "#11417b",
+          "#33629f",
+          "#5484c4",
+          "#76a7ea",
+          "#a7ccfd",
+          "#e5f0fe"
+        ]
+      },
+      "score-zero": {
+        "role": "score",
+        "displayName": "Score Zero",
+        "canonical": "#38383c",
+        "oklch": "oklch(34.2% 0.007 286.0)",
+        "tonalRamp": [
+          "#0b0b0e",
+          "#252528",
+          "#414146",
+          "#616165",
+          "#828286",
+          "#a4a4a9",
+          "#c8c8cd",
+          "#eeeef3"
+        ]
+      },
+      "score-green-1": {
+        "role": "score",
+        "displayName": "Score Green 1",
+        "canonical": "#2a6b41",
+        "tonalRamp": [
+          "#38383c",
+          "#2a6b41",
+          "#3a9659",
+          "#5cc47d",
+          "#a8f0c0"
+        ]
+      },
+      "score-green-2": {
+        "role": "score",
+        "displayName": "Score Green 2",
+        "canonical": "#3a9659",
+        "tonalRamp": [
+          "#38383c",
+          "#2a6b41",
+          "#3a9659",
+          "#5cc47d",
+          "#a8f0c0"
+        ]
+      },
+      "score-green-3": {
+        "role": "score",
+        "displayName": "Score Green 3",
+        "canonical": "#5cc47d",
+        "tonalRamp": [
+          "#38383c",
+          "#2a6b41",
+          "#3a9659",
+          "#5cc47d",
+          "#a8f0c0"
+        ]
+      },
+      "score-green-4": {
+        "role": "score",
+        "displayName": "Score Green 4",
+        "canonical": "#a8f0c0",
+        "tonalRamp": [
+          "#38383c",
+          "#2a6b41",
+          "#3a9659",
+          "#5cc47d",
+          "#a8f0c0"
+        ]
+      },
+      "accent-ink-soft": {
+        "role": "neutral",
+        "displayName": "Amber Ink Soft",
+        "note": "Translucent: defined by its alpha over the background, so it has no tonal ramp."
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Glass Veil",
+        "note": "Translucent: defined by its alpha over the background, so it has no tonal ramp."
+      },
+      "surface-high": {
+        "role": "neutral",
+        "displayName": "Glass Veil High",
+        "note": "Translucent: defined by its alpha over the background, so it has no tonal ramp."
+      },
+      "surface-warm": {
+        "role": "neutral",
+        "displayName": "Glass Veil Warm",
+        "note": "Translucent: defined by its alpha over the background, so it has no tonal ramp."
+      },
+      "glass": {
+        "role": "neutral",
+        "displayName": "Glass Tint",
+        "note": "Translucent: defined by its alpha over the background, so it has no tonal ramp."
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Light Edge",
+        "note": "Translucent: defined by its alpha over the background, so it has no tonal ramp."
+      },
+      "line-soft": {
+        "role": "neutral",
+        "displayName": "Light Edge Soft",
+        "note": "Translucent: defined by its alpha over the background, so it has no tonal ramp."
+      },
+      "text-dim": {
+        "role": "neutral",
+        "displayName": "Candle White 84",
+        "note": "Translucent: defined by its alpha over the background, so it has no tonal ramp."
+      },
+      "text-faint": {
+        "role": "neutral",
+        "displayName": "Candle White 66",
+        "note": "Translucent: defined by its alpha over the background, so it has no tonal ramp."
+      },
+      "text-ghost": {
+        "role": "neutral",
+        "displayName": "Candle White 42",
+        "note": "Translucent: defined by its alpha over the background, so it has no tonal ramp."
+      },
+      "ok-bg": {
+        "role": "status",
+        "displayName": "Sage Wash",
+        "note": "Translucent: defined by its alpha over the background, so it has no tonal ramp."
+      },
+      "warn-bg": {
+        "role": "status",
+        "displayName": "Butter Wash",
+        "note": "Translucent: defined by its alpha over the background, so it has no tonal ramp."
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The day's score and a card's big number; 52px and 96px cuts for a single hero number."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "The title of a screen, one per screen."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Card titles, exercise and food names (16 to 18px)."
+      },
+      "button": {
+        "displayName": "Button",
+        "purpose": "Button and top-bar labels; 17px on large buttons."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Main reading text and values in rows (13 to 15px)."
+      },
+      "note": {
+        "displayName": "Note",
+        "purpose": "Secondary lines, hints and timestamps in text-faint (12 to 13px)."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Uppercase section labels inside cards and the side menu, in text-faint."
+      }
+    },
+    "shadows": [
+      {
+        "name": "panel",
+        "value": "0 10px 28px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.28), inset 0 -1px 0 rgba(0,0,0,0.22)",
+        "purpose": "Cards: soft drop shadow, bright inner top edge, dark inner bottom edge, over a light gradient from the top left."
+      },
+      {
+        "name": "control",
+        "value": "0 4px 12px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -1px 0 rgba(0,0,0,0.25)",
+        "purpose": "Secondary buttons, chips, fields: anything touchable that sits on a card."
+      },
+      {
+        "name": "gloss",
+        "value": "0 6px 16px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.85), inset 0 -2px 4px rgba(0,0,0,0.12)",
+        "purpose": "Filled colour (accent, status): a droplet of coloured glass, with a white highlight fading out by the middle."
+      }
+    ],
+    "motion": [
+      {
+        "name": "press",
+        "value": "opacity 0.72, scale 0.98, instant",
+        "purpose": "Every pressable button, chip and card; top-bar glass buttons scale to 0.95."
+      },
+      {
+        "name": "spin",
+        "value": "360deg linear 900ms loop, native driver",
+        "purpose": "A button's loading spinner, in place of its icon."
+      },
+      {
+        "name": "pager",
+        "value": "follows the finger",
+        "purpose": "The swipe between Hoy, Entreno and Comida, with backgrounds blended by pager position."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one action of a screen: an amber gloss droplet with dark ink.",
+      "html": "<div class=\"ds-stage\"><button class=\"ds-btn-primary\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.25\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14\"/><path d=\"M12 5v14\"/></svg>Anotar serie</button></div>",
+      "css": ".ds-stage { padding: 24px; border-radius: 22px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; background: radial-gradient(circle at 15% 20%, rgba(255,150,70,0.55), transparent 55%), radial-gradient(circle at 85% 35%, rgba(214,88,120,0.5), transparent 55%), radial-gradient(circle at 50% 95%, rgba(84,132,196,0.5), transparent 60%), #17110d; } .ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 26px; border: 1px solid rgba(255,255,255,0.14); font-size: 15px; font-weight: 800; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; cursor: pointer; transition: transform 0.12s, opacity 0.12s; background-color: #ffb36b; background-image: linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.08) 50%, rgba(0,0,0,0.06) 100%); border-color: rgba(255,255,255,0.55); box-shadow: 0 6px 16px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.85), inset 0 -2px 4px rgba(0,0,0,0.12); color: #1d1510; } .ds-btn-primary:hover { filter: brightness(1.04); } .ds-btn-primary:active { transform: scale(0.98); opacity: 0.72; } .ds-btn-primary:focus-visible { outline: 2px solid #ffb36b; outline-offset: 3px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Accompanying actions: a glass control capsule with light text.",
+      "html": "<div class=\"ds-stage\"><button class=\"ds-btn-secondary\">Descanso</button></div>",
+      "css": ".ds-stage { padding: 24px; border-radius: 22px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; background: radial-gradient(circle at 15% 20%, rgba(255,150,70,0.55), transparent 55%), radial-gradient(circle at 85% 35%, rgba(214,88,120,0.5), transparent 55%), radial-gradient(circle at 50% 95%, rgba(84,132,196,0.5), transparent 60%), #17110d; } .ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 26px; border: 1px solid rgba(255,255,255,0.14); font-size: 15px; font-weight: 800; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; cursor: pointer; transition: transform 0.12s, opacity 0.12s; background-color: rgba(255,255,255,0.05); background-image: linear-gradient(170deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.07) 55%, rgba(255,255,255,0.04) 100%); border-color: rgba(255,255,255,0.2); box-shadow: 0 4px 12px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -1px 0 rgba(0,0,0,0.25); color: #fbf7f3; } .ds-btn-secondary:hover { background-color: rgba(255,255,255,0.09); } .ds-btn-secondary:active { transform: scale(0.98); opacity: 0.72; } .ds-btn-secondary:focus-visible { outline: 2px solid #ffb36b; outline-offset: 3px; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "The least important action: text only, faint.",
+      "html": "<div class=\"ds-stage\"><button class=\"ds-btn-ghost\">Cancelar</button></div>",
+      "css": ".ds-stage { padding: 24px; border-radius: 22px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; background: radial-gradient(circle at 15% 20%, rgba(255,150,70,0.55), transparent 55%), radial-gradient(circle at 85% 35%, rgba(214,88,120,0.5), transparent 55%), radial-gradient(circle at 50% 95%, rgba(84,132,196,0.5), transparent 60%), #17110d; } .ds-btn-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 26px; border: 1px solid rgba(255,255,255,0.14); font-size: 15px; font-weight: 800; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; cursor: pointer; transition: transform 0.12s, opacity 0.12s; min-height: 40px; padding: 0 8px; background: transparent; border: 0; color: rgba(255,245,235,0.66); } .ds-btn-ghost:hover { color: #fbf7f3; } .ds-btn-ghost:active { opacity: 0.6; } .ds-btn-ghost:focus-visible { outline: 2px solid #ffb36b; outline-offset: 3px; }"
+    },
+    {
+      "name": "Chips",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Radio options for short lists; selected is an amber gloss.",
+      "html": "<div class=\"ds-stage\"><button class=\"ds-chip ds-chip-on\" aria-pressed=\"true\">Recomposición</button><button class=\"ds-chip\">Volumen</button><button class=\"ds-chip\">Definición</button></div>",
+      "css": ".ds-stage { padding: 24px; border-radius: 22px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; background: radial-gradient(circle at 15% 20%, rgba(255,150,70,0.55), transparent 55%), radial-gradient(circle at 85% 35%, rgba(214,88,120,0.5), transparent 55%), radial-gradient(circle at 50% 95%, rgba(84,132,196,0.5), transparent 60%), #17110d; } .ds-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid rgba(255,255,255,0.2); background-color: rgba(255,255,255,0.05); background-image: linear-gradient(170deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.07) 55%, rgba(255,255,255,0.04) 100%); box-shadow: 0 4px 12px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -1px 0 rgba(0,0,0,0.25); color: #fbf7f3; font-size: 13px; font-weight: 700; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; cursor: pointer; transition: transform 0.12s, opacity 0.12s; } .ds-chip-on { background-color: #ffb36b; background-image: linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.08) 50%, rgba(0,0,0,0.06) 100%); border-color: rgba(255,255,255,0.55); box-shadow: 0 6px 16px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.85), inset 0 -2px 4px rgba(0,0,0,0.12); color: #1d1510; } .ds-chip:hover { filter: brightness(1.06); } .ds-chip:active { transform: scale(0.98); opacity: 0.72; } .ds-chip:focus-visible { outline: 2px solid #ffb36b; outline-offset: 3px; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The cartilla: a translucent glass panel holding one block of information.",
+      "html": "<div class=\"ds-stage\"><div class=\"ds-card\"><div class=\"ds-card-label\">Proteína</div><div class=\"ds-card-number\">142<span> / 160 g</span></div><div class=\"ds-card-note\">Faltan 18 g</div></div></div>",
+      "css": ".ds-stage { padding: 24px; border-radius: 22px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; background: radial-gradient(circle at 15% 20%, rgba(255,150,70,0.55), transparent 55%), radial-gradient(circle at 85% 35%, rgba(214,88,120,0.5), transparent 55%), radial-gradient(circle at 50% 95%, rgba(84,132,196,0.5), transparent 60%), #17110d; } .ds-card { width: 260px; padding: 16px; display: flex; flex-direction: column; gap: 8px; border-radius: 22px; border: 1px solid rgba(255,255,255,0.16); background-color: rgba(0,0,0,0.25); background-image: linear-gradient(150deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.02) 100%); box-shadow: 0 10px 28px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.28), inset 0 -1px 0 rgba(0,0,0,0.22); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); color: #fbf7f3; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; } .ds-card-label { font-size: 11px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase; color: rgba(255,245,235,0.66); } .ds-card-number { font-size: 34px; line-height: 38px; font-weight: 800; letter-spacing: -1px; font-variant-numeric: tabular-nums; } .ds-card-number span { font-size: 15px; letter-spacing: 0; font-weight: 700; color: rgba(255,245,235,0.66); } .ds-card-note { font-size: 12px; font-weight: 400; color: rgba(255,245,235,0.66); }"
+    },
+    {
+      "name": "Accent Card",
+      "kind": "card",
+      "refersTo": "card-accent",
+      "description": "A card filled with a tone's gloss for what must catch the eye; text turns to Amber Ink.",
+      "html": "<div class=\"ds-stage\"><div class=\"ds-card-accent\"><div class=\"ds-card-accent-title\">Creatina pendiente</div><div class=\"ds-card-accent-note\">Hoy todavía no la anotaste</div></div></div>",
+      "css": ".ds-stage { padding: 24px; border-radius: 22px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; background: radial-gradient(circle at 15% 20%, rgba(255,150,70,0.55), transparent 55%), radial-gradient(circle at 85% 35%, rgba(214,88,120,0.5), transparent 55%), radial-gradient(circle at 50% 95%, rgba(84,132,196,0.5), transparent 60%), #17110d; } .ds-card-accent { width: 260px; padding: 16px; display: flex; flex-direction: column; gap: 4px; border-radius: 22px; border: 1px solid rgba(255,255,255,0.55); background-color: #ffb36b; background-image: linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.08) 50%, rgba(0,0,0,0.06) 100%); box-shadow: 0 6px 16px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.85), inset 0 -2px 4px rgba(0,0,0,0.12); color: #1d1510; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; } .ds-card-accent-title { font-size: 16px; font-weight: 800; } .ds-card-accent-note { font-size: 13px; font-weight: 700; color: rgba(29,21,16,0.68); }"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "search-field",
+      "description": "A glass control capsule over the iOS keyboard; bold text, ghost placeholder.",
+      "html": "<div class=\"ds-stage\"><label class=\"ds-search\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"rgba(255,245,235,0.66)\" stroke-width=\"2.25\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m21 21-4.34-4.34\"/><circle cx=\"11\" cy=\"11\" r=\"8\"/></svg><input class=\"ds-search-input\" placeholder=\"Buscar alimento\"></label></div>",
+      "css": ".ds-stage { padding: 24px; border-radius: 22px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; background: radial-gradient(circle at 15% 20%, rgba(255,150,70,0.55), transparent 55%), radial-gradient(circle at 85% 35%, rgba(214,88,120,0.5), transparent 55%), radial-gradient(circle at 50% 95%, rgba(84,132,196,0.5), transparent 60%), #17110d; } .ds-search { width: 280px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border-radius: 22px; border: 1px solid rgba(255,255,255,0.2); background-color: rgba(255,255,255,0.05); background-image: linear-gradient(170deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.07) 55%, rgba(255,255,255,0.04) 100%); box-shadow: 0 4px 12px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -1px 0 rgba(0,0,0,0.25); } .ds-search:focus-within { border-color: rgba(255,179,107,0.7); } .ds-search-input { flex: 1; padding: 9px 0; background: transparent; border: 0; outline: none; color: #fbf7f3; font-size: 15px; font-weight: 700; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; } .ds-search-input::placeholder { color: rgba(255,245,235,0.42); }"
+    },
+    {
+      "name": "Tab Island",
+      "kind": "nav",
+      "refersTo": "tab-island",
+      "description": "The floating Liquid Glass capsule at the bottom; iOS draws the bubble under the chosen tab.",
+      "html": "<div class=\"ds-stage ds-stage-tall\"><nav class=\"ds-island\"><a class=\"ds-tab ds-tab-on\" href=\"#\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect width=\"7\" height=\"7\" x=\"3\" y=\"3\" rx=\"1\"/><rect width=\"7\" height=\"7\" x=\"14\" y=\"3\" rx=\"1\"/><rect width=\"7\" height=\"7\" x=\"14\" y=\"14\" rx=\"1\"/><rect width=\"7\" height=\"7\" x=\"3\" y=\"14\" rx=\"1\"/></svg><span>Hoy</span></a><a class=\"ds-tab\" href=\"#\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M17.596 12.768a2 2 0 1 0 2.829-2.829l-1.768-1.767a2 2 0 0 0 2.828-2.829l-2.828-2.828a2 2 0 0 0-2.829 2.828l-1.767-1.768a2 2 0 1 0-2.829 2.829z\"/><path d=\"m2.5 21.5 1.4-1.4\"/><path d=\"m20.1 3.9 1.4-1.4\"/><path d=\"M5.343 21.485a2 2 0 1 0 2.829-2.828l1.767 1.768a2 2 0 1 0 2.829-2.829l-6.364-6.364a2 2 0 1 0-2.829 2.829l1.768 1.767a2 2 0 0 0-2.828 2.829z\"/><path d=\"m9.6 14.4 4.8-4.8\"/></svg><span>Entreno</span></a><a class=\"ds-tab\" href=\"#\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/><path d=\"M7 2v20\"/><path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/></svg><span>Comida</span></a></nav></div>",
+      "css": ".ds-stage { padding: 24px; border-radius: 22px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; background: radial-gradient(circle at 15% 20%, rgba(255,150,70,0.55), transparent 55%), radial-gradient(circle at 85% 35%, rgba(214,88,120,0.5), transparent 55%), radial-gradient(circle at 50% 95%, rgba(84,132,196,0.5), transparent 60%), #17110d; } .ds-stage-tall { min-height: 140px; align-items: flex-end; justify-content: center; } .ds-island { width: 70%; min-width: 260px; display: flex; padding: 6px; border-radius: 30px; background: rgba(0,0,0,0.22); border: 1px solid rgba(255,255,255,0.22); backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4); box-shadow: 0 8px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.4); } .ds-tab { flex: 1; height: 48px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border-radius: 24px; color: rgba(255,245,235,0.84); text-decoration: none; font-size: 11px; font-weight: 700; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; transition: background 0.2s; } .ds-tab-on { background: rgba(255,255,255,0.16); color: #ffb36b; box-shadow: inset 0 1px 0 rgba(255,255,255,0.3); } .ds-tab:hover { color: #fbf7f3; } .ds-tab:focus-visible { outline: 2px solid #ffb36b; outline-offset: 3px; }"
+    },
+    {
+      "name": "Top Bar Button",
+      "kind": "button",
+      "refersTo": "top-bar-button",
+      "description": "A round 44px Liquid Glass button in the top bar, like Ajustes.",
+      "html": "<div class=\"ds-stage\"><button class=\"ds-glass-round\" aria-label=\"Ajustes\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#fbf7f3\" stroke-width=\"2.25\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/></svg></button></div>",
+      "css": ".ds-stage { padding: 24px; border-radius: 22px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; background: radial-gradient(circle at 15% 20%, rgba(255,150,70,0.55), transparent 55%), radial-gradient(circle at 85% 35%, rgba(214,88,120,0.5), transparent 55%), radial-gradient(circle at 50% 95%, rgba(84,132,196,0.5), transparent 60%), #17110d; } .ds-glass-round { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 22px; border: 1px solid rgba(255,255,255,0.22); background: rgba(0,0,0,0.22); backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4); box-shadow: 0 6px 16px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.4); cursor: pointer; transition: transform 0.12s; } .ds-glass-round:active { transform: scale(0.95); } .ds-glass-round:focus-visible { outline: 2px solid #ffb36b; outline-offset: 3px; }"
+    },
+    {
+      "name": "Discipline Grid",
+      "kind": "custom",
+      "refersTo": "score-cell",
+      "description": "Signature: solid squares stepping dark to bright, zero grey, empty outlined for no data, today outlined in white.",
+      "html": "<div class=\"ds-stage ds-stage-grid\"><div class=\"ds-grid\"><i class=\"ds-cell ds-s4\"></i><i class=\"ds-cell ds-s3\"></i><i class=\"ds-cell ds-s2\"></i><i class=\"ds-cell ds-z\"></i><i class=\"ds-cell ds-s3\"></i><i class=\"ds-cell ds-s4\"></i><i class=\"ds-cell ds-e\"></i><i class=\"ds-cell ds-s2\"></i><i class=\"ds-cell ds-s4\"></i><i class=\"ds-cell ds-s4\"></i><i class=\"ds-cell ds-s1\"></i><i class=\"ds-cell ds-s3\"></i><i class=\"ds-cell ds-s2\"></i><i class=\"ds-cell ds-s4\"></i><i class=\"ds-cell ds-s3\"></i><i class=\"ds-cell ds-s4\"></i><i class=\"ds-cell ds-s4\"></i><i class=\"ds-cell ds-z\"></i><i class=\"ds-cell ds-s2\"></i><i class=\"ds-cell ds-s3\"></i><i class=\"ds-cell ds-s4\"></i><i class=\"ds-cell ds-s1\"></i><i class=\"ds-cell ds-s2\"></i><i class=\"ds-cell ds-s3\"></i><i class=\"ds-cell ds-s4\"></i><i class=\"ds-cell ds-s4\"></i><i class=\"ds-cell ds-s3 ds-t\"></i><i class=\"ds-cell ds-e\"></i></div><div class=\"ds-legend\">Menos <i class=\"ds-cell ds-z\"></i><i class=\"ds-cell ds-s1\"></i><i class=\"ds-cell ds-s2\"></i><i class=\"ds-cell ds-s3\"></i><i class=\"ds-cell ds-s4\"></i> Más</div></div>",
+      "css": ".ds-stage { padding: 24px; border-radius: 22px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; background: radial-gradient(circle at 15% 20%, rgba(255,150,70,0.55), transparent 55%), radial-gradient(circle at 85% 35%, rgba(214,88,120,0.5), transparent 55%), radial-gradient(circle at 50% 95%, rgba(84,132,196,0.5), transparent 60%), #17110d; } .ds-stage-grid { flex-direction: column; align-items: flex-start; } .ds-grid { display: grid; grid-template-columns: repeat(4, 22px); grid-template-rows: repeat(7, 22px); grid-auto-flow: column; gap: 2px; } .ds-cell { display: inline-block; width: 22px; height: 22px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.14); box-sizing: border-box; } .ds-s1 { background: #2a6b41; } .ds-s2 { background: #3a9659; } .ds-s3 { background: #5cc47d; } .ds-s4 { background: #a8f0c0; } .ds-z { background: #38383c; } .ds-e { background: transparent; } .ds-t { border: 2px solid #fbf7f3; } .ds-legend { display: flex; align-items: center; gap: 4px; color: rgba(255,245,235,0.66); font-size: 11px; font-weight: 700; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; } .ds-legend .ds-cell { width: 12px; height: 12px; border-radius: 3px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Amber Night Glass",
+    "overview": "A warm night seen through glass. The screen is a dark, faintly warm room lit by soft blobs of ember, rose and dusk blue (or a photo he chose), and everything he reads sits on translucent panels that catch a little light along their top edge. One amber light marks what he can act on. The feel is calm and premium, like Apple's own apps after dark: soft highlights, fine edges, nothing harsh, so it can stay open for a whole gym session without tiring the eye.\n\nIt is also an instrument. Numbers are the content: sets, loads, protein, minutes to the bus. They are set in tabular figures, aligned, and given the largest type on the screen. Being precise is not the same as being bare, though. Stats and charts are where the system is allowed to be rich (gradients, glow, colour by series), because that is where the work of the day becomes visible. What is not allowed is clutter: captions, explanatory subtitles and data he will not act on.\n\nDark is the only appearance today. A light appearance is welcome if it can be built just as clean and as beautiful; that would be a new decision, designed as a peer of the dark one, never an inversion of it.",
+    "keyCharacteristics": [
+      "Warm near-black ground with chosen backgrounds per screen (blobs, gradient, colour or his own photo).",
+      "Translucent glass panels with a light top edge and a soft shadow; real iOS Liquid Glass only on what floats.",
+      "One amber accent; every filled colour carries dark ink.",
+      "Plus Jakarta Sans throughout, heavy weights, tabular numerals.",
+      "Continuous iOS corners and capsule controls.",
+      "Generous where it reads (numbers, charts), quiet everywhere else."
+    ],
+    "rules": [
+      {
+        "name": "The One Light Rule",
+        "body": "Amber is the only interactive tint. Status colours report state; they never stand in for a button.",
+        "section": "colors"
+      },
+      {
+        "name": "The Dark Ink Rule",
+        "body": "Anything filled with colour (amber, sage, butter, coral, periwinkle) is written in Amber Ink, never white.",
+        "section": "colors"
+      },
+      {
+        "name": "The Lightness Ladder Rule",
+        "body": "Score palettes step by lightness from dark to bright, with every step brighter than the one before (a test enforces it). This applies to the score squares only; elsewhere hue is chosen freely.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Rule",
+        "body": "Every number that can change (weights, reps, grams, minutes, scores) uses tabular figures, so a column of values never shifts as it updates.",
+        "section": "typography"
+      },
+      {
+        "name": "The Heavy Voice Rule",
+        "body": "Hierarchy comes from weight and size inside one family; no second typeface is introduced.",
+        "section": "typography"
+      },
+      {
+        "name": "The Floating Glass Rule",
+        "body": "Real Liquid Glass belongs only to what floats over content. Cards are translucent panels; over a smooth background they look the same at no cost.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Opaque Sheet Rule",
+        "body": "Anything that floats over content (sheet, bubble, alert, menu) is opaque, so two layers of text are never read at once.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** keep amber for the one action, the selected state and toggles, always filled, always with Amber Ink on top.",
+      "**Do** keep real Liquid Glass on the floating layer only: tab island, side menu, assistant ball, top-bar buttons.",
+      "**Do** make every sheet, bubble, menu and alert opaque Sheet Umber over a blurred screen.",
+      "**Do** set every changing number in tabular figures, and give the number the biggest type on its card.",
+      "**Do** let charts and statistics be rich: gradients, glow and colour by series are welcome there.",
+      "**Do** start every button at 44px tall and use continuous corners everywhere.",
+      "**Do** test over a bright photo background, not only the default blobs: a card must still read."
+    ],
+    "donts": [
+      "**Don't** go back to neobrutalism: thick black borders, hard offset shadows, flat paper colours.",
+      "**Don't** put Liquid Glass on cards or lists.",
+      "**Don't** crowd a screen: no captions under charts, no explanatory subtitles, no data he will not act on.",
+      "**Don't** write white text on a filled colour, or use thin amber text as a button.",
+      "**Don't** add a second interactive tint; status colours report, they do not invite a tap.",
+      "**Don't** make a sheet translucent over content.",
+      "**Don't** limit hue choices for colour blindness outside the score squares."
+    ]
+  }
+}

@@ -225,3 +225,14 @@ Read this file at the start of any session that has been idle more than a few da
 Accounts, login, sharing, social features, multi-user, App Store distribution, rest-between-reps tracking, generated or scraped exercise technique media, in-app deal redemption, DoorDash or Uber Eats integration.
 
 If you believe one of these is needed, raise it. Do not build it.
+
+## UI/UX design rules
+
+- Nexo is an iOS-first app. Android is used for preview and testing. Preserve native iOS behavior and avoid web-specific patterns.
+- Prioritize exceptional visual quality: harmonious color palettes, refined shadows, contrast, typography, spacing, animations, and visual consistency.
+- Do not artificially restrict color choices. Select colors based on aesthetics, usability, and overall design coherence.
+- Use agent-device to inspect the app visually. Capture screenshots before and after significant UI changes.
+- Improve usability, gestures, transitions, accessibility, and UI performance where genuinely beneficial.
+- Preserve existing features, business logic, and data behavior unless explicitly authorized.
+- Avoid unnecessary refactoring, decorative excess, and changes that do not improve the app.
+- Work one screen at a time, following the existing planning, testing, and Git workflow rules.

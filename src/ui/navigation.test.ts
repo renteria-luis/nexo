@@ -9,10 +9,10 @@ import {
   type StackNavigationState,
 } from '@react-navigation/routers';
 
-import { goTo, nudgeDestination } from './navigation.ts';
+import { fromMenu, goTo, nudgeDestination } from './navigation.ts';
 
 // Las pantallas de verdad de App.tsx, con el router de verdad de la libreria instalada.
-const STACK = ['nexo', 'Ajustes', 'Registros', 'Gráficas', 'Día', 'Resumen semanal'];
+const STACK = ['nexo', 'Ajustes', 'Registros', 'Gráficas', 'Día', 'Resumen semanal', 'Lecturas'];
 const TABS = ['Hoy', 'Entreno', 'Comida'];
 
 const stack = StackRouter({});
@@ -80,4 +80,33 @@ test('tocar un aviso de comida con Ajustes abierto lleva a Comida, no se pierde'
   // Lo que hacia antes: pedir la pestana a secas. La pila de arriba no la conoce.
   const before = stack.getStateForAction(state, CommonActions.navigate('Comida'), options);
   assert.equal(before, null);
+});
+
+test('una pantalla abierta desde el menu queda sola encima de las pestanas', () => {
+  const menu = (state: State, route: string) => {
+    const next = stack.getStateForAction(state, fromMenu(state, route), options);
+    assert.ok(next !== null, `${route} was not handled`);
+    return next as State;
+  };
+  let state = stack.getInitialState(options) as State;
+  state = menu(state, 'Registros');
+  state = navigate(state, 'Día', false);
+  assert.equal(names(state), 'nexo > Registros > Día');
+
+  state = menu(state, 'Gráficas');
+  assert.equal(names(state), 'nexo > Gráficas', 'Listo vuelve al dia, no a Registros');
+  state = menu(state, 'Lecturas');
+  assert.equal(names(state), 'nexo > Lecturas');
+
+  // Las pestanas siguen siendo las mismas: no se rearman al abrir algo encima.
+  const tabsKey = state.routes[0].key;
+  state = menu(state, 'Ajustes');
+  assert.equal(state.routes[0].key, tabsKey);
+
+  // Si ya estaba abierta, se vuelve a ella tal como estaba.
+  state = navigate(state, 'Registros', false);
+  const open = state.routes[2];
+  state = menu(state, 'Registros');
+  assert.equal(names(state), 'nexo > Registros');
+  assert.equal(state.routes[1].key, open.key);
 });

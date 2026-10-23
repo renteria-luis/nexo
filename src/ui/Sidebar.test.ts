@@ -38,6 +38,7 @@ function fixture() {
         }),
       },
       PanResponder: { create: (handlers: unknown) => ({ panHandlers: handlers }) },
+      LayoutAnimation: { configureNext: () => undefined, Presets: {} },
     },
   }).mount('SidebarProvider', {
     navigation: { isReady: () => true, getCurrentRoute: () => ({ name: route }) },
@@ -99,4 +100,29 @@ test('the menu button still opens and closes the sidebar independently of swipe 
     nodes(await f.screen.settle()).find((node) => node.type === 'Provider')!.props.value.isOpen,
     false,
   );
+});
+
+test('the menu keeps one group open and opens the one holding the current screen', async () => {
+  const f = fixture();
+  const open = async () => {
+    nodes(await f.screen.settle())
+      .find((node) => node.type === 'Provider')!
+      .props.value.open();
+    return f.screen.settle();
+  };
+  const press = async (label: string) =>
+    nodes(await f.screen.settle())
+      .find((node) => node.props.accessibilityLabel === label)!
+      .props.onPress();
+  const shown = async (label: string) =>
+    nodes(await f.screen.settle()).some((node) => node.props.accessibilityLabel === label);
+
+  f.route('Gráficas');
+  await open();
+  assert.equal(await shown('Gráficas'), true, 'the current screen is in view');
+  await press('Catálogo');
+  assert.equal(await shown('Ejercicios'), true);
+  assert.equal(await shown('Gráficas'), false, 'opening a group closes the other');
+  await press('Catálogo');
+  assert.equal(await shown('Ejercicios'), false);
 });

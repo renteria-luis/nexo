@@ -242,9 +242,12 @@ function TransitContent() {
             db: current.db,
             cache: { ...current.cache, checked_at: Date.now(), last_error: reason },
           });
+          // La razon tecnica queda guardada y en el registro, no en la pantalla: ahi
+          // salia en ingles, tal como la escribe el navegador o iOS (2026-10-23).
+          if (reason) console.warn('Transit schedule update failed:', reason);
           setNotice(
             reason
-              ? `No se pudo actualizar. Se conserva el horario guardado. ${reason}`
+              ? 'No se pudo actualizar. Se conserva el horario guardado.'
               : 'Ya tienes la versión publicada.',
           );
         }

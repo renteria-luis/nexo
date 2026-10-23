@@ -195,6 +195,18 @@ export type PriceComparison = {
 };
 
 /**
+ * Above this saving a deal is almost always a misread, not a bargain: a price per kilo
+ * parsed as the weight ("13.21 kg" at $5.99 read as 97% under his price). Real
+ * clearance and rescue deals stay under it (2026-10-23).
+ */
+export const DOUBTFUL_SAVING_PERCENT = 70;
+
+/** True when the comparison is too good to trust without looking at the flyer. */
+export function doubtful(comparison: PriceComparison | null): boolean {
+  return comparison !== null && comparison.savingPercent >= DOUBTFUL_SAVING_PERCENT;
+}
+
+/**
  * What a kilo of this food normally costs him, from the package price on the
  * catalogue row. Null when the row does not carry a price, a package size or a
  * weight, because the whole point of the comparison is that both sides are real.

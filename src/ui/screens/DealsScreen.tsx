@@ -5,6 +5,7 @@ import { todayIso } from '../../core/dates.ts';
 import {
   comparedToUsual,
   dealCentsPerKg,
+  doubtful,
   proteinPerDollar,
   unitPrice,
   type DealWithContext,
@@ -91,6 +92,9 @@ function DealRow({
   const versusUsual = food ? comparedToUsual(deal, food, discounts, chain, todayIso()) : null;
   const price = unitPrice(deal);
   const cheaper = versusUsual !== null && versusUsual.savingPercent > 0;
+  // Demasiado bueno: casi siempre un precio por kilo leido como peso. Lo dice en vez de
+  // celebrarlo, y la proteina por dolar sale del mismo error (2026-10-23).
+  const suspect = doubtful(versusUsual);
 
   return (
     <View style={[styles.deal, stale && styles.stale]}>
@@ -121,15 +125,22 @@ function DealRow({
         <Text style={price === null ? styles.numberOff : styles.number}>
           {price === null ? `${MISSING} por medida` : `${money(price.cents)} ${price.per}`}
         </Text>
-        <Text style={value === null ? styles.numberOff : styles.numberGood}>
+        <Text style={value === null || suspect ? styles.numberOff : styles.numberGood}>
           {value === null
             ? `${MISSING} g proteína/$`
             : `${Math.round(value.proteinPerDollar)} g proteína/$`}
         </Text>
-        {cheaper && versusUsual !== null && (
-          <Text style={styles.numberGood}>
-            {Math.round(versusUsual.savingPercent)}% bajo lo tuyo
+        {suspect && versusUsual !== null ? (
+          <Text style={styles.numberDoubt}>
+            ¿{Math.round(versusUsual.savingPercent)}% bajo lo tuyo? Revisa el tamaño
           </Text>
+        ) : (
+          cheaper &&
+          versusUsual !== null && (
+            <Text style={styles.numberGood}>
+              {Math.round(versusUsual.savingPercent)}% bajo lo tuyo
+            </Text>
+          )
         )}
       </View>
 
@@ -222,12 +233,17 @@ export function DealsScreen() {
       value: item.food ? proteinPerDollar(item.deal, item.food, discounts, chain, today) : null,
       perKg: dealCentsPerKg(item.deal),
       cheaper: versusUsual !== null && versusUsual.savingPercent > 0,
+      suspect: doubtful(versusUsual),
     };
   });
 
-  /** Lo mejor primero: de tu lista, lo que baja de tu precio, y mas proteina por dolar. */
+  /**
+   * Lo mejor primero: de tu lista, lo que baja de tu precio, y mas proteina por dolar.
+   * Lo sospechoso va al final: un error de lectura encabezaba "Mejor valor".
+   */
   const best = <T extends (typeof scored)[number]>(rows: T[]): T[] =>
     [...rows].sort((a, b) => {
+      if (a.suspect !== b.suspect) return Number(a.suspect) - Number(b.suspect);
       if (a.item.deal.staple !== b.item.deal.staple) {
         return b.item.deal.staple - a.item.deal.staple;
       }
@@ -490,6 +506,19 @@ const styles = sheet((theme) => ({
     fontFamily: font.black,
     color: theme.accentInk,
     backgroundColor: theme.ok,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    overflow: 'hidden',
+    fontVariant: ['tabular-nums'],
+  },
+  numberDoubt: {
+    fontSize: 12,
+    fontFamily: font.black,
+    color: theme.accentInk,
+    backgroundColor: theme.warn,
     borderWidth: shape.border,
     borderColor: theme.line,
     borderRadius: 5,

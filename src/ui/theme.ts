@@ -47,6 +47,11 @@ export type Palette = {
   warnBg: string;
   danger: string;
   info: string;
+  /**
+   * La proteina en Comida y en el dia. Su propio color y no el de peligro, que la pintaba
+   * de error aun con el piso cumplido (2026-10-23).
+   */
+  protein: string;
 };
 
 export const DARK: Palette = {
@@ -76,6 +81,7 @@ export const DARK: Palette = {
   warnBg: 'rgba(255, 224, 138, 0.16)',
   danger: '#ff9f9a',
   info: '#a9c4ff',
+  protein: '#76dbda',
 };
 
 /** Filo fino, esquinas redondas y continuas como las de iOS. */

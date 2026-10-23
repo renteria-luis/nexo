@@ -40,7 +40,7 @@ import {
 } from './icons.ts';
 import { Glass } from './Glass.tsx';
 import { font, gloss, sheet, shape, theme } from './theme.ts';
-import { goTo, type Navigate } from './navigation.ts';
+import { fromMenu, goTo, type Navigate } from './navigation.ts';
 import { useSwipeLock } from './SwipeLock.tsx';
 import { TRANSIT_ENABLED } from '../transit/index.ts';
 
@@ -77,6 +77,18 @@ type Node = Entry | Folder;
 const isFolder = (node: Node): node is Folder => 'children' in node;
 
 type Section = { title: string; nodes: Node[] };
+
+/** El grupo que lleva a esa pantalla, si esta dentro de uno. */
+function folderOf(route: string | null): string | null {
+  for (const section of SECTIONS) {
+    for (const node of section.nodes) {
+      if (isFolder(node) && node.children.some((child) => child.route === route)) {
+        return node.label;
+      }
+    }
+  }
+  return null;
+}
 
 const SECTIONS: Section[] = [
   {
@@ -163,9 +175,10 @@ export function SidebarProvider({
 }) {
   const [shown, setShown] = useState(false);
   const [slide] = useState(() => new Animated.Value(0));
-  // Que grupos estan abiertos sobrevive a cerrar el menu: si abrio Historial, lo de
-  // Historial es lo que esta mirando esta semana.
-  const [unfolded, setUnfolded] = useState<string[]>([]);
+  // Un grupo abierto a la vez: abiertos de a varios se iban sumando y el menu acababa
+  // pidiendo scroll (2026-10-23). Sobrevive a cerrar el menu, y al abrirlo se abre solo
+  // el de la pantalla en la que esta.
+  const [unfolded, setUnfolded] = useState<string | null>(null);
   // La pantalla en la que esta, para marcarla. Se lee al abrir y no en cada cuadro.
   const [here, setHere] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
@@ -184,7 +197,10 @@ export function SidebarProvider({
   }, [slide]);
 
   const open = useCallback(() => {
-    setHere(navigation.isReady() ? (navigation.getCurrentRoute()?.name ?? null) : null);
+    const current = navigation.isReady() ? (navigation.getCurrentRoute()?.name ?? null) : null;
+    setHere(current);
+    const holder = folderOf(current);
+    if (holder !== null) setUnfolded(holder);
     setShown(true);
     slide.setValue(0);
     Animated.timing(slide, {
@@ -237,6 +253,11 @@ export function SidebarProvider({
 
   const go = (entry: Entry) => {
     close();
+    const root = navigation.getRootState();
+    if (entry.tab !== true && root) {
+      navigation.dispatch(fromMenu(root, entry.route));
+      return;
+    }
     // El tipado del ref es generico y no conoce los nombres de las pantallas.
     const navigate = navigation.navigate as (...args: Navigate) => void;
     navigate(...goTo(entry.route, entry.tab === true));
@@ -246,9 +267,7 @@ export function SidebarProvider({
     // La unica animacion de la app que no es Animated: plegar mide alto, y el alto no
     // pasa por el hilo nativo. LayoutAnimation lo resuelve en una linea.
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setUnfolded((open_) =>
-      open_.includes(label) ? open_.filter((it) => it !== label) : [...open_, label],
-    );
+    setUnfolded((current) => (current === label ? null : label));
   };
 
   // Un panel de vidrio que flota separado de los bordes, como las barras laterales de
@@ -290,10 +309,10 @@ export function SidebarProvider({
                     <Row
                       icon={node.icon}
                       label={node.label}
-                      chevron={unfolded.includes(node.label) ? ChevronDown : ChevronRight}
+                      chevron={unfolded === node.label ? ChevronDown : ChevronRight}
                       onPress={() => fold(node.label)}
                     />
-                    {unfolded.includes(node.label) && (
+                    {unfolded === node.label && (
                       <View style={styles.children}>
                         {node.children.map((child) => (
                           <Row

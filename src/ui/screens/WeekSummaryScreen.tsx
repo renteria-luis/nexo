@@ -89,7 +89,9 @@ export function WeekSummaryScreen() {
 
       {summary && (
         <>
-          <Card title="Series por músculo">
+          {/* "de la semana" porque Gráficas cuenta los ultimos 7 dias y los dos numeros
+              se leian como el mismo (2026-10-23). */}
+          <Card title="Series por músculo de la semana">
             <Text style={styles.note}>
               La banda útil va de {SET_BAND.from} a {SET_BAND.to} series directas por semana.
             </Text>

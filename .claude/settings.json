@@ -16,5 +16,9 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "expo@expo-plugins": true,
+    "code-simplifier@claude-plugins-official": true
   }
 }

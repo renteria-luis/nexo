@@ -1,6 +1,12 @@
 # Source of truth, kept local. Contains personal health data and must never be published.
 SPEC.md
 
+# Full-app critique notes, kept local. Quote his real data: weights, meals, places.
+docs/critique.md
+
+# Product record for design work, kept local. Says what he uses the app for, where and when.
+PRODUCT.md
+
 # Transit's plan, kept local. Holds his home, work and other private places.
 docs/transit-plan.md
 
@@ -12,6 +18,8 @@ docs/transit-plan.md
 !.claude/hooks/*.py
 .claude/settings.local.json
 .claude/pr-plan.md
+# The design skill downloads its own 20 MB binary on first run.
+.claude/skills/*/scripts/bin/
 
 # Dependencies
 node_modules/

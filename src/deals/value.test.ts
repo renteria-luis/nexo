@@ -7,6 +7,7 @@ import {
   applicableDiscount,
   comparedToUsual,
   dealCentsPerKg,
+  doubtful,
   unitPrice,
   finalPriceCents,
   proteinPerDollar,
@@ -258,4 +259,19 @@ test('el precio de la medida que se compara sale del tamano del paquete', () => 
     size: '18 u.',
   });
   assert.equal(unitPrice(deal(444, 'ea')), null);
+});
+
+test('a saving too large to be real is flagged, an ordinary sale is not', () => {
+  const chicken = {
+    ...CHICKEN,
+    protein_g: 28 / 125,
+    base_unit_g: 1,
+    price_cad_cents: 1549,
+    package_size: 1000,
+  };
+  // 43% off: a sale.
+  assert.equal(doubtful(comparedToUsual(deal(881, 'kg'), chicken, [], null, '2026-09-21')), false);
+  // 97% off: the "13.21 kg at $5.99" kind of misread.
+  assert.equal(doubtful(comparedToUsual(deal(45, 'kg'), chicken, [], null, '2026-09-21')), true);
+  assert.equal(doubtful(null), false);
 });

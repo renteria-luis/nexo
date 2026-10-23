@@ -142,13 +142,14 @@ async function meal(db: SQLiteDatabase, date: string, grams: number) {
   });
   await addFoodEntry(db, { date, foodId, quantity: 1, unit: 'unidad', mealSlot: 'almuerzo' });
 }
-async function targets(db: SQLiteDatabase, date: string, proteinG: number) {
+// The protein goal is the floor of the band (spec 3.3), which follows the weight basis.
+async function targets(db: SQLiteDatabase, date: string, weightBasisKg: number) {
   await writeTargetSnapshot(
     db,
     {
-      weightBasisKg: 70,
+      weightBasisKg,
       kcal: 2200,
-      proteinG,
+      proteinG: 145,
       fatG: 60,
       carbsG: 200,
       waterMlRest: 2000,
@@ -162,14 +163,16 @@ async function targets(db: SQLiteDatabase, date: string, proteinG: number) {
 
 test('yesterday protein uses yesterday food and the target in force then', async () => {
   const { db } = fresh();
-  await targets(db, '2026-09-01', 120);
-  await targets(db, TODAY, 160);
+  await targets(db, '2026-09-01', 70);
+  await targets(db, TODAY, 90);
   await meal(db, '2026-10-03', 80);
   await meal(db, TODAY, 30);
   const answer = await ask(db, 'proteina', null, 'ayer');
   assert.match(answer, /80 g/);
-  assert.match(answer, /120 g/);
-  assert.doesNotMatch(answer, /160|Hoy/);
+  // 70 kg × 1.8: the same "126 g o más" the day's score and Hoy show, not the 145 midpoint.
+  assert.match(answer, /Meta de ese día: 126 g o más/);
+  assert.match(answer, /46 g por completar/);
+  assert.doesNotMatch(answer, /162|145|Hoy/);
 });
 
 test('a range aggregates logged food but discloses days without records', async () => {

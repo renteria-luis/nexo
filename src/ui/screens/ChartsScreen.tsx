@@ -215,73 +215,7 @@ export function ChartsScreen() {
 
         {data && (
           <>
-            <Card title="Nota del día" action={dots('score', 'Nota del día')}>
-              <DayBars
-                // Con otro rango es otra grafica: vuelve a abrir en hoy.
-                key={rangeOf('score')}
-                points={data.score}
-                days={rangeOf('score')}
-                to={data.to}
-                width={width}
-                band={{ from: 70, to: 100 }}
-                max={100}
-                format={(value) => `${scoreText(value)} de 100`}
-                {...bubble('score')}
-              />
-            </Card>
-
-            <Card title="Sueño" action={dots('sleep', 'Sueño')}>
-              <DayBars
-                key={rangeOf('sleep')}
-                points={data.sleep}
-                days={rangeOf('sleep')}
-                to={data.to}
-                width={width}
-                band={data.sleepBand}
-                format={(value) => hoursAndMinutes(value)}
-                {...bubble('sleep')}
-              />
-            </Card>
-
-            <Card title="Proteína por día" action={dots('protein', 'Proteína por día')}>
-              <DayBars
-                key={rangeOf('protein')}
-                points={data.protein}
-                days={rangeOf('protein')}
-                to={data.to}
-                width={width}
-                band={data.proteinBand}
-                format={(value) => `${Math.round(value)} g`}
-                {...bubble('protein')}
-              />
-            </Card>
-
-            <Card title="Calorías por día" action={dots('kcal', 'Calorías por día')}>
-              <DayBars
-                key={rangeOf('kcal')}
-                points={data.kcal}
-                days={rangeOf('kcal')}
-                to={data.to}
-                width={width}
-                band={data.kcalBand}
-                format={(value) => `${Math.round(value)} kcal`}
-                {...bubble('kcal')}
-              />
-            </Card>
-
-            <Card title="Pasos" action={dots('steps', 'Pasos')}>
-              <DayBars
-                key={rangeOf('steps')}
-                points={data.steps}
-                days={rangeOf('steps')}
-                to={data.to}
-                width={width}
-                band={data.stepsBand}
-                format={(value) => thousands(value)}
-                {...bubble('steps')}
-              />
-            </Card>
-
+            {/* Lo del gym primero: es lo que mira a mitad de rutina (2026-10-23). */}
             <Card title="Series por músculo, últimos 7 días">
               <MuscleBars bars={data.muscles} band={data.setBand} />
             </Card>
@@ -350,6 +284,73 @@ export function ChartsScreen() {
                 width={width}
                 format={(value) => clockFace(value)}
                 {...bubble('gym-minutes')}
+              />
+            </Card>
+
+            <Card title="Nota del día" action={dots('score', 'Nota del día')}>
+              <DayBars
+                // Con otro rango es otra grafica: vuelve a abrir en hoy.
+                key={rangeOf('score')}
+                points={data.score}
+                days={rangeOf('score')}
+                to={data.to}
+                width={width}
+                band={{ from: 70, to: 100 }}
+                max={100}
+                format={(value) => `${scoreText(value)} de 100`}
+                {...bubble('score')}
+              />
+            </Card>
+
+            <Card title="Sueño" action={dots('sleep', 'Sueño')}>
+              <DayBars
+                key={rangeOf('sleep')}
+                points={data.sleep}
+                days={rangeOf('sleep')}
+                to={data.to}
+                width={width}
+                band={data.sleepBand}
+                format={(value) => hoursAndMinutes(value)}
+                {...bubble('sleep')}
+              />
+            </Card>
+
+            <Card title="Proteína por día" action={dots('protein', 'Proteína por día')}>
+              <DayBars
+                key={rangeOf('protein')}
+                points={data.protein}
+                days={rangeOf('protein')}
+                to={data.to}
+                width={width}
+                band={data.proteinBand}
+                format={(value) => `${Math.round(value)} g`}
+                {...bubble('protein')}
+              />
+            </Card>
+
+            <Card title="Calorías por día" action={dots('kcal', 'Calorías por día')}>
+              <DayBars
+                key={rangeOf('kcal')}
+                points={data.kcal}
+                days={rangeOf('kcal')}
+                to={data.to}
+                width={width}
+                band={data.kcalBand}
+                format={(value) => `${Math.round(value)} kcal`}
+                {...bubble('kcal')}
+              />
+            </Card>
+
+            <Card title="Pasos" action={dots('steps', 'Pasos')}>
+              <DayBars
+                key={rangeOf('steps')}
+                points={data.steps}
+                days={rangeOf('steps')}
+                to={data.to}
+                width={width}
+                band={data.stepsBand}
+                format={(value) => thousands(value)}
+                {...bubble('steps')}
               />
             </Card>
 

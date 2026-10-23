@@ -400,9 +400,44 @@ export function TrainingScreen() {
             />
           ) : (
             <>
+              <View style={planOpen ? styles.hidden : undefined}>
+                <SessionLog
+                  exercises={loaded.exercise.exercises}
+                  selectedExerciseId={exerciseId}
+                  onSelectExercise={selectExercise}
+                  onSelectVariant={selectVariant}
+                  todaySets={loaded.exercise.todaySets}
+                  restingSince={restFrom}
+                  plan={loaded.plan}
+                  lastSets={loaded.exercise.lastSets}
+                  marks={loaded.exercise.marks}
+                  sessionVolume={loaded.today.sessionVolume}
+                  unit={loaded.unit}
+                  onChangeUnit={changeUnit}
+                  plannedSets={planned?.sets ?? null}
+                  planExerciseIds={planExerciseIds}
+                  setsDoneByExercise={setsDoneByExercise}
+                  plannedByExercise={plannedByExercise}
+                  onAddSet={logSet}
+                  onRemoveSet={removeSet}
+                  startedAt={session.start_time}
+                  draft={loaded.sessionDraft}
+                  onDraftChange={changeDraft}
+                  finishedAt={session.end_time}
+                  onFinish={finishTraining}
+                  onReopen={resumeTraining}
+                  sessionAction={pendingAction}
+                  sessionProblem={
+                    failedAction?.kind === 'finish' || failedAction?.kind === 'reopen'
+                      ? failureNote
+                      : null
+                  }
+                />
+              </View>
+
               {/* La rutina y el gentio: dos cosas que se miran al llegar y ninguna
-              despues, asi que comparten la cartilla de arriba y no gastan alto en el
-              medio de la pantalla. */}
+              despues, asi que comparten una cartilla y van debajo de anotar, igual que
+              los tiempos y el viaje: entre serie y serie no se miran (2026-10-23). */}
               <Card>
                 <View style={styles.topRow}>
                   <View style={styles.routineSide}>
@@ -510,40 +545,6 @@ export function TrainingScreen() {
                 }
               />
               {TRANSIT_ENABLED && <TransitJourneyCard surface="training" />}
-              <View style={planOpen ? styles.hidden : undefined}>
-                <SessionLog
-                  exercises={loaded.exercise.exercises}
-                  selectedExerciseId={exerciseId}
-                  onSelectExercise={selectExercise}
-                  onSelectVariant={selectVariant}
-                  todaySets={loaded.exercise.todaySets}
-                  restingSince={restFrom}
-                  plan={loaded.plan}
-                  lastSets={loaded.exercise.lastSets}
-                  marks={loaded.exercise.marks}
-                  sessionVolume={loaded.today.sessionVolume}
-                  unit={loaded.unit}
-                  onChangeUnit={changeUnit}
-                  plannedSets={planned?.sets ?? null}
-                  planExerciseIds={planExerciseIds}
-                  setsDoneByExercise={setsDoneByExercise}
-                  plannedByExercise={plannedByExercise}
-                  onAddSet={logSet}
-                  onRemoveSet={removeSet}
-                  startedAt={session.start_time}
-                  draft={loaded.sessionDraft}
-                  onDraftChange={changeDraft}
-                  finishedAt={session.end_time}
-                  onFinish={finishTraining}
-                  onReopen={resumeTraining}
-                  sessionAction={pendingAction}
-                  sessionProblem={
-                    failedAction?.kind === 'finish' || failedAction?.kind === 'reopen'
-                      ? failureNote
-                      : null
-                  }
-                />
-              </View>
             </>
           )}
 

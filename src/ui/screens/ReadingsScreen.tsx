@@ -160,8 +160,9 @@ const styles = sheet((theme) => ({
     alignSelf: 'flex-start',
     fontSize: 11,
     fontFamily: font.black,
-    color: theme.accentInk,
-    backgroundColor: theme.accent,
+    // Sin ambar: no se toca, y el ambar es de lo que se toca (2026-10-23).
+    color: theme.textDim,
+    backgroundColor: theme.surfaceHigh,
     borderWidth: shape.border,
     borderColor: theme.line,
     borderRadius: 5,

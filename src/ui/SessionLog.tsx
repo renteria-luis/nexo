@@ -456,53 +456,6 @@ export const SessionLog = memo(function SessionLog({
       </Card>
 
       <>
-        {/* Lista y no fila de chips: los nombres son largos, cada chip ocupaba un
-            renglon entero igual, y asi se ve de un vistazo lo que falta de cada uno.
-            El orden es alfabetico a proposito: se busca por nombre, no por plan. */}
-        <Card title="Ejercicios">
-          <SearchField
-            value={search}
-            onChange={setSearch}
-            accessibilityLabel="Buscar un ejercicio"
-            note={`${families.size} en el catálogo`}
-          />
-          <View style={styles.exerciseList}>
-            {visibleExercises.map((item) => (
-              <ExerciseRow
-                key={item.id}
-                item={item}
-                done={families
-                  .get(familyOf(item))!
-                  .reduce((sum, member) => sum + (setsDoneByExercise.get(member.id) ?? 0), 0)}
-                planned={
-                  families.get(familyOf(item))!.some((member) => plannedByExercise.has(member.id))
-                    ? families
-                        .get(familyOf(item))!
-                        .reduce((sum, member) => sum + (plannedByExercise.get(member.id) ?? 0), 0)
-                    : undefined
-                }
-                selected={item.id === selectedExerciseId}
-                onPick={(id) => {
-                  setSearch('');
-                  if (!switching.current && !saving) pick(id);
-                }}
-              />
-            ))}
-          </View>
-
-          {!looking && inPlan.length > 0 && inPlan.length < exercises.length && (
-            <Button
-              label={showAll ? 'Solo la rutina de hoy' : 'Ver todos los ejercicios'}
-              accessibilityLabel={
-                showAll ? 'Ver solo la rutina de hoy' : 'Ver todos los ejercicios'
-              }
-              variant="ghost"
-              onPress={() => setShowAll((open) => !open)}
-              style={styles.more}
-            />
-          )}
-        </Card>
-
         {/* La cartilla entera se sube cuando se toca cualquiera de los tres campos: el
             peso sin las repeticiones al lado no sirve de nada. */}
         {exercise && (
@@ -808,6 +761,54 @@ export const SessionLog = memo(function SessionLog({
           </View>
         )}
 
+        {/* Lista y no fila de chips: los nombres son largos, cada chip ocupaba un
+            renglon entero igual, y asi se ve de un vistazo lo que falta de cada uno.
+            El orden es alfabetico a proposito: se busca por nombre, no por plan. Va debajo
+            de la cartilla de anotar: se toca al cambiar de ejercicio, no en cada serie. */}
+        <Card title="Ejercicios">
+          <SearchField
+            value={search}
+            onChange={setSearch}
+            accessibilityLabel="Buscar un ejercicio"
+            note={`${families.size} en el catálogo`}
+          />
+          <View style={styles.exerciseList}>
+            {visibleExercises.map((item) => (
+              <ExerciseRow
+                key={item.id}
+                item={item}
+                done={families
+                  .get(familyOf(item))!
+                  .reduce((sum, member) => sum + (setsDoneByExercise.get(member.id) ?? 0), 0)}
+                planned={
+                  families.get(familyOf(item))!.some((member) => plannedByExercise.has(member.id))
+                    ? families
+                        .get(familyOf(item))!
+                        .reduce((sum, member) => sum + (plannedByExercise.get(member.id) ?? 0), 0)
+                    : undefined
+                }
+                selected={item.id === selectedExerciseId}
+                onPick={(id) => {
+                  setSearch('');
+                  if (!switching.current && !saving) pick(id);
+                }}
+              />
+            ))}
+          </View>
+
+          {!looking && inPlan.length > 0 && inPlan.length < exercises.length && (
+            <Button
+              label={showAll ? 'Solo la rutina de hoy' : 'Ver todos los ejercicios'}
+              accessibilityLabel={
+                showAll ? 'Ver solo la rutina de hoy' : 'Ver todos los ejercicios'
+              }
+              variant="ghost"
+              onPress={() => setShowAll((open) => !open)}
+              style={styles.more}
+            />
+          )}
+        </Card>
+
         {sessionProblem}
         {finishedAt === null ? (
           <Button
@@ -822,7 +823,9 @@ export const SessionLog = memo(function SessionLog({
             style={styles.finish}
           />
         ) : (
-          <Card tone="warn">
+          // Terminar es el final normal, no un aviso: va en la cartilla de siempre y no en
+          // amarillo, donde Seguir entrenando casi no se leia (2026-10-23).
+          <Card>
             <Text style={styles.finished}>Entreno terminado a las {hhmm(finishedAt)}</Text>
             {/* Pegado al boton y no un modal: el teclado de la app vive en la raiz y
                 un modal de iOS lo dejaria debajo. */}
@@ -1178,12 +1181,12 @@ const styles = sheet((theme) => ({
   finished: {
     fontSize: 15,
     fontFamily: font.black,
-    color: theme.accentInk,
+    color: theme.text,
   },
   confirmText: {
     fontSize: 13,
     fontFamily: font.regular,
-    color: theme.accentInk,
+    color: theme.textDim,
   },
   confirmButtons: {
     flexDirection: 'row',

@@ -14,6 +14,25 @@ export function goTo(route: string, tab: boolean): Navigate {
   return tab ? ['nexo', { screen: route }, { pop: true }] : [route, undefined, { pop: true }];
 }
 
+type StackState = { index: number; routes: readonly { name: string; key?: string }[] };
+
+/**
+ * Abrir desde el menu una pantalla que no es pestana deja las pestanas y esa pantalla
+ * encima, nada mas, asi que Listo siempre vuelve al dia. Antes cada una se apilaba sobre
+ * la ultima y Listo volvia por todas, una por toque (2026-10-23). Si ya estaba abierta,
+ * se vuelve a ella tal como estaba.
+ *
+ * Es la accion RESET de React Navigation escrita a mano, para que este archivo siga sin
+ * cargar la libreria.
+ */
+export function fromMenu(state: StackState, route: string) {
+  const open = state.routes.find((it, index) => index > 0 && it.name === route);
+  return {
+    type: 'RESET' as const,
+    payload: { ...state, index: 1, routes: [state.routes[0], open ?? { name: route }] },
+  };
+}
+
 /**
  * Spec 18.1: tocar un aviso abre la pantalla donde se anota eso. Con Ajustes, Registros o
  * un dia abierto encima, pedir "Comida" a secas no lo entendia nadie y se perdia callado:
