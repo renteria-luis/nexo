@@ -68,7 +68,7 @@ export function FoodsScreen() {
       .catch((error: unknown) => console.error(error));
   }, [loadArchivedFoods]);
 
-  if (state.phase !== 'ready') return null;
+  if (state.phase !== 'ready') return <Screen title="Alimentos">{null}</Screen>;
   const foods = state.loaded.foods.filter((food) =>
     matchesSearch([food.name, food.brand, food.store, food.keywords], search),
   );

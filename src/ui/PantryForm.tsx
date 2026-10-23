@@ -281,8 +281,7 @@ const styles = sheet((theme) => ({
     backgroundColor: theme.surface,
   },
   writing: {
-    backgroundColor: theme.accent,
-    color: theme.accentInk,
+    backgroundColor: theme.surfaceHigh,
   },
   unit: {
     fontSize: 15,

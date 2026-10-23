@@ -58,9 +58,9 @@ test('both food layouts show the same totals, goals first, and the gap warning',
     assert.ok(order.every((at) => at >= 0));
     for (const label of [
       'Calorías1500',
-      'faltan 300 para la banda',
+      'faltan 300 para 1800',
       'Proteína100 g',
-      'faltan 35 para el piso',
+      'faltan 35 para 135 g',
       'Carbos120 + g',
       'fibra 5 g',
       'Grasa50 g',
@@ -73,7 +73,7 @@ test('both food layouts show the same totals, goals first, and the gap warning',
     assert.ok(!text.includes('Arroz'));
     assert.ok(!text.includes('Lácteos'));
     assert.ok(!text.includes('Carga glucémica'));
-    assert.ok(text.includes(record ? 'bajo el piso de 58 g' : 'faltan 8 para el piso'));
+    assert.ok(text.includes(record ? 'bajo el mínimo de 58 g' : 'faltan 8 para 58 g'));
   }
 });
 
@@ -125,4 +125,55 @@ test('meal slots are icons, and only the chosen one writes its name', () => {
       ['cena', 'cena'],
     ],
   );
+});
+
+test('a first portion is never guessed in grams, only counted in units', () => {
+  const food = (id: string, unit: string, kind: string) =>
+    ({
+      id,
+      name: id,
+      base_unit: unit,
+      unit_kind: kind,
+      base_unit_g: 1,
+      quick_amounts: null,
+    }) as any;
+  const rice = food('arroz', 'g', 'mass');
+  const egg = food('huevo', 'huevo', 'count');
+  const chicken = food('pollo', 'g', 'mass');
+  const log = renderModule('src/ui/FoodLog.tsx', {
+    './Button.tsx': { Button: 'Button' },
+    './Card.tsx': { Card: 'Card' },
+    './Chip.tsx': { Chip: 'Chip' },
+    './FoodPicker.tsx': { FoodPicker: 'FoodPicker' },
+    './InfoBubble.tsx': { ConfirmButton: 'ConfirmButton', InfoDot: 'InfoDot' },
+    './IconButton.tsx': { IconButton: 'IconButton' },
+    './NumericField.tsx': { NumericField: 'NumericField' },
+    './icons.ts': new Proxy({}, { get: (_, name) => name }),
+  }).mount('FoodLog', {
+    foods: [rice, egg, chicken],
+    portions: [],
+    totals: null,
+    proteinBand: null,
+    kcalBand: null,
+    fatBand: null,
+    history: { recent: [], usualBySlot: new Map(), lastQuantity: new Map([['pollo', 200]]) },
+    onAdd() {},
+    onRemove() {},
+    onOpenCatalogue() {},
+    slot: 'cena',
+  });
+  const pick = (chosen: unknown) => {
+    const picker = nodes(log.render()).find((node) => node.type === 'FoodPicker')!;
+    picker.props.onSelect(chosen);
+    const tree = nodes(log.render());
+    return {
+      amount: tree.find((node) => node.type === 'NumericField')!.props.value,
+      add: tree.find((node) => node.type === 'Button' && node.props.label === 'Agregar')!.props
+        .disabled,
+    };
+  };
+
+  assert.deepEqual(pick(rice), { amount: '', add: true });
+  assert.deepEqual(pick(egg), { amount: '1', add: false });
+  assert.deepEqual(pick(chicken), { amount: '200', add: false });
 });

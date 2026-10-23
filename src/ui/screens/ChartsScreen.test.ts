@@ -190,7 +190,7 @@ test('dumbbell weights say they are one dumbbell, and the volume does not', asyn
     nodes(progress()).find(
       (node) => node.type === 'Combobox' && node.props.accessibilityLabel === label,
     )!.props.onChange;
-  assert.equal(bars().format(453.59237), '1000 lb');
+  assert.equal(bars().format(453.59237), '1 000 lb');
   pick('Elegir qué se mide')('topWeight');
   tree = await screen.settle();
   assert.equal(bars().format(11.34), '25 lb c/u');

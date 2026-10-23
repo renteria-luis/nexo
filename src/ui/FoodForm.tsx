@@ -413,7 +413,10 @@ function Field({
 const styles = sheet((theme) => ({
   sheet: {
     // Sin flex: mide lo que mida su contenido, y solo se limita para no desbordar.
-    alignSelf: 'stretch',
+    // Centrada como PopupSheet: estirada con tope, en un telefono ancho quedaba a la
+    // izquierda.
+    width: '100%',
+    alignSelf: 'center',
     maxWidth: 400,
     // Tope para que nunca llegue a parecer una pantalla entera. Lo que no entre se
     // desplaza dentro de la hoja.

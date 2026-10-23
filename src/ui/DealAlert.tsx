@@ -1,6 +1,14 @@
 import { ScrollView, Text, View } from 'react-native';
 
-import { liveDeals, unitPrice, type WatchedDeal } from '../deals/index.ts';
+import { shortDay, type IsoDate } from '../core/dates.ts';
+import {
+  dealVersusUsual,
+  doubtful,
+  liveDeals,
+  unitPrice,
+  type WatchedDeal,
+} from '../deals/index.ts';
+import type { DealsDiscountRow } from '../db/types.ts';
 
 import { Button } from './Button.tsx';
 import { X } from './icons.ts';
@@ -17,17 +25,28 @@ import { font, glass, sheet, shape } from './theme.ts';
 export function DealAlert({
   found,
   silent,
+  discounts,
+  today,
   onOpenAll,
   onClose,
 }: {
   found: WatchedDeal[];
   /** Lo que se dice de las fuentes que se callaron: va arriba, antes que las ofertas. */
   silent: string[];
+  discounts: DealsDiscountRow[];
+  today: IsoDate;
   onOpenAll: () => void;
   onClose: () => void;
 }) {
   const live = liveDeals(found).length;
   const expired = found.length - live;
+  // Lo sospechoso al final y dicho, como en Ofertas: un precio por kilo leido como peso
+  // abria el aviso como la mejor oferta del dia (2026-10-23).
+  const rows = found.map((watched) => {
+    const versusUsual = dealVersusUsual(watched.item, discounts, today);
+    return { ...watched, doubt: doubtful(versusUsual) ? versusUsual : null };
+  });
+  const ordered = [...rows.filter((row) => !row.doubt), ...rows.filter((row) => row.doubt)];
   return (
     <View style={styles.sheet}>
       <View style={styles.head}>
@@ -44,7 +63,7 @@ export function DealAlert({
             {line}
           </Text>
         ))}
-        {found.map(({ item, word }, index) => {
+        {ordered.map(({ item, word, doubt }, index) => {
           const price = unitPrice(item.deal);
           return (
             <View
@@ -53,6 +72,11 @@ export function DealAlert({
             >
               <Text style={styles.word}>{word}</Text>
               {item.stale && <Text style={styles.markWarn}>posiblemente vencido</Text>}
+              {doubt && (
+                <Text style={styles.markWarn}>
+                  ¿{Math.round(doubt.savingPercent)}% bajo lo tuyo? Revisa el tamaño
+                </Text>
+              )}
               <Text style={styles.name}>
                 {item.deal.title}
                 {price === null ? '' : ` · ${price.size}`}
@@ -64,7 +88,7 @@ export function DealAlert({
                     ? null
                     : `$${(item.deal.price_cents / 100).toFixed(2)}`,
                   price === null ? null : `${`$${(price.cents / 100).toFixed(2)}`} ${price.per}`,
-                  item.deal.valid_to === null ? null : `hasta ${item.deal.valid_to}`,
+                  item.deal.valid_to === null ? null : `hasta ${shortDay(item.deal.valid_to)}`,
                 ]
                   .filter(Boolean)
                   .join(' · ')}
@@ -94,7 +118,10 @@ export function DealAlert({
 
 const styles = sheet((theme) => ({
   sheet: {
-    alignSelf: 'stretch',
+    // Centrada como PopupSheet: estirada con tope, en un telefono ancho quedaba a la
+    // izquierda.
+    width: '100%',
+    alignSelf: 'center',
     maxWidth: 400,
     maxHeight: 520,
     ...glass.panel,
@@ -148,10 +175,9 @@ const styles = sheet((theme) => ({
     alignSelf: 'flex-start',
     fontSize: 11,
     fontFamily: font.black,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    color: theme.accentInk,
-    backgroundColor: theme.accent,
+    // Sin ambar: no se toca, y el ambar es de lo que se toca.
+    color: theme.textDim,
+    backgroundColor: theme.surfaceHigh,
     borderWidth: shape.border,
     borderColor: theme.line,
     borderRadius: 5,

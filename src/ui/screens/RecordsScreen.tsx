@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { shortDate } from '../../core/dates.ts';
-import { scoreText } from '../../core/day-report.ts';
+import { scoreText, thousands } from '../../core/day-report.ts';
 import { fromKg } from '../../core/units.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 import {
@@ -124,7 +124,7 @@ export function RecordsScreen() {
                       : row.restDay
                         ? 'descanso'
                         : 'sin entreno',
-                    row.volume > 0 ? `${Math.round(fromKg(row.volume, unit))} ${unit}` : null,
+                    row.volume > 0 ? `${thousands(fromKg(row.volume, unit))} ${unit}` : null,
                     row.proteinG === null ? null : `${Math.round(row.proteinG)} g prot`,
                     row.kcal === null ? null : `${Math.round(row.kcal)} kcal`,
                   ]

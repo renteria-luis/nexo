@@ -297,8 +297,13 @@ export function FoodLog({
             return;
           }
           setFoodId(food.id);
-          // Con la cantidad de la ultima vez ya puesta, anotar son dos toques.
-          setQuantity(roundAmount(history.lastQuantity.get(food.id) ?? 1));
+          // Con la cantidad de la ultima vez ya puesta, anotar son dos toques. La primera
+          // vez, uno si se cuenta por unidad; en gramos o mililitros no hay cantidad que
+          // suponer, y un 1 g puesto se anotaba con un toque sin querer.
+          const last = history.lastQuantity.get(food.id);
+          setQuantity(
+            last !== undefined ? roundAmount(last) : food.unit_kind === 'count' ? '1' : '',
+          );
         }}
       />
 

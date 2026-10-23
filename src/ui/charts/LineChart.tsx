@@ -198,6 +198,15 @@ export function LineChart({
         />
       </View>
 
+      <View style={styles.axis}>
+        <Text style={styles.axisText}>{shortDate(addDays(chart.from, at))}</Text>
+        <Text style={styles.axisText}>
+          {format(low)} a {format(high)}
+        </Text>
+        <Text style={styles.axisText}>{shortDate(addDays(chart.from, at + visible - 1))}</Text>
+      </View>
+
+      {/* Despues del eje: lo que va despues se pinta encima, y la fecha tapaba su boton. */}
       {picked && (
         <Bubble
           date={shortDate(picked.date)}
@@ -207,14 +216,6 @@ export function LineChart({
           onOpenDay={onOpenDay ? () => onOpenDay(picked.date) : undefined}
         />
       )}
-
-      <View style={styles.axis}>
-        <Text style={styles.axisText}>{shortDate(addDays(chart.from, at))}</Text>
-        <Text style={styles.axisText}>
-          {format(low)} a {format(high)}
-        </Text>
-        <Text style={styles.axisText}>{shortDate(addDays(chart.from, at + visible - 1))}</Text>
-      </View>
     </View>
   );
 }

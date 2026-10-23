@@ -213,7 +213,7 @@ test('a finished session shows its recap with records and nothing left to log', 
   const text = textOf(tree);
   assert.match(text, /VOLUMEN.*2 880 lb/);
   assert.match(text, /SERIES.*3/);
-  assert.match(text, /DURÓ.*1 h 12/);
+  assert.match(text, /DURÓ01h12m/);
   assert.match(text, /RÉCORDS.*1/);
   assert.match(text, /Press inclinado con mancuernas · 1RM 114 · antes 108 lb c\/u/);
   assert.doesNotMatch(text, /DESCANSANDO|Terminar entreno/);

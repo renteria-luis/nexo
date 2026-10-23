@@ -73,12 +73,12 @@ function todayLog(props: Record<string, unknown>) {
 
 test('the day says whether its sleep and steps came from the Shortcut or by hand', async () => {
   const summary = textOf(await todayLog({ healthImports: IMPORTS }).settle());
-  assert.ok(summary.includes('7 h 45 min · AutoSleep, 22:05'), summary);
+  assert.ok(summary.includes('7 h 45 · AutoSleep, 22:05'), summary);
   assert.ok(summary.includes('8123 · a mano'), summary);
 
   // A screen that does not know what arrived says nothing rather than guessing.
   const unknown = textOf(await todayLog({}).settle());
-  assert.ok(unknown.includes('7 h 45 min'));
+  assert.ok(unknown.includes('7 h 45'));
   assert.ok(!unknown.includes('AutoSleep') && !unknown.includes('a mano'), unknown);
 });
 

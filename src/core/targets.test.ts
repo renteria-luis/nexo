@@ -169,23 +169,23 @@ test('recalculation triggers at a kilo of drift, not before', () => {
 test('las calorias de Comida se dicen contra la banda, no contra la meta pelada', () => {
   const band = { from: 2250, to: 2950 };
   // 2,600 sobre una meta de 2,400: la cabecera decia "200 de mas".
-  assert.equal(kcalAgainstBand(2600, band), 'en banda (2250 a 2950)');
-  assert.equal(kcalAgainstBand(2000, band), 'faltan 250 para la banda');
-  assert.equal(kcalAgainstBand(3000, band), '50 sobre la banda');
+  assert.equal(kcalAgainstBand(2600, band), 'entre 2250 y 2950');
+  assert.equal(kcalAgainstBand(2000, band), 'faltan 250 para 2250');
+  assert.equal(kcalAgainstBand(3000, band), '50 sobre 2950');
 });
 
 test('protein is told against its floor, with no ceiling to warn about', () => {
   const band = { from: 130, to: 160 };
-  assert.equal(proteinAgainstBand(112, band), 'faltan 18 para el piso');
-  assert.equal(proteinAgainstBand(130, band), 'piso de 130 cumplido');
-  assert.equal(proteinAgainstBand(190, band), 'piso de 130 cumplido');
+  assert.equal(proteinAgainstBand(112, band), 'faltan 18 para 130 g');
+  assert.equal(proteinAgainstBand(130, band), 'cumplido: 130 g o más');
+  assert.equal(proteinAgainstBand(190, band), 'cumplido: 130 g o más');
 });
 
 test('la grasa bajo el piso duro es una alerta en un dia terminado, y hoy es lo que falta', () => {
   const band = { from: 65, to: 90, hardFloor: 58 };
-  assert.deepEqual(fatAgainstBand(41, band, true), { note: 'bajo el piso de 58 g', alert: true });
+  assert.deepEqual(fatAgainstBand(41, band, true), { note: 'bajo el mínimo de 58 g', alert: true });
   assert.deepEqual(fatAgainstBand(41, band, false), {
-    note: 'faltan 17 para el piso',
+    note: 'faltan 17 para 58 g',
     alert: false,
   });
   assert.deepEqual(fatAgainstBand(70, band, true), { note: 'meta 65 a 90', alert: false });

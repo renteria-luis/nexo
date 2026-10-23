@@ -6,7 +6,7 @@ import { useAppData } from '../../shell/AppData.tsx';
 import { sourceStatus } from '../../shell/deals.ts';
 import { WEEKS_SHOWN } from '../../shell/load.ts';
 import { parseWaterTaps } from '../../core/water-taps.ts';
-import { scoreText } from '../../core/day-report.ts';
+import { scoreText, thousands } from '../../core/day-report.ts';
 import { HEALTH_SHORTCUT_URL } from '../../core/health-import.ts';
 import { currentStreak, longestStreak } from '../../core/discipline.ts';
 import { scoreScaleFrom } from '../../core/palettes.ts';
@@ -281,6 +281,8 @@ export function TodayScreen({
           <DealAlert
             found={watched}
             silent={silent}
+            discounts={loaded.discounts}
+            today={loaded.today.date}
             onOpenAll={() => {
               closeDeals();
               onOpen('Ofertas');
@@ -440,7 +442,7 @@ export function TodayScreen({
           icon={Dumbbell}
           value={
             loaded.today.session
-              ? `${Math.round(fromKg(loaded.today.sessionVolume, loaded.unit))} ${loaded.unit}`
+              ? `${thousands(fromKg(loaded.today.sessionVolume, loaded.unit))} ${loaded.unit}`
               : 'Sin entrenar'
           }
           detail={loaded.today.session ? 'de volumen hoy' : 'Toca para empezar'}

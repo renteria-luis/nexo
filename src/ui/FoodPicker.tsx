@@ -66,10 +66,11 @@ function Row({
         pressed && (selected ? styles.pressed : styles.pressedFlat),
       ]}
     >
-      <Text style={styles.rowName} numberOfLines={1}>
+      {/* Sobre el ambar, tinta oscura como todo lo relleno: en claro no se leia. */}
+      <Text style={[styles.rowName, selected && styles.inkOn]} numberOfLines={1}>
         {food.name}
       </Text>
-      <Text style={styles.rowMacros}>{macros(food)}</Text>
+      <Text style={[styles.rowMacros, selected && styles.inkSoftOn]}>{macros(food)}</Text>
     </Pressable>
   );
 }
@@ -254,6 +255,12 @@ const styles = sheet((theme) => ({
     fontSize: 14,
     fontFamily: font.black,
     color: theme.text,
+  },
+  inkOn: {
+    color: theme.accentInk,
+  },
+  inkSoftOn: {
+    color: theme.accentInkSoft,
   },
   rowMacros: {
     fontSize: 11,

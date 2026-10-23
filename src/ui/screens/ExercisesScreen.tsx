@@ -1,6 +1,6 @@
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Text, View, type StyleProp, type TextStyle } from 'react-native';
+import { Pressable, Text, View, type StyleProp, type TextStyle } from 'react-native';
 
 import { matchesSearch } from '../../nutrition/index.ts';
 import { useAppData } from '../../shell/AppData.tsx';
@@ -14,12 +14,13 @@ import type { TimeBudget } from '../../training/routines.ts';
 import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
 import { Chip } from '../Chip.tsx';
-import { ChevronRight } from '../icons.ts';
+import { ChevronRight, Plus } from '../icons.ts';
 import { MUSCLE_ES } from '../muscles.ts';
 import { NumericField } from '../NumericField.tsx';
+import { SearchField } from '../SearchField.tsx';
 import { TextField } from '../TextField.tsx';
 import { Toggle } from '../Toggle.tsx';
-import { font, sheet, shape } from '../theme.ts';
+import { font, sheet, shape, theme } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
 
@@ -55,7 +56,9 @@ function NewExerciseForm({
 }) {
   const { createExercise } = useAppData();
   const [name, setName] = useState('');
-  const [muscle, setMuscle] = useState(parent?.exercise.primary_muscle ?? 'chest');
+  // Sin nada marcado de entrada: con Pecho y Mancuernas puestos, uno que no los
+  // cambiaba quedaba guardado con otro musculo y otro equipo (2026-10-23).
+  const [muscle, setMuscle] = useState<string | null>(parent?.exercise.primary_muscle ?? null);
   const [secondary, setSecondary] = useState<string[]>(
     () =>
       parent?.variants
@@ -63,9 +66,10 @@ function NewExerciseForm({
         ?.muscles.filter((item) => item.contribution === 0.5)
         .map((item) => item.muscle) ?? [],
   );
-  const [equipment, setEquipment] = useState<EquipmentType>(
-    parent?.exercise.equipment_type ?? 'dumbbell',
+  const [equipment, setEquipment] = useState<EquipmentType | null>(
+    parent?.exercise.equipment_type ?? null,
   );
+  const ready = name.trim() !== '' && muscle !== null && equipment !== null;
   const [unilateral, setUnilateral] = useState(false);
   const restFrom = parent?.exercise.default_rest_seconds ?? 120;
   const [rest, setRest] = useState(() => restParts(restFrom));
@@ -74,7 +78,7 @@ function NewExerciseForm({
   const [problem, setProblem] = useState<string | null>(null);
   const writing = useRef(false);
   const save = async () => {
-    if (writing.current) return;
+    if (writing.current || muscle === null || equipment === null) return;
     writing.current = true;
     setBusy(true);
     setProblem(null);
@@ -179,7 +183,8 @@ function NewExerciseForm({
       )}
       <Button
         label={busy ? 'Creando…' : 'Guardar nuevo ejercicio'}
-        disabled={busy || !name.trim()}
+        variant="primary"
+        disabled={busy || !ready}
         onPress={() => {
           void save();
         }}
@@ -367,10 +372,9 @@ export function ExercisesScreen() {
 
   if (state.phase !== 'ready') return <Screen title="Ejercicios">{null}</Screen>;
 
-  const shown = (list ?? []).filter(
-    (item) =>
-      Boolean(item.archived) === archived &&
-      matchesSearch([item.name, item.familyName, item.muscle], search),
+  const inTab = (list ?? []).filter((item) => Boolean(item.archived) === archived);
+  const shown = inTab.filter((item) =>
+    matchesSearch([item.name, item.familyName, item.muscle], search),
   );
 
   return (
@@ -382,7 +386,15 @@ export function ExercisesScreen() {
         <Chip label="Activos" selected={!archived} onPress={() => setArchived(false)} />
         <Chip label="Archivados" selected={archived} onPress={() => setArchived(true)} />
       </View>
-      <Button label="Crear ejercicio" onPress={() => setCreating(true)} />
+      {/* Como Alimentos, que esta al lado en el menu: el mismo boton, buscador y filas. */}
+      <Button
+        label="Ejercicio nuevo"
+        accessibilityLabel="Agregar un ejercicio nuevo"
+        variant="primary"
+        icon={Plus}
+        block
+        onPress={() => setCreating(true)}
+      />
       {creating && (
         <NewExerciseForm
           onCancel={() => setCreating(false)}
@@ -393,20 +405,28 @@ export function ExercisesScreen() {
         />
       )}
 
-      <TextField
+      <SearchField
         value={search}
         onChange={setSearch}
-        autoCapitalize="none"
         accessibilityLabel="Buscar un ejercicio"
-        placeholder="Buscar"
-        style={styles.search}
+        note={`${inTab.length} ${inTab.length === 1 ? 'ejercicio' : 'ejercicios'}`}
       />
 
       {problem && <Text style={styles.problem}>{problem}</Text>}
 
       <Card>
         {shown.map((item, index) => (
-          <View key={item.id} style={[styles.row, index > 0 && styles.ruled]}>
+          <Pressable
+            key={item.id}
+            accessibilityRole="button"
+            accessibilityLabel={`Editar ${item.name}`}
+            onPress={() => navigation.navigate('Ejercicio', { exerciseId: item.id })}
+            style={({ pressed }) => [
+              styles.row,
+              index > 0 && styles.ruled,
+              pressed && styles.rowPressed,
+            ]}
+          >
             <View style={styles.rowText}>
               <Text style={styles.rowName}>{item.name}</Text>
               <Text style={styles.rowDetail}>
@@ -420,14 +440,8 @@ export function ExercisesScreen() {
                   : ' · suelto'}
               </Text>
             </View>
-            <Button
-              label="Abrir"
-              accessibilityLabel={`Editar ${item.name}`}
-              variant="ghost"
-              icon={ChevronRight}
-              onPress={() => navigation.navigate('Ejercicio', { exerciseId: item.id })}
-            />
-          </View>
+            <ChevronRight size={18} color={theme.textFaint} strokeWidth={2.5} />
+          </Pressable>
         ))}
         {shown.length === 0 && <Text style={styles.hint}>Ningún ejercicio con ese nombre.</Text>}
       </Card>
@@ -760,17 +774,6 @@ const styles = sheet((theme) => ({
     fontFamily: font.regular,
     color: theme.textFaint,
   },
-  search: {
-    borderWidth: shape.border,
-    borderColor: theme.line,
-    borderRadius: shape.radiusSmall,
-    backgroundColor: theme.surface,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    fontFamily: font.bold,
-    color: theme.text,
-  },
   problem: {
     fontSize: 13,
     fontFamily: font.bold,
@@ -785,6 +788,9 @@ const styles = sheet((theme) => ({
   ruled: {
     borderTopWidth: shape.border,
     borderTopColor: theme.line,
+  },
+  rowPressed: {
+    opacity: 0.55,
   },
   rowText: {
     flex: 1,

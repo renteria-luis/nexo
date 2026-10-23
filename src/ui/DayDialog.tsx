@@ -56,7 +56,7 @@ export function DayDialog({ date, unit, load, onOpenDetail }: DayDialogProps) {
         day === null
           ? MISSING
           : day.session
-            ? `${detail?.routineName ?? 'suelto'} · ${Math.round(fromKg(day.sessionVolume, unit))} ${unit}`
+            ? `${detail?.routineName ?? 'suelto'} · ${thousands(fromKg(day.sessionVolume, unit))} ${unit}`
             : day.log?.rest_day === 1
               ? 'descanso planeado'
               : 'sin entreno',

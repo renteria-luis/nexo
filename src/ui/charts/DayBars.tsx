@@ -208,6 +208,15 @@ export function DayBars({
         <View pointerEvents="none" style={styles.floor} />
       </View>
 
+      {/* Las fechas son las de los bordes de lo que se ve, y siguen al dedo. */}
+      <View style={styles.axis}>
+        <Text style={styles.axisText}>{shortDate(slots[at].date)}</Text>
+        {/* La banda ya se ve pintada: escrita debajo era repetirla (decision 2026-10-10). */}
+        {!band && <Text style={styles.axisText}>máx {format(top)}</Text>}
+        <Text style={styles.axisText}>{shortDate(slots[at + visible - 1].date)}</Text>
+      </View>
+
+      {/* Despues del eje: lo que va despues se pinta encima, y la fecha tapaba su boton. */}
       {picked && (
         <Bubble
           date={shortDate(picked.date)}
@@ -218,14 +227,6 @@ export function DayBars({
           onOpenDay={onOpenDay ? () => onOpenDay(picked.date) : undefined}
         />
       )}
-
-      {/* Las fechas son las de los bordes de lo que se ve, y siguen al dedo. */}
-      <View style={styles.axis}>
-        <Text style={styles.axisText}>{shortDate(slots[at].date)}</Text>
-        {/* La banda ya se ve pintada: escrita debajo era repetirla (decision 2026-10-10). */}
-        {!band && <Text style={styles.axisText}>máx {format(top)}</Text>}
-        <Text style={styles.axisText}>{shortDate(slots[at + visible - 1].date)}</Text>
-      </View>
     </View>
   );
 }

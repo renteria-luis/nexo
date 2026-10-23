@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { LayoutAnimation, Pressable, Text, View } from 'react-native';
 
-import { todayIso } from '../../core/dates.ts';
+import { shortDay, todayIso } from '../../core/dates.ts';
 import {
-  comparedToUsual,
   dealCentsPerKg,
+  dealVersusUsual,
   doubtful,
   proteinPerDollar,
   unitPrice,
@@ -89,7 +89,7 @@ function DealRow({
   const { deal, source, retailer, food, candidate, confirmed, stale } = item;
   const chain = retailer?.chain ?? null;
   const value = food ? proteinPerDollar(deal, food, discounts, chain, todayIso()) : null;
-  const versusUsual = food ? comparedToUsual(deal, food, discounts, chain, todayIso()) : null;
+  const versusUsual = dealVersusUsual(item, discounts, todayIso());
   const price = unitPrice(deal);
   const cheaper = versusUsual !== null && versusUsual.savingPercent > 0;
   // Demasiado bueno: casi siempre un precio por kilo leido como peso. Lo dice en vez de
@@ -113,7 +113,7 @@ function DealRow({
           showStore ? (retailer?.name ?? MISSING) : null,
           deal.description === null ? null : deal.description.replace(/\s*\n\s*/g, ' · '),
           deal.original_price_cents === null ? null : `antes ${money(deal.original_price_cents)}`,
-          deal.valid_to === null ? null : `hasta ${deal.valid_to}`,
+          deal.valid_to === null ? null : `hasta ${shortDay(deal.valid_to)}`,
         ]
           .filter(Boolean)
           .join(' · ')}
@@ -217,9 +217,7 @@ export function DealsScreen() {
   // El valor de cada oferta, una sola vez: lo usan el orden y las tarjetas.
   const scored = deals.map((item) => {
     const chain = item.retailer?.chain ?? null;
-    const versusUsual = item.food
-      ? comparedToUsual(item.deal, item.food, discounts, chain, today)
-      : null;
+    const versusUsual = dealVersusUsual(item, discounts, today);
     return {
       item,
       value: item.food ? proteinPerDollar(item.deal, item.food, discounts, chain, today) : null,

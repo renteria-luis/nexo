@@ -12,6 +12,8 @@
 import type { IsoDate } from '../core/dates.ts';
 import type { DealsDiscountRow, ListedDeal, NutritionFoodRow } from '../db/types.ts';
 
+import type { DealWithContext } from './queries.ts';
+
 const GRAMS_PER_LB = 453.59237;
 const GRAMS_PER_KG = 1000;
 
@@ -246,4 +248,18 @@ export function comparedToUsual(
     usualCentsPerKg: usual,
     savingPercent: ((usual - dealCentsPerKg) / usual) * 100,
   };
+}
+
+/**
+ * A listed deal against what he pays for the food it was found for. Ofertas and the
+ * alert on Hoy both read it, so a parse error is caught the same way in both.
+ */
+export function dealVersusUsual(
+  item: Pick<DealWithContext, 'deal' | 'food' | 'retailer'>,
+  discounts: readonly DealsDiscountRow[],
+  onDate: IsoDate,
+): PriceComparison | null {
+  return item.food
+    ? comparedToUsual(item.deal, item.food, discounts, item.retailer?.chain ?? null, onDate)
+    : null;
 }

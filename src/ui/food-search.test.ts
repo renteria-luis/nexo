@@ -116,9 +116,14 @@ test('a recipe takes a food that is not in the pantry and stocks it at zero on s
   nodes(form.render())
     .find((node) => node.props.accessibilityLabel === 'Nombre de la receta')!
     .props.onChange('Arroz con pollo');
+  const saveButton = () =>
+    nodes(form.render()).find((node) => node.props.accessibilityLabel === 'Guardar la receta')!;
+  assert.equal(saveButton().props.disabled, true, 'a weighed ingredient needs its amount');
   nodes(form.render())
-    .find((node) => node.props.accessibilityLabel === 'Guardar la receta')!
-    .props.onPress();
+    .find((node) => node.props.accessibilityLabel === 'Cuánto Arroz blanco')!
+    .props.onChange('400');
+  assert.equal(saveButton().props.disabled, false);
+  saveButton().props.onPress();
   const [recipe, stocked] = saved[0] as [
     { ingredients: { itemId: string }[] },
     { id: string; kind: string; quantity: number; unit: string; foodId: string }[],

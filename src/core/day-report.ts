@@ -57,7 +57,9 @@ export type DayReport = {
 const MISSING = '—';
 
 export function hoursAndMinutes(minutes: number): string {
-  return `${Math.floor(minutes / 60)} h ${String(Math.round(minutes % 60)).padStart(2, '0')}`;
+  // Redondeado antes de partir: un promedio de 419.6 min se leia "6 h 60".
+  const whole = Math.round(minutes);
+  return `${Math.floor(whole / 60)} h ${String(whole % 60).padStart(2, '0')}`;
 }
 
 /** La nota con su decimal cuando lo tiene: 99.2, pero 100. */

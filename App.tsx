@@ -29,6 +29,7 @@ import { DayScreen } from './src/ui/screens/DayScreen.tsx';
 import { FoodsScreen } from './src/ui/screens/FoodsScreen.tsx';
 import { RecordsScreen } from './src/ui/screens/RecordsScreen.tsx';
 import { RoutineNotesScreen } from './src/ui/screens/RoutineNotesScreen.tsx';
+import { Screen } from './src/ui/screens/Screen.tsx';
 import { SettingsScreen } from './src/ui/screens/SettingsScreen.tsx';
 import { TodayScreen } from './src/ui/screens/TodayScreen.tsx';
 import { TrainingScreen } from './src/ui/screens/TrainingScreen.tsx';
@@ -187,7 +188,8 @@ function SettingsRoute() {
     importData,
   } = useAppData();
   const navigation = useNavigation<{ navigate: (name: string) => void }>();
-  if (state.phase !== 'ready') return null;
+  // Con Screen y no en blanco: un borrado que falla deja aqui su aviso y sus botones.
+  if (state.phase !== 'ready') return <Screen title="Ajustes">{null}</Screen>;
 
   return (
     <SettingsScreen

@@ -3,7 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 import { Check, Circle, Minus, Plus, Trash } from './icons.ts';
 
 import { shortDate } from '../core/dates.ts';
-import { hoursAndMinutes, thousands } from '../core/day-report.ts';
+import { thousands } from '../core/day-report.ts';
 import { formatWeight, fromKg, stepWeight, toKg, type WeightUnit } from '../core/units.ts';
 import {
   estimatedRestSeconds,
@@ -13,6 +13,7 @@ import {
   type SessionRecord,
 } from '../training/calculations.ts';
 import { fold } from '../nutrition/picker.ts';
+import { clockFace } from '../training/pace.ts';
 import { isPerSide, type CatalogExercise } from '../training/queries.ts';
 import { suggestedRest, type PlannedSet } from '../training/routines.ts';
 import { draftFieldsFor, fieldsAfterSelect, type SessionDraft } from '../core/session-draft.ts';
@@ -456,7 +457,7 @@ export const SessionLog = memo(function SessionLog({
               <View>
                 <Text style={styles.heading}>VOLUMEN DE HOY</Text>
                 <Text style={styles.volume}>
-                  {Math.round(fromKg(sessionVolume, unit))} {unit}
+                  {thousands(fromKg(sessionVolume, unit))} {unit}
                 </Text>
               </View>
               {startedAt !== null && (
@@ -488,7 +489,7 @@ export const SessionLog = memo(function SessionLog({
                   <View style={styles.recapStat}>
                     <Text style={styles.heading}>DURÓ</Text>
                     <Text style={styles.volume}>
-                      {hoursAndMinutes(Math.round((finishedAt - startedAt) / 60_000))}
+                      {clockFace((finishedAt - startedAt) / 60_000)}
                     </Text>
                   </View>
                 )}

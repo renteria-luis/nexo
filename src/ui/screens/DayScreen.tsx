@@ -4,7 +4,7 @@ import { Text, View } from 'react-native';
 
 import { undoLastTap } from '../../core/water-taps.ts';
 import { addDays, shortDate, todayIso } from '../../core/dates.ts';
-import { scoreText } from '../../core/day-report.ts';
+import { scoreText, thousands } from '../../core/day-report.ts';
 import { fatBand, kcalBand, proteinBand } from '../../core/targets.ts';
 import { WEEKLY_SESSION_TARGET } from '../../core/discipline.ts';
 import type { DayDetail } from '../../shell/records.ts';
@@ -251,7 +251,7 @@ export function DayScreen() {
         />
         {detail.exercises.length > 0 && (
           <Text style={styles.volume}>
-            {Math.round(fromKg(day.sessionVolume, loaded.unit))} {loaded.unit} de volumen, con las
+            {thousands(fromKg(day.sessionVolume, loaded.unit))} {loaded.unit} de volumen, con las
             mancuernas contadas por las dos
           </Text>
         )}

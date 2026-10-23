@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 
-import { todayIso } from '../../core/dates.ts';
+import { shortDate, todayIso } from '../../core/dates.ts';
 import type { ExperimentWithReadings } from '../../core/experiments.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 
@@ -72,7 +72,7 @@ function Experiment({
       <Text style={styles.detail}>Cambié: {experiment.variable_changed}</Text>
       <Text style={styles.detail}>
         {experiment.outcome_metric} · semana {weeksRunning} · {readings.length} lecturas
-        {running ? '' : ` · terminó el ${experiment.end_date}`}
+        {experiment.end_date === null ? '' : ` · terminó el ${shortDate(experiment.end_date)}`}
       </Text>
 
       {halves && (

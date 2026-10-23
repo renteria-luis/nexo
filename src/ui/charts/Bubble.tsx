@@ -43,7 +43,8 @@ export function Bubble({
 }
 
 /** Lo que mide, para poder centrarlo sobre la barra sin que se salga por un lado. */
-export const BUBBLE_WIDTH = 116;
+// Cabe "mié, 21-oct-2026" y "70.2 de 100" en una linea: a 116 se partian los dos.
+export const BUBBLE_WIDTH = 156;
 
 const styles = sheet((theme) => ({
   bubble: {

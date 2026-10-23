@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { addDays, shortDate, todayIso, weekStart } from '../../core/dates.ts';
+import { hoursAndMinutes, thousands } from '../../core/day-report.ts';
 import { fromKg } from '../../core/units.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 import { SET_BAND, type Comparison, type MuscleWeek, type WeekSummary } from '../../shell/week.ts';
@@ -118,11 +119,11 @@ export function WeekSummaryScreen() {
                       <Text style={[styles.tag, styles[muscle.band]]}>{BAND_ES[muscle.band]}</Text>
                     )}
                     <Text style={styles.muscleDetail}>
-                      {muscle.weightedSets} ponderadas · {Math.round(fromKg(muscle.volumeKg, unit))}{' '}
+                      {muscle.weightedSets} ponderadas · {thousands(fromKg(muscle.volumeKg, unit))}{' '}
                       {unit}
                       {muscle.priorAverageVolumeKg === null
                         ? ''
-                        : `, antes ${Math.round(fromKg(muscle.priorAverageVolumeKg, unit))}`}
+                        : `, antes ${thousands(fromKg(muscle.priorAverageVolumeKg, unit))}`}
                     </Text>
                   </View>
                 </View>
@@ -137,7 +138,7 @@ export function WeekSummaryScreen() {
               value={
                 summary.averages.sleepMinutes === null
                   ? '—'
-                  : `${Math.floor(summary.averages.sleepMinutes / 60)} h ${Math.round(summary.averages.sleepMinutes % 60)} min`
+                  : hoursAndMinutes(summary.averages.sleepMinutes)
               }
             />
             <Line

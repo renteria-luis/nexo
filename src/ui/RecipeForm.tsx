@@ -57,6 +57,11 @@ export function RecipeForm({
   const byId = new Map([...pantry, ...stocked].map((item) => [item.id, item]));
   const measured = (item: PantryItem) => item.kind === 'counted' || item.kind === 'weighed';
 
+  const unmeasured = ingredients.some((one) => {
+    const item = byId.get(one.itemId);
+    return item !== undefined && measured(item) && one.amount === null;
+  });
+
   const searching = search.trim() !== '';
   const found = !searching
     ? []
@@ -78,7 +83,11 @@ export function RecipeForm({
         .slice(0, 4);
 
   const add = (item: PantryItem) => {
-    setIngredients((before) => [...before, { itemId: item.id, amount: measured(item) ? 1 : null }]);
+    // Contado arranca en uno; pesado, vacio: un 1 g puesto se guardaba sin que lo viera.
+    setIngredients((before) => [
+      ...before,
+      { itemId: item.id, amount: item.kind === 'counted' ? 1 : null },
+    ]);
     setSearch('');
   };
 
@@ -100,7 +109,7 @@ export function RecipeForm({
 
   const save = () => {
     const count = Number(portions);
-    if (name.trim() === '' || !Number.isInteger(count) || count < 1) return;
+    if (name.trim() === '' || unmeasured || !Number.isInteger(count) || count < 1) return;
     onSave(
       {
         id: recipe?.id,
@@ -239,7 +248,7 @@ export function RecipeForm({
           label="Guardar"
           accessibilityLabel="Guardar la receta"
           variant="primary"
-          disabled={name.trim() === ''}
+          disabled={name.trim() === '' || unmeasured}
           onPress={save}
         />
         <Button label="Cancelar" accessibilityLabel="Cancelar" variant="ghost" onPress={onCancel} />
@@ -323,8 +332,7 @@ const styles = sheet((theme) => ({
     textAlignVertical: 'top',
   },
   writing: {
-    backgroundColor: theme.accent,
-    color: theme.accentInk,
+    backgroundColor: theme.surfaceHigh,
   },
   actions: {
     flexDirection: 'row',

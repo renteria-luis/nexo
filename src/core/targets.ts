@@ -126,9 +126,10 @@ export function kcalBand(targets: TargetValues): { from: number; to: number } {
  * "200 de mas", que es justo lo que lo hacia sentir que se pasaba.
  */
 export function kcalAgainstBand(kcal: number, band: { from: number; to: number }): string {
-  if (kcal < band.from) return `faltan ${band.from - kcal} para la banda`;
-  if (kcal > band.to) return `${kcal - band.to} sobre la banda`;
-  return `en banda (${band.from} a ${band.to})`;
+  // Con el numero y no con "la banda": la palabra obligaba a recordar cual era.
+  if (kcal < band.from) return `faltan ${band.from - kcal} para ${band.from}`;
+  if (kcal > band.to) return `${kcal - band.to} sobre ${band.to}`;
+  return `entre ${band.from} y ${band.to}`;
 }
 
 /**
@@ -137,8 +138,8 @@ export function kcalAgainstBand(kcal: number, band: { from: number; to: number }
  */
 export function proteinAgainstBand(proteinG: number, band: { from: number; to: number }): string {
   return proteinG < band.from
-    ? `faltan ${band.from - proteinG} para el piso`
-    : `piso de ${band.from} cumplido`;
+    ? `faltan ${band.from - proteinG} para ${band.from} g`
+    : `cumplido: ${band.from} g o más`;
 }
 
 /**
@@ -153,8 +154,11 @@ export function fatAgainstBand(
 ): { note: string; alert: boolean } {
   if (fatG < band.hardFloor) {
     return finished
-      ? { note: `bajo el piso de ${band.hardFloor} g`, alert: true }
-      : { note: `faltan ${Math.ceil(band.hardFloor - fatG)} para el piso`, alert: false };
+      ? { note: `bajo el mínimo de ${band.hardFloor} g`, alert: true }
+      : {
+          note: `faltan ${Math.ceil(band.hardFloor - fatG)} para ${band.hardFloor} g`,
+          alert: false,
+        };
   }
   return { note: `meta ${band.from} a ${band.to}`, alert: false };
 }

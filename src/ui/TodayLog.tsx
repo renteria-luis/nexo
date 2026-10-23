@@ -10,6 +10,7 @@ import {
   type LastWeight,
 } from '../core/daily-log.ts';
 import { addDays, clockTime, shortDate } from '../core/dates.ts';
+import { hoursAndMinutes } from '../core/day-report.ts';
 import { HEALTH_SOURCE_LABEL, originOf } from '../core/health-import.ts';
 import type {
   CoreDailyLogRow,
@@ -155,7 +156,7 @@ function Summary({
       value:
         log?.sleep_minutes == null
           ? 'sin anotar'
-          : `${Math.floor(log.sleep_minutes / 60)} h ${log.sleep_minutes % 60} min${from('sleep')}`,
+          : `${hoursAndMinutes(log.sleep_minutes)}${from('sleep')}`,
     },
     {
       icon: Footprints,
@@ -331,11 +332,13 @@ export function TodayLog({
             }}
             style={styles.input}
           />
+          {/* Siempre en kilos (spec 20.2): Libras en Ajustes es para el gym, y sin unidad
+              el numero se leia en lo que dijera Ajustes. */}
           <Text style={styles.note}>
             {log?.weight_kg != null
-              ? 'de hoy'
+              ? 'kg · de hoy'
               : lastWeight
-                ? `del ${shortDate(lastWeight.date)}`
+                ? `kg · del ${shortDate(lastWeight.date)}`
                 : 'sin pesarte todavía'}
           </Text>
         </View>
