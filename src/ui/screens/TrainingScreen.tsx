@@ -18,6 +18,7 @@ import { Card } from '../Card.tsx';
 import { ChevronRight } from '../icons.ts';
 import { restingSince } from '../../training/calculations.ts';
 import { nextPendingExercise, suggestedRest } from '../../training/routines.ts';
+import type { SessionRecord } from '../../training/calculations.ts';
 import { familyOf } from '../../training/variants.ts';
 import type { Implement } from '../../training/sessions.ts';
 import { Chip } from '../Chip.tsx';
@@ -80,6 +81,7 @@ export function TrainingScreen() {
     saveTrainingPlan,
     replaceTrainingVariant,
     whereAmI,
+    loadSessionRecords,
   } = useAppData();
   const navigation = useNavigation<{
     navigate: (name: string, params?: { routineId?: string }) => void;
@@ -170,6 +172,23 @@ export function TrainingScreen() {
     () => (sessionSets ?? []).filter((set) => set.sessionId === openSessionId),
     [sessionSets, openSessionId],
   );
+
+  // Los records del resumen: se leen cuando el entreno queda terminado, y otra vez si
+  // despues quita una serie. Mientras tanto, nada.
+  const finishedId = ready?.today.session?.end_time != null ? openSessionId : null;
+  const [records, setRecords] = useState<{ id: string; list: SessionRecord[] | null } | null>(null);
+  useEffect(() => {
+    if (finishedId === null) return;
+    let current = true;
+    loadSessionRecords(finishedId)
+      .then((list) => {
+        if (current) setRecords({ id: finishedId, list });
+      })
+      .catch((error: unknown) => console.error(error));
+    return () => {
+      current = false;
+    };
+  }, [finishedId, activeSets.length, loadSessionRecords]);
 
   // Cuantas series lleva cada ejercicio hoy y cuantas aprobo, para que el chip diga
   // de un vistazo que falta sin tener que entrar a cada uno.
@@ -424,6 +443,7 @@ export function TrainingScreen() {
                   draft={loaded.sessionDraft}
                   onDraftChange={changeDraft}
                   finishedAt={session.end_time}
+                  records={records?.id === session.id ? records.list : null}
                   onFinish={finishTraining}
                   onReopen={resumeTraining}
                   sessionAction={pendingAction}

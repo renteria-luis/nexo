@@ -203,36 +203,18 @@ const LiveEstimate = memo(function LiveEstimate({
   return (
     <View style={styles.block}>
       <Text style={styles.value}>Sales ~{finishingAt(now, estimate.seconds / 60)}</Text>
+      {/* Que tan firme es lo aprendido, en dos palabras y no en un parrafo de metodo:
+          un ritmo sacado de uno o dos entrenos puede estar lejos, y decirlo evita leer
+          "Sales ~19:40" como una promesa (2026-10-23). */}
       <Text style={styles.label}>
         ~{Math.ceil(estimate.seconds / 60)} min · {estimate.sets} series pendientes
+        {estimate.learnedSets < estimate.sets || (estimate.fewestSessions ?? 0) < CONFIDENT_SESSIONS
+          ? ' · pocos datos'
+          : ''}
       </Text>
-      <Text style={styles.hint}>
-        {estimate.learnedSets === 0
-          ? 'Estimación inicial según el plan.'
-          : estimate.learnedSets < estimate.sets
-            ? 'Combina tus tiempos con el plan donde falta historial.'
-            : 'Según tus tiempos y las series que faltan.'}
-        {estimate.fewestSessions !== null && ` ${evidence(estimate.fewestSessions)}`}
-      </Text>
-      {estimate.overdue && (
-        <Text style={styles.hint}>
-          La serie o pausa actual está tardando más; la salida se va ajustando.
-        </Text>
-      )}
     </View>
   );
 });
-
-/**
- * Que tan firme es lo aprendido: un ritmo sacado de uno o dos entrenos puede estar lejos,
- * y decirlo evita leer "Sales ~19:40" como una promesa.
- */
-function evidence(sessions: number): string {
-  const measured = `${sessions} ${sessions === 1 ? 'entreno medido' : 'entrenos medidos'}`;
-  return sessions < CONFIDENT_SESSIONS
-    ? `Todavía con pocos datos: algún ejercicio lleva solo ${measured}.`
-    : `Con al menos ${measured} por ejercicio.`;
-}
 
 export const TrainingTiming = memo(function TrainingTiming({
   session,
@@ -322,16 +304,6 @@ export const TrainingTiming = memo(function TrainingTiming({
           />
           {expanded && (
             <View style={styles.block}>
-              <Text style={styles.hint}>
-                Cada intervalo incluye serie y descanso. El total aproxima las series sin inicio
-                medido con los intervalos válidos. No mide cada repetición ni separa el descanso
-                exacto.
-              </Text>
-              <Text style={styles.hint}>
-                Promedios de los últimos 90 días, hasta 20 sesiones por ejercicio, del mismo
-                gimnasio y recorte. Excluir un tap también descarta el intervalo siguiente; los taps
-                originales se conservan.
-              </Text>
               {!current.exercises.length && (
                 <Text style={styles.hint}>
                   Anota al menos dos series del mismo ejercicio para medir un intervalo.
@@ -365,8 +337,7 @@ export const TrainingTiming = memo(function TrainingTiming({
                     </Text>
                     <Text style={styles.hint}>
                       {exercise.samples} intervalos válidos
-                      {exercise.flagged ? ` · ${exercise.flagged} por revisar` : ''}. Primera serie
-                      estimada salvo corrección manual.
+                      {exercise.flagged ? ` · ${exercise.flagged} por revisar` : ''}
                     </Text>
                     <DailyAverage samples={withToday} />
                     {samples.length > 0 && (

@@ -3,12 +3,14 @@ import { Pressable, Text, View } from 'react-native';
 import { Check, Circle, Minus, Plus, Trash } from './icons.ts';
 
 import { shortDate } from '../core/dates.ts';
+import { hoursAndMinutes, thousands } from '../core/day-report.ts';
 import { formatWeight, fromKg, stepWeight, toKg, type WeightUnit } from '../core/units.ts';
 import {
   estimatedRestSeconds,
   repDropOffs,
   type E1rmMark,
   type LoggedSet,
+  type SessionRecord,
 } from '../training/calculations.ts';
 import { fold } from '../nutrition/picker.ts';
 import { isPerSide, type CatalogExercise } from '../training/queries.ts';
@@ -25,6 +27,7 @@ import { clock, Elapsed } from './Elapsed.tsx';
 import { SearchField } from './SearchField.tsx';
 import { ConfirmButton, InfoDot, InfoText } from './InfoBubble.tsx';
 import { NumericField } from './NumericField.tsx';
+import { useScrollIntoView } from './screens/Screen.tsx';
 import { font, sheet, shape, theme } from './theme.ts';
 
 /** Donde cae casi siempre una serie efectiva, asi que el primer toque arranca ahi. */
@@ -112,8 +115,10 @@ export type SessionLogProps = {
     rpe: string | null;
     implement: Implement | null;
   }) => void;
-  /** Set once he closes the session, which turns the button into a note. */
+  /** Set once he closes the session, which turns the top card into the recap. */
   finishedAt: number | null;
+  /** Lo que supero el entreno terminado. Null mientras no se sabe, o si readapta. */
+  records: SessionRecord[] | null;
   onFinish: () => void;
   /** Deshace el terminar: es el unico boton de aqui sin vuelta atras. */
   onReopen: () => void;
@@ -210,6 +215,7 @@ export const SessionLog = memo(function SessionLog({
   draft,
   onDraftChange,
   finishedAt,
+  records,
   onFinish,
   onReopen,
   sessionAction = null,
@@ -217,6 +223,17 @@ export const SessionLog = memo(function SessionLog({
 }: SessionLogProps) {
   const exercise = exercises.find((item) => item.id === selectedExerciseId) ?? null;
   const card = useRef<View>(null);
+
+  // Terminar se toca abajo del todo y el resumen sale arriba, donde estaba el volumen: la
+  // pantalla sube a el, o no se veria nada mas que el boton desapareciendo.
+  const top = useRef<View>(null);
+  const scrollIntoView = useScrollIntoView();
+  const wasFinished = useRef(finishedAt !== null);
+  useEffect(() => {
+    const justFinished = finishedAt !== null && !wasFinished.current;
+    wasFinished.current = finishedAt !== null;
+    if (justFinished) scrollIntoView(top.current);
+  }, [finishedAt, scrollIntoView]);
 
   // Spec 8.5: the plan is the session. The full catalogue is still one tap away,
   // because a machine can be taken and the swap has to be logged somewhere.
@@ -431,29 +448,112 @@ export const SessionLog = memo(function SessionLog({
   return (
     <View style={styles.wrapper}>
       {/* Lo que lleva movido y cuanto lleva dentro, que son las dos cosas que mira
-          cuando levanta la vista del banco. */}
-      <Card>
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.heading}>VOLUMEN DE HOY</Text>
-            <Text style={styles.volume}>
-              {Math.round(fromKg(sessionVolume, unit))} {unit}
-            </Text>
-          </View>
-          {startedAt !== null && (
-            <View style={styles.clockSide}>
-              <Text style={styles.heading}>{finishedAt === null ? 'ENTRENANDO' : 'DURÓ'}</Text>
-              <Text style={styles.sessionClock}>
-                {finishedAt === null ? (
-                  <Elapsed key={startedAt} since={startedAt} />
-                ) : (
-                  clock((finishedAt - startedAt) / 1000)
-                )}
-              </Text>
+          cuando levanta la vista del banco. Al terminar, el resumen del entreno. */}
+      <View ref={top} collapsable={false}>
+        <Card>
+          {finishedAt === null ? (
+            <View style={styles.header}>
+              <View>
+                <Text style={styles.heading}>VOLUMEN DE HOY</Text>
+                <Text style={styles.volume}>
+                  {Math.round(fromKg(sessionVolume, unit))} {unit}
+                </Text>
+              </View>
+              {startedAt !== null && (
+                <View style={styles.clockSide}>
+                  <Text style={styles.heading}>ENTRENANDO</Text>
+                  <Text style={styles.sessionClock}>
+                    <Elapsed key={startedAt} since={startedAt} />
+                  </Text>
+                </View>
+              )}
             </View>
+          ) : (
+            <>
+              <Text style={styles.finished}>Entreno terminado a las {hhmm(finishedAt)}</Text>
+              <View style={styles.recap}>
+                <View style={styles.recapStat}>
+                  <Text style={styles.heading}>VOLUMEN</Text>
+                  <Text style={styles.volume}>
+                    {thousands(fromKg(sessionVolume, unit))} {unit}
+                  </Text>
+                </View>
+                <View style={styles.recapStat}>
+                  <Text style={styles.heading}>SERIES</Text>
+                  <Text style={styles.volume}>
+                    {[...setsDoneByExercise.values()].reduce((sum, done) => sum + done, 0)}
+                  </Text>
+                </View>
+                {startedAt !== null && (
+                  <View style={styles.recapStat}>
+                    <Text style={styles.heading}>DURÓ</Text>
+                    <Text style={styles.volume}>
+                      {hoursAndMinutes(Math.round((finishedAt - startedAt) / 60_000))}
+                    </Text>
+                  </View>
+                )}
+                {records !== null && (
+                  <View style={styles.recapStat}>
+                    <Text style={styles.heading}>RÉCORDS</Text>
+                    <Text style={styles.volume}>{records.length}</Text>
+                  </View>
+                )}
+              </View>
+              {records?.map((record) => (
+                <Text key={record.exerciseId} style={styles.record}>
+                  {exercises.find((item) => item.id === record.exerciseId)?.name_es ??
+                    record.exerciseId}
+                  <Text style={styles.recordNumbers}>
+                    {' '}
+                    · 1RM {Math.round(fromKg(record.now.e1rm, unit))} · antes{' '}
+                    {Math.round(fromKg(record.before.e1rm, unit))} {unit}
+                    {(record.now.set.loadFactor ?? 1) > 1 && (record.before.set.loadFactor ?? 1) > 1
+                      ? ' c/u'
+                      : ''}
+                  </Text>
+                </Text>
+              ))}
+              {sessionProblem}
+              {/* Pegado al boton y no un modal: el teclado de la app vive en la raiz y
+                  un modal de iOS lo dejaria debajo. */}
+              {reopening ? (
+                <>
+                  <Text style={styles.confirmText}>
+                    ¿Seguir entrenando? El entreno vuelve a quedar abierto.
+                  </Text>
+                  <View style={styles.confirmButtons}>
+                    <Button
+                      label="Sí, seguir"
+                      accessibilityLabel="Sí, seguir entrenando"
+                      variant="primary"
+                      disabled={sessionAction !== null}
+                      loading={sessionAction === 'reopen'}
+                      onPress={() => {
+                        setReopening(false);
+                        onReopen();
+                      }}
+                    />
+                    <Button
+                      label="No"
+                      accessibilityLabel="No seguir entrenando"
+                      disabled={sessionAction !== null}
+                      onPress={() => setReopening(false)}
+                    />
+                  </View>
+                </>
+              ) : (
+                <Button
+                  label="Seguir entrenando"
+                  accessibilityLabel="Seguir entrenando"
+                  disabled={sessionAction !== null}
+                  loading={sessionAction === 'reopen'}
+                  onPress={() => setReopening(true)}
+                />
+              )}
+            </>
           )}
-        </View>
-      </Card>
+        </Card>
+      </View>
 
       <>
         {/* La cartilla entera se sube cuando se toca cualquiera de los tres campos: el
@@ -474,10 +574,9 @@ export const SessionLog = memo(function SessionLog({
               </View>
 
               {/* Solo donde hay de verdad mas de una forma de hacerlo, que es un dato
-                  del ejercicio y ya no una suposicion por el tipo de equipo. */}
-              <Text style={styles.lastLabel}>
-                {exercise.name_es} · {variantLabel(exercise)}
-              </Text>
+                  del ejercicio y ya no una suposicion por el tipo de equipo. Debajo del
+                  titulo ya no va "nombre · variante": decia el nombre otra vez, y la
+                  variante ya la dicen los chips (2026-10-23). */}
               {variants.length > 1 && (
                 <>
                   <View style={styles.implements}>
@@ -517,13 +616,30 @@ export const SessionLog = memo(function SessionLog({
               {/* Spec 9: el reloj cuenta desde que anoto la ultima serie, que es cuando
                 empezo a descansar de verdad. El descuento por la serie solo aplica al
                 hueco entre dos series ya anotadas, que si lleva una serie dentro: aqui
-                dejaba el reloj clavado en cero durante medio minuto. */}
-              <Text style={styles.rest}>
-                Descanso sugerido {clock(restSeconds ?? exercise.default_rest_seconds)}
-                {restingSince !== null ? (
-                  <Elapsed key={restingSince} since={restingSince} prefix=" · descansando " />
-                ) : null}
-              </Text>
+                dejaba el reloj clavado en cero durante medio minuto. En grande, como de
+                lado: era el texto mas chico de la cartilla (2026-10-23). Los dos estados
+                miden lo mismo, para que nada de abajo se mueva al anotar la primera. */}
+              {finishedAt === null && (
+                <View style={styles.restBand}>
+                  <Text style={styles.heading}>
+                    {restingSince === null ? 'DESCANSO SUGERIDO' : 'DESCANSANDO'}
+                  </Text>
+                  <View style={styles.restLine}>
+                    <Text style={[styles.restClock, restingSince === null && styles.restClockIdle]}>
+                      {restingSince === null ? (
+                        clock(restSeconds ?? exercise.default_rest_seconds)
+                      ) : (
+                        <Elapsed key={restingSince} since={restingSince} />
+                      )}
+                    </Text>
+                    {restingSince !== null && (
+                      <Text style={styles.restOf}>
+                        de {clock(restSeconds ?? exercise.default_rest_seconds)} sugeridos
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              )}
 
               <Text style={styles.lastLabel}>
                 {lastSets.length > 0
@@ -571,6 +687,171 @@ export const SessionLog = memo(function SessionLog({
                 </Text>
               )}
 
+              {plannedSets !== null && (
+                <Text style={styles.planned}>
+                  Llevas {todaySets.length} de {plannedSets} series planeadas
+                </Text>
+              )}
+
+              {/* Cuatro cuadrantes con su etiqueta y sus flechas. Entre serie y serie
+                el pulgar sabe donde va sin leer nada, que es lo que hace que se anote
+                mientras entrena y no al final de memoria. Terminado, no hay nada que
+                anotar: "+ Serie" seguia encendido. */}
+              {finishedAt === null && (
+                <View style={styles.grid}>
+                  <View style={styles.gridRow}>
+                    <View style={styles.cell}>
+                      <View style={styles.cellHead}>
+                        <Text style={styles.cellLabel}>peso</Text>
+                        <Pressable
+                          accessibilityLabel={`Cambiar a ${unit === 'lb' ? 'kilos' : 'libras'}`}
+                          onPress={flipUnit}
+                          style={({ pressed }) => [styles.unit, pressed && styles.pressedSoft]}
+                        >
+                          <Text style={styles.unitText}>{unit}</Text>
+                        </Pressable>
+                      </View>
+                      <View style={styles.cellRow}>
+                        <Pressable
+                          accessibilityLabel="Bajar peso"
+                          onPress={() => nudge(-1)}
+                          style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
+                        >
+                          <Minus size={18} color={theme.text} strokeWidth={1.75} />
+                        </Pressable>
+                        <NumericField
+                          value={weight}
+                          onChange={setWeightDraft}
+                          allowDecimal={true}
+                          accessibilityLabel="Peso"
+                          reveals={card}
+                          placeholder={unit}
+                          style={styles.cellInput}
+                          focusedStyle={styles.cellInputEditing}
+                        />
+                        <Pressable
+                          accessibilityLabel="Subir peso"
+                          onPress={() => nudge(1)}
+                          style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
+                        >
+                          <Plus size={18} color={theme.text} strokeWidth={1.75} />
+                        </Pressable>
+                      </View>
+                    </View>
+
+                    <View style={styles.cell}>
+                      <View style={styles.cellHead}>
+                        <Text style={styles.cellLabel}>RPE</Text>
+                      </View>
+                      <View style={styles.cellRow}>
+                        <Pressable
+                          accessibilityLabel="Bajar RPE"
+                          onPress={() => stepRpe(-1)}
+                          style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
+                        >
+                          <Minus size={18} color={theme.text} strokeWidth={1.75} />
+                        </Pressable>
+                        <NumericField
+                          value={rpe}
+                          onChange={setRpeDraft}
+                          allowDecimal={false}
+                          accessibilityLabel="RPE"
+                          reveals={card}
+                          placeholder="—"
+                          style={styles.cellInput}
+                          focusedStyle={styles.cellInputEditing}
+                        />
+                        <Pressable
+                          accessibilityLabel="Subir RPE"
+                          onPress={() => stepRpe(1)}
+                          style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
+                        >
+                          <Plus size={18} color={theme.text} strokeWidth={1.75} />
+                        </Pressable>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.gridRow}>
+                    <View style={styles.cell}>
+                      <View style={styles.cellHead}>
+                        <Text style={styles.cellLabel}>reps</Text>
+                      </View>
+                      <View style={styles.cellRow}>
+                        <Pressable
+                          accessibilityLabel="Una repetición menos"
+                          onPress={() => stepReps(-1)}
+                          style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
+                        >
+                          <Minus size={18} color={theme.text} strokeWidth={1.75} />
+                        </Pressable>
+                        <NumericField
+                          value={reps}
+                          onChange={setRepsDraft}
+                          allowDecimal={false}
+                          accessibilityLabel="Repeticiones"
+                          reveals={card}
+                          placeholder="0"
+                          style={styles.cellInput}
+                          focusedStyle={styles.cellInputEditing}
+                        />
+                        <Pressable
+                          accessibilityLabel="Una repetición más"
+                          onPress={() => stepReps(1)}
+                          style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
+                        >
+                          <Plus size={18} color={theme.text} strokeWidth={1.75} />
+                        </Pressable>
+                      </View>
+                    </View>
+
+                    <View style={styles.cell}>
+                      <View style={styles.cellHead} />
+                      <Button
+                        label="Serie"
+                        icon={Plus}
+                        variant="primary"
+                        size="large"
+                        block
+                        disabled={!canAdd || switchingVariant || sessionAction !== null}
+                        loading={saving}
+                        accessibilityLabel="Agregar serie"
+                        onPress={() => {
+                          if (!canAdd || saving || switching.current) return;
+                          const rpe =
+                            parsedRpe !== null && Number.isFinite(parsedRpe)
+                              ? clampRpe(parsedRpe)
+                              : null;
+                          setSaving(true);
+                          setRefused(false);
+                          onAddSet(toKg(parsedWeight, unit), parsedReps, { rpe, implement })
+                            .then(clearDrafts)
+                            .catch((error: unknown) => {
+                              console.error(error);
+                              setRefused(true);
+                            })
+                            .finally(() => setSaving(false));
+                        }}
+                        style={styles.serie}
+                      />
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              {finishedAt === null && refused && (
+                <Text style={styles.refused}>
+                  No se guardó la serie. Revisa los números y vuelve a tocar Serie.
+                </Text>
+              )}
+              {finishedAt === null && perSide && (
+                <Text style={styles.perSide}>
+                  El peso es el de una mancuerna; el volumen cuenta las dos.
+                </Text>
+              )}
+
+              {/* Debajo de "+ Serie" y no encima: cada serie anotada empujaba el boton
+                  hacia abajo y el pulgar ya no lo encontraba donde estaba (2026-10-23). */}
               {todaySets.map((set, index) => (
                 <View key={set.setIndex} style={styles.setRow}>
                   <Text style={styles.setText}>
@@ -590,173 +871,12 @@ export const SessionLog = memo(function SessionLog({
                 </View>
               ))}
 
-              {plannedSets !== null && (
-                <Text style={styles.planned}>
-                  Llevas {todaySets.length} de {plannedSets} series planeadas
-                </Text>
-              )}
-
               {dropOffs.map((drop) => (
                 <Text key={drop.setIndex} style={styles.dropOff}>
                   La serie {drop.setIndex} bajó a {drop.reps} de {drop.firstSetReps} repeticiones
-                  con {clock(drop.restSeconds)} de descanso. Spec 9: descansa lo suficiente para
-                  sostener el 90% de la primera serie.
+                  con {clock(drop.restSeconds)} de descanso.
                 </Text>
               ))}
-
-              {/* Cuatro cuadrantes con su etiqueta y sus flechas. Entre serie y serie
-                el pulgar sabe donde va sin leer nada, que es lo que hace que se anote
-                mientras entrena y no al final de memoria. */}
-              <View style={styles.grid}>
-                <View style={styles.gridRow}>
-                  <View style={styles.cell}>
-                    <View style={styles.cellHead}>
-                      <Text style={styles.cellLabel}>peso</Text>
-                      <Pressable
-                        accessibilityLabel={`Cambiar a ${unit === 'lb' ? 'kilos' : 'libras'}`}
-                        onPress={flipUnit}
-                        style={({ pressed }) => [styles.unit, pressed && styles.pressedSoft]}
-                      >
-                        <Text style={styles.unitText}>{unit}</Text>
-                      </Pressable>
-                    </View>
-                    <View style={styles.cellRow}>
-                      <Pressable
-                        accessibilityLabel="Bajar peso"
-                        onPress={() => nudge(-1)}
-                        style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
-                      >
-                        <Minus size={18} color={theme.text} strokeWidth={1.75} />
-                      </Pressable>
-                      <NumericField
-                        value={weight}
-                        onChange={setWeightDraft}
-                        allowDecimal={true}
-                        accessibilityLabel="Peso"
-                        reveals={card}
-                        placeholder={unit}
-                        style={styles.cellInput}
-                        focusedStyle={styles.cellInputEditing}
-                      />
-                      <Pressable
-                        accessibilityLabel="Subir peso"
-                        onPress={() => nudge(1)}
-                        style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
-                      >
-                        <Plus size={18} color={theme.text} strokeWidth={1.75} />
-                      </Pressable>
-                    </View>
-                  </View>
-
-                  <View style={styles.cell}>
-                    <View style={styles.cellHead}>
-                      <Text style={styles.cellLabel}>RPE</Text>
-                    </View>
-                    <View style={styles.cellRow}>
-                      <Pressable
-                        accessibilityLabel="Bajar RPE"
-                        onPress={() => stepRpe(-1)}
-                        style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
-                      >
-                        <Minus size={18} color={theme.text} strokeWidth={1.75} />
-                      </Pressable>
-                      <NumericField
-                        value={rpe}
-                        onChange={setRpeDraft}
-                        allowDecimal={false}
-                        accessibilityLabel="RPE"
-                        reveals={card}
-                        placeholder="—"
-                        style={styles.cellInput}
-                        focusedStyle={styles.cellInputEditing}
-                      />
-                      <Pressable
-                        accessibilityLabel="Subir RPE"
-                        onPress={() => stepRpe(1)}
-                        style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
-                      >
-                        <Plus size={18} color={theme.text} strokeWidth={1.75} />
-                      </Pressable>
-                    </View>
-                  </View>
-                </View>
-
-                <View style={styles.gridRow}>
-                  <View style={styles.cell}>
-                    <View style={styles.cellHead}>
-                      <Text style={styles.cellLabel}>reps</Text>
-                    </View>
-                    <View style={styles.cellRow}>
-                      <Pressable
-                        accessibilityLabel="Una repeticion menos"
-                        onPress={() => stepReps(-1)}
-                        style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
-                      >
-                        <Minus size={18} color={theme.text} strokeWidth={1.75} />
-                      </Pressable>
-                      <NumericField
-                        value={reps}
-                        onChange={setRepsDraft}
-                        allowDecimal={false}
-                        accessibilityLabel="Repeticiones"
-                        reveals={card}
-                        placeholder="0"
-                        style={styles.cellInput}
-                        focusedStyle={styles.cellInputEditing}
-                      />
-                      <Pressable
-                        accessibilityLabel="Una repeticion mas"
-                        onPress={() => stepReps(1)}
-                        style={({ pressed }) => [styles.step, pressed && styles.stepPressed]}
-                      >
-                        <Plus size={18} color={theme.text} strokeWidth={1.75} />
-                      </Pressable>
-                    </View>
-                  </View>
-
-                  <View style={styles.cell}>
-                    <View style={styles.cellHead} />
-                    <Button
-                      label="Serie"
-                      icon={Plus}
-                      variant="primary"
-                      size="large"
-                      block
-                      disabled={!canAdd || switchingVariant || sessionAction !== null}
-                      loading={saving}
-                      accessibilityLabel="Agregar serie"
-                      onPress={() => {
-                        if (!canAdd || saving || switching.current) return;
-                        const rpe =
-                          parsedRpe !== null && Number.isFinite(parsedRpe)
-                            ? clampRpe(parsedRpe)
-                            : null;
-                        setSaving(true);
-                        setRefused(false);
-                        onAddSet(toKg(parsedWeight, unit), parsedReps, { rpe, implement })
-                          .then(clearDrafts)
-                          .catch((error: unknown) => {
-                            console.error(error);
-                            setRefused(true);
-                          })
-                          .finally(() => setSaving(false));
-                      }}
-                      style={styles.serie}
-                    />
-                  </View>
-                </View>
-              </View>
-
-              {refused && (
-                <Text style={styles.refused}>
-                  No se guardó la serie. Revisa los números y vuelve a tocar Serie.
-                </Text>
-              )}
-              {perSide && (
-                <Text style={styles.perSide}>
-                  El peso es el de una mancuerna; el volumen cuenta las dos.
-                </Text>
-              )}
             </Card>
           </View>
         )}
@@ -809,61 +929,21 @@ export const SessionLog = memo(function SessionLog({
           )}
         </Card>
 
-        {sessionProblem}
-        {finishedAt === null ? (
-          <Button
-            label="Terminar entreno"
-            icon={Check}
-            size="large"
-            block
-            accessibilityLabel="Terminar entreno"
-            disabled={switchingVariant || saving || sessionAction !== null}
-            loading={sessionAction === 'finish'}
-            onPress={onFinish}
-            style={styles.finish}
-          />
-        ) : (
-          // Terminar es el final normal, no un aviso: va en la cartilla de siempre y no en
-          // amarillo, donde Seguir entrenando casi no se leia (2026-10-23).
-          <Card>
-            <Text style={styles.finished}>Entreno terminado a las {hhmm(finishedAt)}</Text>
-            {/* Pegado al boton y no un modal: el teclado de la app vive en la raiz y
-                un modal de iOS lo dejaria debajo. */}
-            {reopening ? (
-              <>
-                <Text style={styles.confirmText}>
-                  ¿Seguir entrenando? El entreno vuelve a quedar abierto.
-                </Text>
-                <View style={styles.confirmButtons}>
-                  <Button
-                    label="Sí, seguir"
-                    accessibilityLabel="Sí, seguir entrenando"
-                    variant="primary"
-                    disabled={sessionAction !== null}
-                    loading={sessionAction === 'reopen'}
-                    onPress={() => {
-                      setReopening(false);
-                      onReopen();
-                    }}
-                  />
-                  <Button
-                    label="No"
-                    accessibilityLabel="No seguir entrenando"
-                    disabled={sessionAction !== null}
-                    onPress={() => setReopening(false)}
-                  />
-                </View>
-              </>
-            ) : (
-              <Button
-                label="Seguir entrenando"
-                accessibilityLabel="Seguir entrenando"
-                disabled={sessionAction !== null}
-                loading={sessionAction === 'reopen'}
-                onPress={() => setReopening(true)}
-              />
-            )}
-          </Card>
+        {finishedAt === null && (
+          <>
+            {sessionProblem}
+            <Button
+              label="Terminar entreno"
+              icon={Check}
+              size="large"
+              block
+              accessibilityLabel="Terminar entreno"
+              disabled={switchingVariant || saving || sessionAction !== null}
+              loading={sessionAction === 'finish'}
+              onPress={onFinish}
+              style={styles.finish}
+            />
+          </>
         )}
       </>
     </View>
@@ -999,8 +1079,27 @@ const styles = sheet((theme) => ({
     color: theme.text,
   },
 
-  rest: {
-    fontSize: 13,
+  restBand: {
+    gap: 2,
+  },
+  restLine: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  restClock: {
+    fontSize: 44,
+    lineHeight: 48,
+    fontFamily: font.display,
+    letterSpacing: -1,
+    color: theme.text,
+    fontVariant: ['tabular-nums'],
+  },
+  restClockIdle: {
+    color: theme.textFaint,
+  },
+  restOf: {
+    fontSize: 14,
     fontFamily: font.bold,
     color: theme.textDim,
     fontVariant: ['tabular-nums'],
@@ -1179,9 +1278,27 @@ const styles = sheet((theme) => ({
     marginTop: 2,
   },
   finished: {
-    fontSize: 15,
+    fontSize: 16,
     fontFamily: font.black,
     color: theme.text,
+  },
+  recap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    rowGap: 10,
+  },
+  recapStat: {
+    flexBasis: '50%',
+  },
+  record: {
+    fontSize: 14,
+    fontFamily: font.black,
+    color: theme.text,
+  },
+  recordNumbers: {
+    fontFamily: font.bold,
+    color: theme.textDim,
+    fontVariant: ['tabular-nums'],
   },
   confirmText: {
     fontSize: 13,

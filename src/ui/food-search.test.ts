@@ -58,6 +58,7 @@ test('recipe search folds accents, matches separated words and excludes chosen i
   const form = renderModule('src/ui/RecipeForm.tsx', controls).mount('RecipeForm', {
     recipe: null,
     pantry,
+    foods: [],
     onSave() {},
     onCancel() {},
   });
@@ -73,6 +74,65 @@ test('recipe search folds accents, matches separated words and excludes chosen i
   assert.equal(chicken?.props.label, 'Pechuga de pollo');
   chicken.props.onPress();
   assert.equal(search('pollo').length, 0);
+});
+
+test('a recipe takes a food that is not in the pantry and stocks it at zero on save', () => {
+  const pantry = [{ id: 'two', name: 'Pechuga de pollo', kind: 'weighed', foodId: 'chicken' }];
+  const foods = [
+    { id: 'rice', name: 'Arroz blanco', keywords: 'rice', unit_kind: 'mass', base_unit: 'g' },
+    { id: 'chicken', name: 'Pechuga de pollo', keywords: '', unit_kind: 'mass', base_unit: 'g' },
+  ].map((food) => ({ ...food, brand: null, store: null }));
+  const saved: unknown[][] = [];
+  const form = renderModule('src/ui/RecipeForm.tsx', controls).mount('RecipeForm', {
+    recipe: null,
+    pantry,
+    foods,
+    onSave: (...args: unknown[]) => saved.push(args),
+    onCancel() {},
+  });
+  const search = (query: string) => {
+    nodes(form.render())
+      .find((node) => node.type === 'SearchField')!
+      .props.onChange(query);
+    return nodes(form.render()).filter((node) => node.type === 'Chip');
+  };
+
+  assert.deepEqual(
+    search('pollo').map((chip) => chip.props.label),
+    ['Pechuga de pollo'],
+    'a food already in the pantry is offered once, from the pantry',
+  );
+  assert.equal(search('lentejas').length, 0);
+  assert.ok(
+    textOf(form.render()).includes('Nada con «lentejas» en la despensa ni en tus alimentos.'),
+  );
+
+  const rice = search('arroz')[0];
+  assert.equal(rice?.props.label, 'Arroz blanco');
+  rice.props.onPress();
+  assert.equal(search('arroz').length, 0, 'once in the recipe it is not offered again');
+  assert.ok(textOf(form.render()).includes('Arroz blanco'));
+
+  nodes(form.render())
+    .find((node) => node.props.accessibilityLabel === 'Nombre de la receta')!
+    .props.onChange('Arroz con pollo');
+  nodes(form.render())
+    .find((node) => node.props.accessibilityLabel === 'Guardar la receta')!
+    .props.onPress();
+  const [recipe, stocked] = saved[0] as [
+    { ingredients: { itemId: string }[] },
+    { id: string; kind: string; quantity: number; unit: string; foodId: string }[],
+  ];
+  assert.equal(stocked.length, 1);
+  assert.deepEqual(
+    { kind: stocked[0].kind, quantity: stocked[0].quantity, unit: stocked[0].unit },
+    { kind: 'weighed', quantity: 0, unit: 'g' },
+  );
+  assert.equal(stocked[0].foodId, 'rice');
+  assert.deepEqual(
+    recipe.ingredients.map((one) => one.itemId),
+    [stocked[0].id],
+  );
 });
 
 test('food picker shows macros per count or per hundred grams and millilitres', () => {

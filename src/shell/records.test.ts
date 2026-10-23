@@ -205,7 +205,7 @@ test('the exported day carries the workout, the food and where the score came fr
 
   const nutrition = day.nutrition as { proteinG: number; entries: { name: string }[] };
   assert.equal(Math.round(nutrition.proteinG), 21);
-  assert.equal(nutrition.entries[0].name, 'Barra de proteina');
+  assert.equal(nutrition.entries[0].name, 'Barra de proteína');
 });
 
 test('a day logged before there were targets gets its score back', async () => {

@@ -67,8 +67,8 @@ function NewExerciseForm({
     parent?.exercise.equipment_type ?? 'dumbbell',
   );
   const [unilateral, setUnilateral] = useState(false);
-  const [rest, setRest] = useState(String(parent?.exercise.default_rest_seconds ?? 120));
-  const [increment, setIncrement] = useState(String(parent?.exercise.load_increment ?? 2.5));
+  const restFrom = parent?.exercise.default_rest_seconds ?? 120;
+  const [rest, setRest] = useState(() => restParts(restFrom));
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -84,8 +84,10 @@ function NewExerciseForm({
         muscle,
         equipmentType: equipment,
         unilateral,
-        restSeconds: Number(rest),
-        loadIncrement: Number(increment),
+        restSeconds: restOf(rest),
+        // Las flechas del peso van de 5 lb en 5 lb desde 2026-10-03: el salto por
+        // ejercicio ya no mueve nada, asi que no se pregunta (2026-10-23).
+        loadIncrement: parent?.exercise.load_increment ?? 2.5,
         note,
         variantOf: parent?.familyId,
         secondaryMuscles: secondary.filter((item) => item !== muscle),
@@ -158,22 +160,8 @@ function NewExerciseForm({
         onChange={setUnilateral}
         hint="Un lado por vez; el cálculo incluye ambos lados."
       />
-      <Field label="Descanso (segundos)">
-        <NumericField
-          value={rest}
-          onChange={setRest}
-          accessibilityLabel="Descanso del nuevo ejercicio"
-          style={styles.input}
-        />
-      </Field>
-      <Field label="Salto de peso (kg)">
-        <NumericField
-          value={increment}
-          onChange={setIncrement}
-          allowDecimal
-          accessibilityLabel="Salto de peso del nuevo ejercicio"
-          style={styles.input}
-        />
+      <Field label="Descanso">
+        <RestInputs value={rest} onChange={setRest} label="Descanso del nuevo ejercicio" />
       </Field>
       <Field label="Explicación">
         <TextField
@@ -208,6 +196,72 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <Text style={styles.label}>{label}</Text>
       {children}
     </View>
+  );
+}
+
+type RestParts = { minutes: string; seconds: string };
+
+const restParts = (total: number): RestParts => ({
+  minutes: String(Math.floor(total / 60)),
+  seconds: String(total % 60).padStart(2, '0'),
+});
+
+const restOf = ({ minutes, seconds }: RestParts): number =>
+  Number(minutes || 0) * 60 + Number(seconds || 0);
+
+/**
+ * El descanso en minutos y segundos, como se lee en el resto de la app: "120" en
+ * segundos era el unico lugar donde se escribia asi (2026-10-23).
+ */
+function RestInputs({
+  value,
+  onChange,
+  onCommit,
+  label,
+}: {
+  value: RestParts;
+  onChange: (next: RestParts) => void;
+  onCommit?: () => void;
+  label: string;
+}) {
+  return (
+    <View style={styles.rest}>
+      <NumericField
+        value={value.minutes}
+        onChange={(minutes) => onChange({ ...value, minutes })}
+        accessibilityLabel={`${label}, minutos`}
+        placeholder="min"
+        onCommit={onCommit}
+        style={[styles.input, styles.restPart]}
+        focusedStyle={styles.inputEditing}
+      />
+      <Text style={styles.restColon}>:</Text>
+      <NumericField
+        value={value.seconds}
+        onChange={(seconds) => onChange({ ...value, seconds })}
+        accessibilityLabel={`${label}, segundos`}
+        placeholder="s"
+        onCommit={onCommit}
+        style={[styles.input, styles.restPart]}
+        focusedStyle={styles.inputEditing}
+      />
+    </View>
+  );
+}
+
+/** El descanso de un ejercicio que ya existe: se guarda solo al salir del campo. */
+function SavedRest({ value, onSave }: { value: number; onSave: (seconds: number) => void }) {
+  const [draft, setDraft] = useState(() => restParts(value));
+  return (
+    <RestInputs
+      value={draft}
+      onChange={setDraft}
+      label="Descanso"
+      onCommit={() => {
+        const next = restOf(draft);
+        if (Number.isInteger(next) && next > 0 && next !== value) onSave(next);
+      }}
+    />
   );
 }
 
@@ -476,31 +530,13 @@ export function ExerciseScreen() {
           />
         </Field>
 
-        <View style={styles.pair}>
-          <Field label="Descanso (seg)">
-            <SavedNumber
-              key={`rest-${exercise.default_rest_seconds}`}
-              value={exercise.default_rest_seconds}
-              accessibilityLabel="Descanso en segundos"
-              onSave={(next) => {
-                if (next === null) return;
-                after(editExercise(exercise.id, { restSeconds: next }));
-              }}
-            />
-          </Field>
-          <Field label="Salto de peso (kg)">
-            <SavedNumber
-              key={`step-${exercise.load_increment}`}
-              value={exercise.load_increment}
-              allowDecimal
-              accessibilityLabel="Salto de peso"
-              onSave={(next) => {
-                if (next === null) return;
-                after(editExercise(exercise.id, { loadIncrement: next }));
-              }}
-            />
-          </Field>
-        </View>
+        <Field label="Descanso">
+          <SavedRest
+            key={`rest-${exercise.default_rest_seconds}`}
+            value={exercise.default_rest_seconds}
+            onSave={(next) => after(editExercise(exercise.id, { restSeconds: next }))}
+          />
+        </Field>
 
         <SwitchRow
           label="A un brazo"
@@ -802,6 +838,22 @@ const styles = sheet((theme) => ({
   pair: {
     flexDirection: 'row',
     gap: 10,
+  },
+  rest: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  restPart: {
+    flex: 0,
+    width: 72,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+  },
+  restColon: {
+    fontSize: 17,
+    fontFamily: font.black,
+    color: theme.textDim,
   },
   switchRow: {
     flexDirection: 'row',

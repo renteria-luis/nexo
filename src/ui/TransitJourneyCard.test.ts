@@ -205,7 +205,7 @@ test('the compact card preserves limited confidence, infeasibility and visible s
     reason: 'Este bus ya no se alcanza con margen.',
     source: 'Horario programado',
   };
-  assert.match(textOf(await f.screen.settle()), /Estimación inicial/);
+  assert.match(textOf(await f.screen.settle()), /Fin del entreno ~/);
   assert.match(textOf(await f.screen.settle()), /no se alcanza/);
   assert.equal((await f.control('Avisarme de este viaje')).disabled, true);
   assert.doesNotMatch(textOf(await f.screen.settle()), /5 min para prepararte/);

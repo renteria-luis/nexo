@@ -227,7 +227,7 @@ A warm umber night with light, cream-tinted text and a single glowing amber.
 **Character:** One geometric humanist family carries everything, leaning on its heavy weights. The ExtraBold numbers give the instrument its voice; Regular is reserved for quiet notes.
 
 ### Hierarchy
-- **Display** (800, 34px, 38px line, -1px tracking, tabular): the day's score and the big number of a card. Larger cuts exist for a single hero number: 52px on a day's detail, 96px for the rest timer in landscape.
+- **Display** (800, 34px, 38px line, -1px tracking, tabular): the day's score and the big number of a card. Larger cuts exist for a single hero number: 44px for the rest on the set card, 52px on a day's detail, 96px for the rest timer in landscape.
 - **Headline** (800, 27px, -0.5px tracking): the title of a screen, one per screen.
 - **Title** (800, 16 to 18px): card titles, exercise and food names.
 - **Button** (800, 15px; 17px on large buttons): button and top-bar labels.

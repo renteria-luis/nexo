@@ -24,7 +24,7 @@ import {
   type Recipe,
 } from './pantry.ts';
 
-function newId(prefix: string): string {
+export function newId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 }
 

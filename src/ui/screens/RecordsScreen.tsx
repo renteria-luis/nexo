@@ -59,7 +59,7 @@ export function RecordsScreen() {
   return (
     <Screen title="Registros">
       <Card>
-        <Text style={styles.label}>Periodo</Text>
+        <Text style={styles.label}>Período</Text>
         <View style={styles.chips}>
           {RECORD_WINDOWS.map((option) => (
             <Chip
@@ -90,7 +90,7 @@ export function RecordsScreen() {
 
       {rows !== null && rows.length === 0 && (
         <Card>
-          <Text style={styles.empty}>No hay nada registrado en este periodo.</Text>
+          <Text style={styles.empty}>No hay nada registrado en este período.</Text>
         </Card>
       )}
 

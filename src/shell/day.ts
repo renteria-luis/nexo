@@ -31,6 +31,7 @@ import {
   loadDayPlans,
   marksWindow,
   dailyEffort,
+  sessionRecords,
   sessionsInBestWeekAround,
   sessionsInTrailingWeek,
   trainedOn,
@@ -38,6 +39,7 @@ import {
   type CatalogExercise,
   type E1rmMark,
   type LoggedSet,
+  type SessionRecord,
 } from '../training/index.ts';
 
 /** How far back the missed training run is allowed to reach. */
@@ -184,6 +186,39 @@ export async function exerciseContext(
     lastSets,
     marks: bestAndWorstE1rm(windowSets),
   };
+}
+
+/**
+ * Los records de un entreno, contra todas las sesiones anteriores de cada ejercicio.
+ * Null mientras readapta: spec 6.5 los apaga, porque contra una descarga a proposito no
+ * dicen nada.
+ */
+export async function recordsOfSession(
+  db: SQLiteDatabase,
+  sessionId: string,
+): Promise<SessionRecord[] | null> {
+  const session = await db.getFirstAsync<{ date: IsoDate }>(
+    'SELECT date FROM training_session WHERE id = ?;',
+    [sessionId],
+  );
+  if (session === null) throw new Error(`there is no session called ${sessionId}`);
+  if (isReEntryActive(reEntryFrom(await readSettings(db)), session.date)) return null;
+
+  const done = await db.getAllAsync<{ exercise_id: string }>(
+    'SELECT DISTINCT exercise_id FROM training_set_entry WHERE session_id = ? AND is_warmup = 0;',
+    [sessionId],
+  );
+  const sets = (
+    await Promise.all(
+      done.map(({ exercise_id }) =>
+        listWorkingSets(db, { from: '0000-01-01', to: session.date }, exercise_id),
+      ),
+    )
+  ).flat();
+  return sessionRecords(
+    sets.filter((set) => set.sessionId === sessionId),
+    sets.filter((set) => set.sessionId !== sessionId),
+  );
 }
 
 /** Lo que se sabe de una serie en el momento de tocar "Serie", antes de que la base conteste. */

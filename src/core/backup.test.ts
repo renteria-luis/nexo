@@ -135,12 +135,12 @@ test('a backup from a newer version of the app is refused, not half applied', as
   const backup = await exportBackup(db);
   backup.migrations = [...backup.migrations, '999_from_the_future'];
 
-  await assert.rejects(() => importBackup(db, backup), /mas nueva/);
+  await assert.rejects(() => importBackup(db, backup), /más nueva/);
 });
 
 test('a file that is not a nexo backup says so', () => {
   assert.throws(() => parseBackup({ format: 'otra-cosa', version: 1 }), /no un respaldo/);
-  assert.throws(() => parseBackup({ format: BACKUP_FORMAT, version: 99 }), /version/);
+  assert.throws(() => parseBackup({ format: BACKUP_FORMAT, version: 99 }), /versión/);
   assert.throws(() => parseBackup('{}'), /no es un objeto/);
 });
 

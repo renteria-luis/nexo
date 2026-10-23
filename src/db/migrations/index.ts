@@ -67,6 +67,7 @@ import { sql as transitJourney } from './066_transit_journey.ts';
 import { sql as transitActiveTrip } from './067_transit_active_trip.ts';
 import { sql as transitTripNotice } from './068_transit_trip_notice.ts';
 import { sql as transitPlaceCategory } from './069_transit_place_category.ts';
+import { sql as spanishAccents } from './070_spanish_accents.ts';
 
 export type Migration = {
   id: string;
@@ -145,4 +146,5 @@ export const migrations: Migration[] = [
   { id: '067_transit_active_trip', sql: transitActiveTrip },
   { id: '068_transit_trip_notice', sql: transitTripNotice },
   { id: '069_transit_place_category', sql: transitPlaceCategory },
+  { id: '070_spanish_accents', sql: spanishAccents },
 ];

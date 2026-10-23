@@ -145,36 +145,24 @@ function DealRow({
       </View>
 
       {/* Spec 16.5: que el titulo nombre el alimento no prueba que lo sea (pechuga
-          empanizada). Un toque lo decide, y vale para las ofertas con el mismo texto. */}
+          empanizada). Un toque lo decide, y vale para las ofertas con el mismo texto.
+          Los dos botones no se mueven: la respuesta queda marcada en el suyo y otro
+          toque en el mismo la quita, asi un segundo toque no cae en otra cosa. */}
       {answering && candidate && (
         <View style={styles.answer}>
-          <Text style={styles.meta}>
-            {confirmed === null
-              ? `¿Es ${candidate.name}?`
-              : confirmed
-                ? `Es ${candidate.name}`
-                : `No es ${candidate.name}`}
-          </Text>
-          {confirmed === null ? (
-            <>
-              <Chip
-                label="Sí"
-                accessibilityLabel={`Sí, es ${candidate.name}`}
-                onPress={() => onAnswer(item, true)}
-              />
-              <Chip
-                label="No"
-                accessibilityLabel={`No es ${candidate.name}`}
-                onPress={() => onAnswer(item, false)}
-              />
-            </>
-          ) : (
-            <Chip
-              label="Deshacer"
-              accessibilityLabel={`Deshacer la respuesta sobre ${candidate.name}`}
-              onPress={() => onAnswer(item, null)}
-            />
-          )}
+          <Text style={styles.meta}>¿Es {candidate.name}?</Text>
+          <Chip
+            label="Sí"
+            selected={confirmed === true}
+            accessibilityLabel={`Sí, es ${candidate.name}`}
+            onPress={() => onAnswer(item, confirmed === true ? null : true)}
+          />
+          <Chip
+            label="No"
+            selected={confirmed === false}
+            accessibilityLabel={`No es ${candidate.name}`}
+            onPress={() => onAnswer(item, confirmed === false ? null : false)}
+          />
         </View>
       )}
 
@@ -205,7 +193,11 @@ export function DealsScreen() {
   const [busy, setBusy] = useState(false);
   const [group, setGroup] = useState<Group>('product');
   // Las preguntas de "¿Es …?" solo con el lapiz: cada oferta con sus botones era mucho.
-  const [answering, setAnswering] = useState(false);
+  // Mientras esta prendido, el orden es el de cuando se prendio: una respuesta cambia el
+  // valor de la oferta, la fila saltaba a otro lugar y el siguiente toque caia en otra
+  // (2026-10-23).
+  const [frozen, setFrozen] = useState<Map<string, number> | null>(null);
+  const answering = frozen !== null;
   // Los grupos abiertos. Cerrados de entrada: con veinte productos, la lista entera
   // desplegada obliga a deslizar media pantalla para llegar al siguiente.
   const [open_, setOpen] = useState<string[]>([]);
@@ -241,20 +233,27 @@ export function DealsScreen() {
    * Lo mejor primero: de tu lista, lo que baja de tu precio, y mas proteina por dolar.
    * Lo sospechoso va al final: un error de lectura encabezaba "Mejor valor".
    */
+  const byValue = (a: (typeof scored)[number], b: (typeof scored)[number]): number => {
+    if (a.suspect !== b.suspect) return Number(a.suspect) - Number(b.suspect);
+    if (a.item.deal.staple !== b.item.deal.staple) {
+      return b.item.deal.staple - a.item.deal.staple;
+    }
+    if (a.cheaper !== b.cheaper) return Number(b.cheaper) - Number(a.cheaper);
+    if (a.value && b.value) return b.value.proteinPerDollar - a.value.proteinPerDollar;
+    if (a.value) return -1;
+    if (b.value) return 1;
+    // Sin proteina que comparar, el kilo mas barato, y lo vencido al final.
+    if (a.perKg !== null && b.perKg !== null) return a.perKg - b.perKg;
+    return Number(a.item.stale) - Number(b.item.stale);
+  };
   const best = <T extends (typeof scored)[number]>(rows: T[]): T[] =>
-    [...rows].sort((a, b) => {
-      if (a.suspect !== b.suspect) return Number(a.suspect) - Number(b.suspect);
-      if (a.item.deal.staple !== b.item.deal.staple) {
-        return b.item.deal.staple - a.item.deal.staple;
-      }
-      if (a.cheaper !== b.cheaper) return Number(b.cheaper) - Number(a.cheaper);
-      if (a.value && b.value) return b.value.proteinPerDollar - a.value.proteinPerDollar;
-      if (a.value) return -1;
-      if (b.value) return 1;
-      // Sin proteina que comparar, el kilo mas barato, y lo vencido al final.
-      if (a.perKg !== null && b.perKg !== null) return a.perKg - b.perKg;
-      return Number(a.item.stale) - Number(b.item.stale);
-    });
+    [...rows].sort(
+      frozen === null
+        ? byValue
+        : (a, b) =>
+            (frozen.get(a.item.deal.id) ?? frozen.size) -
+            (frozen.get(b.item.deal.id) ?? frozen.size),
+    );
 
   // Agrupar es lo que convierte 418 ofertas en una compra: o todas las de una tienda,
   // o todos los precios de lo mismo para poder elegir.
@@ -296,7 +295,13 @@ export function DealsScreen() {
           accessibilityLabel={
             answering ? 'Dejar de revisar las ofertas' : 'Revisar si cada oferta es tu alimento'
           }
-          onPress={() => setAnswering((on) => !on)}
+          onPress={() =>
+            setFrozen(
+              answering
+                ? null
+                : new Map([...scored].sort(byValue).map((row, index) => [row.item.deal.id, index])),
+            )
+          }
         />
       }
     >

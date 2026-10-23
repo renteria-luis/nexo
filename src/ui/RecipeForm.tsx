@@ -1,13 +1,20 @@
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 
+import type { NutritionFoodRow } from '../db/types.ts';
 import { matchesSearch } from '../nutrition/index.ts';
-import type { Ingredient, NewRecipe, PantryItem, Recipe } from '../pantry/index.ts';
+import {
+  newId,
+  type Ingredient,
+  type NewRecipe,
+  type PantryItem,
+  type Recipe,
+} from '../pantry/index.ts';
 
 import { Button } from './Button.tsx';
 import { Chip } from './Chip.tsx';
 import { ConfirmButton } from './InfoBubble.tsx';
-import { Trash } from './icons.ts';
+import { Plus, Trash } from './icons.ts';
 import { NumericField } from './NumericField.tsx';
 import { PopupSheet } from './PopupSheet.tsx';
 import { SearchField } from './SearchField.tsx';
@@ -21,16 +28,23 @@ import { font, sheet, shape } from './theme.ts';
  * Los ingredientes salen de la despensa y no de una lista aparte, que es lo que permite
  * responder "esto se puede hacer ahora" (spec 21.3). Lo duradero y las especias entran
  * sin cantidad porque no se miden.
+ *
+ * Lo que no esta en la despensa se busca tambien en sus alimentos, y al guardar entra a
+ * la despensa en cero, asi la receta lo nombra como faltante. Buscar "arroz" sin tenerlo
+ * no encontraba nada y la receta no se podia escribir (2026-10-23).
  */
 export function RecipeForm({
   recipe,
   pantry,
+  foods,
   onSave,
   onCancel,
 }: {
   recipe: Recipe | null;
   pantry: readonly PantryItem[];
-  onSave: (recipe: NewRecipe) => void;
+  foods: readonly NutritionFoodRow[];
+  /** `stocked` es lo que entra a la despensa con la receta, antes que ella. */
+  onSave: (recipe: NewRecipe, stocked: PantryItem[]) => void;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(recipe?.name ?? '');
@@ -38,31 +52,65 @@ export function RecipeForm({
   const [steps, setSteps] = useState(recipe?.steps ?? '');
   const [ingredients, setIngredients] = useState<Ingredient[]>(recipe?.ingredients ?? []);
   const [search, setSearch] = useState('');
+  const [stocked, setStocked] = useState<PantryItem[]>([]);
 
-  const byId = new Map(pantry.map((item) => [item.id, item]));
+  const byId = new Map([...pantry, ...stocked].map((item) => [item.id, item]));
   const measured = (item: PantryItem) => item.kind === 'counted' || item.kind === 'weighed';
 
-  const found =
-    search.trim() === ''
-      ? []
-      : pantry
-          .filter(
-            (item) =>
-              matchesSearch([item.name], search) &&
-              !ingredients.some((one) => one.itemId === item.id),
-          )
-          .slice(0, 6);
+  const searching = search.trim() !== '';
+  const found = !searching
+    ? []
+    : pantry
+        .filter(
+          (item) =>
+            matchesSearch([item.name], search) &&
+            !ingredients.some((one) => one.itemId === item.id),
+        )
+        .slice(0, 6);
+  const elsewhere = !searching
+    ? []
+    : foods
+        .filter(
+          (food) =>
+            matchesSearch([food.name, food.brand, food.store, food.keywords], search) &&
+            ![...pantry, ...stocked].some((item) => item.foodId === food.id),
+        )
+        .slice(0, 4);
+
+  const add = (item: PantryItem) => {
+    setIngredients((before) => [...before, { itemId: item.id, amount: measured(item) ? 1 : null }]);
+    setSearch('');
+  };
+
+  // En la unidad de su alimento, como pide la despensa (spec 21.1).
+  const stock = (food: NutritionFoodRow) => {
+    const item: PantryItem = {
+      id: newId('pantry'),
+      name: food.name,
+      kind: food.unit_kind === 'count' ? 'counted' : 'weighed',
+      quantity: 0,
+      unit: food.base_unit,
+      state: null,
+      hasIt: null,
+      foodId: food.id,
+    };
+    setStocked((before) => [...before, item]);
+    add(item);
+  };
 
   const save = () => {
     const count = Number(portions);
     if (name.trim() === '' || !Number.isInteger(count) || count < 1) return;
-    onSave({
-      id: recipe?.id,
-      name: name.trim(),
-      steps: steps.trim(),
-      portions: count,
-      ingredients,
-    });
+    onSave(
+      {
+        id: recipe?.id,
+        name: name.trim(),
+        steps: steps.trim(),
+        portions: count,
+        ingredients,
+      },
+      stocked.filter((item) => ingredients.some((one) => one.itemId === item.id)),
+    );
   };
 
   return (
@@ -89,7 +137,7 @@ export function RecipeForm({
 
       <Text style={styles.label}>Con qué</Text>
       {ingredients.length === 0 ? (
-        <Text style={styles.empty}>Nada todavía. Búscalo abajo, sale de tu despensa.</Text>
+        <Text style={styles.empty}>Nada todavía. Búscalo abajo.</Text>
       ) : (
         ingredients.map((ingredient) => {
           const item = byId.get(ingredient.itemId);
@@ -138,25 +186,42 @@ export function RecipeForm({
       <SearchField
         value={search}
         onChange={setSearch}
-        accessibilityLabel="Buscar en la despensa"
+        accessibilityLabel="Buscar un ingrediente"
         note={`${pantry.length} cosas en la despensa`}
       />
-      <View style={styles.chips}>
-        {found.map((item) => (
-          <Chip
-            key={item.id}
-            label={item.name}
-            accessibilityLabel={`Agregar ${item.name}`}
-            onPress={() => {
-              setIngredients((before) => [
-                ...before,
-                { itemId: item.id, amount: measured(item) ? 1 : null },
-              ]);
-              setSearch('');
-            }}
-          />
-        ))}
-      </View>
+      {found.length > 0 && (
+        <View style={styles.chips}>
+          {found.map((item) => (
+            <Chip
+              key={item.id}
+              label={item.name}
+              accessibilityLabel={`Agregar ${item.name}`}
+              onPress={() => add(item)}
+            />
+          ))}
+        </View>
+      )}
+      {elsewhere.length > 0 && (
+        <>
+          <Text style={styles.label}>Fuera de la despensa</Text>
+          <View style={styles.chips}>
+            {elsewhere.map((food) => (
+              <Chip
+                key={food.id}
+                label={food.name}
+                icon={Plus}
+                accessibilityLabel={`Agregar ${food.name}, que no está en la despensa`}
+                onPress={() => stock(food)}
+              />
+            ))}
+          </View>
+        </>
+      )}
+      {searching && found.length === 0 && elsewhere.length === 0 && (
+        <Text style={styles.empty}>
+          Nada con «{search.trim()}» en la despensa ni en tus alimentos.
+        </Text>
+      )}
 
       <Text style={styles.label}>Cómo se hace</Text>
       <TextField

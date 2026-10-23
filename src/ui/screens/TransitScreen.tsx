@@ -1216,10 +1216,6 @@ function TransitContent() {
             </Text>
           ))}
 
-          <Text style={styles.note}>
-            Distancias en línea recta: la acera, los cruces y la puerta pueden cambiar la caminata.
-            Las paradas repetidas para las mismas líneas quedan en «Ver más».
-          </Text>
           {snapshot && (
             <TransitJourneyAlerts
               schedule={schedule}

@@ -71,7 +71,7 @@ export function ScoreScale({
           ))}
         </Pressable>
       ))}
-      {['Bajo hasta', 'Medio hasta', 'Tono más oscuro desde'].map((label, index) => (
+      {['Bajo hasta', 'Medio hasta', 'Muy alto desde'].map((label, index) => (
         <View key={label} style={styles.row}>
           <Text style={styles.label}>{label}</Text>
           <NumericField

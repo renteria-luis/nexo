@@ -317,10 +317,10 @@ function pantryCommand(words: readonly string[]): ParsedCommand | null {
   while (rest.length > 0 && ARTICLES.has(rest[0])) rest = rest.slice(1);
   const item = rest.join(' ');
 
-  if (item === '') return bad('Que cosa: "compre 18 huevos", "se acabo la leche".');
+  if (item === '') return bad('Qué cosa: "compre 18 huevos", "se acabo la leche".');
   if (amount !== null && amount <= 0) return bad('Una cantidad de cero no cambia nada.');
   if (verb.action === 'set' && amount === null) {
-    return bad(`Cuanto queda: "quedan 6 ${item}".`);
+    return bad(`Cuánto queda: "quedan 6 ${item}".`);
   }
   if (
     (verb.action === 'out' || verb.action === 'low' || verb.action === 'have') &&
@@ -348,7 +348,7 @@ export function parseCommand(input: string, today: IsoDate = todayIso()): Parsed
 
   const { date, rest: parts } = splitDate(words, today);
   if (pantryVerb(parts) !== null) {
-    return bad('La despensa dice lo que hay ahora, no en un dia: escribelo sin fecha.');
+    return bad('La despensa dice lo que hay ahora, no en un día: escríbelo sin fecha.');
   }
   const [verb, ...rest] = parts;
 
@@ -356,14 +356,14 @@ export function parseCommand(input: string, today: IsoDate = todayIso()): Parsed
   // 30m" es justo guardar algo distinto de lo que escribio.
   const done = (command: Command, used: number): ParsedCommand =>
     rest.length > used
-      ? bad(`Sobra "${rest.slice(used).join(' ')}": una cosa por linea.`)
+      ? bad(`Sobra "${rest.slice(used).join(' ')}": una cosa por línea.`)
       : { ok: true, command, date };
 
   if (verb === 'ayuda' || verb === 'help') return { ok: true, command: { kind: 'help' }, date };
 
   if (verb === 'agua') {
     const water = measure(rest, ['ml', 'l']);
-    if (water === null || water.value <= 0) return bad('Cuantos ml. Por ejemplo "agua 710".');
+    if (water === null || water.value <= 0) return bad('Cuántos ml. Por ejemplo "agua 710".');
     // Un ml y medio no es algo que se beba: sin unidad, un numero con decimales es un litro
     // mal escrito, y adivinarlo seria guardar otra cosa.
     if (water.unit === null && !Number.isInteger(water.value)) {
@@ -380,7 +380,7 @@ export function parseCommand(input: string, today: IsoDate = todayIso()): Parsed
     }
     const weight = measure(rest, ['kg']);
     if (weight === null || weight.value <= 0) {
-      return bad('Cuanto pesas hoy. Por ejemplo "peso 74.2".');
+      return bad('Cuánto pesas hoy. Por ejemplo "peso 74.2".');
     }
     // El mismo limite que el campo de Hoy: un 7.4 o un 742 entraban al promedio de siete
     // dias y movian las metas, por el asistente y por el modelo, que pasan por aqui.
@@ -392,7 +392,7 @@ export function parseCommand(input: string, today: IsoDate = todayIso()): Parsed
 
   if (verb === 'pasos') {
     const count = steps(rest[0] ?? '');
-    if (count === null) return bad('Cuantos pasos. Por ejemplo "pasos 8200".');
+    if (count === null) return bad('Cuántos pasos. Por ejemplo "pasos 8200".');
     return done({ kind: 'steps', steps: count }, 1);
   }
 
@@ -411,10 +411,10 @@ export function parseCommand(input: string, today: IsoDate = todayIso()): Parsed
 
   if (verb === 'serie') {
     const match = /^([0-9]+(?:[.,][0-9]+)?)x([0-9]+)$/.exec(rest[0] ?? '');
-    if (!match) return bad('Asi: "serie 65x8", peso por repeticiones.');
+    if (!match) return bad('Así: "serie 65x8", peso por repeticiones.');
     const weight = number(match[1]);
     const reps = Number(match[2]);
-    if (weight === null || weight < 0) return bad('Asi: "serie 65x8", peso por repeticiones.');
+    if (weight === null || weight < 0) return bad('Así: "serie 65x8", peso por repeticiones.');
     if (reps <= 0) return bad('Cero repeticiones no es una serie.');
 
     let rpe: number | null = null;

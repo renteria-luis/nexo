@@ -244,7 +244,7 @@ export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFor
                       value={serving}
                       onChange={setServing}
                       allowDecimal
-                      accessibilityLabel={`De cuantos ${measure.unit} habla la etiqueta`}
+                      accessibilityLabel={`De cuántos ${measure.unit} habla la etiqueta`}
                       style={[styles.input, styles.servingInput]}
                       focusedStyle={styles.inputWriting}
                     />

@@ -14,6 +14,7 @@ import {
   estimatedRestSeconds,
   repDropOffs,
   restingSince,
+  sessionRecords,
   type ExerciseMuscles,
   type LoggedSet,
 } from './calculations.ts';
@@ -161,6 +162,28 @@ test('best and worst marks ignore sets above 12 reps', () => {
   close(marks.best.e1rm, 39);
   assert.equal(marks.worst.set.setIndex, 1);
   assert.equal(topSetE1rm(sets), marks.best.e1rm);
+});
+
+test('a record beats every earlier session of that exercise, and a first time is not one', () => {
+  const before = [
+    set({ sessionId: 'old', weightKg: 30, reps: 8 }),
+    set({ sessionId: 'old', exerciseId: 'pec-deck', weightKg: 50, reps: 10 }),
+  ];
+  const today = [
+    set({ setIndex: 1, weightKg: 32.5, reps: 8 }),
+    set({ setIndex: 2, weightKg: 30, reps: 8 }),
+    set({ exerciseId: 'pec-deck', weightKg: 50, reps: 10 }),
+    set({ exerciseId: 'lateral-raise', weightKg: 10, reps: 12 }),
+  ];
+
+  const records = sessionRecords(today, before);
+  assert.deepEqual(
+    records.map((record) => record.exerciseId),
+    ['incline-db-press'],
+    'equal is not a record and a new exercise has nothing to beat',
+  );
+  assert.equal(records[0].now.set.setIndex, 1);
+  close(records[0].before.e1rm, 38);
 });
 
 test('a window with nothing under 12 reps has no marks, which is an answer', () => {

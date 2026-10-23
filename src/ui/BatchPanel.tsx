@@ -256,11 +256,6 @@ export function BatchPanel({
 
   return (
     <Card title="Tandas">
-      <Text style={styles.hint}>
-        Una tanda es lo que cocinas de una vez y vas comiendo por porciones: metes el total una sola
-        vez y despues cada plato se descuenta solo.
-      </Text>
-
       {/* El espacio sale de la fila de arriba: dos filas de chips, cada una con lo suyo,
           dejaban la porcion de la cena en "mediodía". */}
       {batches.length > 0 && <Text style={styles.label}>La porción se anota en {slot}</Text>}

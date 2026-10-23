@@ -162,16 +162,6 @@ export function ExperimentsScreen() {
 
   return (
     <Screen title="Experimentos">
-      <Text style={styles.intro}>
-        Un experimento es una pregunta con fecha: cambias una sola cosa, la anotas cada dia en la
-        misma escala y al final ves si movio algo. Por ejemplo dormir media hora mas durante dos
-        semanas y apuntar como amaneces del 1 al 10.
-      </Text>
-      <Text style={styles.intro}>
-        Una cosa a la vez, con fecha de inicio y una lectura en la misma escala. Cambiar dos cosas
-        al mismo tiempo no responde ninguna.
-      </Text>
-
       {problem && <Text style={styles.problem}>{problem}</Text>}
 
       {experiments?.map((item) => (
@@ -252,11 +242,6 @@ export function ExperimentsScreen() {
 }
 
 const styles = sheet((theme) => ({
-  intro: {
-    fontSize: 13,
-    fontFamily: font.regular,
-    color: theme.textFaint,
-  },
   problem: {
     fontSize: 13,
     fontFamily: font.bold,

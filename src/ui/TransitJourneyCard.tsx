@@ -29,14 +29,6 @@ import { RouteBadge } from './TransitStatus.tsx';
 import { font, sheet } from './theme.ts';
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
-const evidence = {
-  none: 'Sin estimación del entreno.',
-  initial: 'Estimación inicial según el plan; aún sin tiempos aprendidos.',
-  mixed: 'Combina tus tiempos con el plan donde falta historial.',
-  limited: 'Pocos entrenos medidos; la hora puede cambiar.',
-  learned: 'Según tus tiempos y las series pendientes.',
-  complete: 'Entreno completado.',
-};
 
 export function TransitJourneyAlerts({
   schedule,
@@ -115,14 +107,7 @@ export function TransitTravelSettings() {
   };
   return (
     <Card title="Avisos de Transit">
-      <Text style={styles.note}>
-        Solo para el viaje en que actives «Avisarme». Prepararte a la hora límite de terminar; salir
-        a la hora indicada.
-      </Text>
       <Text style={styles.label}>Preparación antes de caminar (min)</Text>
-      <Text style={styles.note}>
-        No repitas aquí la salida del edificio si ya la incluiste en tus minutos de caminata.
-      </Text>
       <View style={styles.row}>
         <NumericField
           value={minutes}
@@ -154,11 +139,6 @@ export function TransitTravelSettings() {
           />
         </View>
       ))}
-      <Text style={styles.note}>
-        Los viajes tienen sus propios avisos: no gastan los 3 de salud ni se apagan por ignorarlos.
-        El silencio nocturno está apagado de entrada. El sonido respeta los ajustes y el modo
-        Concentración del iPhone.
-      </Text>
       {problem && (
         <Text accessibilityRole="alert" style={styles.error}>
           {problem}
@@ -335,15 +315,6 @@ export function TransitJourneyCard({
                     : linkedWorkout.endedAt !== null
                       ? `Terminaste ${agencyClock(linkedWorkout.endedAt)}`
                       : `Fin del entreno ~${agencyClock(linkedWorkout.finishAt)}`}
-                </Text>
-                <Text style={styles.note}>
-                  {evidence[linkedWorkout.evidence]}
-                  {linkedWorkout.fewestSessions !== null
-                    ? ` Mínimo ${linkedWorkout.fewestSessions} entrenos medidos.`
-                    : ''}
-                  {linkedWorkout.overdue
-                    ? ' La serie o pausa actual va más larga; la hora se ajusta.'
-                    : ''}
                 </Text>
               </>
             )}

@@ -34,7 +34,6 @@ import {
 import { observedServiceTrips, stopClosure, type LiveSnapshot } from '../transit/realtime.ts';
 import {
   closedStops,
-  COST,
   distinctStops,
   stopChoices,
   STOP_CHOICES,
@@ -1219,11 +1218,6 @@ const PlanList = memo(function PlanList({
           </Text>
         </Pressable>
       )}
-      <Text style={styles.note}>
-        Ordenadas por la hora en que llegas a la puerta. Las caminatas sin tus minutos son estimadas
-        a 4.5 km/h sobre 1.3 veces la línea recta; en la parada se cuentan 2 min antes del bus y en
-        un transbordo 3 min libres.
-      </Text>
     </View>
   );
 });
@@ -1609,15 +1603,6 @@ const StopList = memo(function StopList({
           También puedes ir caminando: {walking.access.minutes} min ({walkSource(walking.access)}).
         </Text>
       )}
-      <Text style={styles.note}>
-        El 1 es el que más te conviene: cuenta sobre todo a qué hora llegas, y suma {COST.transfer}{' '}
-        min por transbordo ({COST.tight} más si es justo), {COST.walk} min por cada minuto a pie y{' '}
-        {COST.trip} min por cada minuto de viaje. Cada paradero muestra su mejor bus.
-      </Text>
-      <Text style={styles.note}>
-        Toca un paradero para ver sus líneas o elegir su bus. Metros en línea recta desde donde
-        sales; sin tus minutos, la caminata se estima a 4.5 km/h sobre 1.3 veces esa distancia.
-      </Text>
     </View>
   );
 });

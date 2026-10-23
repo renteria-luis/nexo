@@ -277,6 +277,26 @@ export function topSetE1rm(sets: readonly LoggedSet[]): number | null {
   return bestAndWorstE1rm(sets)?.best.e1rm ?? null;
 }
 
+export type SessionRecord = { exerciseId: string; now: E1rmMark; before: E1rmMark };
+
+/**
+ * Los records de un entreno: cada ejercicio cuya mejor serie de hoy, en 1RM estimado
+ * (spec 6.2), pasa la mejor de todas sus sesiones anteriores. Uno que nunca se habia
+ * hecho no cuenta, porque no habia nada que pasar.
+ */
+export function sessionRecords(
+  today: readonly LoggedSet[],
+  before: readonly LoggedSet[],
+): SessionRecord[] {
+  const records: SessionRecord[] = [];
+  for (const exerciseId of new Set(today.map((set) => set.exerciseId))) {
+    const now = bestAndWorstE1rm(today.filter((set) => set.exerciseId === exerciseId))?.best;
+    const was = bestAndWorstE1rm(before.filter((set) => set.exerciseId === exerciseId))?.best;
+    if (now && was && now.e1rm > was.e1rm) records.push({ exerciseId, now, before: was });
+  }
+  return records;
+}
+
 /**
  * Spec 9: rest is measured, never enforced. A gap this long is not a rest interval,
  * it is a queue for the machine or a phone call, so it stays out of the averages.

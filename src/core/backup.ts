@@ -109,7 +109,7 @@ export function parseBackup(raw: unknown): Backup {
   }
   if (body.version !== BACKUP_VERSION) {
     throw new Error(
-      `el respaldo es version ${String(body.version)} y esta app lee la ${BACKUP_VERSION}`,
+      `el respaldo es versión ${String(body.version)} y esta app lee la ${BACKUP_VERSION}`,
     );
   }
   if (typeof body.tables !== 'object' || body.tables === null) {
@@ -190,7 +190,7 @@ async function caughtUp(scratch: SQLiteDatabase, backup: Backup): Promise<Backup
   const prefix = last === undefined ? [] : order.slice(0, order.indexOf(last) + 1);
   if (last === undefined || prefix.length !== had.size) {
     throw new Error(
-      'el respaldo no dice bien con que version se hizo, asi que no se puede poner al dia',
+      'el respaldo no dice bien con qué versión se hizo, así que no se puede poner al día',
     );
   }
 
@@ -199,7 +199,7 @@ async function caughtUp(scratch: SQLiteDatabase, backup: Backup): Promise<Backup
   const loaded = await writeTables(scratch, backup.tables);
   if (loaded.skipped.length > 0) {
     throw new Error(
-      `el respaldo trae tablas que su version no tenia: ${loaded.skipped.join(', ')}`,
+      `el respaldo trae tablas que su versión no tenía: ${loaded.skipped.join(', ')}`,
     );
   }
   // El resto de las migraciones, con sus rellenos, semillas y notas borradas, sobre sus filas.
@@ -236,7 +236,7 @@ export async function importBackup(
   const ahead = backup.migrations.filter((id) => !here.has(id));
   if (ahead.length > 0) {
     throw new Error(
-      `el respaldo viene de una version mas nueva de la app (le falta a este telefono: ${ahead.join(', ')})`,
+      `el respaldo viene de una versión más nueva de la app (le falta a este teléfono: ${ahead.join(', ')})`,
     );
   }
 
@@ -245,7 +245,7 @@ export async function importBackup(
   if (behind) {
     if (scratch === undefined) {
       throw new Error(
-        'un respaldo de una version anterior necesita una base aparte donde ponerse al dia',
+        'un respaldo de una versión anterior necesita una base aparte donde ponerse al día',
       );
     }
     tables = await caughtUp(scratch, backup);
@@ -263,7 +263,7 @@ export async function importBackup(
         // datos nuevos que apuntaban a algo que ese respaldo no tiene.
         const where = [...new Set(broken.map((row) => row.table))].join(', ');
         throw new Error(
-          `el respaldo dejaria ${broken.length} referencias rotas en ${where}, asi que no se aplico`,
+          `el respaldo dejaría ${broken.length} referencias rotas en ${where}, así que no se aplicó`,
         );
       }
     });

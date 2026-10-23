@@ -389,3 +389,27 @@ test('direct and weighted set counts are different questions', () => {
   assert.equal(direct.count, 1);
   assert.equal(weighted.total, 2.5);
 });
+
+test('070 accents the seeded text and leaves what he edited alone', () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys = ON;');
+  const accents = migrations.findIndex((migration) => migration.id === '070_spanish_accents');
+  for (const migration of migrations.slice(0, accents)) db.exec(migration.sql);
+  db.exec("UPDATE training_exercise SET name_es = 'Aductores' WHERE id = 'hip-adductor';");
+  for (const migration of migrations.slice(accents)) db.exec(migration.sql);
+
+  const name = (id: string) =>
+    (
+      db.prepare('SELECT name_es FROM training_exercise WHERE id = ?;').get(id) as {
+        name_es: string;
+      }
+    ).name_es;
+  assert.equal(name('leg-extension'), 'Extensión de piernas');
+  assert.equal(name('hip-adductor'), 'Aductores');
+  const unaccented = db
+    .prepare(
+      `SELECT count(*) AS n FROM core_study WHERE summary LIKE '%sintesis%' OR summary LIKE '%deficit%'`,
+    )
+    .get() as { n: number };
+  assert.equal(unaccented.n, 0);
+});

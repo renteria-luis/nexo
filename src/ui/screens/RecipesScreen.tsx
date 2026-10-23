@@ -37,8 +37,16 @@ import { Screen } from './Screen.tsx';
  * entran en las cuentas de la olla: no se midieron.
  */
 export function RecipesScreen() {
-  const { state, loadPantry, loadRecipes, loadRecipePots, saveRecipe, removeRecipe, cookRecipe } =
-    useAppData();
+  const {
+    state,
+    loadPantry,
+    loadRecipes,
+    loadRecipePots,
+    savePantryItem,
+    saveRecipe,
+    removeRecipe,
+    cookRecipe,
+  } = useAppData();
   const [pantry, setPantry] = useState<PantryItem[]>([]);
   const [recipes, setRecipes] = useState<Recipe[] | null>(null);
   const [pots, setPots] = useState<Map<string, PotOutcome>>(new Map());
@@ -119,14 +127,16 @@ export function RecipesScreen() {
           <RecipeForm
             recipe={editing}
             pantry={pantry}
+            foods={state.phase === 'ready' ? state.loaded.foods : []}
             onCancel={() => {
               setCreating(false);
               setEditing(null);
             }}
-            onSave={(recipe) => {
+            onSave={(recipe, stocked) => {
               setCreating(false);
               setEditing(null);
-              saveRecipe(recipe)
+              Promise.all(stocked.map(savePantryItem))
+                .then(() => saveRecipe(recipe))
                 .then(reload)
                 .catch((error: unknown) => console.error(error));
             }}

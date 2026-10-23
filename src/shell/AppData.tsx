@@ -165,6 +165,7 @@ import {
   type PlannedExercise,
   type PlannerDraft,
   type RoutinePlan,
+  type SessionRecord,
   type TimeBudget,
 } from '../training/index.ts';
 
@@ -198,7 +199,7 @@ import {
   type DayRow,
   type RecordWindow,
 } from './records.ts';
-import { exerciseContext, withTappedSet } from './day.ts';
+import { exerciseContext, recordsOfSession, withTappedSet } from './day.ts';
 import {
   load,
   REREAD_ALL,
@@ -435,6 +436,8 @@ export type AppData = {
   /** Si el tiempo de esa sesion sirve para hacer cuentas, y cuanto duro de verdad. */
   trustSessionTime: (sessionId: string, trusted: boolean) => Promise<void>;
   editSessionMinutes: (sessionId: string, minutes: number) => Promise<void>;
+  /** Lo que supero ese entreno; null mientras readapta. */
+  loadSessionRecords: (sessionId: string) => Promise<SessionRecord[] | null>;
   /** Lo que hay en la nevera, spec 21. No puntua nada, asi que no recarga el resto. */
   loadPantry: () => Promise<PantryItem[]>;
   savePantryItem: (item: NewPantryItem) => Promise<void>;
@@ -1361,6 +1364,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         write((db) => setDurationTrusted(db, sessionId, trusted), false),
       editSessionMinutes: (sessionId, minutes) =>
         write((db) => setSessionMinutes(db, sessionId, minutes), false),
+      loadSessionRecords: (sessionId) =>
+        openDatabase().then((db) => recordsOfSession(db, sessionId)),
       loadPantry,
       loadRecipes,
       loadRecipePots,

@@ -87,15 +87,6 @@ export function TransitWalkReview({
   };
   return (
     <Card title="Tus caminatas medidas">
-      <Text style={styles.note}>
-        Acepta solo recorridos habituales de esa dirección. Desde {LEARN_MIN_WALKS} caminatas
-        aceptadas se usa la mediana de las últimas 10; tus minutos escritos siempre tienen
-        prioridad.
-      </Text>
-      <Text style={styles.note}>
-        El total incluye cruces y el tiempo desde «Salgo ahora». La salida del lugar es aproximada
-        por GPS; no vuelvas a sumar ese tramo interior en la preparación.
-      </Text>
       <Button
         label={reviewed ? 'Ver pendientes' : 'Ver revisadas'}
         variant="ghost"

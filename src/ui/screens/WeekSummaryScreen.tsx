@@ -64,6 +64,9 @@ export function WeekSummaryScreen() {
   }, [anchor, loadWeek]);
 
   const unit = state.phase === 'ready' ? state.loaded.unit : 'lb';
+  // Una semana que no ha terminado no esta bajo la banda: le faltan series. Un jueves,
+  // todos los musculos salian "bajo la banda" y el aviso no decia nada (2026-10-23).
+  const open = summary !== null && summary.range.to >= todayIso();
   const canGoForward = weekStart(addDays(anchor, 7)) <= todayIso();
 
   return (
@@ -107,7 +110,13 @@ export function WeekSummaryScreen() {
                     <Text style={styles.muscleSets}>{muscle.directSets}</Text>
                   </View>
                   <View style={styles.tags}>
-                    <Text style={[styles.tag, styles[muscle.band]]}>{BAND_ES[muscle.band]}</Text>
+                    {open && muscle.band === 'below' ? (
+                      <Text style={[styles.tag, styles.pending]}>
+                        faltan {SET_BAND.from - muscle.directSets}
+                      </Text>
+                    ) : (
+                      <Text style={[styles.tag, styles[muscle.band]]}>{BAND_ES[muscle.band]}</Text>
+                    )}
                     <Text style={styles.muscleDetail}>
                       {muscle.weightedSets} ponderadas · {Math.round(fromKg(muscle.volumeKg, unit))}{' '}
                       {unit}
@@ -253,6 +262,10 @@ const styles = sheet((theme) => ({
   },
   above: {
     backgroundColor: theme.info,
+  },
+  pending: {
+    color: theme.text,
+    backgroundColor: theme.surfaceHigh,
   },
   muscleDetail: {
     flexShrink: 1,

@@ -21,6 +21,7 @@ const MOCKS = {
     InfoText: 'InfoText',
     ConfirmButton: 'ConfirmButton',
   },
+  './screens/Screen.tsx': { useScrollIntoView: () => () => {} },
 };
 
 test('a family appears once, variant failures keep the original choice, and saving blocks new sets', async () => {
@@ -67,6 +68,7 @@ test('a family appears once, variant failures keep the original choice, and savi
     draft: null,
     onDraftChange() {},
     finishedAt: null,
+    records: null,
     onFinish() {},
     onReopen() {},
   });
@@ -140,10 +142,140 @@ test('the estimated 1RM of a dumbbell says it is one dumbbell, like the sets abo
       draft: null,
       onDraftChange() {},
       finishedAt: null,
+      records: null,
       onFinish() {},
       onReopen() {},
     })
     .settle();
   assert.match(textOf(tree), /11\.34 kg c\/u/);
   assert.match(textOf(tree), /1RM estimado · mejor 15 · peor 15 kg c\/u · 8 semanas/);
+});
+
+test('a finished session shows its recap with records and nothing left to log', async () => {
+  const exercise = {
+    id: 'press',
+    name_es: 'Press inclinado con mancuernas',
+    familyId: 'press',
+    familyName: 'Press inclinado',
+    equipment_type: 'dumbbell',
+    unilateral: 0,
+    default_rest_seconds: 180,
+    notes: new Map(),
+    equipment: null,
+    implements: [],
+    muscles: [],
+  };
+  const set = (weightKg: number) => ({
+    sessionId: 'today',
+    date: '2026-10-23',
+    exerciseId: 'press',
+    setIndex: 1,
+    weightKg,
+    reps: 8,
+    loadFactor: 2,
+  });
+  const props = {
+    exercises: [exercise],
+    selectedExerciseId: 'press',
+    onSelectExercise() {},
+    onSelectVariant: async () => {},
+    todaySets: [set(40.82)],
+    lastSets: [],
+    restingSince: 1,
+    plan: [],
+    marks: null,
+    sessionVolume: 1306.24,
+    unit: 'lb',
+    onChangeUnit() {},
+    plannedSets: 3,
+    planExerciseIds: ['press'],
+    setsDoneByExercise: new Map([['press', 3]]),
+    plannedByExercise: new Map([['press', 3]]),
+    onAddSet: async () => {},
+    onRemoveSet() {},
+    startedAt: 0,
+    draft: null,
+    onDraftChange() {},
+    finishedAt: 72 * 60_000,
+    records: [
+      {
+        exerciseId: 'press',
+        now: { set: set(40.82), e1rm: 51.7 },
+        before: { set: set(38.56), e1rm: 48.8 },
+      },
+    ],
+    onFinish() {},
+    onReopen() {},
+  };
+  const tree = await renderModule('src/ui/SessionLog.tsx', MOCKS)
+    .mount('SessionLog', props)
+    .settle();
+  const text = textOf(tree);
+  assert.match(text, /VOLUMEN.*2 880 lb/);
+  assert.match(text, /SERIES.*3/);
+  assert.match(text, /DURÓ.*1 h 12/);
+  assert.match(text, /RÉCORDS.*1/);
+  assert.match(text, /Press inclinado con mancuernas · 1RM 114 · antes 108 lb c\/u/);
+  assert.doesNotMatch(text, /DESCANSANDO|Terminar entreno/);
+  assert.equal(
+    nodes(tree).filter((node) => node.props.accessibilityLabel === 'Agregar serie').length,
+    0,
+  );
+});
+
+test('logged sets sit under the set button, so it does not move as they are added', async () => {
+  const exercise = {
+    id: 'curl',
+    name_es: 'Curl',
+    familyId: 'curl',
+    familyName: 'Curl',
+    equipment_type: 'cable',
+    unilateral: 0,
+    default_rest_seconds: 120,
+    notes: new Map(),
+    equipment: null,
+    implements: [],
+    muscles: [],
+  };
+  const tree = await renderModule('src/ui/SessionLog.tsx', MOCKS)
+    .mount('SessionLog', {
+      exercises: [exercise],
+      selectedExerciseId: 'curl',
+      onSelectExercise() {},
+      onSelectVariant: async () => {},
+      todaySets: [
+        {
+          sessionId: 's',
+          date: '2026-10-23',
+          exerciseId: 'curl',
+          setIndex: 1,
+          weightKg: 20,
+          reps: 10,
+        },
+      ],
+      lastSets: [],
+      restingSince: null,
+      plan: [],
+      marks: null,
+      sessionVolume: 200,
+      unit: 'kg',
+      onChangeUnit() {},
+      plannedSets: 3,
+      planExerciseIds: ['curl'],
+      setsDoneByExercise: new Map([['curl', 1]]),
+      plannedByExercise: new Map([['curl', 3]]),
+      onAddSet: async () => {},
+      onRemoveSet() {},
+      startedAt: 1,
+      draft: null,
+      onDraftChange() {},
+      finishedAt: null,
+      records: null,
+      onFinish() {},
+      onReopen() {},
+    })
+    .settle();
+  const order = nodes(tree).map((node) => node.props.accessibilityLabel);
+  assert.ok(order.indexOf('Agregar serie') < order.indexOf('Quitar serie 1'));
+  assert.match(textOf(tree), /DESCANSO SUGERIDO/);
 });

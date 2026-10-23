@@ -60,11 +60,11 @@ test('accents, capitals and stray spaces are the same command', () => {
 test('a command it does not know writes nothing and says so', () => {
   assert.match(rejected('correr 5km'), /No conozco "correr"/);
   assert.match(rejected(''), /ayuda/);
-  assert.match(rejected('agua mucha'), /Cuantos ml/);
+  assert.match(rejected('agua mucha'), /Cuántos ml/);
   assert.match(rejected('serie 65'), /peso por repeticiones/);
   assert.match(rejected('serie 65x0'), /Cero repeticiones/);
   assert.match(rejected('serie 65x8 rpe22'), /RPE va de 1 a 10/);
-  assert.match(rejected('peso -3'), /Cuanto pesas/);
+  assert.match(rejected('peso -3'), /Cuánto pesas/);
   assert.match(rejected('creatina quiza'), /creatina no/);
 });
 
@@ -84,7 +84,7 @@ test('lo que escribe despues del numero cuenta: la unidad se lee y lo demas se r
   // Antes: 710 ml y los pasos tirados, 2 ml, 8 pasos, 165 kg.
   assert.match(rejected('agua 710 pasos 8200'), /Sobra "pasos 8200"/);
   assert.match(rejected('agua 1.5'), /Con unidad/);
-  assert.match(rejected('pasos 8.2'), /Cuantos pasos/);
+  assert.match(rejected('pasos 8.2'), /Cuántos pasos/);
   assert.match(rejected('peso 165 lb'), /va en kilos/);
   assert.match(rejected('creatina no gracias'), /Sobra "gracias"/);
   assert.match(rejected('serie 65x8 rpe8 otra'), /Sobra "otra"/);
@@ -171,8 +171,8 @@ test('a pantry change that cannot be written says why', () => {
     assert.ok(!parsed.ok, `"${input}" should be refused`);
     return parsed.reason;
   };
-  assert.match(reason('quedan huevos'), /Cuanto queda/);
-  assert.match(reason('compre'), /Que cosa/);
+  assert.match(reason('quedan huevos'), /Cuánto queda/);
+  assert.match(reason('compre'), /Qué cosa/);
   assert.match(reason('compre 0 huevos'), /cero/);
   assert.match(reason('queda poca 3 whey'), /Sin cantidad/);
   assert.match(reason('compre 2tz arroz'), /No conozco la unidad "tz"/);
