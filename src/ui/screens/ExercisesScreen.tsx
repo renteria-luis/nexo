@@ -69,6 +69,9 @@ function NewExerciseForm({
   const [equipment, setEquipment] = useState<EquipmentType | null>(
     parent?.exercise.equipment_type ?? null,
   );
+  // Los quince musculos dos veces eran treinta chips seguidos; los secundarios son
+  // opcionales, asi que esperan a que los pida, salvo que la variante ya traiga alguno.
+  const [withSecondary, setWithSecondary] = useState(secondary.length > 0);
   const ready = name.trim() !== '' && muscle !== null && equipment !== null;
   const [unilateral, setUnilateral] = useState(false);
   const restFrom = parent?.exercise.default_rest_seconds ?? 120;
@@ -139,31 +142,38 @@ function NewExerciseForm({
           ))}
         </View>
       </Field>
-      <Field label="Músculos secundarios (opcional)">
-        <View style={styles.chips}>
-          {Object.entries(MUSCLE_ES)
-            .filter(([id]) => id !== muscle)
-            .map(([id, label]) => (
-              <Chip
-                key={id}
-                label={label}
-                accessibilityLabel={`Secundario ${label}`}
-                selected={secondary.includes(id)}
-                onPress={() =>
-                  setSecondary((current) =>
-                    current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
-                  )
-                }
-              />
-            ))}
-        </View>
-      </Field>
-      <SwitchRow
-        label="Unilateral"
-        value={unilateral}
-        onChange={setUnilateral}
-        hint="Un lado por vez; el cálculo incluye ambos lados."
-      />
+      {withSecondary ? (
+        <Field label="Músculos secundarios (opcional)">
+          <View style={styles.chips}>
+            {Object.entries(MUSCLE_ES)
+              .filter(([id]) => id !== muscle)
+              .map(([id, label]) => (
+                <Chip
+                  key={id}
+                  label={label}
+                  accessibilityLabel={`Secundario ${label}`}
+                  selected={secondary.includes(id)}
+                  onPress={() =>
+                    setSecondary((current) =>
+                      current.includes(id)
+                        ? current.filter((item) => item !== id)
+                        : [...current, id],
+                    )
+                  }
+                />
+              ))}
+          </View>
+        </Field>
+      ) : (
+        <Button
+          label="Músculos secundarios"
+          icon={Plus}
+          variant="ghost"
+          onPress={() => setWithSecondary(true)}
+        />
+      )}
+      {/* El mismo nombre que en la ficha: aqui decia "Unilateral" y alli "A un brazo". */}
+      <SwitchRow label="A un brazo" value={unilateral} onChange={setUnilateral} />
       <Field label="Descanso">
         <RestInputs value={rest} onChange={setRest} label="Descanso del nuevo ejercicio" />
       </Field>
@@ -274,18 +284,15 @@ function SwitchRow({
   label,
   value,
   onChange,
-  hint,
 }: {
   label: string;
   value: boolean;
   onChange: (next: boolean) => void;
-  hint?: string;
 }) {
   return (
     <View style={styles.switchRow}>
       <View style={styles.switchText}>
         <Text style={styles.switchLabel}>{label}</Text>
-        {hint ? <Text style={styles.hint}>{hint}</Text> : null}
       </View>
       <Toggle value={value} accessibilityLabel={label} onChange={onChange} />
     </View>
@@ -379,9 +386,6 @@ export function ExercisesScreen() {
 
   return (
     <Screen title="Ejercicios">
-      <Text style={styles.intro}>
-        Tus ejercicios, variantes y explicaciones. Cada variante conserva su historial.
-      </Text>
       <View style={styles.chips}>
         <Chip label="Activos" selected={!archived} onPress={() => setArchived(false)} />
         <Chip label="Archivados" selected={archived} onPress={() => setArchived(true)} />
@@ -554,7 +558,6 @@ export function ExerciseScreen() {
 
         <SwitchRow
           label="A un brazo"
-          hint="El mismo número de series cuesta el doble de reloj."
           value={exercise.unilateral === 1}
           onChange={(next) => after(editExercise(exercise.id, { unilateral: next }))}
         />
@@ -571,18 +574,22 @@ export function ExerciseScreen() {
             focusedStyle={styles.inputEditing}
           />
         </Field>
-        <Text style={styles.hint}>
-          Al cambiar de variante durante el entreno, se reemplazan sus series pendientes. Cada una
-          tiene sus propios pesos y tiempos.
-        </Text>
-        {card.variants.map((variant) => (
-          <Button
-            key={variant.id}
-            label={`${variant.name_es} · ${variantLabel(variant)}${variant.archived ? ' · archivado' : ''}`}
-            disabled={variant.id === exercise.id}
-            onPress={() => navigation.navigate('Ejercicio', { exerciseId: variant.id })}
-          />
-        ))}
+        {/* La que esta abierta, elegida como en el resto de la app: como boton apagado
+            parecia la unica que no se podia tocar. */}
+        <View style={styles.chips}>
+          {card.variants.map((variant) => (
+            <Chip
+              key={variant.id}
+              label={`${variant.name_es} · ${variantLabel(variant)}${variant.archived ? ' · archivado' : ''}`}
+              selected={variant.id === exercise.id}
+              onPress={() => {
+                if (variant.id !== exercise.id) {
+                  navigation.navigate('Ejercicio', { exerciseId: variant.id });
+                }
+              }}
+            />
+          ))}
+        </View>
         <Button label="Crear variante" onPress={() => setCreatingVariant(true)} />
         {creatingVariant && (
           <NewExerciseForm
@@ -597,10 +604,6 @@ export function ExerciseScreen() {
       </Card>
 
       <Card title="Explicación">
-        <Text style={styles.hint}>
-          Se guarda mientras escribes. Si existe una nota específica del equipo, se muestra antes
-          que la general.
-        </Text>
         <Field label="General">
           <SavedText
             key={`${exercise.id}-general`}
@@ -626,21 +629,7 @@ export function ExerciseScreen() {
           </Field>
         ))}
       </Card>
-      <Card title="Catálogo">
-        <Text style={styles.hint}>
-          Archivar oculta esta variante de las nuevas selecciones y conserva sus series, notas e
-          historial.
-        </Text>
-        <Button
-          label={exercise.archived ? 'Restaurar ejercicio' : 'Archivar ejercicio'}
-          onPress={() => after(archiveExercise(exercise.id, !exercise.archived))}
-        />
-      </Card>
-
       <Card title="Dónde lo tengo">
-        <Text style={styles.hint}>
-          El plan de una sesión solo propone lo que hay en ese gimnasio.
-        </Text>
         {card.gyms.map((gym) => (
           <SwitchRow
             key={gym.id}
@@ -652,10 +641,6 @@ export function ExerciseScreen() {
       </Card>
 
       <Card title="Añadir a una rutina">
-        <Text style={styles.hint}>
-          Los cambios se aplican a próximos entrenos. El plan de una sesión iniciada se edita desde
-          Entreno.
-        </Text>
         {card.availableRoutines.map((routine) => (
           <Button
             key={routine.id}
@@ -670,14 +655,7 @@ export function ExerciseScreen() {
       </Card>
       {card.routines.map((routine) => (
         <Card key={routine.routineId} title={`En ${routine.name}`}>
-          <Button
-            label={`Quitar de ${routine.name}`}
-            variant="ghost"
-            onPress={() => after(editExerciseRoutine(exercise.id, routine.routineId, false))}
-          />
-          <Text style={styles.hint}>
-            Puesto {routine.position} de la rutina. Las series vacías lo dejan fuera con ese tiempo.
-          </Text>
+          <Text style={styles.hint}>Puesto {routine.position} de la rutina.</Text>
 
           <Field label="Importancia">
             <View style={styles.chips}>
@@ -730,6 +708,8 @@ export function ExerciseScreen() {
                   after(editRoutineReps(routine.routineId, exercise.id, next, routine.repMax))
                 }
               />
+              {/* Dos casillas sin nada entre ellas se leian como dos numeros sueltos. */}
+              <Text style={styles.pairWord}>a</Text>
               <SavedNumber
                 key={`max-${routine.routineId}-${routine.repMax ?? 'x'}`}
                 value={routine.repMax}
@@ -741,6 +721,13 @@ export function ExerciseScreen() {
               />
             </View>
           </Field>
+
+          {/* Al final de lo suyo, no encima: era lo primero de cada rutina. */}
+          <Button
+            label={`Quitar de ${routine.name}`}
+            variant="ghost"
+            onPress={() => after(editExerciseRoutine(exercise.id, routine.routineId, false))}
+          />
         </Card>
       ))}
 
@@ -751,6 +738,16 @@ export function ExerciseScreen() {
           </Text>
         </Card>
       )}
+
+      {/* Al final de la ficha: estaba en medio, encima de las rutinas que se ajustan a
+          menudo. Lo que conserva se dice porque archivar suena a borrar. */}
+      <Card title="Catálogo">
+        <Text style={styles.hint}>Conserva sus series, notas e historial.</Text>
+        <Button
+          label={exercise.archived ? 'Restaurar ejercicio' : 'Archivar ejercicio'}
+          onPress={() => after(archiveExercise(exercise.id, !exercise.archived))}
+        />
+      </Card>
     </Screen>
   );
 }
@@ -769,11 +766,6 @@ function setsOf(routine: ExerciseRoutine, budget: TimeBudget): number | null {
 }
 
 const styles = sheet((theme) => ({
-  intro: {
-    fontSize: 13,
-    fontFamily: font.regular,
-    color: theme.textFaint,
-  },
   problem: {
     fontSize: 13,
     fontFamily: font.bold,
@@ -843,7 +835,13 @@ const styles = sheet((theme) => ({
   },
   pair: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 10,
+  },
+  pairWord: {
+    fontSize: 14,
+    fontFamily: font.bold,
+    color: theme.textFaint,
   },
   rest: {
     flexDirection: 'row',

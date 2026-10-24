@@ -1,7 +1,7 @@
 import type { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import SegmentedControl from '@react-native-segmented-control/segmented-control';
 import { createContext, useContext, useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PagerPosition } from './Backdrop.tsx';
@@ -79,6 +79,10 @@ export function TabBar({
   useEffect(() => setPosition(position), [position, setPosition]);
   // Arrastrar el dedo por la barra es elegir pestana, no abrir el menu lateral.
   const { lock, unlock } = useTouchLock();
+  // De lado solo esta el descanso de Entreno, en grande, y la isla le quitaba un tercio
+  // del alto.
+  const { width, height } = useWindowDimensions();
+  if (width > height) return null;
 
   const select = (index: number) => {
     const route = state.routes[index];

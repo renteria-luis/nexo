@@ -8,7 +8,7 @@ import {
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Keyboard, View } from 'react-native';
+import { Keyboard, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppDataProvider, useAppData } from './src/shell/AppData.tsx';
@@ -216,6 +216,8 @@ function SettingsRoute() {
 function Navigation({ navigation }: { navigation: ReturnType<typeof useNavigationContainerRef> }) {
   const { nudgeTarget, clearNudgeTarget, healthArrival } = useAppData();
   const sidebar = useSidebar();
+  const { width, height } = useWindowDimensions();
+  const sideways = width > height;
   const [navigationReady, setNavigationReady] = useState(false);
   const [travelTarget, setTravelTarget] = useState<TransitResponse | null>(null);
   const handledTravel = useRef<TransitResponse | null>(null);
@@ -260,6 +262,8 @@ function Navigation({ navigation }: { navigation: ReturnType<typeof useNavigatio
           <ScreenFrame screens={screensOf(route.name)}>{children}</ScreenFrame>
         )}
         screenOptions={{
+          // De lado solo esta el descanso de Entreno, que necesita todo el alto.
+          headerShown: !sideways,
           // Nuestra barra en lugar del encabezado nativo, que solo dejaba cambiarle el
           // color. En la pantalla principal lleva a Ajustes; en una apilada la cierra,
           // que es lo unico que se puede hacer desde ahi.

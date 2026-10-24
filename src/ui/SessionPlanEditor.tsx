@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { fold } from '../nutrition/picker.ts';
@@ -8,6 +8,7 @@ import type { SessionPlanEdit } from '../training/session-plan.ts';
 import { replacePendingSets } from '../training/variants.ts';
 import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
+import { OrderList, type OrderItem } from './OrderList.tsx';
 import { SearchField } from './SearchField.tsx';
 import { font, sheet } from './theme.ts';
 
@@ -19,6 +20,8 @@ export type SessionPlanEditorProps = {
   onSave: (edit: SessionPlanEdit) => Promise<void>;
   onApplied: (edit: SessionPlanEdit) => void;
   onCancel: () => void;
+  /** Para que la pantalla no se desplace mientras arrastra una fila. */
+  onDragging: (dragging: boolean) => void;
 };
 
 export function SessionPlanEditor({
@@ -29,6 +32,7 @@ export function SessionPlanEditor({
   onSave,
   onApplied,
   onCancel,
+  onDragging,
 }: SessionPlanEditorProps) {
   const [draft, setDraft] = useState<SessionPlanEdit | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -71,14 +75,20 @@ export function SessionPlanEditor({
         )
         .filter((entry) => entry.sets > 0),
     );
-  const move = (id: string, offset: number) =>
+  const reorder = (from: number, to: number) =>
     change((entries) => {
       const next = entries.slice();
-      const index = next.findIndex((entry) => entry.exerciseId === id);
-      if (index + offset < 0 || index + offset >= next.length) return entries;
-      [next[index], next[index + offset]] = [next[index + offset], next[index]];
+      next.splice(to, 0, ...next.splice(from, 1));
       return next;
     });
+  const nudge = (id: string, direction: 1 | -1) => {
+    const entry = draft?.exercises.find((one) => one.exerciseId === id);
+    if (entry) setCount(id, entry.sets + direction);
+  };
+  const swap = (id: string) => {
+    setPicker((current) => (current?.from === id ? null : { from: id }));
+    setSearch('');
+  };
   const choose = (exercise: CatalogExercise) => {
     if (!draft || !picker || writing.current) return;
     const from = picker.from;
@@ -111,6 +121,21 @@ export function SessionPlanEditor({
       exercise.id !== picker?.from &&
       fold(exercise.name_es).includes(fold(search)),
   );
+  const items = useMemo<OrderItem[]>(() => {
+    if (!draft) return [];
+    const doneNow = new Map(draft.done.map((entry) => [entry.exerciseId, entry.sets]));
+    return draft.exercises.map((entry) => {
+      const completed = doneNow.get(entry.exerciseId) ?? 0;
+      return {
+        id: entry.exerciseId,
+        name: catalog.find((one) => one.id === entry.exerciseId)?.name_es ?? entry.exerciseId,
+        detail: `${completed} de ${entry.sets} ${entry.sets === 1 ? 'serie' : 'series'}`,
+        // Lo hecho no se quita ni se cambia: solo lo que falta.
+        canRemove: entry.sets > completed,
+        canSwap: entry.sets > completed,
+      };
+    });
+  }, [draft, catalog]);
   const pending =
     draft?.exercises.reduce(
       (total, entry) => total + entry.sets - (done.get(entry.exerciseId) ?? 0),
@@ -120,8 +145,22 @@ export function SessionPlanEditor({
   const pickerContent = picker && !saving && (
     <View style={styles.picker}>
       <Text style={styles.title}>
-        {picker.from ? `Reemplazar pendientes de ${nameOf(picker.from)}` : 'Añadir 3 series de…'}
+        {picker.from ? `Cambiar ${nameOf(picker.from)} por…` : 'Añadir 3 series de…'}
       </Text>
+      <View style={styles.controls}>
+        {picker.from !== null && (
+          <Button
+            label="Omitir pendientes"
+            accessibilityLabel={`Omitir pendientes de ${nameOf(picker.from)}`}
+            onPress={() => {
+              const from = picker.from;
+              if (from !== null) setCount(from, done.get(from) ?? 0);
+              setPicker(null);
+            }}
+          />
+        )}
+        <Button label="Cerrar" variant="ghost" onPress={() => setPicker(null)} />
+      </View>
       <SearchField
         value={search}
         onChange={setSearch}
@@ -142,7 +181,6 @@ export function SessionPlanEditor({
       {candidates.length > 8 && (
         <Text style={styles.note}>Escribe para encontrar más ejercicios.</Text>
       )}
-      <Button label="Cerrar búsqueda" variant="ghost" onPress={() => setPicker(null)} />
     </View>
   );
 
@@ -150,9 +188,6 @@ export function SessionPlanEditor({
     <Card
       title={draft?.routineName ? `Revisar cambio a ${draft.routineName}` : 'Plan de este entreno'}
     >
-      <Text style={styles.note}>
-        Los cambios son solo para este entreno. Las series hechas se conservan.
-      </Text>
       {loading ? (
         <Text style={styles.note}>Cargando plan…</Text>
       ) : (
@@ -165,71 +200,15 @@ export function SessionPlanEditor({
               </Text>
             )}
             <Text style={styles.title}>{pending} series pendientes</Text>
-            {draft.exercises.map((entry, index) => {
-              const name = nameOf(entry.exerciseId);
-              const completed = done.get(entry.exerciseId) ?? 0;
-              const left = entry.sets - completed;
-              return (
-                <View key={entry.exerciseId} style={styles.row}>
-                  <Text style={styles.title}>
-                    {index + 1}. {name}
-                  </Text>
-                  <Text style={styles.note}>
-                    {completed} hechas · {left} pendientes
-                  </Text>
-                  <View style={styles.controls}>
-                    <Button
-                      label="− Serie"
-                      accessibilityLabel={`Quitar una serie pendiente de ${name}`}
-                      disabled={saving || left === 0}
-                      onPress={() => setCount(entry.exerciseId, entry.sets - 1)}
-                    />
-                    <Button
-                      label="+ Serie"
-                      accessibilityLabel={`Añadir una serie pendiente a ${name}`}
-                      disabled={saving}
-                      onPress={() => setCount(entry.exerciseId, entry.sets + 1)}
-                    />
-                  </View>
-                  <View style={styles.controls}>
-                    <Button
-                      label="Cambiar"
-                      accessibilityLabel={`Cambiar ejercicio ${name}`}
-                      variant="ghost"
-                      disabled={saving || left === 0}
-                      onPress={() => {
-                        setPicker({ from: entry.exerciseId });
-                        setSearch('');
-                      }}
-                    />
-                    <Button
-                      label="Omitir pendientes"
-                      accessibilityLabel={`Omitir pendientes de ${name}`}
-                      variant="ghost"
-                      disabled={saving || left === 0}
-                      onPress={() => setCount(entry.exerciseId, completed)}
-                    />
-                  </View>
-                  <View style={styles.controls}>
-                    <Button
-                      label="↑ Subir"
-                      accessibilityLabel={`Subir ${name}`}
-                      variant="ghost"
-                      disabled={saving || index === 0}
-                      onPress={() => move(entry.exerciseId, -1)}
-                    />
-                    <Button
-                      label="↓ Bajar"
-                      accessibilityLabel={`Bajar ${name}`}
-                      variant="ghost"
-                      disabled={saving || index === draft.exercises.length - 1}
-                      onPress={() => move(entry.exerciseId, 1)}
-                    />
-                  </View>
-                  {picker?.from === entry.exerciseId && pickerContent}
-                </View>
-              );
-            })}
+            <OrderList
+              items={items}
+              onReorder={reorder}
+              onNudge={nudge}
+              onDragging={onDragging}
+              onSwap={swap}
+              swapping={picker?.from ?? null}
+            />
+            {picker !== null && picker.from !== null && pickerContent}
             <Button
               label="Añadir ejercicio"
               disabled={saving}
@@ -260,16 +239,25 @@ export function SessionPlanEditor({
           />
         </View>
       )}
-      <Button
-        label={problem && draft ? 'Reintentar guardar plan' : 'Guardar plan'}
-        variant="primary"
-        loading={saving}
-        disabled={loading || !draft}
-        onPress={() => {
-          void save();
-        }}
-      />
-      <Button label="Cancelar cambios" disabled={saving} onPress={onCancel} />
+      <View style={styles.actions}>
+        <Button
+          label={problem && draft ? 'Reintentar guardar plan' : 'Guardar plan'}
+          variant="primary"
+          loading={saving}
+          disabled={loading || !draft}
+          onPress={() => {
+            void save();
+          }}
+          style={styles.save}
+        />
+        <Button
+          label="Cancelar"
+          accessibilityLabel="Cancelar cambios"
+          variant="ghost"
+          disabled={saving}
+          onPress={onCancel}
+        />
+      </View>
     </Card>
   );
 }
@@ -278,7 +266,8 @@ const styles = sheet((theme) => ({
   title: { color: theme.text, fontFamily: font.bold, fontSize: 15 },
   note: { color: theme.textFaint, fontFamily: font.regular, fontSize: 13 },
   error: { color: theme.text, fontFamily: font.bold, fontSize: 14 },
-  row: { borderTopWidth: 1, borderColor: theme.lineSoft, paddingVertical: 10, gap: 6 },
   controls: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  save: { flex: 1 },
   picker: { gap: 8, paddingVertical: 8 },
 }));

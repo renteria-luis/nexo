@@ -71,7 +71,14 @@ function Experiment({
       <Text style={styles.detail}>{experiment.hypothesis}</Text>
       <Text style={styles.detail}>Cambié: {experiment.variable_changed}</Text>
       <Text style={styles.detail}>
-        {experiment.outcome_metric} · semana {weeksRunning} · {readings.length} lecturas
+        {experiment.outcome_metric}
+        {/* La semana en curso, que empieza en la 1: "semana 0" se leia como que no habia empezado. */}
+        {running
+          ? ` · semana ${weeksRunning + 1}`
+          : weeksRunning > 0
+            ? ` · duró ${weeksRunning} ${weeksRunning === 1 ? 'semana' : 'semanas'}`
+            : ''}
+        {` · ${readings.length} ${readings.length === 1 ? 'lectura' : 'lecturas'}`}
         {experiment.end_date === null ? '' : ` · terminó el ${shortDate(experiment.end_date)}`}
       </Text>
 

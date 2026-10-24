@@ -62,6 +62,12 @@ function money(cents: number | null): string {
   return cents === null ? MISSING : `$${(cents / 100).toFixed(2)}`;
 }
 
+/** El producto de una oferta, como el lo diria. */
+function productName(item: DealWithContext): string {
+  const term = item.deal.category;
+  return term === null ? 'Otros' : (TERM_ES[term] ?? term);
+}
+
 /**
  * Una oferta. Lo que la hace valer la pena sobre abrir Flipp es la segunda linea: el
  * precio por kilo y, cuando la comida esta en su catalogo, la proteina por dolar.
@@ -231,6 +237,8 @@ export function DealsScreen() {
    * Lo mejor primero: de tu lista, lo que baja de tu precio, y mas proteina por dolar.
    * Lo sospechoso va al final: un error de lectura encabezaba "Mejor valor".
    */
+  const unknown = (row: (typeof scored)[number]) =>
+    Number(row.perKg === null) + Number(row.item.deal.price_cents === null);
   const byValue = (a: (typeof scored)[number], b: (typeof scored)[number]): number => {
     if (a.suspect !== b.suspect) return Number(a.suspect) - Number(b.suspect);
     if (a.item.deal.staple !== b.item.deal.staple) {
@@ -242,6 +250,9 @@ export function DealsScreen() {
     if (b.value) return 1;
     // Sin proteina que comparar, el kilo mas barato, y lo vencido al final.
     if (a.perKg !== null && b.perKg !== null) return a.perKg - b.perKg;
+    // Lo que no dice cuanto cuesta no le gana a nada: una sin precio encabezaba Yogur
+    // griego y el grupo cerrado no decia ningun precio (2026-10-24).
+    if (unknown(a) !== unknown(b)) return unknown(a) - unknown(b);
     return Number(a.item.stale) - Number(b.item.stale);
   };
   const best = <T extends (typeof scored)[number]>(rows: T[]): T[] =>
@@ -259,12 +270,7 @@ export function DealsScreen() {
   if (group !== 'value') {
     for (const row of scored) {
       const key =
-        group === 'store'
-          ? (row.item.retailer?.name ?? 'Sin tienda')
-          : (() => {
-              const term = row.item.deal.category;
-              return term === null ? 'Otros' : (TERM_ES[term] ?? term);
-            })();
+        group === 'store' ? (row.item.retailer?.name ?? 'Sin tienda') : productName(row.item);
       buckets.set(key, [...(buckets.get(key) ?? []), row]);
     }
   }
@@ -359,20 +365,42 @@ export function DealsScreen() {
 
       {groups.map(({ name, rows }) => {
         const shown = name === null || open_.includes(name);
+        // Cerrado, el grupo dice su primera oferta, que es la mejor: con solo "18 ofertas"
+        // habia que abrir cada producto para saber donde estaba barato. La dudosa no
+        // cuenta, que un precio por kilo leido como peso no es el mejor de nada.
+        const lead = rows.find((row) => !row.suspect)?.item ?? null;
+        const leadPrice = lead === null ? null : unitPrice(lead.deal);
+        const count = `${rows.length} ${rows.length === 1 ? 'oferta' : 'ofertas'}`;
+        const leadCost =
+          lead === null
+            ? null
+            : leadPrice !== null
+              ? `${money(leadPrice.cents)} ${leadPrice.per}`
+              : lead.deal.price_cents === null
+                ? null
+                : money(lead.deal.price_cents);
+        // Por producto, cuanto y donde; por tienda, que y cuanto.
+        const line =
+          lead === null
+            ? count
+            : (group === 'store'
+                ? [productName(lead), leadCost, count]
+                : [leadCost, lead.retailer?.name ?? null, count]
+              )
+                .filter(Boolean)
+                .join(' · ');
         return (
           <Card key={name ?? 'todas'}>
             {name !== null && (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`${name}, ${rows.length} ofertas`}
+                accessibilityLabel={`${name}, ${line}`}
                 onPress={() => fold(name)}
                 style={({ pressed }) => [styles.group, pressed && styles.groupPressed]}
               >
                 <View style={styles.groupText}>
                   <Text style={styles.groupTitle}>{name}</Text>
-                  <Text style={styles.count}>
-                    {rows.length} {rows.length === 1 ? 'oferta' : 'ofertas'}
-                  </Text>
+                  <Text style={styles.groupLine}>{line}</Text>
                 </View>
                 {shown ? (
                   <ChevronUp size={18} color={theme.text} strokeWidth={2.5} />
@@ -446,12 +474,11 @@ const styles = sheet((theme) => ({
     fontFamily: font.regular,
     color: theme.textFaint,
   },
-  count: {
-    fontSize: 12,
-    fontFamily: font.black,
-    letterSpacing: 0.6,
-    color: theme.textFaint,
-    textTransform: 'uppercase',
+  groupLine: {
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.textDim,
+    fontVariant: ['tabular-nums'],
   },
   deal: {
     gap: 6,

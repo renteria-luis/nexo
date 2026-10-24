@@ -1,4 +1,4 @@
-import { Text, View } from 'react-native';
+import { Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { clock, Elapsed } from './Elapsed.tsx';
@@ -30,10 +30,22 @@ export function RestLandscape({
   setNumber: number | null;
 }) {
   const insets = useSafeAreaInsets();
+  // Sin la barra de arriba ni la isla, el numero puede tomar casi la mitad del alto: es lo
+  // que se lee desde el banco.
+  const { height } = useWindowDimensions();
+  const clockSize = Math.round(Math.min(height * 0.4, 200));
 
   return (
     <View
-      style={[styles.frame, { paddingLeft: insets.left + 24, paddingRight: insets.right + 24 }]}
+      style={[
+        styles.frame,
+        {
+          paddingLeft: insets.left + 24,
+          paddingRight: insets.right + 24,
+          paddingTop: insets.top + 20,
+          paddingBottom: insets.bottom + 20,
+        },
+      ]}
     >
       <View style={styles.side}>
         <Text style={styles.exercise} numberOfLines={3}>
@@ -51,7 +63,11 @@ export function RestLandscape({
 
       <View style={styles.clockSide}>
         <Text style={styles.label}>DESCANSANDO</Text>
-        <Text style={styles.clock}>{since === null ? '0:00' : <Elapsed since={since} />}</Text>
+        <Text
+          style={[styles.clock, { fontSize: clockSize, lineHeight: Math.round(clockSize * 1.08) }]}
+        >
+          {since === null ? '0:00' : <Elapsed since={since} />}
+        </Text>
         {suggestedRestSeconds !== null && (
           <Text style={styles.suggested}>de {clock(suggestedRestSeconds)} sugeridos</Text>
         )}
@@ -66,7 +82,6 @@ const styles = sheet((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 24,
-    paddingVertical: 20,
     backgroundColor: theme.bg,
   },
   side: {
@@ -74,8 +89,8 @@ const styles = sheet((theme) => ({
     gap: 14,
   },
   exercise: {
-    fontSize: 30,
-    lineHeight: 34,
+    fontSize: 34,
+    lineHeight: 38,
     fontFamily: font.display,
     letterSpacing: -0.5,
     color: theme.text,
@@ -96,7 +111,7 @@ const styles = sheet((theme) => ({
     color: theme.textFaint,
   },
   lastValue: {
-    fontSize: 20,
+    fontSize: 24,
     fontFamily: font.black,
     color: theme.text,
     fontVariant: ['tabular-nums'],
@@ -118,8 +133,6 @@ const styles = sheet((theme) => ({
     color: theme.accentInkSoft,
   },
   clock: {
-    fontSize: 96,
-    lineHeight: 104,
     fontFamily: font.display,
     color: theme.accentInk,
     fontVariant: ['tabular-nums'],

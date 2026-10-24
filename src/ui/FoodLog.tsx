@@ -239,7 +239,10 @@ export function FoodLog({
   const eaten = (
     <>
       {portions.length === 0 ? (
-        <Text style={styles.empty}>Nada por ahora. Abajo eliges y anotas.</Text>
+        <Text style={styles.empty}>
+          {/* En el detalle de un dia lo de anotar sale con el lapiz: "abajo" no habia nada. */}
+          {shown ? 'Nada por ahora. Abajo eliges y anotas.' : 'Nada anotado.'}
+        </Text>
       ) : (
         portions.map((portion, index) => (
           <View key={portion.entryId} style={[styles.entry, index > 0 && styles.ruled]}>
@@ -289,6 +292,7 @@ export function FoodLog({
         history={history}
         slot={slot}
         selectedId={foodId}
+        quantity={parsed}
         onOpenCatalogue={onOpenCatalogue}
         onSelect={(food) => {
           // El mismo otra vez lo suelta: es como se deshace un toque sin querer.

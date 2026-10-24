@@ -6,6 +6,7 @@ import {
   matchesSearch,
   referenceAmount,
   roundAmount,
+  unitLabel,
   type FoodHistory,
 } from '../nutrition/index.ts';
 
@@ -29,6 +30,8 @@ export type FoodPickerProps = {
   /** El espacio de comida elegido, que es el que manda en las sugerencias. */
   slot: string;
   selectedId: string | null;
+  /** Lo que lleva escrito para el elegido: su fila dice lo que trae esa porcion. */
+  quantity: number;
   onSelect: (food: NutritionFoodRow) => void;
   /** Lleva al catalogo, que es donde se crean y se corrigen. */
   onOpenCatalogue: () => void;
@@ -38,20 +41,32 @@ export type FoodPickerProps = {
 const USUAL_SHOWN = 2;
 const RECENT_SHOWN = 3;
 
-/** Los macros por unidad contable, o por cien gramos o mililitros. */
-function macros(food: NutritionFoodRow): string {
-  const per = referenceAmount(food);
-  const unit = food.unit_kind === 'count' ? food.base_unit : `100 ${food.base_unit}`;
-  return `${unit} · ${roundAmount(food.kcal * per)} kcal · ${roundAmount(food.protein_g * per)} g P`;
+/**
+ * Los macros por unidad contable, o por cien gramos o mililitros. Con una porcion escrita,
+ * los de esa porcion: con 200 g de pechuga elegidos decia lo de 100 g, y lo que iba a
+ * anotar habia que sacarlo de cabeza.
+ */
+function macros(food: NutritionFoodRow, quantity = 0): string {
+  const portion = Number.isFinite(quantity) && quantity > 0;
+  const per = portion ? quantity : referenceAmount(food);
+  const unit = portion
+    ? `${roundAmount(quantity)} ${unitLabel(food, quantity)}`
+    : food.unit_kind === 'count'
+      ? food.base_unit
+      : `100 ${food.base_unit}`;
+  const round = (value: number) => roundAmount(Math.round(value * 10) / 10);
+  return `${unit} · ${round(food.kcal * per)} kcal · ${round(food.protein_g * per)} g P`;
 }
 
 function Row({
   food,
   selected,
+  quantity,
   onSelect,
 }: {
   food: NutritionFoodRow;
   selected: boolean;
+  quantity?: number;
   onSelect: () => void;
 }) {
   return (
@@ -70,7 +85,7 @@ function Row({
       <Text style={[styles.rowName, selected && styles.inkOn]} numberOfLines={1}>
         {food.name}
       </Text>
-      <Text style={[styles.rowMacros, selected && styles.inkSoftOn]}>{macros(food)}</Text>
+      <Text style={[styles.rowMacros, selected && styles.inkSoftOn]}>{macros(food, quantity)}</Text>
     </Pressable>
   );
 }
@@ -80,6 +95,7 @@ export function FoodPicker({
   history,
   slot,
   selectedId,
+  quantity,
   onSelect,
   onOpenCatalogue,
 }: FoodPickerProps) {
@@ -137,7 +153,7 @@ export function FoodPicker({
   if (chosen) {
     return (
       <View style={styles.picker}>
-        <Row food={chosen} selected onSelect={() => onSelect(chosen)} />
+        <Row food={chosen} selected quantity={quantity} onSelect={() => onSelect(chosen)} />
       </View>
     );
   }

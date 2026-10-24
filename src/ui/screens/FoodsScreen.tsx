@@ -114,11 +114,6 @@ export function FoodsScreen() {
         ) : null
       }
     >
-      <Text style={styles.intro}>
-        Lo que diga aquí es lo que cuenta en todos tus días, también en los ya anotados. Las
-        palabras clave sirven para encontrarlo al anotar.
-      </Text>
-
       <Button
         label="Alimento nuevo"
         accessibilityLabel="Agregar un alimento nuevo"

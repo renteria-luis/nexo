@@ -278,8 +278,7 @@ const styles = sheet((theme) => ({
     fontVariant: ['tabular-nums'],
   },
   inputWriting: {
-    backgroundColor: theme.accent,
-    color: theme.accentInk,
+    backgroundColor: theme.surfaceHigh,
   },
   unit: {
     fontSize: 13,

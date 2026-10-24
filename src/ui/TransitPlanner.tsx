@@ -1518,7 +1518,17 @@ const StopList = memo(function StopList({
           {reach / 1_000} km.
         </Text>
       )}
-      {!shown.length && !issue && !searching && (
+      {/* Sin bus y con la caminata a mano, la respuesta es caminar: decirlo como un
+          fracaso y la caminata en letra chica al final, para 8 min, era al reves. */}
+      {!shown.length && !issue && !searching && walking && (
+        <>
+          <Text style={styles.body}>
+            Caminando: {walking.access.minutes} min ({walkSource(walking.access)}).
+          </Text>
+          <Text style={styles.note}>Ahora no sale ningún bus desde los paraderos cercanos.</Text>
+        </>
+      )}
+      {!shown.length && !issue && !searching && !walking && (
         <Text style={styles.body}>
           Ahora no sale ningún bus que te lleve desde los paraderos cercanos. Prueba «Salir a las…».
         </Text>
@@ -1598,7 +1608,7 @@ const StopList = memo(function StopList({
           </Pressable>
         );
       })}
-      {walking && (
+      {walking && (shown.length > 0 || issue !== null || searching) && (
         <Text style={styles.note}>
           También puedes ir caminando: {walking.access.minutes} min ({walkSource(walking.access)}).
         </Text>

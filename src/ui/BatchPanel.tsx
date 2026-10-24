@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../db/types.ts';
-import { roundAmount, type LastBatch } from '../nutrition/index.ts';
+import { matchesSearch, roundAmount, type LastBatch } from '../nutrition/index.ts';
 import type { BatchStart } from '../shell/AppData.tsx';
 import type { OpenBatch } from '../shell/load.ts';
 
@@ -12,8 +12,10 @@ import { Chip } from './Chip.tsx';
 import { Plus, Trash, TriangleAlert, Utensils } from './icons.ts';
 import { ConfirmAction } from './InfoBubble.tsx';
 import { NumericField } from './NumericField.tsx';
+import { SearchField } from './SearchField.tsx';
 import { TextField } from './TextField.tsx';
 import { Toggle } from './Toggle.tsx';
+import { useKeepInPlace } from './screens/Screen.tsx';
 import { font, sheet, shape, theme } from './theme.ts';
 
 function parse(value: string): number {
@@ -74,8 +76,12 @@ function BatchCard({
   // Apagado mientras escribe: dos toques seguidos eran dos porciones.
   const [eating, setEating] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  // Cada porcion suma un renglon arriba, en lo anotado: el boton se queda bajo el dedo.
+  const keepInPlace = useKeepInPlace();
+  const spot = useRef<View>(null);
 
   const eat = () => {
+    keepInPlace(spot.current);
     setEating(true);
     setProblem(null);
     onEat()
@@ -117,15 +123,17 @@ function BatchCard({
           </Text>
         </View>
       )}
-      <Button
-        label="Comer una porción"
-        accessibilityLabel={`Comer una porción de ${food.name}`}
-        variant="primary"
-        icon={Utensils}
-        block
-        loading={eating}
-        onPress={eat}
-      />
+      <View ref={spot} collapsable={false}>
+        <Button
+          label="Comer una porción"
+          accessibilityLabel={`Comer una porción de ${food.name}`}
+          variant="primary"
+          icon={Utensils}
+          block
+          loading={eating}
+          onPress={eat}
+        />
+      </View>
       {/* Una olla que se echa a perder pasa cualquier semana (spec 1.6), y antes solo
           salia del panel anotando como comidas porciones que fueron a la basura. */}
       <ConfirmAction
@@ -184,6 +192,7 @@ export function BatchPanel({
   const [problem, setProblem] = useState<string | null>(null);
   // Lo que se propuso de la ultima tanda, para decir de donde salen esos numeros.
   const [proposed, setProposed] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   // Spec 7.3: la siguiente tanda de lo mismo suele ser igual, asi que se propone la
   // ultima en lo que todavia esta vacio. Lo que ya escribio no se toca.
@@ -201,6 +210,16 @@ export function BatchPanel({
   };
 
   const batchable = foods.filter((food) => food.base_unit_g !== null);
+  // Se busca como en una receta: los veintitantos del catalogo juntos eran una pared de
+  // chips, con el pepinillo y el sandwich al lado del pollo.
+  const found = batchable
+    .filter(
+      (food) =>
+        food.id === foodId ||
+        (search.trim() !== '' &&
+          matchesSearch([food.name, food.brand, food.store, food.keywords], search)),
+    )
+    .slice(0, 6);
 
   // The low end of a drained range is protein and carbs alone (spec 7.3), so a
   // blank carbs figure would leave the range with nothing to stand on.
@@ -224,6 +243,7 @@ export function BatchPanel({
     setDrained(false);
     setProblem(null);
     setProposed(null);
+    setSearch('');
   };
 
   const save = () => {
@@ -291,16 +311,26 @@ export function BatchPanel({
           </View>
 
           {source === 'catalog' ? (
-            <View style={styles.chips}>
-              {batchable.map((food) => (
-                <Chip
-                  key={food.id}
-                  label={food.name}
-                  selected={food.id === foodId}
-                  onPress={() => choose(food)}
-                />
-              ))}
-            </View>
+            <>
+              <SearchField
+                value={search}
+                onChange={setSearch}
+                accessibilityLabel="Buscar en el catálogo"
+                note={`${batchable.length} en el catálogo`}
+              />
+              {found.length > 0 && (
+                <View style={styles.chips}>
+                  {found.map((food) => (
+                    <Chip
+                      key={food.id}
+                      label={food.name}
+                      selected={food.id === foodId}
+                      onPress={() => choose(food)}
+                    />
+                  ))}
+                </View>
+              )}
+            </>
           ) : (
             <>
               <Field

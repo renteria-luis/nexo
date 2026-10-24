@@ -11,6 +11,7 @@
 //
 // Adding an icon: find its name at lucide.dev/icons, add the line, keep it sorted.
 
+export { default as ArrowLeftRight } from 'lucide-react-native/icons/arrow-left-right';
 export { default as ArrowUpDown } from 'lucide-react-native/icons/arrow-up-down';
 export { default as Ban } from 'lucide-react-native/icons/ban';
 export { default as BookOpen } from 'lucide-react-native/icons/book-open';

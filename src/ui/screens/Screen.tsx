@@ -20,6 +20,8 @@ import {
   StyleSheet,
   Text,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
 
 import { NavigationRouteContext } from '@react-navigation/native';
@@ -81,6 +83,31 @@ const ScrollIntoViewContext = createContext<Reveal>(() => undefined);
  */
 export function useScrollIntoView(): Reveal {
   return useContext(ScrollIntoViewContext);
+}
+
+const ScrollToTopContext = createContext<() => void>(() => undefined);
+
+/**
+ * Back to the top of the screen. Entreno uses it when a session starts or ends, because
+ * what changed is the first card, and measuring it right after the change read the old
+ * scroll offset: the content had just shrunk under it and the recap went under the bar.
+ */
+export function useScrollToTop(): () => void {
+  return useContext(ScrollToTopContext);
+}
+
+const KeepInPlaceContext = createContext<Reveal>(() => undefined);
+
+/** How long a held block keeps its place: the write and the reload behind one tap. */
+const HOLD_MS = 2000;
+
+/**
+ * Holds a block where it is on the screen while what is above it grows or shrinks. Comida
+ * uses it on «Comer una porción»: each portion added a row above the button, so the next
+ * tap on the same spot landed on the batch's name.
+ */
+export function useKeepInPlace(): Reveal {
+  return useContext(KeepInPlaceContext);
 }
 
 export function Screen({
@@ -161,20 +188,22 @@ export function Screen({
     () => ({ background, scrollY, offset, frame, epoch }),
     [background, scrollY, epoch],
   );
+  // Lo desplazado tambien en JS, para subir el campo sobre el teclado y para medir. Del
+  // evento y no de un oyente del valor: movido por el hilo nativo, el valor no avisaba en
+  // Android y lo desplazado se quedaba en lo de antes (2026-10-24).
+  const track = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    offset.current = event.nativeEvent.contentOffset.y;
+  }, []);
   const onScroll = useMemo(
     () =>
+      // Animated.event solo guarda el oyente; lo llama el desplazamiento, nunca el dibujo.
+      // eslint-disable-next-line react-hooks/refs
       Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
         useNativeDriver: true,
+        listener: track,
       }),
-    [scrollY],
+    [scrollY, track],
   );
-  // Lo desplazado tambien en JS, para subir el campo sobre el teclado y para medir.
-  useEffect(() => {
-    const id = scrollY.addListener(({ value }) => {
-      offset.current = value;
-    });
-    return () => scrollY.removeListener(id);
-  }, [scrollY]);
   // Lo que se subio el contenido para dejar ver el campo, y que hay que devolver
   // cuando el teclado se va: si no, la pantalla se queda mirando un hueco.
   const lifted = useRef(0);
@@ -258,6 +287,39 @@ export function Screen({
       });
     });
   }, []);
+  const scrollToTop = useCallback(() => list.current?.scrollTo({ y: 0, animated: true }), []);
+
+  // El bloque que no se tiene que mover, donde estaba en la pantalla cuando lo pidio, y
+  // hasta cuando.
+  const held = useRef<{ target: Measurable; y: number; until: number } | null>(null);
+  const keepInPlace = useCallback<Reveal>((target) => {
+    target?.measureInWindow((_x, y) => {
+      held.current = { target, y, until: Date.now() + HOLD_MS };
+    });
+  }, []);
+  const holdInPlace = useCallback(() => {
+    const hold = held.current;
+    if (hold === null) return;
+    if (Date.now() > hold.until) {
+      held.current = null;
+      return;
+    }
+    // Un cuadro despues, cuando la lista nativa ya tiene su alto nuevo: en el mismo aviso
+    // el desplazamiento se pedia sobre el alto viejo y se quedaba corto (el chat, 2026-10-24).
+    requestAnimationFrame(() =>
+      hold.target.measureInWindow((_x, y, _width, height) => {
+        // Sin alto es que ya no esta, como la tanda al comerse su ultima porcion.
+        if (height === 0) {
+          held.current = null;
+          return;
+        }
+        const move = y - hold.y;
+        if (Math.abs(move) < 1) return;
+        offset.current = Math.max(0, offset.current + move);
+        list.current?.scrollTo({ y: offset.current, animated: false });
+      }),
+    );
+  }, []);
 
   useEffect(() => {
     // El sistema avisa antes de mover el teclado, y trae su alto y lo que va a tardar:
@@ -323,7 +385,14 @@ export function Screen({
         ) : undefined
       }
       onScroll={onScroll}
-      onContentSizeChange={() => setEpoch((count) => count + 1)}
+      onContentSizeChange={() => {
+        setEpoch((count) => count + 1);
+        holdInPlace();
+      }}
+      // Si desplaza el, manda el: lo que se sostenia en su sitio se suelta.
+      onScrollBeginDrag={() => {
+        held.current = null;
+      }}
       scrollEventThrottle={16}
       // Un toque en un boton con el teclado abierto lo pulsa a la primera; uno en
       // cualquier otro sitio sigue cerrando el teclado.
@@ -441,82 +510,86 @@ export function Screen({
   return (
     <RevealContext.Provider value={reveal}>
       <ScrollIntoViewContext.Provider value={scrollIntoView}>
-        {/* El marco se mide para saber donde empieza el teclado en la pantalla. */}
-        <View
-          ref={frame}
-          collapsable={false}
-          onLayout={(event) => setFrameHeight(event.nativeEvent.layout.height)}
-          style={styles.stack}
-        >
-          {scroll}
-          {hasOverlay && <ScreenBlur target={list} frame={frame} background={background} />}
-          {/* Con el teclado abierto la capa se encoge por arriba de el: si no, los
+        <ScrollToTopContext.Provider value={scrollToTop}>
+          <KeepInPlaceContext.Provider value={keepInPlace}>
+            {/* El marco se mide para saber donde empieza el teclado en la pantalla. */}
+            <View
+              ref={frame}
+              collapsable={false}
+              onLayout={(event) => setFrameHeight(event.nativeEvent.layout.height)}
+              style={styles.stack}
+            >
+              {scroll}
+              {hasOverlay && <ScreenBlur target={list} frame={frame} background={background} />}
+              {/* Con el teclado abierto la capa se encoge por arriba de el: si no, los
             botones de guardar y confirmar quedan justo debajo de las teclas. */}
-          {[overlay, overlayAbove].map((content, index) =>
-            content ? (
-              <View
-                key={index}
-                style={StyleSheet.absoluteFill}
-                pointerEvents={index === 0 && overlayAbove ? 'none' : 'box-none'}
-                accessibilityElementsHidden={index === 0 && !!overlayAbove}
-                aria-hidden={index === 0 && !!overlayAbove}
-                importantForAccessibility={
-                  index === 0 && overlayAbove ? 'no-hide-descendants' : 'auto'
-                }
-              >
-                {/* El oscurecido cubre la pantalla entera y no se encoge con el teclado: el
+              {[overlay, overlayAbove].map((content, index) =>
+                content ? (
+                  <View
+                    key={index}
+                    style={StyleSheet.absoluteFill}
+                    pointerEvents={index === 0 && overlayAbove ? 'none' : 'box-none'}
+                    accessibilityElementsHidden={index === 0 && !!overlayAbove}
+                    aria-hidden={index === 0 && !!overlayAbove}
+                    importantForAccessibility={
+                      index === 0 && overlayAbove ? 'no-hide-descendants' : 'auto'
+                    }
+                  >
+                    {/* El oscurecido cubre la pantalla entera y no se encoge con el teclado: el
                 hueco que se le hace abajo es parte del fondo, y sin esto se veia una
                 franja sin oscurecer mientras el teclado sube o baja. */}
-                {onOverlayDismiss ? (
-                  <Pressable
-                    accessibilityLabel="Cerrar"
-                    onPress={() => {
-                      // El teclado se quedaria flotando sobre una pantalla en la que ya no
-                      // hay nada que escribir.
-                      Keyboard.dismiss();
-                      onOverlayDismiss();
-                    }}
-                    style={[styles.scrim, index === 1 && styles.childScrim]}
-                  />
-                ) : (
-                  <View
-                    style={[styles.scrim, index === 1 && styles.childScrim]}
-                    pointerEvents="none"
-                  />
-                )}
-                {/* La hoja se centra en lo que queda libre encima del teclado. El hueco se
+                    {onOverlayDismiss ? (
+                      <Pressable
+                        accessibilityLabel="Cerrar"
+                        onPress={() => {
+                          // El teclado se quedaria flotando sobre una pantalla en la que ya no
+                          // hay nada que escribir.
+                          Keyboard.dismiss();
+                          onOverlayDismiss();
+                        }}
+                        style={[styles.scrim, index === 1 && styles.childScrim]}
+                      />
+                    ) : (
+                      <View
+                        style={[styles.scrim, index === 1 && styles.childScrim]}
+                        pointerEvents="none"
+                      />
+                    )}
+                    {/* La hoja se centra en lo que queda libre encima del teclado. El hueco se
                 hace de golpe, para que la hoja nunca mida mas de lo que cabe, y el
                 desplazamiento lo deshace: asi sube con la misma animacion del teclado en
                 vez de dar un salto. */}
-                <Animated.View
-                  pointerEvents="box-none"
-                  style={[
-                    styles.overlay,
-                    { transform: [{ translateY: index === 0 && overlayAbove ? 0 : lift }] },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.sheetFrame,
-                      !(index === 0 && overlayAbove) &&
-                        maxSheetHeight !== undefined && { maxHeight: maxSheetHeight },
-                    ]}
-                    onLayout={(event) => {
-                      const height = event.nativeEvent.layout.height;
-                      setSheetHeights((heights) =>
-                        heights[index] === height
-                          ? heights
-                          : heights.map((saved, i) => (i === index ? height : saved)),
-                      );
-                    }}
-                  >
-                    {content}
+                    <Animated.View
+                      pointerEvents="box-none"
+                      style={[
+                        styles.overlay,
+                        { transform: [{ translateY: index === 0 && overlayAbove ? 0 : lift }] },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.sheetFrame,
+                          !(index === 0 && overlayAbove) &&
+                            maxSheetHeight !== undefined && { maxHeight: maxSheetHeight },
+                        ]}
+                        onLayout={(event) => {
+                          const height = event.nativeEvent.layout.height;
+                          setSheetHeights((heights) =>
+                            heights[index] === height
+                              ? heights
+                              : heights.map((saved, i) => (i === index ? height : saved)),
+                          );
+                        }}
+                      >
+                        {content}
+                      </View>
+                    </Animated.View>
                   </View>
-                </Animated.View>
-              </View>
-            ) : null,
-          )}
-        </View>
+                ) : null,
+              )}
+            </View>
+          </KeepInPlaceContext.Provider>
+        </ScrollToTopContext.Provider>
       </ScrollIntoViewContext.Provider>
     </RevealContext.Provider>
   );

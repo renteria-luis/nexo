@@ -559,7 +559,13 @@ export function Chat({ onClose }: { onClose: () => void }) {
           ref={scroll}
           style={styles.scroll}
           contentContainerStyle={styles.list}
-          onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}
+          // Sin animacion: con cincuenta mensajes acomodandose al abrir, cada bajada animada
+          // cortaba la anterior y el chat se quedaba a media conversacion (2026-10-23).
+          // Un cuadro despues: pedida en el mismo aviso del tamano, la lista nativa todavia
+          // no tenia el alto nuevo y la bajada se quedaba en cero (2026-10-24).
+          onContentSizeChange={() =>
+            requestAnimationFrame(() => scroll.current?.scrollToEnd({ animated: false }))
+          }
         >
           {said.length === 0 && (
             <Text style={styles.empty}>

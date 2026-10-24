@@ -93,7 +93,9 @@ export function InfoProvider({ children }: { children: ReactNode }) {
   );
 
   const place = (from: Spot) => {
-    const wide = Math.min(WIDE, width - 2 * GAP);
+    // Nunca mas angosto que lo que lo abre: la lista de un combobox salia mas chica que
+    // su campo y corrida a un lado (2026-10-24). La (i) es chica y no cambia.
+    const wide = Math.min(Math.max(WIDE, from.width), width - 2 * GAP);
     const left = Math.min(Math.max(from.x + from.width / 2 - wide / 2, GAP), width - wide - GAP);
     const floor = height - (keyboard > 0 ? keyboard : insets.bottom);
     const under = floor - (from.y + from.height) - GAP;

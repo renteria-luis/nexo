@@ -59,7 +59,11 @@ test('the displayed plan includes both arms and follows overrides and removed ex
   });
   let tree = await planner.settle();
   const check = (count: number, seconds: number) =>
-    assert.ok(textOf(tree).includes(`${count} ejercicios · ${clockFace(seconds / 60)} de plan`));
+    assert.ok(
+      textOf(tree).includes(
+        `${count} ${count === 1 ? 'ejercicio' : 'ejercicios'} · ${clockFace(seconds / 60)} de plan`,
+      ),
+    );
   check(2, 300 + 3 * (90 + 90) + 2 * (45 + 120) + 120);
   const fewer = (name: string) => {
     nodes(tree)
@@ -76,8 +80,9 @@ test('the displayed plan includes both arms and follows overrides and removed ex
   fewer('Press');
   check(0, 0);
   assert.equal(
-    nodes(tree).find((node) => node.type === 'Button' && node.props.label === 'Empezar entreno')!
-      .props.disabled,
+    nodes(tree).find(
+      (node) => node.type === 'Button' && node.props.label === 'Elige dónde entrenas',
+    )!.props.disabled,
     true,
   );
 });

@@ -26,6 +26,14 @@ function show(value: number | null, digits = 0, suffix = ''): string {
   return `${digits === 0 ? Math.round(value) : value.toFixed(digits)}${suffix}`;
 }
 
+/**
+ * Sin dato ni esta semana ni la anterior, la fila no dice nada: el pulso y la VFC no
+ * llegan por el Atajo, y "— · antes —" se quedaba ahi todas las semanas.
+ */
+function known(value: Comparison): boolean {
+  return value.thisWeek !== null || value.previousWeek !== null;
+}
+
 function compare(value: Comparison, digits: number, suffix: string): string {
   return `${show(value.thisWeek, digits, suffix)} · antes ${show(value.previousWeek, digits, suffix)}`;
 }
@@ -155,14 +163,20 @@ export function WeekSummaryScreen() {
                   : `${(summary.averages.waterMl / 1000).toFixed(2)} L`
               }
             />
-            <Line label="Peso, media de 7 días" value={compare(summary.weightKg, 1, ' kg')} />
+            {known(summary.weightKg) && (
+              <Line label="Peso, media de 7 días" value={compare(summary.weightKg, 1, ' kg')} />
+            )}
           </Card>
 
           <Card title="Lo que cuesta">
             <Line
               first
               label="Alcohol"
-              value={`${summary.alcohol.drinks} tragos en ${summary.alcohol.daysWithDrinks} días`}
+              value={
+                summary.alcohol.drinks === 0
+                  ? 'ninguno'
+                  : `${summary.alcohol.drinks} ${summary.alcohol.drinks === 1 ? 'trago' : 'tragos'} en ${summary.alcohol.daysWithDrinks} ${summary.alcohol.daysWithDrinks === 1 ? 'día' : 'días'}`
+              }
             />
             <Line label="Jr. Bacon Cheeseburgers" value={String(summary.jbcCount)} />
             <Line
@@ -171,10 +185,20 @@ export function WeekSummaryScreen() {
             />
           </Card>
 
-          <Card title="Recuperación">
-            <Line first label="Pulso en reposo" value={compare(summary.restingHr, 0, ' lpm')} />
-            <Line label="VFC" value={compare(summary.hrvMs, 0, ' ms')} />
-          </Card>
+          {(known(summary.restingHr) || known(summary.hrvMs)) && (
+            <Card title="Recuperación">
+              {known(summary.restingHr) && (
+                <Line first label="Pulso en reposo" value={compare(summary.restingHr, 0, ' lpm')} />
+              )}
+              {known(summary.hrvMs) && (
+                <Line
+                  first={!known(summary.restingHr)}
+                  label="VFC"
+                  value={compare(summary.hrvMs, 0, ' ms')}
+                />
+              )}
+            </Card>
+          )}
         </>
       )}
     </Screen>

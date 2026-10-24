@@ -127,7 +127,12 @@ export function ScoreScale({
       <Button
         label="Restaurar límites 25 / 50 / 100"
         variant="ghost"
-        disabled={busy}
+        disabled={
+          busy ||
+          (draft.lowMax === DEFAULT_SCORE_SCALE.lowMax &&
+            draft.mediumMax === DEFAULT_SCORE_SCALE.mediumMax &&
+            draft.topMin === DEFAULT_SCORE_SCALE.topMin)
+        }
         onPress={() => {
           setLimits([
             String(DEFAULT_SCORE_SCALE.lowMax),

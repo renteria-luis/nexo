@@ -21,7 +21,7 @@ const MOCKS = {
     InfoText: 'InfoText',
     ConfirmButton: 'ConfirmButton',
   },
-  './screens/Screen.tsx': { useScrollIntoView: () => () => {} },
+  './screens/Screen.tsx': { useScrollToTop: () => () => {} },
 };
 
 test('a family appears once, variant failures keep the original choice, and saving blocks new sets', async () => {
@@ -79,6 +79,7 @@ test('a family appears once, variant failures keep the original choice, and savi
     ).length,
     1,
   );
+  assert.doesNotMatch(textOf(tree), /reemplaza/);
   const chip = nodes(tree).find(
     (node) => node.type === 'Chip' && node.props.label === 'Mancuernas',
   )!;
@@ -94,7 +95,7 @@ test('a family appears once, variant failures keep the original choice, and savi
   await screen.settle();
 });
 
-test('the estimated 1RM of a dumbbell says it is one dumbbell, like the sets above it', async () => {
+test('the estimated 1RM of a dumbbell says it is one dumbbell, and waits for a past session', async () => {
   const set = {
     sessionId: 'past',
     date: '2026-10-01',
@@ -104,51 +105,55 @@ test('the estimated 1RM of a dumbbell says it is one dumbbell, like the sets abo
     reps: 10,
     loadFactor: 2,
   };
-  const tree = await renderModule('src/ui/SessionLog.tsx', MOCKS)
-    .mount('SessionLog', {
-      exercises: [
-        {
-          id: 'hammer',
-          name_es: 'Curl martillo · mancuernas',
-          familyId: 'hammer',
-          familyName: 'Curl martillo',
-          equipment_type: 'dumbbell',
-          unilateral: 0,
-          default_rest_seconds: 120,
-          notes: new Map(),
-          equipment: null,
-          implements: [],
-          muscles: [],
-        },
-      ],
-      selectedExerciseId: 'hammer',
-      onSelectExercise() {},
-      onSelectVariant: async () => {},
-      todaySets: [],
-      lastSets: [set],
-      restingSince: null,
-      plan: [],
-      marks: { best: { set, e1rm: 15.12 }, worst: { set, e1rm: 15.12 } },
-      sessionVolume: 0,
-      unit: 'kg',
-      onChangeUnit() {},
-      plannedSets: 3,
-      planExerciseIds: ['hammer'],
-      setsDoneByExercise: new Map(),
-      plannedByExercise: new Map([['hammer', 3]]),
-      onAddSet: async () => {},
-      onRemoveSet() {},
-      startedAt: 1,
-      draft: null,
-      onDraftChange() {},
-      finishedAt: null,
-      records: null,
-      onFinish() {},
-      onReopen() {},
-    })
-    .settle();
+  const mount = (lastSets: (typeof set)[]) =>
+    renderModule('src/ui/SessionLog.tsx', MOCKS)
+      .mount('SessionLog', {
+        exercises: [
+          {
+            id: 'hammer',
+            name_es: 'Curl martillo · mancuernas',
+            familyId: 'hammer',
+            familyName: 'Curl martillo',
+            equipment_type: 'dumbbell',
+            unilateral: 0,
+            default_rest_seconds: 120,
+            notes: new Map(),
+            equipment: null,
+            implements: [],
+            muscles: [],
+          },
+        ],
+        selectedExerciseId: 'hammer',
+        onSelectExercise() {},
+        onSelectVariant: async () => {},
+        todaySets: [],
+        lastSets,
+        restingSince: null,
+        plan: [],
+        marks: { best: { set, e1rm: 15.12 }, worst: { set, e1rm: 15.12 } },
+        sessionVolume: 0,
+        unit: 'kg',
+        onChangeUnit() {},
+        plannedSets: 3,
+        planExerciseIds: ['hammer'],
+        setsDoneByExercise: new Map(),
+        plannedByExercise: new Map([['hammer', 3]]),
+        onAddSet: async () => {},
+        onRemoveSet() {},
+        startedAt: 1,
+        draft: null,
+        onDraftChange() {},
+        finishedAt: null,
+        records: null,
+        onFinish() {},
+        onReopen() {},
+      })
+      .settle();
+  const tree = await mount([set]);
   assert.match(textOf(tree), /11\.34 kg c\/u/);
   assert.match(textOf(tree), /1RM estimado · mejor 15 · peor 15 kg c\/u · 8 semanas/);
+  // The first time it would only repeat today's sets, and appearing moved the set button.
+  assert.doesNotMatch(textOf(await mount([])), /1RM estimado/);
 });
 
 test('a finished session shows its recap with records and nothing left to log', async () => {
@@ -216,7 +221,8 @@ test('a finished session shows its recap with records and nothing left to log', 
   assert.match(text, /DURÓ01h12m/);
   assert.match(text, /RÉCORDS.*1/);
   assert.match(text, /Press inclinado con mancuernas · 1RM 114 · antes 108 lb c\/u/);
-  assert.doesNotMatch(text, /DESCANSANDO|Terminar entreno/);
+  assert.match(text, /Hiciste 1 de 3 series planeadas/);
+  assert.doesNotMatch(text, /DESCANSANDO|Terminar entreno|Llevas/);
   assert.equal(
     nodes(tree).filter((node) => node.props.accessibilityLabel === 'Agregar serie').length,
     0,

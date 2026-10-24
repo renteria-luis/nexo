@@ -22,12 +22,11 @@ import type { SessionRecord } from '../../training/calculations.ts';
 import { familyOf } from '../../training/variants.ts';
 import type { Implement } from '../../training/sessions.ts';
 import { Chip } from '../Chip.tsx';
-import { formatWeight } from '../../core/units.ts';
 import { RestLandscape } from '../RestLandscape.tsx';
 import { TrainingTiming } from '../TrainingTiming.tsx';
 import { TransitJourneyCard } from '../TransitJourneyCard.tsx';
 import { TRANSIT_ENABLED } from '../../transit/index.ts';
-import { SessionLog } from '../SessionLog.tsx';
+import { SessionLog, setLine } from '../SessionLog.tsx';
 import { SessionPlanner } from '../SessionPlanner.tsx';
 import { SessionPlanEditor } from '../SessionPlanEditor.tsx';
 import { useSwipeLock } from '../SwipeLock.tsx';
@@ -387,11 +386,7 @@ export function TrainingScreen() {
               : suggestedRest(loaded.plan, exercise.id, exercise.default_rest_seconds)
           }
           setNumber={previous?.setIndex ?? null}
-          lastSet={
-            previous === null
-              ? null
-              : `${formatWeight(previous.weightKg, loaded.unit)} ${loaded.unit}${(previous.loadFactor ?? 1) > 1 ? ' c/u' : ''} × ${previous.reps}`
-          }
+          lastSet={previous === null ? null : setLine(previous, loaded.unit)}
         />
       )}
       {/* La pantalla de pie se queda montada debajo, escondida. Cambiarla por la de lado la
@@ -533,6 +528,7 @@ export function TrainingScreen() {
                   onLoad={loadTrainingPlan}
                   onSave={saveTrainingPlan}
                   onCancel={() => setEditingPlan(null)}
+                  onDragging={holdScreen}
                   onApplied={(edit) => {
                     setEditingPlan(null);
                     setFailedAction(null);

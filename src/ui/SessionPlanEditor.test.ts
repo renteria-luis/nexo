@@ -30,6 +30,7 @@ function fixture() {
     './Card.tsx': { Card: 'Card' },
     './Button.tsx': { Button: 'Button' },
     './SearchField.tsx': { SearchField: 'SearchField' },
+    './icons.ts': { ArrowLeftRight: 'ArrowLeftRight', GripLines: 'GripLines' },
   }).mount('SessionPlanEditor', {
     sessionId: 'session',
     catalog: [
@@ -45,6 +46,7 @@ function fixture() {
     onCancel: () => {
       cancelled++;
     },
+    onDragging: () => {},
   });
   const button = async (label: string) => {
     const found = nodes(await screen.settle()).find(
@@ -54,23 +56,42 @@ function fixture() {
     assert.ok(found, label);
     return found.props;
   };
+  // The rows' own controls: plain pressables, and the grip's drag handlers.
+  const press = async (label: string) => {
+    const found = nodes(await screen.settle()).find(
+      (node) => node.props.accessibilityLabel === label && node.props.onPress,
+    );
+    assert.ok(found, label);
+    return found.props;
+  };
+  const drag = async (name: string, dy: number) => {
+    const grip = async () =>
+      nodes(await screen.settle()).find(
+        (node) => node.props.accessibilityLabel === `Mover ${name} de sitio`,
+      )!.props;
+    (await grip()).onPanResponderGrant();
+    (await grip()).onPanResponderMove({}, { dy });
+    (await grip()).onPanResponderRelease();
+  };
   return {
     screen,
     initial,
     actions,
     saved,
     button,
+    press,
+    drag,
     applied: () => applied,
     cancelled: () => cancelled,
   };
 }
 
 test('replacement moves only pending sets, keeps completed sets and preserves the original draft until saving', async () => {
-  const { screen, button, initial, saved } = fixture();
-  (await button('Cambiar ejercicio Press')).onPress();
+  const { screen, button, press, initial, saved } = fixture();
+  (await press('Cambiar ejercicio Press')).onPress();
   (await button('Elegir Dominadas para el plan')).onPress();
-  assert.match(textOf(await screen.settle()), /1 hechas · 0 pendientes/);
-  assert.match(textOf(await screen.settle()), /0 hechas · 2 pendientes/);
+  assert.match(textOf(await screen.settle()), /1 de 1 serie/);
+  assert.match(textOf(await screen.settle()), /0 de 2 series/);
   assert.equal(saved.length, 0);
   assert.equal(initial.exercises.length, 2);
   (await button('Guardar plan')).onPress();
@@ -86,15 +107,16 @@ test('replacement moves only pending sets, keeps completed sets and preserves th
 });
 
 test('adding, merging a replacement, omitting and reordering persist the reviewed counts', async () => {
-  const { screen, button, saved } = fixture();
-  (await button('Cambiar ejercicio Press')).onPress();
+  const { screen, button, press, drag, saved } = fixture();
+  (await press('Cambiar ejercicio Press')).onPress();
   (await button('Elegir Pec deck para el plan')).onPress();
   (await button('Añadir ejercicio')).onPress();
   (await button('Elegir Dominadas para el plan')).onPress();
-  (await button('Quitar una serie pendiente de Dominadas')).onPress();
-  (await button('Subir Dominadas')).onPress();
+  (await press('Una serie menos de Dominadas')).onPress();
+  await drag('Dominadas', -86);
+  (await press('Cambiar ejercicio Pec deck')).onPress();
   (await button('Omitir pendientes de Pec deck')).onPress();
-  assert.equal((await button('Quitar una serie pendiente de Press')).disabled, true);
+  assert.equal((await press('Una serie menos de Press')).disabled, true);
   (await button('Guardar plan')).onPress();
   await screen.settle();
   assert.deepEqual(
@@ -107,7 +129,7 @@ test('adding, merging a replacement, omitting and reordering persist the reviewe
 });
 
 test('failed writes retain edits for retry and same-render duplicate saves run once', async () => {
-  const { actions, button, screen, applied, saved } = fixture();
+  const { actions, button, press, screen, applied, saved } = fixture();
   let reject!: (error: Error) => void;
   let calls = 0;
   actions.save = async () => {
@@ -116,7 +138,7 @@ test('failed writes retain edits for retry and same-render duplicate saves run o
       reject = refuse;
     });
   };
-  (await button('Añadir una serie pendiente a Press')).onPress();
+  (await press('Una serie más de Press')).onPress();
   const save = await button('Guardar plan');
   save.onPress();
   save.onPress();
@@ -124,7 +146,7 @@ test('failed writes retain edits for retry and same-render duplicate saves run o
   assert.equal((await button('Cancelar cambios')).disabled, true);
   reject(new Error('Storage unavailable'));
   assert.match(textOf(await screen.settle()), /Storage unavailable/);
-  assert.match(textOf(await screen.settle()), /1 hechas · 3 pendientes/);
+  assert.match(textOf(await screen.settle()), /1 de 4 series/);
   assert.equal(applied(), 0);
   actions.save = async (edit) => {
     saved.push(edit);
@@ -136,7 +158,7 @@ test('failed writes retain edits for retry and same-render duplicate saves run o
 });
 
 test('load failure can retry and cancelling never saves the draft', async () => {
-  const { actions, button, screen, saved, initial, cancelled } = fixture();
+  const { actions, button, press, screen, saved, initial, cancelled } = fixture();
   actions.load = async () => {
     throw new Error('Read failed');
   };
@@ -144,6 +166,7 @@ test('load failure can retry and cancelling never saves the draft', async () => 
   assert.equal((await button('Guardar plan')).disabled, true);
   actions.load = async () => initial;
   (await button('Reintentar carga')).onPress();
+  (await press('Cambiar ejercicio Pec deck')).onPress();
   (await button('Omitir pendientes de Pec deck')).onPress();
   (await button('Cancelar cambios')).onPress();
   assert.equal(cancelled(), 1);

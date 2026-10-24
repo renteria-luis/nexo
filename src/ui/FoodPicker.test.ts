@@ -44,3 +44,38 @@ test('the picker suggests at most two usual foods and three recent ones', async 
   }
   assert.ok(nodes(tree).some((node) => node.props.label === 'Ver los otros 5'));
 });
+
+test('the chosen food says what the typed portion brings, not what 100 g brings', async () => {
+  const chicken = {
+    id: 'chicken',
+    name: 'Pechuga de pollo',
+    base_unit: 'g',
+    unit_kind: 'mass',
+    kcal: 1.2,
+    protein_g: 0.224,
+    fat_g: 0,
+    carbs_g: 0,
+    brand: null,
+    store: null,
+    keywords: null,
+  };
+  const picker = (quantity: number) =>
+    renderModule('src/ui/FoodPicker.tsx', {
+      './Button.tsx': { Button: 'Button' },
+      './IconButton.tsx': { IconButton: 'IconButton' },
+      './SearchField.tsx': { SearchField: 'SearchField' },
+      './icons.ts': { ChevronDown: 'ChevronDown', ChevronUp: 'ChevronUp', Pencil: 'Pencil' },
+    })
+      .mount('FoodPicker', {
+        foods: [chicken],
+        history: { usualBySlot: new Map(), recent: [], lastQuantity: new Map() },
+        slot: 'cena',
+        selectedId: 'chicken',
+        quantity,
+        onSelect() {},
+        onOpenCatalogue() {},
+      })
+      .settle();
+  assert.ok(textOf(await picker(200)).includes('200 g · 240 kcal · 44.8 g P'));
+  assert.ok(textOf(await picker(Number(''))).includes('100 g · 120 kcal · 22.4 g P'));
+});

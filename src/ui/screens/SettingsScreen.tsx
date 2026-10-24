@@ -444,7 +444,7 @@ export function SettingsScreen({
           onPress={onOpenExercises}
         />
         <Button
-          label="Comidas"
+          label="Alimentos"
           accessibilityLabel="Editar los alimentos"
           icon={ChevronRight}
           block
@@ -455,65 +455,67 @@ export function SettingsScreen({
       <ScoreScale value={scoreScaleFrom(settings.get('score_scale'))} onSave={onSaveScoreScale} />
 
       <Card title="Respaldo">
-        <View style={styles.options}>
-          <Button
-            label="Exportar"
-            accessibilityLabel="Exportar todo a un archivo"
-            loading={busy === 'exportar'}
-            disabled={busy !== null}
-            style={styles.grow}
-            onPress={() => {
-              setBusy('exportar');
-              setBackupNote('Escribiendo…');
-              onExport()
-                .then((outcome) => setBackupNote(exportNote(outcome)))
-                .catch((error: unknown) => {
-                  setBackupNote(error instanceof Error ? error.message : String(error));
-                })
-                .finally(() => setBusy(null));
-            }}
-          />
+        {/* Confirmando, Exportar no tiene que ver: con el, "Cancelar" quedaba solo en
+            otro renglon. Apiladas, como las de borrar todo (2026-10-24). */}
+        {confirmingImport ? (
+          <>
+            <Button
+              label="Sí, reemplazar lo que hay"
+              accessibilityLabel="Confirmar importación"
+              variant="danger"
+              loading={busy === 'importar'}
+              disabled={busy !== null}
+              block
+              onPress={() => {
+                setConfirmingImport(false);
+                setBusy('importar');
+                setBackupNote('Leyendo el archivo…');
+                onImport()
+                  .then((result) => {
+                    if (result === null) {
+                      setBackupNote('No elegiste ningún archivo.');
+                      return;
+                    }
+                    setBackupNote(
+                      'Respaldo importado.' +
+                        (result.skipped.length > 0
+                          ? ` Quedaron fuera ${result.skipped.join(', ')}, que esta versión ya no tiene.`
+                          : ''),
+                    );
+                  })
+                  .catch((error: unknown) => {
+                    setBackupNote(error instanceof Error ? error.message : String(error));
+                  })
+                  .finally(() => setBusy(null));
+              }}
+            />
+            <Button
+              label="Cancelar"
+              accessibilityLabel="Cancelar importación"
+              block
+              onPress={() => setConfirmingImport(false)}
+            />
+          </>
+        ) : (
+          <View style={styles.options}>
+            <Button
+              label="Exportar"
+              accessibilityLabel="Exportar todo a un archivo"
+              loading={busy === 'exportar'}
+              disabled={busy !== null}
+              style={styles.grow}
+              onPress={() => {
+                setBusy('exportar');
+                setBackupNote('Escribiendo…');
+                onExport()
+                  .then((outcome) => setBackupNote(exportNote(outcome)))
+                  .catch((error: unknown) => {
+                    setBackupNote(error instanceof Error ? error.message : String(error));
+                  })
+                  .finally(() => setBusy(null));
+              }}
+            />
 
-          {confirmingImport ? (
-            <>
-              <Button
-                label="Sí, reemplazar lo que hay"
-                accessibilityLabel="Confirmar importación"
-                variant="danger"
-                loading={busy === 'importar'}
-                disabled={busy !== null}
-                block
-                onPress={() => {
-                  setConfirmingImport(false);
-                  setBusy('importar');
-                  setBackupNote('Leyendo el archivo…');
-                  onImport()
-                    .then((result) => {
-                      if (result === null) {
-                        setBackupNote('No elegiste ningún archivo.');
-                        return;
-                      }
-                      setBackupNote(
-                        `Restaurado: ${result.rows} filas en ${result.tables} tablas.` +
-                          (result.skipped.length > 0
-                            ? ` Quedaron fuera ${result.skipped.join(', ')}, que esta versión ya no tiene.`
-                            : ''),
-                      );
-                    })
-                    .catch((error: unknown) => {
-                      setBackupNote(error instanceof Error ? error.message : String(error));
-                    })
-                    .finally(() => setBusy(null));
-                }}
-              />
-              <Button
-                label="Cancelar"
-                accessibilityLabel="Cancelar importación"
-                block
-                onPress={() => setConfirmingImport(false)}
-              />
-            </>
-          ) : (
             <Button
               label="Importar"
               accessibilityLabel="Importar desde un archivo"
@@ -522,8 +524,8 @@ export function SettingsScreen({
               style={styles.grow}
               onPress={() => setConfirmingImport(true)}
             />
-          )}
-        </View>
+          </View>
+        )}
         {backupNote && <Text style={styles.note}>{backupNote}</Text>}
       </Card>
 

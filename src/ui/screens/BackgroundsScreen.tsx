@@ -97,6 +97,8 @@ export function BackgroundsScreen() {
                 : 'Usa el general'
           }
           background={backgroundFor(all, screen)}
+          // La que usa el general no repite que falta su foto: lo dice una vez el general.
+          own={screen === GENERAL || Object.hasOwn(all, screen)}
           ratio={window.height / window.width}
           scale={THUMB / window.width}
           onPress={() => open(screen)}
@@ -110,6 +112,7 @@ function Row({
   name,
   detail,
   background,
+  own,
   ratio,
   scale,
   onPress,
@@ -117,6 +120,7 @@ function Row({
   name: string;
   detail: string;
   background: Background;
+  own: boolean;
   ratio: number;
   scale: number;
   onPress: () => void;
@@ -136,7 +140,7 @@ function Row({
           width={THUMB}
           height={height}
           scale={scale}
-          onMissing={() => setMissing(true)}
+          onMissing={own ? () => setMissing(true) : undefined}
         />
       </View>
       <View style={styles.text}>

@@ -28,13 +28,13 @@ import { clock, Elapsed } from './Elapsed.tsx';
 import { SearchField } from './SearchField.tsx';
 import { ConfirmButton, InfoDot, InfoText } from './InfoBubble.tsx';
 import { NumericField } from './NumericField.tsx';
-import { useScrollIntoView } from './screens/Screen.tsx';
+import { useScrollToTop } from './screens/Screen.tsx';
 import { font, sheet, shape, theme } from './theme.ts';
 
 /** Donde cae casi siempre una serie efectiva, asi que el primer toque arranca ahi. */
 const RPE_START = 8;
 
-function setLine(set: LoggedSet, unit: WeightUnit): string {
+export function setLine(set: LoggedSet, unit: WeightUnit): string {
   // "c/u" porque el numero es el de una mancuerna, no el de las dos.
   const each = (set.loadFactor ?? 1) > 1 ? ' c/u' : '';
   // En una dominada lo que escribe es el lastre, casi siempre cero, asi que al lado
@@ -226,15 +226,18 @@ export const SessionLog = memo(function SessionLog({
   const card = useRef<View>(null);
 
   // Terminar se toca abajo del todo y el resumen sale arriba, donde estaba el volumen: la
-  // pantalla sube a el, o no se veria nada mas que el boton desapareciendo.
-  const top = useRef<View>(null);
-  const scrollIntoView = useScrollIntoView();
+  // pantalla sube a el, o no se veria nada mas que el boton desapareciendo. Al empezar
+  // pasa lo mismo: el plan se quedaba con lo desplazado y la serie quedaba cortada arriba.
+  const scrollToTop = useScrollToTop();
   const wasFinished = useRef(finishedAt !== null);
+  useEffect(() => {
+    scrollToTop();
+  }, [scrollToTop]);
   useEffect(() => {
     const justFinished = finishedAt !== null && !wasFinished.current;
     wasFinished.current = finishedAt !== null;
-    if (justFinished) scrollIntoView(top.current);
-  }, [finishedAt, scrollIntoView]);
+    if (justFinished) scrollToTop();
+  }, [finishedAt, scrollToTop]);
 
   // Spec 8.5: the plan is the session. The full catalogue is still one tap away,
   // because a machine can be taken and the swap has to be logged somewhere.
@@ -450,111 +453,107 @@ export const SessionLog = memo(function SessionLog({
     <View style={styles.wrapper}>
       {/* Lo que lleva movido y cuanto lleva dentro, que son las dos cosas que mira
           cuando levanta la vista del banco. Al terminar, el resumen del entreno. */}
-      <View ref={top} collapsable={false}>
-        <Card>
-          {finishedAt === null ? (
-            <View style={styles.header}>
-              <View>
-                <Text style={styles.heading}>VOLUMEN DE HOY</Text>
+      <Card>
+        {finishedAt === null ? (
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.heading}>VOLUMEN DE HOY</Text>
+              <Text style={styles.volume}>
+                {thousands(fromKg(sessionVolume, unit))} {unit}
+              </Text>
+            </View>
+            {startedAt !== null && (
+              <View style={styles.clockSide}>
+                <Text style={styles.heading}>ENTRENANDO</Text>
+                <Text style={styles.sessionClock}>
+                  <Elapsed key={startedAt} since={startedAt} />
+                </Text>
+              </View>
+            )}
+          </View>
+        ) : (
+          <>
+            <Text style={styles.finished}>Entreno terminado a las {hhmm(finishedAt)}</Text>
+            <View style={styles.recap}>
+              <View style={styles.recapStat}>
+                <Text style={styles.heading}>VOLUMEN</Text>
                 <Text style={styles.volume}>
                   {thousands(fromKg(sessionVolume, unit))} {unit}
                 </Text>
               </View>
+              <View style={styles.recapStat}>
+                <Text style={styles.heading}>SERIES</Text>
+                <Text style={styles.volume}>
+                  {[...setsDoneByExercise.values()].reduce((sum, done) => sum + done, 0)}
+                </Text>
+              </View>
               {startedAt !== null && (
-                <View style={styles.clockSide}>
-                  <Text style={styles.heading}>ENTRENANDO</Text>
-                  <Text style={styles.sessionClock}>
-                    <Elapsed key={startedAt} since={startedAt} />
-                  </Text>
+                <View style={styles.recapStat}>
+                  <Text style={styles.heading}>DURÓ</Text>
+                  <Text style={styles.volume}>{clockFace((finishedAt - startedAt) / 60_000)}</Text>
+                </View>
+              )}
+              {records !== null && (
+                <View style={styles.recapStat}>
+                  <Text style={styles.heading}>RÉCORDS</Text>
+                  <Text style={styles.volume}>{records.length}</Text>
                 </View>
               )}
             </View>
-          ) : (
-            <>
-              <Text style={styles.finished}>Entreno terminado a las {hhmm(finishedAt)}</Text>
-              <View style={styles.recap}>
-                <View style={styles.recapStat}>
-                  <Text style={styles.heading}>VOLUMEN</Text>
-                  <Text style={styles.volume}>
-                    {thousands(fromKg(sessionVolume, unit))} {unit}
-                  </Text>
-                </View>
-                <View style={styles.recapStat}>
-                  <Text style={styles.heading}>SERIES</Text>
-                  <Text style={styles.volume}>
-                    {[...setsDoneByExercise.values()].reduce((sum, done) => sum + done, 0)}
-                  </Text>
-                </View>
-                {startedAt !== null && (
-                  <View style={styles.recapStat}>
-                    <Text style={styles.heading}>DURÓ</Text>
-                    <Text style={styles.volume}>
-                      {clockFace((finishedAt - startedAt) / 60_000)}
-                    </Text>
-                  </View>
-                )}
-                {records !== null && (
-                  <View style={styles.recapStat}>
-                    <Text style={styles.heading}>RÉCORDS</Text>
-                    <Text style={styles.volume}>{records.length}</Text>
-                  </View>
-                )}
-              </View>
-              {records?.map((record) => (
-                <Text key={record.exerciseId} style={styles.record}>
-                  {exercises.find((item) => item.id === record.exerciseId)?.name_es ??
-                    record.exerciseId}
-                  <Text style={styles.recordNumbers}>
-                    {' '}
-                    · 1RM {Math.round(fromKg(record.now.e1rm, unit))} · antes{' '}
-                    {Math.round(fromKg(record.before.e1rm, unit))} {unit}
-                    {(record.now.set.loadFactor ?? 1) > 1 && (record.before.set.loadFactor ?? 1) > 1
-                      ? ' c/u'
-                      : ''}
-                  </Text>
+            {records?.map((record) => (
+              <Text key={record.exerciseId} style={styles.record}>
+                {exercises.find((item) => item.id === record.exerciseId)?.name_es ??
+                  record.exerciseId}
+                <Text style={styles.recordNumbers}>
+                  {' '}
+                  · 1RM {Math.round(fromKg(record.now.e1rm, unit))} · antes{' '}
+                  {Math.round(fromKg(record.before.e1rm, unit))} {unit}
+                  {(record.now.set.loadFactor ?? 1) > 1 && (record.before.set.loadFactor ?? 1) > 1
+                    ? ' c/u'
+                    : ''}
                 </Text>
-              ))}
-              {sessionProblem}
-              {/* Pegado al boton y no un modal: el teclado de la app vive en la raiz y
+              </Text>
+            ))}
+            {sessionProblem}
+            {/* Pegado al boton y no un modal: el teclado de la app vive en la raiz y
                   un modal de iOS lo dejaria debajo. */}
-              {reopening ? (
-                <>
-                  <Text style={styles.confirmText}>
-                    ¿Seguir entrenando? El entreno vuelve a quedar abierto.
-                  </Text>
-                  <View style={styles.confirmButtons}>
-                    <Button
-                      label="Sí, seguir"
-                      accessibilityLabel="Sí, seguir entrenando"
-                      variant="primary"
-                      disabled={sessionAction !== null}
-                      loading={sessionAction === 'reopen'}
-                      onPress={() => {
-                        setReopening(false);
-                        onReopen();
-                      }}
-                    />
-                    <Button
-                      label="No"
-                      accessibilityLabel="No seguir entrenando"
-                      disabled={sessionAction !== null}
-                      onPress={() => setReopening(false)}
-                    />
-                  </View>
-                </>
-              ) : (
-                <Button
-                  label="Seguir entrenando"
-                  accessibilityLabel="Seguir entrenando"
-                  disabled={sessionAction !== null}
-                  loading={sessionAction === 'reopen'}
-                  onPress={() => setReopening(true)}
-                />
-              )}
-            </>
-          )}
-        </Card>
-      </View>
+            {reopening ? (
+              <>
+                <Text style={styles.confirmText}>
+                  ¿Seguir entrenando? El entreno vuelve a quedar abierto.
+                </Text>
+                <View style={styles.confirmButtons}>
+                  <Button
+                    label="Sí, seguir"
+                    accessibilityLabel="Sí, seguir entrenando"
+                    variant="primary"
+                    disabled={sessionAction !== null}
+                    loading={sessionAction === 'reopen'}
+                    onPress={() => {
+                      setReopening(false);
+                      onReopen();
+                    }}
+                  />
+                  <Button
+                    label="No"
+                    accessibilityLabel="No seguir entrenando"
+                    disabled={sessionAction !== null}
+                    onPress={() => setReopening(false)}
+                  />
+                </View>
+              </>
+            ) : (
+              <Button
+                label="Seguir entrenando"
+                accessibilityLabel="Seguir entrenando"
+                disabled={sessionAction !== null}
+                loading={sessionAction === 'reopen'}
+                onPress={() => setReopening(true)}
+              />
+            )}
+          </>
+        )}
+      </Card>
 
       <>
         {/* La cartilla entera se sube cuando se toca cualquiera de los tres campos: el
@@ -599,13 +598,10 @@ export const SessionLog = memo(function SessionLog({
                       />
                     ))}
                   </View>
-                  <Text style={styles.lastLabel}>
-                    {switchingVariant
-                      ? 'Cambiando variante…'
-                      : finishedAt !== null
-                        ? 'Elige una variante para ver sus series.'
-                        : 'Cambiar variante reemplaza sus series pendientes.'}
-                  </Text>
+                  {/* Sin aviso fijo: cambiar es reversible, tocar la de antes le devuelve
+                      las series pendientes, y el aviso estaba ahi en cada serie. Terminado,
+                      "Elige una variante" salia con una ya elegida (2026-10-24). */}
+                  {switchingVariant && <Text style={styles.lastLabel}>Cambiando variante…</Text>}
                 </>
               )}
               {variantProblem && (
@@ -675,9 +671,11 @@ export const SessionLog = memo(function SessionLog({
                 </View>
               )}
 
-              {marks && (
+              {marks && lastSets.length > 0 && (
                 /* Un 1RM estimado con centesimas es ruido: la formula ya es una
-                 aproximacion, asi que se lee redondo. */
+                 aproximacion, asi que se lee redondo. La primera vez solo sale de las
+                 series de hoy, "mejor 127 · peor 127", y aparecer tras la primera serie
+                 bajaba «+ Serie» medio dedo. */
                 <Text style={styles.marks}>
                   1RM estimado · mejor {Math.round(fromKg(marks.best.e1rm, unit))} · peor{' '}
                   {Math.round(fromKg(marks.worst.e1rm, unit))} {unit}
@@ -690,7 +688,8 @@ export const SessionLog = memo(function SessionLog({
 
               {plannedSets !== null && (
                 <Text style={styles.planned}>
-                  Llevas {todaySets.length} de {plannedSets} series planeadas
+                  {finishedAt === null ? 'Llevas' : 'Hiciste'} {todaySets.length} de {plannedSets}{' '}
+                  series planeadas
                 </Text>
               )}
 

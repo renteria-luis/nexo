@@ -13,7 +13,9 @@ function panel(onLoadLast: (foodId: string) => Promise<unknown>, batches: unknow
     './InfoBubble.tsx': { ConfirmAction: 'ConfirmAction' },
     './NumericField.tsx': { NumericField: 'NumericField' },
     './TextField.tsx': { TextField: 'TextField' },
+    './SearchField.tsx': { SearchField: 'SearchField' },
     './Toggle.tsx': { Toggle: 'Toggle' },
+    './screens/Screen.tsx': { useKeepInPlace: () => () => {} },
     './icons.ts': Object.fromEntries(
       ['Plus', 'Trash', 'TriangleAlert', 'Utensils'].map((name) => [name, name]),
     ),
@@ -46,6 +48,13 @@ test('a food batched before proposes its last weight and portions, without overw
   press(tree, 'Del catálogo');
   tree = await view.settle();
   field(tree, 'Porciones').onChange('5');
+  tree = await view.settle();
+  // Nothing to pick until he searches: the whole catalogue was a wall of chips.
+  assert.equal(
+    nodes(tree).some((node) => node.props.label === 'Arroz'),
+    false,
+  );
+  field(tree, 'Buscar en el catálogo').onChange('arr');
   tree = await view.settle();
   press(tree, 'Arroz');
   tree = await view.settle();

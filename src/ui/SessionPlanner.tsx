@@ -1,5 +1,5 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Animated, PanResponder, Pressable, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Text, View } from 'react-native';
 
 import type { GymLocation } from '../core/geo.ts';
 import type { Company, TrainingRoutineRow } from '../db/types.ts';
@@ -24,9 +24,9 @@ import { Chip } from './Chip.tsx';
 import { clock } from './Elapsed.tsx';
 import { IconButton } from './IconButton.tsx';
 import { ConfirmAction } from './InfoBubble.tsx';
+import { OrderList, type OrderItem } from './OrderList.tsx';
 import {
   Dumbbell,
-  GripLines,
   MapPin,
   Moon,
   Navigation,
@@ -77,30 +77,6 @@ const TIER_ES: Record<number, string> = {
   4: 'opcional',
 };
 
-/**
- * Lo que mide una fila del orden.
- *
- * Fija a proposito: con una sola medida, saber donde caeria la fila es una division, y
- * sin ella habria que medir las siete y guardarse sus alturas para lo mismo.
- */
-const ROW = 86;
-
-/** Lo que tarda una fila en correrse para abrir el hueco, o en caer en su sitio al soltar. */
-const SLIDE_MS = 150;
-
-/** Donde esta una fila del orden, de arriba abajo, y a donde va. */
-type Place = { y: Animated.Value; to: number };
-
-/** Lo que se corre una fila que no es la que se arrastra, para abrirle el hueco. */
-function shiftFor(index: number, from: number | null, to: number | null): number {
-  // from menor que cero es "lo que se arrastraba ya no esta en la lista": sin esta
-  // linea, las filas se quedaban corridas y montadas unas encima de otras.
-  if (from === null || from < 0 || to === null || index === from) return 0;
-  if (from < to && index > from && index <= to) return -ROW;
-  if (from > to && index < from && index >= to) return ROW;
-  return 0;
-}
-
 /** Corto a proposito: "12-15" y no "12 a 15 repeticiones", que es lo mismo tres veces. */
 function reps(exercise: PlannedExercise): string {
   if (exercise.repMode === 'amrap') return 'al fallo técnico';
@@ -132,283 +108,6 @@ function Field({
         <Text style={styles.label}>{label}</Text>
       </View>
       {children}
-    </View>
-  );
-}
-
-/**
- * El orden de hoy, y se puede cambiar antes de empezar.
- *
- * Se arrastra desde el asa de las tres rayas, y solo desde ahi: apoyar el dedo en ella
- * despega la fila en el acto, sin esperas, y de ahi sigue al dedo mientras las otras se
- * abren para hacerle sitio. Todo lo demas de la fila queda libre para leer, desplazar la
- * pantalla y tocar los botones de series. Hecho con el PanResponder de siempre y no con
- * una libreria de arrastre: todas piden Reanimated, y Reanimated es lo que tumbo la app
- * en septiembre (ver docs/sliders.md).
- *
- * Mientras una fila esta despegada, la pantalla deja de desplazarse: un arrastre
- * vertical dentro de un scroll es ambiguo y el scroll gana siempre.
- */
-/**
- * Una fila del orden, con su propio gesto.
- *
- * El gesto vive en cada asa y no en la lista entera, y reclama el toque **al apoyar el
- * dedo** (`onStartShouldSetPanResponderCapture`), no al moverlo. Esa es la diferencia
- * entre arrastrar y no: el desplazamiento de la pantalla es nativo y empieza con el
- * primer milimetro, asi que pedirlo despues llegaba tarde y se iba la pantalla en vez de
- * la fila.
- *
- * Y con el toque tomado desde el principio no hace falta apagar nada alrededor: el
- * desplazamiento de la pantalla y el de las pestanas preguntan antes de llevarselo y
- * aqui se les dice que no (`onPanResponderTerminationRequest`). Apagarlos por estado era
- * ademas lo que dejaba filas colgadas: cambiar esas propiedades con el dedo encima hace
- * que iOS cancele el toque, y entonces no llegaba ni el soltar ni el aviso de cancelado.
- */
-const OrderRow = memo(function OrderRow({
-  exercise,
-  index,
-  lifted,
-  onPlace,
-  onLift,
-  onMove,
-  onDrop,
-  onOverride,
-}: {
-  exercise: PlannedExercise;
-  index: number;
-  lifted: boolean;
-  /** Le da al orden el sitio de la fila, para moverlo con el dedo o con una animacion. */
-  onPlace: (exerciseId: string, place: Place) => () => void;
-  onLift: (exerciseId: string, index: number) => void;
-  onMove: (dy: number) => void;
-  onDrop: () => void;
-  onOverride: (exerciseId: string, direction: 1 | -1) => void;
-}) {
-  const [place] = useState<Place>(() => ({ y: new Animated.Value(index * ROW), to: index * ROW }));
-  useEffect(() => onPlace(exercise.exerciseId, place), [exercise.exerciseId, place, onPlace]);
-  const drag = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onStartShouldSetPanResponderCapture: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponderCapture: () => true,
-        // Que nadie se lo quite a medias: el carrusel de pestanas lo pedia en cuanto el
-        // dedo se iba un poco a un lado.
-        onPanResponderTerminationRequest: () => false,
-        onShouldBlockNativeResponder: () => true,
-        onPanResponderGrant: () => onLift(exercise.exerciseId, index),
-        onPanResponderMove: (_event, gesture) => onMove(gesture.dy),
-        onPanResponderRelease: onDrop,
-        onPanResponderTerminate: onDrop,
-        // Y por si acaso: este llega tanto al soltar como al cancelar, y soltar dos
-        // veces no hace nada.
-        onPanResponderEnd: onDrop,
-      }),
-    [exercise.exerciseId, index, onLift, onMove, onDrop],
-  );
-
-  return (
-    <Animated.View
-      // Mientras se mueve, la fila se dibuja una vez y se desplaza esa imagen: la sombra
-      // dura, que iOS recalcula en cada cuadro, es lo que hacia que el arrastre se
-      // sintiera pesado.
-      shouldRasterizeIOS={lifted}
-      style={[styles.row, lifted && styles.rowLifted, { transform: [{ translateY: place.y }] }]}
-    >
-      {/* El asa, y lo unico que arrastra: el resto de la fila queda libre para leer,
-          desplazar la pantalla y tocar los botones de series. */}
-      <View
-        accessibilityLabel={`Mover ${exercise.name} de sitio`}
-        style={styles.handle}
-        {...drag.panHandlers}
-      >
-        <GripLines size={20} color={theme.textFaint} strokeWidth={2.5} />
-      </View>
-
-      <View style={styles.rowText}>
-        <Text style={styles.exercise} numberOfLines={2}>
-          {exercise.name}
-        </Text>
-        <Text style={styles.detail} numberOfLines={1}>
-          {exercise.sets} × {reps(exercise)} · {TIER_ES[exercise.tier]} ·{' '}
-          {clock(exercise.restSeconds)}
-          {exercise.unilateral ? ' · por brazo' : ''}
-        </Text>
-      </View>
-
-      <Pressable
-        accessibilityLabel={`Una serie menos de ${exercise.name}`}
-        onPress={() => onOverride(exercise.exerciseId, -1)}
-        style={({ pressed }) => [styles.nudge, pressed && styles.nudgePressed]}
-      >
-        <Text style={styles.nudgeText}>−</Text>
-      </Pressable>
-      <Pressable
-        accessibilityLabel={`Una serie más de ${exercise.name}`}
-        onPress={() => onOverride(exercise.exerciseId, 1)}
-        style={({ pressed }) => [styles.nudge, pressed && styles.nudgePressed]}
-      >
-        <Text style={styles.nudgeText}>+</Text>
-      </Pressable>
-    </Animated.View>
-  );
-});
-
-function Order({
-  exercises,
-  onReorder,
-  onOverride,
-  onDragging,
-}: {
-  exercises: PlannedExercise[];
-  onReorder: (from: number, to: number) => void;
-  onOverride: (exerciseId: string, direction: 1 | -1) => void;
-  onDragging: (dragging: boolean) => void;
-}) {
-  const count = exercises.length;
-  // Despegado se guarda por ejercicio y no por sitio. Por sitio, si el orden nuevo
-  // llegaba un cuadro antes de apagar lo amarillo, lo amarillo le caia encima al que
-  // acababa de ocupar ese sitio: el parpadeo que se veia al soltar.
-  const [held, setHeld] = useState<string | null>(null);
-  // Donde esta cada fila, por ejercicio, y a donde va. Las filas no se acomodan por el
-  // orden de la lista sino por este valor, asi que la que se corre para abrir el hueco
-  // se desliza en vez de saltar (2026-10-10), y el orden nuevo al soltar no mueve nada:
-  // cada una ya esta donde le toca.
-  const places = useRef(new Map<string, Place>());
-  const keep = useCallback((exerciseId: string, place: Place) => {
-    places.current.set(exerciseId, place);
-    return () => {
-      places.current.delete(exerciseId);
-    };
-  }, []);
-  // Lo mismo en referencias: el gesto las lee fuera del render.
-  const order = useRef<string[]>([]);
-  const holding = useRef<string | null>(null);
-  const started = useRef<number | null>(null);
-  const landing = useRef<number | null>(null);
-  // Y lo que pide la pantalla, leido al momento: despegar una fila la redibuja, y si con
-  // eso cambiaran las funciones del gesto, el gesto nuevo contaria desde cero a medio
-  // arrastre.
-  const parent = useRef({ onReorder, onDragging });
-  useEffect(() => {
-    parent.current = { onReorder, onDragging };
-  });
-
-  const slide = useCallback((exerciseId: string, to: number, then?: () => void) => {
-    const found = places.current.get(exerciseId);
-    if (!found || found.to === to) {
-      then?.();
-      return;
-    }
-    found.to = to;
-    Animated.timing(found.y, { toValue: to, duration: SLIDE_MS, useNativeDriver: true }).start(
-      then,
-    );
-  }, []);
-
-  // Lo que cambie el plan por fuera (el tiempo que tiene, un ejercicio que sale) tambien
-  // se desliza. Mientras arrastra no: ahi manda el dedo.
-  useEffect(() => {
-    order.current = exercises.map((exercise) => exercise.exerciseId);
-    if (holding.current !== null) return;
-    order.current.forEach((exerciseId, index) => slide(exerciseId, index * ROW));
-  }, [exercises, slide]);
-
-  const lift = useCallback((exerciseId: string, index: number) => {
-    const found = places.current.get(exerciseId);
-    // Desde su sitio, aunque todavia venga deslizandose de un arrastre anterior.
-    found?.y.setValue(index * ROW);
-    if (found) found.to = index * ROW;
-    holding.current = exerciseId;
-    started.current = index;
-    landing.current = index;
-    setHeld(exerciseId);
-    parent.current.onDragging(true);
-  }, []);
-
-  const stop = useCallback(
-    (commit = true) => {
-      const id = holding.current;
-      const from = started.current;
-      const to = landing.current;
-      holding.current = null;
-      started.current = null;
-      landing.current = null;
-      // Un segundo aviso de soltar no hace nada: la fila ya va camino de su sitio.
-      if (id === null || from === null || to === null) return;
-
-      parent.current.onDragging(false);
-      const moved = commit && to !== from;
-      const ids = order.current.slice();
-      if (moved) ids.splice(to, 0, ...ids.splice(from, 1));
-      // Cada fila a su sitio del orden que queda: la que estaba en el dedo cae en el suyo
-      // desde donde la solto, y sigue amarilla y por encima hasta llegar; las corridas ya
-      // estan donde les toca, o vuelven si no hubo cambio.
-      ids.forEach((exerciseId, index) =>
-        slide(
-          exerciseId,
-          index * ROW,
-          exerciseId === id
-            ? () => setHeld((current) => (current === id ? null : current))
-            : undefined,
-        ),
-      );
-      if (moved) parent.current.onReorder(from, to);
-    },
-    [slide],
-  );
-
-  const move = useCallback(
-    (dy: number) => {
-      const id = holding.current;
-      const from = started.current;
-      if (id === null || from === null) return;
-
-      // Fuera de la lista se suelta solo y vuelve a su sitio, sin mover nada: sacar una
-      // fila a la cartilla de arriba no significa nada, y dejarla ahi colgada menos.
-      if (dy < -(from + 1) * ROW || dy > (count - from) * ROW) {
-        stop(false);
-        return;
-      }
-
-      const lifted = places.current.get(id);
-      if (lifted) {
-        lifted.y.setValue(from * ROW + dy);
-        lifted.to = from * ROW + dy;
-      }
-      // Medio renglon es el cambio: a partir de ahi la fila tapa mas de la mitad de la
-      // de al lado, y soltarla ahi es cambiarlas de sitio.
-      const to = Math.max(0, Math.min(count - 1, from + Math.round(dy / ROW)));
-      if (to === landing.current) return;
-      landing.current = to;
-      order.current.forEach((exerciseId, index) => {
-        if (exerciseId !== id) slide(exerciseId, index * ROW + shiftFor(index, from, to));
-      });
-    },
-    [count, slide, stop],
-  );
-
-  return (
-    <View style={{ height: count * ROW }}>
-      {/* Las rayas entre filas no se mueven: lo que se corre es el ejercicio, no el
-          renglon. Pegadas a cada fila se deslizaban con ella, y se veia feo (2026-10-10). */}
-      {Array.from({ length: Math.max(0, count - 1) }, (_, line) => (
-        <View key={line} style={[styles.divider, { top: (line + 1) * ROW }]} />
-      ))}
-      {exercises.map((exercise, index) => (
-        <OrderRow
-          key={exercise.exerciseId}
-          exercise={exercise}
-          index={index}
-          lifted={exercise.exerciseId === held}
-          onPlace={keep}
-          onLift={lift}
-          onMove={move}
-          onDrop={stop}
-          onOverride={onOverride}
-        />
-      ))}
     </View>
   );
 }
@@ -655,6 +354,16 @@ export function SessionPlanner({
   const starting = toStart(exercises);
   const seconds = estimateSeconds(starting);
 
+  const orderItems = useMemo<OrderItem[]>(
+    () =>
+      exercises.map((exercise) => ({
+        id: exercise.exerciseId,
+        name: exercise.name,
+        detail: `${exercise.sets} × ${reps(exercise)} · ${TIER_ES[exercise.tier]} · ${clock(exercise.restSeconds)}${exercise.unilateral ? ' · por brazo' : ''}`,
+      })),
+    [exercises],
+  );
+
   const override = (exerciseId: string, direction: 1 | -1) => {
     setEdited(true);
     setExercises((current) => overrideSets(current, exerciseId, direction));
@@ -756,16 +465,17 @@ export function SessionPlanner({
 
       {exercises.length > 0 && (
         <Card title="El orden de hoy">
-          <Order
-            exercises={exercises}
+          <OrderList
+            items={orderItems}
             onReorder={reorder}
-            onOverride={override}
+            onNudge={override}
             onDragging={onDragging}
           />
 
           {plan && (
             <Text style={styles.estimate}>
-              {starting.length} ejercicios · {clockFace(seconds / 60)} de plan
+              {starting.length} {starting.length === 1 ? 'ejercicio' : 'ejercicios'} ·{' '}
+              {clockFace(seconds / 60)} de plan
               {/* Y lo que tarda de verdad, cuando hay con que decirlo: el plan suma
                   series y descansos, y el no es una suma de series y descansos. */}
               {plan.usualMinutes === null ? '' : ` · sueles tardar ${clockFace(plan.usualMinutes)}`}
@@ -776,7 +486,15 @@ export function SessionPlanner({
 
       {startProblem}
       <Button
-        label={startProblem ? 'Reintentar inicio' : 'Empezar entreno'}
+        // Apagado sin decir por que, lo unico que lo explicaba era el asterisco de
+        // "Dónde", dos pantallas mas arriba.
+        label={
+          startProblem
+            ? 'Reintentar inicio'
+            : gymId === null
+              ? 'Elige dónde entrenas'
+              : 'Empezar entreno'
+        }
         icon={Play}
         variant="primary"
         size="large"
@@ -785,7 +503,13 @@ export function SessionPlanner({
           busy || !selected || gymId === null || starting.length === 0 || planFor !== requestedPlan
         }
         loading={busy}
-        accessibilityLabel={startProblem ? 'Reintentar inicio del entreno' : 'Empezar entreno'}
+        accessibilityLabel={
+          startProblem
+            ? 'Reintentar inicio del entreno'
+            : gymId === null
+              ? 'Elige dónde entrenas'
+              : 'Empezar entreno'
+        }
         onPress={() => {
           if (
             busy ||
@@ -883,71 +607,6 @@ const styles = sheet((theme) => ({
     fontSize: 13,
     fontFamily: font.bold,
     color: theme.danger,
-  },
-  row: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    height: ROW,
-  },
-  divider: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: shape.border,
-    backgroundColor: theme.line,
-  },
-  // Despegada: amarilla, con mas sombra y por encima de las otras.
-  rowLifted: {
-    zIndex: 2,
-    backgroundColor: theme.accent,
-    borderRadius: shape.radiusSmall,
-    paddingHorizontal: 6,
-  },
-  // Columna estrecha y de todo el alto: facil de agarrar y no le quita sitio al nombre.
-  handle: {
-    width: 36,
-    alignSelf: 'stretch',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // El numero es el orden de verdad, no un adorno: es el que sigue el selector.
-  rowText: {
-    flex: 1,
-    gap: 1,
-  },
-  exercise: {
-    fontSize: 15,
-    fontFamily: font.black,
-    color: theme.text,
-  },
-  detail: {
-    fontSize: 12,
-    fontFamily: font.regular,
-    color: theme.textFaint,
-    fontVariant: ['tabular-nums'],
-  },
-  nudge: {
-    borderWidth: shape.border,
-    borderColor: theme.line,
-    borderRadius: shape.radiusSmall,
-    backgroundColor: theme.surface,
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  nudgePressed: {
-    backgroundColor: theme.accent,
-  },
-  nudgeText: {
-    fontSize: 17,
-    fontFamily: font.black,
-    color: theme.text,
   },
   estimate: {
     fontSize: 13,

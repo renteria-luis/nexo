@@ -8,6 +8,7 @@ import {
   cookableNow,
   portionOf,
   type Cookable,
+  type Missing,
   type NeedsWeight,
   type PantryItem,
   type PotOutcome,
@@ -24,6 +25,21 @@ import { RecipeForm } from '../RecipeForm.tsx';
 import { font, sheet, shape } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
+
+/**
+ * Lo que falta, por su nombre y con la palabra delante: suelto despues de la proteina,
+ * "Arroz, Huevo grande" se leia como la lista de ingredientes.
+ */
+function lackingLine(missing: readonly Missing[]): string {
+  const short = missing.filter((one) => one.why !== 'poco').map((one) => one.name);
+  const low = missing.filter((one) => one.why === 'poco').map((one) => one.name);
+  return [
+    short.length > 0 ? `Falta ${short.join(', ')}` : null,
+    low.length > 0 ? `Queda poco: ${low.join(', ')}` : null,
+  ]
+    .filter((part) => part !== null)
+    .join(' · ');
+}
 
 /**
  * El recetario. Spec 21.3.
@@ -195,7 +211,9 @@ export function RecipesScreen() {
           )
           .map((item) => item!.name);
         return (
-          <Card key={entry.recipe.id} tone={ready ? 'accent' : 'paper'}>
+          // Lista o no, la misma tarjeta: el ambar lleno es para tocar, y con texto claro
+          // encima no se leia. Lo dice la etiqueta verde y "Cocinar" encendido.
+          <Card key={entry.recipe.id}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={entry.recipe.name}
@@ -204,8 +222,10 @@ export function RecipesScreen() {
               <View style={styles.head}>
                 <Text style={styles.name}>{entry.recipe.name}</Text>
                 <View style={[styles.tag, ready ? styles.tagReady : styles.tagShort]}>
-                  <Text style={styles.tagText}>
-                    {ready ? 'se puede' : `faltan ${entry.short.length}`}
+                  <Text style={[styles.tagText, ready && styles.tagTextReady]}>
+                    {ready
+                      ? 'se puede'
+                      : `${entry.short.length === 1 ? 'falta' : 'faltan'} ${entry.short.length}`}
                   </Text>
                 </View>
               </View>
@@ -213,9 +233,10 @@ export function RecipesScreen() {
                 {entry.recipe.portions} porciones
                 {portion !== null &&
                   ` · ${roundAmount(portion.proteinG)} g de proteína y ${Math.round(portion.kcal)} kcal cada una`}
-                {entry.missing.length > 0 &&
-                  ` · ${entry.missing.map((one) => `${one.name}${one.why === 'poco' ? ' (poco)' : ''}`).join(', ')}`}
               </Text>
+              {entry.missing.length > 0 && (
+                <Text style={styles.lacking}>{lackingLine(entry.missing)}</Text>
+              )}
             </Pressable>
 
             {shown && (
@@ -223,6 +244,7 @@ export function RecipesScreen() {
                 {entry.recipe.ingredients.map((ingredient) => {
                   const item = pantry.find((one) => one.id === ingredient.itemId);
                   if (item === undefined) return null;
+                  const why = entry.missing.find((one) => one.itemId === ingredient.itemId)?.why;
                   return (
                     <View key={ingredient.itemId} style={styles.line}>
                       <Text style={styles.lineName}>{item.name}</Text>
@@ -230,6 +252,9 @@ export function RecipesScreen() {
                         {ingredient.amount === null
                           ? 'al gusto'
                           : `${ingredient.amount} ${item.unit ?? ''}`}
+                        {why !== undefined && (
+                          <Text style={styles.lacking}> · {why === 'poco' ? 'poco' : 'falta'}</Text>
+                        )}
                       </Text>
                     </View>
                   );
@@ -332,11 +357,20 @@ const styles = sheet((theme) => ({
     fontFamily: font.black,
     color: theme.text,
   },
+  tagTextReady: {
+    color: theme.accentInk,
+  },
   meta: {
     fontSize: 12,
     fontFamily: font.regular,
     color: theme.textDim,
     marginTop: 3,
+  },
+  lacking: {
+    fontSize: 12,
+    fontFamily: font.bold,
+    color: theme.warn,
+    marginTop: 2,
   },
   body: {
     marginTop: 10,

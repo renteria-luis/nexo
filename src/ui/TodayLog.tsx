@@ -10,7 +10,7 @@ import {
   type LastWeight,
 } from '../core/daily-log.ts';
 import { addDays, clockTime, shortDate } from '../core/dates.ts';
-import { hoursAndMinutes } from '../core/day-report.ts';
+import { hoursAndMinutes, litres } from '../core/day-report.ts';
 import { HEALTH_SOURCE_LABEL, originOf } from '../core/health-import.ts';
 import type {
   CoreDailyLogRow,
@@ -132,9 +132,7 @@ function Summary({
     {
       icon: Droplets,
       label: 'Agua',
-      value: `${((log?.water_ml ?? 0) / 1000).toFixed(2)} L${
-        waterTargetMl === null ? '' : ` de ${(waterTargetMl / 1000).toFixed(1)} L`
-      }`,
+      value: `${litres(log?.water_ml ?? 0)}${waterTargetMl === null ? '' : ` de ${litres(waterTargetMl)}`}`,
     },
     {
       icon: Pill,
@@ -148,7 +146,7 @@ function Summary({
       value:
         weightKg === null
           ? 'sin anotar'
-          : `${weightKg} kg${log?.weight_kg == null ? ' (del último día)' : ''}`,
+          : `${weightKg} kg${log?.weight_kg == null && lastWeight ? ` (del ${shortDate(lastWeight.date)})` : ''}`,
     },
     {
       icon: Moon,
@@ -278,8 +276,8 @@ export function TodayLog({
     <View style={styles.wrapper}>
       <Field title="Agua" icon={Droplets} first>
         <Text style={styles.value}>
-          {(waterMl / 1000).toFixed(2)} L
-          {waterTargetMl === null ? '' : ` de ${(waterTargetMl / 1000).toFixed(1)} L`}
+          {litres(waterMl)}
+          {waterTargetMl === null ? '' : ` de ${litres(waterTargetMl)}`}
         </Text>
         <View style={styles.row}>
           {containers.map((container) => (

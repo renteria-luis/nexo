@@ -8,9 +8,10 @@ import { font, sheet } from './theme.ts';
 /**
  * Lo que aporta una porcion, sin repetir el nombre del alimento.
  *
- * Dos numeros por fila: lo que dice la ficha y, entre parentesis, lo que suman los
- * que se comio. Asi la misma burbuja responde "cuanto trae uno" y "cuanto me meti",
- * que son las dos preguntas y hasta ahora habia que hacer la cuenta a mano.
+ * Dos numeros por fila: lo que suman los que se comio y, entre parentesis, lo que dice la
+ * ficha. Asi la misma burbuja responde "cuanto me meti" y "cuanto trae uno", que son las
+ * dos preguntas y hasta ahora habia que hacer la cuenta a mano. Su porcion va primero:
+ * es lo que vino a mirar, y al reves se leia "120 (240)" para 240 kcal.
  *
  * Sin borde ni fondo propios: esto va dentro del globo de la (i) (`InfoBubble`), que ya
  * los pone.
@@ -41,11 +42,14 @@ export function PortionMacros({ food, quantity }: PortionMacrosProps) {
   ];
 
   const round = (value: number) => roundAmount(Math.round(value * 100) / 100);
+  // Si se comio justo lo de la ficha, el parentesis repetiria el mismo numero.
+  const same = quantity === per;
 
   return (
     <View style={styles.bubble}>
       <Text style={styles.head}>
-        por {reference} ({roundAmount(quantity)} {unitLabel(food, quantity)})
+        {roundAmount(quantity)} {unitLabel(food, quantity)}
+        {same ? '' : ` (por ${reference})`}
       </Text>
       {rows.map((row) => (
         <View key={row.label} style={styles.row}>
@@ -54,7 +58,8 @@ export function PortionMacros({ food, quantity }: PortionMacrosProps) {
             <Text style={styles.missing}>sin dato</Text>
           ) : (
             <Text style={styles.value}>
-              {round(row.perUnit * per)} ({round(row.perUnit * quantity)}) {row.unit}
+              {round(row.perUnit * quantity)}
+              {same ? '' : ` (${round(row.perUnit * per)})`} {row.unit}
             </Text>
           )}
         </View>
