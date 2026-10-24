@@ -52,3 +52,37 @@ test('weigh-ins sit on their own days and the line opens on today', async () => 
   tree = await view.settle();
   assert.deepEqual(texts(), ['09-21', '72.4 a 73', '09-27']);
 });
+
+test('with the eye closed only the days with data take a slot', async () => {
+  const view = line({
+    to: '2026-10-10',
+    gaps: false,
+    days: 30,
+    series: [
+      {
+        points: [
+          { date: '2026-08-20', value: 400 },
+          { date: '2026-09-21', value: 450 },
+          { date: '2026-10-05', value: 500 },
+        ],
+        color: 'green',
+        dots: true,
+      },
+    ],
+  });
+  const tree = await view.settle();
+  // Thirty days back reach two sessions: two slots of 140 points, side by side.
+  assert.deepEqual(
+    nodes(tree)
+      .filter((node) => node.type === 'Text')
+      .map(textOf),
+    ['09-21', '400 a 500', '10-05'],
+  );
+  const page = nodes(tree).find((node) => node.type === 'Svg')!;
+  assert.deepEqual(
+    nodes(page)
+      .filter((node) => node.type === 'Circle')
+      .map((node) => node.props.cx),
+    [70, 210, 350],
+  );
+});

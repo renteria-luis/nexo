@@ -77,65 +77,86 @@ export function AssistantSettings() {
     }
   };
 
+  // Todo se guarda solo, como el resto de Ajustes: con «Guardar configuración» aparte,
+  // tocar Groq lo pintaba elegido y al salir sin el boton no quedaba nada (2026-10-24).
+  const choose = (next: 'apple' | 'groq') => {
+    if (next === provider || busy) return;
+    setProvider(next);
+    void work(() => saveAssistantCredentials({ provider: next }), 'Guardado.');
+  };
+  const saveKey = (service: 'Groq' | 'Tavily', text: string) => {
+    if (!text.trim() || busy) return;
+    void work(
+      () =>
+        saveAssistantCredentials(
+          service === 'Groq' ? { provider, groqApiKey: text } : { tavilyApiKey: text },
+        ),
+      `Clave de ${service} guardada.`,
+    );
+  };
+
   return (
     <Card title="Asistente">
-      <Text style={styles.note}>
-        Tus registros se consultan sin conexión. Elige cómo interpretar los mensajes más abiertos.
-      </Text>
-      <View style={styles.options}>
-        <Chip
-          label="Apple · en el teléfono"
-          selected={provider === 'apple'}
-          disabled={busy}
-          onPress={() => setProvider('apple')}
-        />
-        <Chip
-          label="Groq · nube gratuita"
-          selected={provider === 'groq'}
-          disabled={busy}
-          onPress={() => setProvider('groq')}
+      <View style={styles.field}>
+        <Text style={styles.label}>Interpreta tus mensajes</Text>
+        <View style={styles.options}>
+          <Chip
+            label="Apple · en el teléfono"
+            selected={provider === 'apple'}
+            disabled={busy}
+            onPress={() => choose('apple')}
+          />
+          <Chip
+            label="Groq · nube gratuita"
+            selected={provider === 'groq'}
+            disabled={busy}
+            onPress={() => choose('groq')}
+          />
+        </View>
+      </View>
+      <View style={styles.field}>
+        <Text style={styles.label}>Clave de Groq{status?.hasGroq ? ' · guardada' : ''}</Text>
+        <TextField
+          value={groq}
+          onChange={setGroq}
+          onCommit={(text) => saveKey('Groq', text)}
+          accessibilityLabel="Clave de Groq"
+          placeholder={status?.hasGroq ? 'Pega otra para reemplazarla' : 'Pega tu clave de Groq'}
+          autoCapitalize="none"
+          secureTextEntry
+          style={styles.input}
+          focusedStyle={styles.writing}
         />
       </View>
+      <View style={styles.field}>
+        <Text style={styles.label}>
+          Clave de Tavily, para recetas{status?.hasTavily ? ' · guardada' : ''}
+        </Text>
+        <TextField
+          value={tavily}
+          onChange={setTavily}
+          onCommit={(text) => saveKey('Tavily', text)}
+          accessibilityLabel="Clave de Tavily"
+          placeholder={
+            status?.hasTavily ? 'Pega otra para reemplazarla' : 'Pega tu clave de Tavily'
+          }
+          autoCapitalize="none"
+          secureTextEntry
+          style={styles.input}
+          focusedStyle={styles.writing}
+        />
+      </View>
+      {note !== null && (
+        <Text accessibilityLiveRegion="polite" style={styles.note}>
+          {note}
+        </Text>
+      )}
       <Text style={styles.note}>
-        Las recetas investigadas usan Groq y Tavily para buscar fuentes y comparar ingredientes con
-        tu despensa.
+        {Platform.OS === 'web'
+          ? 'En este navegador las claves duran solo hasta cerrar o recargar la pestaña.'
+          : 'Las claves se quedan en este teléfono y no van en tus respaldos.'}{' '}
+        Usa los planes gratuitos, con el pago por uso apagado.
       </Text>
-      <Text style={styles.label}>Clave de Groq{status?.hasGroq ? ' · guardada' : ''}</Text>
-      <TextField
-        value={groq}
-        onChange={setGroq}
-        accessibilityLabel="Clave de Groq"
-        placeholder={status?.hasGroq ? 'Pega otra para reemplazarla' : 'Pega tu clave de Groq'}
-        autoCapitalize="none"
-        secureTextEntry
-        style={styles.input}
-      />
-      <Text style={styles.label}>Clave de Tavily{status?.hasTavily ? ' · guardada' : ''}</Text>
-      <TextField
-        value={tavily}
-        onChange={setTavily}
-        accessibilityLabel="Clave de Tavily"
-        placeholder={status?.hasTavily ? 'Pega otra para reemplazarla' : 'Pega tu clave de Tavily'}
-        autoCapitalize="none"
-        secureTextEntry
-        style={styles.input}
-      />
-      <Button
-        label={busy ? 'Un momento…' : 'Guardar configuración'}
-        accessibilityLabel="Guardar configuración del asistente"
-        disabled={busy}
-        onPress={() =>
-          work(
-            () =>
-              saveAssistantCredentials({
-                provider,
-                ...(groq.trim() ? { groqApiKey: groq } : {}),
-                ...(tavily.trim() ? { tavilyApiKey: tavily } : {}),
-              }),
-            'Configuración guardada.',
-          )
-        }
-      />
       <Button
         label="Importar archivo de claves"
         accessibilityLabel="Importar archivo de claves"
@@ -145,12 +166,6 @@ export function AssistantSettings() {
           work(importAssistantCredentials, 'Claves importadas. Groq está seleccionado.')
         }
       />
-      <Text style={styles.note}>
-        {Platform.OS === 'web'
-          ? 'En este navegador las claves duran solo hasta cerrar o recargar la pestaña.'
-          : 'Las claves se guardan de forma segura en este teléfono y no se incluyen en tus respaldos.'}{' '}
-        Usa los planes gratuitos de ambos servicios con el pago por uso desactivado.
-      </Text>
       {(status?.hasGroq || status?.hasTavily || removing) &&
         (removing ? (
           <View style={styles.confirm}>
@@ -177,11 +192,6 @@ export function AssistantSettings() {
             onPress={() => setRemoving(true)}
           />
         ))}
-      {note !== null && (
-        <Text accessibilityLiveRegion="polite" style={styles.note}>
-          {note}
-        </Text>
-      )}
     </Card>
   );
 }
@@ -189,22 +199,30 @@ export function AssistantSettings() {
 const styles = sheet((theme) => ({
   note: {
     fontFamily: font.regular,
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 12,
     color: theme.textFaint,
-    marginBottom: 10,
   },
-  label: { fontFamily: font.bold, fontSize: 12, color: theme.text, marginBottom: 5, marginTop: 8 },
+  // Como las demas casillas de Ajustes: el nombre en mayusculas tenues, la casilla de vidrio.
+  label: {
+    fontFamily: font.black,
+    fontSize: 12,
+    letterSpacing: 0.6,
+    color: theme.textFaint,
+    textTransform: 'uppercase',
+  },
   input: {
-    fontFamily: font.regular,
-    fontSize: 14,
-    color: theme.text,
-    borderWidth: 1,
+    borderWidth: shape.border,
     borderColor: theme.line,
-    borderRadius: shape.radius,
-    padding: 10,
-    marginBottom: 10,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.surface,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    fontSize: 15,
+    fontFamily: font.bold,
+    color: theme.text,
   },
-  options: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  writing: { backgroundColor: theme.surfaceHigh },
+  field: { gap: 5 },
+  options: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   confirm: { gap: 8 },
 }));

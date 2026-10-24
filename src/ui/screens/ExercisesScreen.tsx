@@ -390,15 +390,19 @@ export function ExercisesScreen() {
         <Chip label="Activos" selected={!archived} onPress={() => setArchived(false)} />
         <Chip label="Archivados" selected={archived} onPress={() => setArchived(true)} />
       </View>
-      {/* Como Alimentos, que esta al lado en el menu: el mismo boton, buscador y filas. */}
-      <Button
-        label="Ejercicio nuevo"
-        accessibilityLabel="Agregar un ejercicio nuevo"
-        variant="primary"
-        icon={Plus}
-        block
-        onPress={() => setCreating(true)}
-      />
+      {/* Como Alimentos, que esta al lado en el menu: el mismo boton, buscador y filas.
+          Con el formulario abierto el boton se va: quedaba ambar encima de su propio
+          «Guardar nuevo ejercicio» (2026-10-24). */}
+      {!creating && (
+        <Button
+          label="Ejercicio nuevo"
+          accessibilityLabel="Agregar un ejercicio nuevo"
+          variant="primary"
+          icon={Plus}
+          block
+          onPress={() => setCreating(true)}
+        />
+      )}
       {creating && (
         <NewExerciseForm
           onCancel={() => setCreating(false)}

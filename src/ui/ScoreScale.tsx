@@ -29,8 +29,15 @@ export function ScoreScale({
     String(value.mediumMax),
     String(value.topMin),
   ]);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Lo que llega por otro camino (un respaldo importado, la base borrada) manda sobre lo
+  // escrito: lo escrito ya se guardo al soltarlo.
+  const [seen, setSeen] = useState(JSON.stringify(value));
+  if (seen !== JSON.stringify(value)) {
+    setSeen(JSON.stringify(value));
+    setPalette(value.palette);
+    setLimits([String(value.lowMax), String(value.mediumMax), String(value.topMin)]);
+  }
   const draft = {
     palette,
     lowMax: parse(limits[0]),
@@ -38,16 +45,15 @@ export function ScoreScale({
     topMin: parse(limits[2]),
   };
   const problem = scoreScaleProblem(draft);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(value);
-  const [seen, setSeen] = useState(JSON.stringify(value));
-  if (seen !== JSON.stringify(value)) {
-    const wasSaved = JSON.stringify(draft) === seen;
-    setSeen(JSON.stringify(value));
-    if (wasSaved) {
-      setPalette(value.palette);
-      setLimits([String(value.lowMax), String(value.mediumMax), String(value.topMin)]);
-    }
-  }
+  // Se guarda solo, como el resto de Ajustes: el boton propio dejaba la paleta pintada
+  // como elegida aunque saliera sin tocarlo (2026-10-24).
+  const save = (next: ScoreScaleOptions) => {
+    if (JSON.stringify(next) === JSON.stringify(value)) return;
+    setError(null);
+    onSave(next).catch((cause: unknown) =>
+      setError(cause instanceof Error ? cause.message : 'No se pudo guardar.'),
+    );
+  };
   const preview = problem ? { ...value, palette } : draft;
   return (
     <Card title="Colores de cumplimiento">
@@ -61,8 +67,10 @@ export function ScoreScale({
           accessibilityRole="radio"
           accessibilityLabel={`Paleta ${SCORE_PALETTES[id].name}`}
           aria-checked={palette === id}
-          disabled={busy}
-          onPress={() => setPalette(id)}
+          onPress={() => {
+            setPalette(id);
+            save({ ...(problem ? value : draft), palette: id });
+          }}
           style={[styles.palette, palette === id && styles.selected]}
         >
           <Text style={styles.name}>{SCORE_PALETTES[id].name}</Text>
@@ -79,6 +87,9 @@ export function ScoreScale({
             value={limits[index]}
             allowDecimal
             onChange={(next) => setLimits((old) => old.map((v, i) => (i === index ? next : v)))}
+            onCommit={() => {
+              if (problem === null) save(draft);
+            }}
             style={styles.input}
           />
           <Text style={styles.labelUnit}>%</Text>
@@ -86,7 +97,7 @@ export function ScoreScale({
       ))}
       {problem && (
         <Text accessibilityLiveRegion="polite" style={styles.error}>
-          {problem}
+          Sin guardar: {problem}
         </Text>
       )}
       <Text style={styles.help}>Vista previa</Text>
@@ -102,36 +113,18 @@ export function ScoreScale({
         <ScoreCell color={NO_DATA_COLOR} size={18} />
         <Text style={styles.label}>Sin datos o sin puntuación</Text>
       </View>
-      <Text accessibilityLiveRegion="polite" style={styles.help}>
-        {busy ? 'Guardando…' : dirty ? 'Cambios sin guardar' : 'Guardado'}
-      </Text>
       {error && (
         <Text accessibilityLiveRegion="polite" style={styles.error}>
-          {error}
+          Sin guardar: {error}
         </Text>
       )}
-      <Button
-        label={error ? 'Reintentar guardado' : 'Guardar colores y límites'}
-        loading={busy}
-        disabled={busy || !dirty || problem !== null}
-        onPress={() => {
-          setBusy(true);
-          setError(null);
-          onSave(draft)
-            .catch((cause: unknown) =>
-              setError(cause instanceof Error ? cause.message : 'No se pudo guardar.'),
-            )
-            .finally(() => setBusy(false));
-        }}
-      />
       <Button
         label="Restaurar límites 25 / 50 / 100"
         variant="ghost"
         disabled={
-          busy ||
-          (draft.lowMax === DEFAULT_SCORE_SCALE.lowMax &&
-            draft.mediumMax === DEFAULT_SCORE_SCALE.mediumMax &&
-            draft.topMin === DEFAULT_SCORE_SCALE.topMin)
+          draft.lowMax === DEFAULT_SCORE_SCALE.lowMax &&
+          draft.mediumMax === DEFAULT_SCORE_SCALE.mediumMax &&
+          draft.topMin === DEFAULT_SCORE_SCALE.topMin
         }
         onPress={() => {
           setLimits([
@@ -139,7 +132,7 @@ export function ScoreScale({
             String(DEFAULT_SCORE_SCALE.mediumMax),
             String(DEFAULT_SCORE_SCALE.topMin),
           ]);
-          setError(null);
+          save({ ...DEFAULT_SCORE_SCALE, palette });
         }}
       />
     </Card>

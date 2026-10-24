@@ -122,6 +122,10 @@ test('a recipe takes a food that is not in the pantry and stocks it at zero on s
   nodes(form.render())
     .find((node) => node.props.accessibilityLabel === 'Cuánto Arroz blanco')!
     .props.onChange('400');
+  assert.equal(saveButton().props.disabled, true, 'portions start empty and are his to write');
+  nodes(form.render())
+    .find((node) => node.props.accessibilityLabel === 'Porciones')!
+    .props.onChange('4');
   assert.equal(saveButton().props.disabled, false);
   saveButton().props.onPress();
   const [recipe, stocked] = saved[0] as [

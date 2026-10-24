@@ -35,6 +35,7 @@ export function LineChart({
   series,
   days,
   to,
+  gaps = true,
   width,
   format,
   selected = null,
@@ -46,6 +47,11 @@ export function LineChart({
   days: number;
   /** Hoy. La grafica abre en los dias que terminan aqui. */
   to: IsoDate;
+  /**
+   * Cada dia con su sitio aunque no tenga dato. Sin ellos, como las barras con el ojo
+   * cerrado: solo los dias con dato, uno detras de otro.
+   */
+  gaps?: boolean;
   width: number;
   format: (value: number) => string;
   /** El dia abierto en el globito, o null. La lleva la pantalla: solo hay uno. */
@@ -59,29 +65,35 @@ export function LineChart({
     // El globito habla de la serie con puntos, que es la de los datos de verdad; la otra
     // suele ser una media, y de una media no se pregunta "que dia fue".
     const main = series.find((line) => line.dots) ?? series[0];
-    const byDay: (Point | undefined)[] = Array.from({ length: daysBetween(from, to) + 1 });
+    const dates = gaps
+      ? Array.from({ length: daysBetween(from, to) + 1 }, (_, day) => addDays(from, day))
+      : [...new Set(all.map((point) => point.date))].sort();
+    const slot = new Map(dates.map((date, index) => [date, index]));
+    const byDay: (Point | undefined)[] = Array.from({ length: dates.length });
     for (const line of [main, ...series]) {
-      for (const point of line?.points ?? []) byDay[daysBetween(from, point.date)] ??= point;
+      for (const point of line?.points ?? []) byDay[slot.get(point.date)!] ??= point;
     }
     const values = all.map((point) => point.value);
     return {
       count: all.length,
-      from,
+      dates,
       byDay,
       low: Math.min(...values),
       high: Math.max(...values),
       lines: series.map((line) => ({
         ...line,
         marks: line.points.map((point) => ({
-          day: daysBetween(from, point.date),
+          day: slot.get(point.date)!,
           value: point.value,
         })),
       })),
     };
-  }, [series, to]);
+  }, [series, to, gaps]);
 
   const total = chart.byDay.length;
-  const visible = Math.max(1, Math.min(days, total));
+  const start = addDays(to, -(days - 1));
+  const inRange = chart.dates.filter((date) => date >= start && date <= to).length;
+  const visible = Math.max(1, Math.min(gaps ? days : inRange, total));
   const [first, setFirst] = useState(() => total - visible);
   const step = width / visible;
   const { low, high } = chart;
@@ -199,11 +211,11 @@ export function LineChart({
       </View>
 
       <View style={styles.axis}>
-        <Text style={styles.axisText}>{shortDate(addDays(chart.from, at))}</Text>
+        <Text style={styles.axisText}>{shortDate(chart.dates[at])}</Text>
         <Text style={styles.axisText}>
           {format(low)} a {format(high)}
         </Text>
-        <Text style={styles.axisText}>{shortDate(addDays(chart.from, at + visible - 1))}</Text>
+        <Text style={styles.axisText}>{shortDate(chart.dates[at + visible - 1])}</Text>
       </View>
 
       {/* Despues del eje: lo que va despues se pinta encima, y la fecha tapaba su boton. */}
@@ -211,6 +223,7 @@ export function LineChart({
         <Bubble
           date={shortDate(picked.date)}
           value={format(picked.value)}
+          note={picked.note}
           width={BUBBLE_WIDTH}
           left={bubbleLeft}
           onOpenDay={onOpenDay ? () => onOpenDay(picked.date) : undefined}

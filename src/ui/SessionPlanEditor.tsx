@@ -9,6 +9,7 @@ import { replacePendingSets } from '../training/variants.ts';
 import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
 import { OrderList, type OrderItem } from './OrderList.tsx';
+import { useScrollIntoView } from './screens/Screen.tsx';
 import { SearchField } from './SearchField.tsx';
 import { font, sheet } from './theme.ts';
 
@@ -42,6 +43,11 @@ export function SessionPlanEditor({
   const [picker, setPicker] = useState<{ from: string | null } | null>(null);
   const [search, setSearch] = useState('');
   const writing = useRef(false);
+  // El buscador se abre debajo de toda la lista, una pantalla mas abajo de la fila que se
+  // toco: se lleva a la vista al abrirse, si no solo cambiaba de color el boton (2026-10-24).
+  const scrollIntoView = useScrollIntoView();
+  const pickerBlock = useRef<View>(null);
+  const revealPicker = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,6 +92,7 @@ export function SessionPlanEditor({
     if (entry) setCount(id, entry.sets + direction);
   };
   const swap = (id: string) => {
+    revealPicker.current = picker?.from !== id;
     setPicker((current) => (current?.from === id ? null : { from: id }));
     setSearch('');
   };
@@ -115,12 +122,26 @@ export function SessionPlanEditor({
       setSaving(false);
     }
   };
-  const candidates = catalog.filter(
-    (exercise) =>
-      !exercise.archived &&
-      exercise.id !== picker?.from &&
-      fold(exercise.name_es).includes(fold(search)),
-  );
+  // Para cambiar uno, primero los de su familia y despues los del mismo musculo: casi
+  // siempre se cambia porque la maquina esta ocupada, y en orden alfabetico los ocho de
+  // la lista eran curls para reemplazar un remo.
+  const replaced = catalog.find((entry) => entry.id === picker?.from);
+  const closeness = (exercise: CatalogExercise) =>
+    replaced === undefined
+      ? 0
+      : replaced.familyId !== undefined && exercise.familyId === replaced.familyId
+        ? 0
+        : exercise.primary_muscle === replaced.primary_muscle
+          ? 1
+          : 2;
+  const candidates = catalog
+    .filter(
+      (exercise) =>
+        !exercise.archived &&
+        exercise.id !== picker?.from &&
+        fold(exercise.name_es).includes(fold(search)),
+    )
+    .sort((a, b) => closeness(a) - closeness(b));
   const items = useMemo<OrderItem[]>(() => {
     if (!draft) return [];
     const doneNow = new Map(draft.done.map((entry) => [entry.exerciseId, entry.sets]));
@@ -143,7 +164,17 @@ export function SessionPlanEditor({
     ) ?? 0;
 
   const pickerContent = picker && !saving && (
-    <View style={styles.picker}>
+    <View
+      key={picker.from ?? 'nuevo'}
+      ref={pickerBlock}
+      collapsable={false}
+      onLayout={() => {
+        if (!revealPicker.current) return;
+        revealPicker.current = false;
+        scrollIntoView(pickerBlock.current);
+      }}
+      style={styles.picker}
+    >
       <Text style={styles.title}>
         {picker.from ? `Cambiar ${nameOf(picker.from)} por…` : 'Añadir 3 series de…'}
       </Text>
@@ -213,6 +244,7 @@ export function SessionPlanEditor({
               label="Añadir ejercicio"
               disabled={saving}
               onPress={() => {
+                revealPicker.current = true;
                 setPicker({ from: null });
                 setSearch('');
               }}

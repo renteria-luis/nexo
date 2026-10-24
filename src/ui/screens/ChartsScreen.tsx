@@ -236,10 +236,12 @@ export function ChartsScreen() {
                 accessibilityLabel="Elegir qué se mide"
               />
               {trend ? (
-                <DayBars
+                // Una linea en la escala de sus datos y no barras desde cero: un 10% mas de
+                // volumen eran unos pixeles, y un peso maximo igual era una pared (2026-10-24).
+                <LineChart
                   // Otro ejercicio u otra medida es otra historia: vuelve a abrir en hoy.
                   key={`${rangeOf('trend')}-${gapsOf('trend')}-${trend.exerciseId}-${measure.id}`}
-                  points={trend[measure.id]}
+                  series={[{ points: trend[measure.id], color: theme.ok, dots: true }]}
                   days={rangeOf('trend')}
                   to={data.to}
                   gaps={gapsOf('trend')}

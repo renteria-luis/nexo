@@ -53,7 +53,7 @@ const PROFILE_FIELDS: FieldSpec[] = [
     key: 'birth_date',
     label: 'Fecha de nacimiento',
     keyboard: 'default',
-    placeholder: '1999-04-27',
+    placeholder: 'aaaa-mm-dd',
     required: true,
     secret: true,
   },
@@ -62,7 +62,7 @@ const PROFILE_FIELDS: FieldSpec[] = [
 
 /** Spec 6.5: volver de un paron largo no penaliza los entrenos que falten. */
 const RE_ENTRY_FIELDS: FieldSpec[] = [
-  { key: 're_entry_started_on', label: 'Desde', keyboard: 'default', placeholder: '2026-09-27' },
+  { key: 're_entry_started_on', label: 'Desde', keyboard: 'default', placeholder: 'aaaa-mm-dd' },
   { key: 're_entry_weeks', label: 'Semanas', keyboard: 'numeric' },
 ];
 

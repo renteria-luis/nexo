@@ -57,6 +57,7 @@ function todayLog(props: Record<string, unknown>) {
       ]),
     ),
   }).mount('TodayLog', {
+    date: LOG.date,
     log: LOG,
     containers: [],
     waterTargetMl: null,

@@ -71,6 +71,11 @@ export function litres(ml: number): string {
   return `${(ml / 1000).toFixed(2)} L`;
 }
 
+/** Los tragos de un dia, dichos igual en Hoy y en el detalle: «ninguno», «1 trago». */
+export function drinksText(drinks: number): string {
+  return drinks === 0 ? 'ninguno' : `${drinks} ${drinks === 1 ? 'trago' : 'tragos'}`;
+}
+
 /** Miles con espacio fino, que es lo que se lee de un vistazo en una columna. */
 export function thousands(value: number): string {
   return Math.round(value)
@@ -167,9 +172,7 @@ function lines(input: ReportInput): CriterionLine[] {
       value:
         log?.alcohol_drinks == null
           ? MISSING
-          : log.alcohol_drinks === 0
-            ? 'ninguno'
-            : `${log.alcohol_drinks} tragos${log.alcohol_after_training === 1 ? ', post entreno' : ''}`,
+          : `${drinksText(log.alcohol_drinks)}${log.alcohol_after_training === 1 ? ', post entreno' : ''}`,
       target: null,
     },
     {

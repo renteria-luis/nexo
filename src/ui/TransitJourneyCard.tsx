@@ -26,7 +26,7 @@ import { Toggle } from './Toggle.tsx';
 import { TransitActiveTrip } from './TransitActiveTrip.tsx';
 import { TransitAlerts } from './TransitDepartures.tsx';
 import { RouteBadge } from './TransitStatus.tsx';
-import { font, sheet } from './theme.ts';
+import { font, shape, sheet } from './theme.ts';
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -105,21 +105,35 @@ export function TransitTravelSettings() {
       setProblem(message(error));
     }
   };
+  // Se guarda al soltar la casilla, como el resto de Ajustes: «Guardar preparación» era
+  // una tercera forma de guardar en la misma pagina (2026-10-24).
+  const commitMinutes = () => {
+    const next = Number(minutes);
+    if (!Number.isInteger(next) || next < 1 || next > 60) {
+      setProblem('Sin guardar: escribe de 1 a 60 minutos.');
+      return;
+    }
+    if (next !== preferences.preparationMinutes) {
+      void save({ ...preferences, preparationMinutes: next });
+    } else {
+      setProblem(null);
+    }
+  };
   return (
     <Card title="Avisos de Transit">
-      <Text style={styles.label}>Preparación antes de caminar (min)</Text>
-      <View style={styles.row}>
-        <NumericField
-          value={minutes}
-          onChange={(value) => setDraft({ base: preferences.preparationMinutes, value })}
-          accessibilityLabel="Minutos de preparación"
-          style={styles.minutes}
-        />
-        <Button
-          label="Guardar preparación"
-          disabled={busy}
-          onPress={() => void save({ ...preferences, preparationMinutes: Number(minutes) })}
-        />
+      <View style={styles.setting}>
+        <Text style={styles.label}>Preparación antes de caminar</Text>
+        <View style={styles.minutesRow}>
+          <NumericField
+            value={minutes}
+            onChange={(value) => setDraft({ base: preferences.preparationMinutes, value })}
+            onCommit={commitMinutes}
+            accessibilityLabel="Minutos de preparación"
+            style={styles.minutes}
+            focusedStyle={styles.writing}
+          />
+          <Text style={styles.unit}>min</Text>
+        </View>
       </View>
       {(
         [
@@ -506,5 +520,22 @@ const styles = sheet((theme) => ({
   label: { fontFamily: font.bold, fontSize: 14, color: theme.text, flexShrink: 1 },
   note: { fontFamily: font.regular, fontSize: 12, color: theme.textDim, lineHeight: 18 },
   error: { fontFamily: font.bold, fontSize: 13, color: theme.danger, lineHeight: 18 },
-  minutes: { minWidth: 55, fontFamily: font.bold, fontSize: 17, color: theme.text },
+  minutesRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // Una casilla como las de Ajustes: antes el 5 quedaba suelto junto a su boton.
+  minutes: {
+    width: 64,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    borderRadius: shape.radiusSmall,
+    backgroundColor: theme.surface,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    textAlign: 'center',
+    fontFamily: font.bold,
+    fontSize: 15,
+    fontVariant: ['tabular-nums'],
+    color: theme.text,
+  },
+  writing: { backgroundColor: theme.surfaceHigh },
+  unit: { fontFamily: font.bold, fontSize: 13, color: theme.textFaint },
 }));

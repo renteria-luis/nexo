@@ -158,8 +158,9 @@ export function DayTraining({
           antes de empezar y en la grafica de tiempo: un dia que cerro en casa dos horas
           despues no dice nada de lo que tarda. */}
       <View style={styles.time}>
-        <Text style={styles.timeValue}>
-          {minutes === null ? 'sin hora de entrada o de salida' : clockFace(minutes)}
+        {/* Lo que falta no va en el tamaño del titulo, encima de los ejercicios. */}
+        <Text style={minutes === null ? styles.hint : styles.timeValue}>
+          {minutes === null ? 'Sin hora de entrada o de salida.' : clockFace(minutes)}
         </Text>
         {minutes !== null && (
           <View style={styles.timeSwitch}>

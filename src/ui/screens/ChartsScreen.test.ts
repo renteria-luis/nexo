@@ -59,7 +59,7 @@ const card = (tree: unknown, title: string) =>
 
 test('the body weight chart retains tenths in readings and averages even with gym pounds', async () => {
   const tree = await chartsFixture().screen.settle();
-  const chart = nodes(tree).find((node) => node.type === 'LineChart');
+  const chart = nodes(card(tree, 'Peso corporal')).find((node) => node.type === 'LineChart');
   assert.ok(chart);
   assert.deepEqual(
     chart.props.series[0].points.map((point: { value: number }) => point.value),
@@ -159,8 +159,12 @@ test('the eye hides the empty days of gym time and exercise progress only, and i
   assert.equal(bars('Tiempo en el gym').props.gaps, false);
   // Fewer slots is another chart: it opens on today again.
   assert.notEqual((bars('Tiempo en el gym') as unknown as { key: string }).key, opened);
-  // The other one keeps its own eye.
-  assert.equal(bars('Progreso por ejercicio').props.gaps, true);
+  // The other one keeps its own eye, on its line.
+  assert.equal(
+    nodes(card(tree, 'Progreso por ejercicio')).find((node) => node.type === 'LineChart')!.props
+      .gaps,
+    true,
+  );
 
   eye('Tiempo en el gym')!.props.onChange(true);
   tree = await screen.settle();
@@ -185,7 +189,7 @@ test('dumbbell weights say they are one dumbbell, and the volume does not', asyn
   });
   let tree = await screen.settle();
   const progress = () => card(tree, 'Progreso por ejercicio');
-  const bars = () => nodes(progress()).find((node) => node.type === 'DayBars')!.props;
+  const bars = () => nodes(progress()).find((node) => node.type === 'LineChart')!.props;
   const pick = (label: string) =>
     nodes(progress()).find(
       (node) => node.type === 'Combobox' && node.props.accessibilityLabel === label,

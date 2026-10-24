@@ -115,12 +115,6 @@ export function TransitPlanMap({
         />
         {popup && <View style={styles.popup}>{popup}</View>}
       </View>
-      {!!choices?.length && (
-        <Text style={styles.note}>
-          1, 2 y 3: los paraderos que te llevan, del que más te conviene al que menos. Gris con ×:
-          cerrado por ahora.{ends.length ? ' Negro: tu ubicación o el punto que elegiste.' : ''}
-        </Text>
-      )}
       {paths.length > 0 && (
         <Text style={styles.note}>
           Bus: línea de su color. Caminata: negro punteado; aproximada si no has guardado el camino.

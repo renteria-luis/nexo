@@ -30,13 +30,14 @@ function fixture() {
     './Card.tsx': { Card: 'Card' },
     './Button.tsx': { Button: 'Button' },
     './SearchField.tsx': { SearchField: 'SearchField' },
+    './screens/Screen.tsx': { useScrollIntoView: () => () => {} },
     './icons.ts': { ArrowLeftRight: 'ArrowLeftRight', GripLines: 'GripLines' },
   }).mount('SessionPlanEditor', {
     sessionId: 'session',
     catalog: [
-      { id: 'press', name_es: 'Press', default_rest_seconds: 180 },
-      { id: 'peck', name_es: 'Pec deck', default_rest_seconds: 120 },
-      { id: 'pull', name_es: 'Dominadas', default_rest_seconds: 180 },
+      { id: 'press', name_es: 'Press', primary_muscle: 'pecho', default_rest_seconds: 180 },
+      { id: 'pull', name_es: 'Dominadas', primary_muscle: 'espalda', default_rest_seconds: 180 },
+      { id: 'peck', name_es: 'Pec deck', primary_muscle: 'pecho', default_rest_seconds: 120 },
     ],
     onLoad: () => actions.load(),
     onSave: (edit: SessionPlanEdit) => actions.save(edit),
@@ -104,6 +105,15 @@ test('replacement moves only pending sets, keeps completed sets and preserves th
       ['peck', 4],
     ],
   );
+});
+
+test('a replacement offers the same muscle first', async () => {
+  const { screen, press } = fixture();
+  (await press('Cambiar ejercicio Press')).onPress();
+  const offered = nodes(await screen.settle())
+    .filter((node) => /^Elegir .* para el plan$/.test(node.props.accessibilityLabel ?? ''))
+    .map((node) => node.props.label);
+  assert.deepEqual(offered, ['Pec deck', 'Dominadas']);
 });
 
 test('adding, merging a replacement, omitting and reordering persist the reviewed counts', async () => {

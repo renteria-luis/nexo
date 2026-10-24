@@ -4,6 +4,7 @@ import { Pressable, Text, View } from 'react-native';
 
 import { shortDate } from '../../core/dates.ts';
 import { scoreText, thousands } from '../../core/day-report.ts';
+import { colorForScore, scoreScaleFrom } from '../../core/palettes.ts';
 import { fromKg } from '../../core/units.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 import {
@@ -23,6 +24,19 @@ import { font, sheet, shape, theme } from '../theme.ts';
 import { Screen } from './Screen.tsx';
 
 const MISSING = '—';
+
+/**
+ * Si un color de la escala es claro, la nota va en tinta oscura; en los pasos oscuros,
+ * en blanco. Luminancia relativa de sRGB: con este corte la nota queda en 4.5 a 1 o mas en
+ * las cinco paletas.
+ */
+function bright(color: string): boolean {
+  const [r, g, b] = [1, 3, 5].map((at) => {
+    const channel = parseInt(color.slice(at, at + 2), 16) / 255;
+    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.18;
+}
 
 /**
  * Todo lo registrado, del dia mas nuevo al mas viejo. El orden por defecto es ese
@@ -53,6 +67,7 @@ export function RecordsScreen() {
 
   if (state.phase !== 'ready') return <Screen title="Registros">{null}</Screen>;
   const unit = state.loaded.unit;
+  const scale = scoreScaleFrom(state.loaded.settings.get('score_scale'));
 
   const sorted = rows === null ? [] : sortDayRows(rows, sort);
 
@@ -109,9 +124,25 @@ export function RecordsScreen() {
               ]}
             >
               {/* La nota en su casilla: es lo primero que se busca al recorrer la
-                  lista, y un numero suelto en una fila se pierde entre el texto. */}
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>
+                  lista, y un numero suelto en una fila se pierde entre el texto. La casilla
+                  lleva el color de su cuadrito en la cuadricula, asi los dias buenos y malos
+                  se ven sin leer cada nota (2026-10-24). */}
+              <View
+                style={[
+                  styles.badge,
+                  row.score !== null && {
+                    backgroundColor: colorForScore(row.score, scale),
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.badgeText,
+                    row.score !== null &&
+                      bright(colorForScore(row.score, scale)) &&
+                      styles.badgeInk,
+                  ]}
+                >
                   {row.score === null ? MISSING : scoreText(row.score)}
                 </Text>
               </View>
@@ -182,6 +213,9 @@ const styles = sheet((theme) => ({
     borderColor: theme.line,
     borderRadius: shape.radiusSmall,
     backgroundColor: theme.bg,
+  },
+  badgeInk: {
+    color: theme.accentInk,
   },
   badgeText: {
     fontSize: 18,

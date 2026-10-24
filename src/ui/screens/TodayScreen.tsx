@@ -387,6 +387,7 @@ export function TodayScreen({
           editing
           // Un dia nuevo es otro registro: sin esto los campos seguian con lo de ayer.
           key={loaded.today.date}
+          date={loaded.today.date}
           log={loaded.today.log}
           lastWeight={loaded.lastWeight}
           healthImports={loaded.healthImports}

@@ -48,7 +48,9 @@ export function RecipeForm({
   onCancel: () => void;
 }) {
   const [name, setName] = useState(recipe?.name ?? '');
-  const [portions, setPortions] = useState(String(recipe?.portions ?? 4));
+  // Vacio en una receta nueva: con 4 puesto de entrada, la proteina por porcion salia de
+  // un numero que el no eligio (2026-10-24).
+  const [portions, setPortions] = useState(recipe === null ? '' : String(recipe.portions));
   const [steps, setSteps] = useState(recipe?.steps ?? '');
   const [ingredients, setIngredients] = useState<Ingredient[]>(recipe?.ingredients ?? []);
   const [search, setSearch] = useState('');
@@ -107,9 +109,10 @@ export function RecipeForm({
     add(item);
   };
 
+  const count = Number(portions);
+  const ready = name.trim() !== '' && !unmeasured && Number.isInteger(count) && count >= 1;
   const save = () => {
-    const count = Number(portions);
-    if (name.trim() === '' || unmeasured || !Number.isInteger(count) || count < 1) return;
+    if (!ready) return;
     onSave(
       {
         id: recipe?.id,
@@ -248,7 +251,7 @@ export function RecipeForm({
           label="Guardar"
           accessibilityLabel="Guardar la receta"
           variant="primary"
-          disabled={name.trim() === '' || unmeasured}
+          disabled={!ready}
           onPress={save}
         />
         <Button label="Cancelar" accessibilityLabel="Cancelar" variant="ghost" onPress={onCancel} />

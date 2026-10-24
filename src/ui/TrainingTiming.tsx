@@ -222,12 +222,19 @@ export const TrainingTiming = memo(function TrainingTiming({
   plan = EMPTY_PLAN,
   catalog,
   activeImplement,
+  live = true,
 }: {
   session: TrainingSessionRow;
   revision: readonly LoggedSet[];
   plan?: PlannedSet[];
   catalog: CatalogExercise[];
   activeImplement?: { exerciseId: string; implement: string | null };
+  /**
+   * Con la sesion en curso, cuando sale. El detalle de un dia no tiene el plan, y una
+   * sesion sin hora de salida decia ahi «Sin plan de series no se puede estimar lo que
+   * falta» (2026-10-24).
+   */
+  live?: boolean;
 }) {
   const { loadSessionTiming, reviewTiming } = useAppData();
   const [data, setData] = useState<SessionTiming | null>(null);
@@ -285,7 +292,7 @@ export const TrainingTiming = memo(function TrainingTiming({
         <Text style={styles.hint}>Leyendo tiempos…</Text>
       ) : (
         <>
-          {session.end_time === null && session.is_retroactive === 0 && (
+          {live && session.end_time === null && session.is_retroactive === 0 && (
             <LiveEstimate
               data={current}
               plan={plan}

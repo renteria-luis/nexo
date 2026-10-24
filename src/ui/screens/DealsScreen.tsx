@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useDeferredValue, useState } from 'react';
 import { LayoutAnimation, Pressable, Text, View } from 'react-native';
 
 import { shortDay, todayIso } from '../../core/dates.ts';
@@ -78,7 +78,9 @@ function productName(item: DealWithContext): string {
  * una app y abre el navegador miente, asi que en su lugar queda la insignia que dice de
  * que app es la oferta, que ademas es lo que va a hacer falta cuando entre Flashfood.
  */
-function DealRow({
+// Memo: al cambiar de agrupacion la pantalla se pinta dos veces, y en la primera las
+// filas no cambian.
+const DealRow = memo(function DealRow({
   item,
   discounts,
   showStore,
@@ -180,7 +182,7 @@ function DealRow({
       </View>
     </View>
   );
-}
+});
 
 /** Una fuente y su estado; callada, en el estilo de aviso y no en gris. */
 function SourceLine({ status }: { status: { line: string; silent: boolean } }) {
@@ -198,6 +200,9 @@ export function DealsScreen() {
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [group, setGroup] = useState<Group>('product');
+  // El chip se pinta al tocarlo y la lista se rearma detras: con cuatrocientas ofertas el
+  // chip esperaba a la lista y tardaba un segundo en encenderse (2026-10-24).
+  const listed = useDeferredValue(group);
   // Las preguntas de "¿Es …?" solo con el lapiz: cada oferta con sus botones era mucho.
   // Mientras esta prendido, el orden es el de cuando se prendio: una respuesta cambia el
   // valor de la oferta, la fila saltaba a otro lugar y el siguiente toque caia en otra
@@ -267,16 +272,16 @@ export function DealsScreen() {
   // Agrupar es lo que convierte 418 ofertas en una compra: o todas las de una tienda,
   // o todos los precios de lo mismo para poder elegir.
   const buckets = new Map<string, typeof scored>();
-  if (group !== 'value') {
+  if (listed !== 'value') {
     for (const row of scored) {
       const key =
-        group === 'store' ? (row.item.retailer?.name ?? 'Sin tienda') : productName(row.item);
+        listed === 'store' ? (row.item.retailer?.name ?? 'Sin tienda') : productName(row.item);
       buckets.set(key, [...(buckets.get(key) ?? []), row]);
     }
   }
 
   const groups =
-    group === 'value'
+    listed === 'value'
       ? [{ name: null, rows: best(scored) }]
       : [...buckets.entries()]
           .map(([name, rows]) => ({ name, rows: best(rows) }))
@@ -383,7 +388,7 @@ export function DealsScreen() {
         const line =
           lead === null
             ? count
-            : (group === 'store'
+            : (listed === 'store'
                 ? [productName(lead), leadCost, count]
                 : [leadCost, lead.retailer?.name ?? null, count]
               )
@@ -415,7 +420,7 @@ export function DealsScreen() {
                   key={item.deal.id}
                   item={item}
                   discounts={discounts}
-                  showStore={group !== 'store'}
+                  showStore={listed !== 'store'}
                   answering={answering}
                   onAnswer={answerDealMatch}
                 />

@@ -10,7 +10,7 @@ import {
   type LastWeight,
 } from '../core/daily-log.ts';
 import { addDays, clockTime, shortDate } from '../core/dates.ts';
-import { hoursAndMinutes, litres } from '../core/day-report.ts';
+import { drinksText, hoursAndMinutes, litres } from '../core/day-report.ts';
 import { HEALTH_SOURCE_LABEL, originOf } from '../core/health-import.ts';
 import type {
   CoreDailyLogRow,
@@ -87,6 +87,8 @@ function Field({
 }
 
 export type TodayLogProps = {
+  /** El dia que se anota, haya o no registro todavia. */
+  date: string;
   log: CoreDailyLogRow | null;
   containers: NutritionContainerRow[];
   waterTargetMl: number | null;
@@ -164,7 +166,7 @@ function Summary({
     {
       icon: Wine,
       label: 'Alcohol',
-      value: log?.alcohol_drinks == null ? 'sin anotar' : `${log.alcohol_drinks} tragos`,
+      value: log?.alcohol_drinks == null ? 'sin anotar' : drinksText(log.alcohol_drinks),
     },
   ];
 
@@ -194,6 +196,7 @@ function asText(value: number | null): string {
 type Typed = { sleep: boolean; steps: boolean; weight: boolean };
 
 export function TodayLog({
+  date,
   log,
   containers,
   waterTargetMl,
@@ -369,11 +372,12 @@ export function TodayLog({
         {/* La casilla es la noche anterior, y decirlo evita anotar la de anteanoche
             el dia que se levanta tarde. Se puntua en este dia porque es la noche que
             sostiene lo que haga hoy. */}
-        {log?.date && (
-          <Text style={styles.note}>
-            la noche del {dayOfMonth(addDays(log.date, -1))} al {dayOfMonth(log.date)}
-          </Text>
-        )}
+        {/* Desde antes del primer toque: si aparecia con el registro, el primer trago o la
+            primera botella empujaban todo lo de abajo y el segundo toque caia en otro sitio
+            (2026-10-24). */}
+        <Text style={styles.note}>
+          la noche del {dayOfMonth(addDays(date, -1))} al {dayOfMonth(date)}
+        </Text>
         <View style={styles.row}>
           <NumericField
             value={sleepHours}
@@ -424,7 +428,10 @@ export function TodayLog({
       </Field>
 
       <Field title="Alcohol" icon={Wine}>
-        <Text style={styles.value}>{drinks} tragos</Text>
+        {/* Sin anotar no es cero: «0 tragos» antes de tocar nada decia algo que no anoto. */}
+        <Text style={log?.alcohol_drinks == null ? styles.unset : styles.value}>
+          {log?.alcohol_drinks == null ? 'sin anotar' : drinksText(drinks)}
+        </Text>
         <View style={styles.row}>
           <Chip label="+1" onPress={() => onAdd({ alcoholDrinks: 1 })} />
           {drinks > 0 && <Chip label="−1" onPress={() => onAdd({ alcoholDrinks: -1 })} />}
@@ -503,6 +510,12 @@ const styles = sheet((theme) => ({
     fontFamily: font.black,
     color: theme.text,
     fontVariant: ['tabular-nums'],
+  },
+  // Del mismo alto que el valor, para que anotar no mueva lo de abajo.
+  unset: {
+    fontSize: 17,
+    fontFamily: font.black,
+    color: theme.textGhost,
   },
   row: {
     flexDirection: 'row',

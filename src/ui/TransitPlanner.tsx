@@ -1550,7 +1550,7 @@ const StopList = memo(function StopList({
           <Pressable
             key={choice.stop}
             accessibilityRole="button"
-            accessibilityLabel={`Paradero ${i + 1}, ${stopName(stop)}`}
+            accessibilityLabel={`Paradero ${i + 1}, ${stopName(stop)}, sales ${clock(best.leaveAt)}, llegas ${clock(best.arriveAt)}`}
             onPress={() => onPick(choice.stop, 'buses')}
             style={({ pressed }) => [
               styles.option,
@@ -1560,18 +1560,26 @@ const StopList = memo(function StopList({
           >
             <View style={styles.optionHead}>
               <StopBadge rank={i + 1} />
+              {/* Primero cuando sale y cuando llega, como las filas de buses: en la calle
+                  eso es lo que se mira, y venia en la tercera linea en letra chica
+                  (2026-10-24). */}
               <View style={styles.grow}>
+                <Text style={styles.optionTime}>
+                  {clock(best.leaveAt)} → {clock(best.arriveAt)}
+                  <Text style={styles.note}>
+                    {'  '}
+                    {best.leaveAt <= minute ? 'sal ya' : `sal ${relative(best.leaveAt, minute)}`}
+                  </Text>
+                </Text>
+                <Text style={styles.note}>
+                  {best.itinerary.rides.length > 1 ? 'Con transbordo' : 'Directo'}:{' '}
+                  {best.itinerary.rides.map((r) => r.route[1]).join(' → ')} a las{' '}
+                  {clock(best.live[0].board.at)}
+                </Text>
                 <Text style={styles.body} numberOfLines={2}>
                   {stopName(stop)} #{stop[1] || stop[0]}
                 </Text>
                 <Text style={styles.note}>{walkText(choice.walk, from, stop)}</Text>
-                <Text style={styles.note}>
-                  {best.itinerary.rides.length > 1 ? 'Con transbordo' : 'Directo'}:{' '}
-                  {best.itinerary.rides.map((r) => r.route[1]).join(' → ')} a las{' '}
-                  {clock(best.live[0].board.at)} ·{' '}
-                  {best.leaveAt <= minute ? 'sal ya' : `sal ${relative(best.leaveAt, minute)}`} ·
-                  llegas {clock(best.arriveAt)}
-                </Text>
               </View>
               <View style={styles.lines}>
                 {choice.routes.map((route) => (

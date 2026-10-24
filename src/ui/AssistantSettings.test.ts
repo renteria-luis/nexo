@@ -37,16 +37,31 @@ test('credential settings mask new input, never display saved keys and clear suc
   assert.equal(input.props.value, '');
   input.props.onChange('fake-replacement-groq');
   tree = screen.render();
-  await nodes(tree)
-    .find((node) => node.props.accessibilityLabel === 'Guardar configuración del asistente')!
-    .props.onPress();
+  // Se guarda al soltar la casilla, sin boton aparte.
+  nodes(tree)
+    .find((node) => node.props.accessibilityLabel === 'Clave de Groq')!
+    .props.onCommit('fake-replacement-groq');
   tree = await screen.settle();
   assert.deepEqual(writes, [{ provider: 'groq', groqApiKey: 'fake-replacement-groq' }]);
   assert.equal(
     nodes(tree).find((node) => node.props.accessibilityLabel === 'Clave de Groq')!.props.value,
     '',
   );
-  assert.match(textOf(tree), /Configuración guardada/);
+  assert.match(textOf(tree), /Clave de Groq guardada/);
+});
+
+test('choosing where messages are read saves at once, and an empty key saves nothing', async () => {
+  const { screen, writes } = fixture();
+  let tree = await screen.settle();
+  nodes(tree)
+    .find((node) => node.props.accessibilityLabel === 'Clave de Tavily')!
+    .props.onCommit('  ');
+  nodes(tree)
+    .find((node) => node.props.label === 'Apple · en el teléfono')!
+    .props.onPress();
+  tree = await screen.settle();
+  assert.deepEqual(writes, [{ provider: 'apple' }]);
+  assert.match(textOf(tree), /Guardado/);
 });
 
 test('failed credential saves retain the draft and never announce success', async () => {
@@ -56,16 +71,16 @@ test('failed credential saves retain the draft and never announce success', asyn
     .find((node) => node.props.accessibilityLabel === 'Clave de Groq')!
     .props.onChange('fake-replacement-groq');
   tree = screen.render();
-  await nodes(tree)
-    .find((node) => node.props.accessibilityLabel === 'Guardar configuración del asistente')!
-    .props.onPress();
+  nodes(tree)
+    .find((node) => node.props.accessibilityLabel === 'Clave de Groq')!
+    .props.onCommit('fake-replacement-groq');
   tree = await screen.settle();
   assert.equal(writes.length, 0);
   assert.equal(
     nodes(tree).find((node) => node.props.accessibilityLabel === 'Clave de Groq')!.props.value,
     'fake-replacement-groq',
   );
-  assert.doesNotMatch(textOf(tree), /Configuración guardada/);
+  assert.doesNotMatch(textOf(tree), /Clave de Groq guardada/);
   assert.match(textOf(tree), /No pude guardar/);
 });
 

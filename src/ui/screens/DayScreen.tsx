@@ -258,6 +258,7 @@ export function DayScreen() {
       </Card>
       {day.session !== null && (
         <TrainingTiming
+          live={false}
           session={day.session}
           revision={day.sessionSets}
           catalog={loaded.exercise.exercises}
@@ -292,6 +293,7 @@ export function DayScreen() {
         <TodayLog
           editing={writing}
           key={date}
+          date={date}
           log={day.log}
           lastWeight={loaded.lastWeight}
           containers={loaded.containers}
