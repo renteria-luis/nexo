@@ -6,7 +6,8 @@ import { useAppData } from '../../shell/AppData.tsx';
 import { sourceStatus } from '../../shell/deals.ts';
 import { WEEKS_SHOWN } from '../../shell/load.ts';
 import { parseWaterTaps } from '../../core/water-taps.ts';
-import { scoreText, thousands } from '../../core/day-report.ts';
+import { scoreText } from '../../core/day-report.ts';
+import { thousands } from '../../core/numbers.ts';
 import { HEALTH_SHORTCUT_URL } from '../../core/health-import.ts';
 import { currentStreak, longestStreak } from '../../core/discipline.ts';
 import { scoreScaleFrom } from '../../core/palettes.ts';
@@ -22,7 +23,7 @@ import { DayDialog } from '../DayDialog.tsx';
 import { DisciplineGrid } from '../DisciplineGrid.tsx';
 import { useInfo } from '../InfoBubble.tsx';
 import { useNow } from '../useNow.ts';
-import { ChevronRight, Dumbbell, Flame, Tag, Utensils, Wallet, type LucideIcon } from '../icons.ts';
+import { Dumbbell, Flame, Tag, Utensils, Wallet, type LucideIcon } from '../icons.ts';
 import { HealthArrivalCard } from '../HealthArrivalCard.tsx';
 import { TodayLog } from '../TodayLog.tsx';
 import { TransitJourneyCard } from '../TransitJourneyCard.tsx';
@@ -142,7 +143,7 @@ function TargetChangeCard({ change, onDismiss }: { change: TargetChange; onDismi
         style={styles.noticeText}
       >
         Peso promedio {change.to.weightBasisKg.toFixed(1)} kg → proteína {band.from} a {band.to} g,{' '}
-        {change.to.kcal} kcal.
+        {thousands(change.to.kcal)} kcal.
       </Text>
       {open &&
         rows.map(([label, before, after, unit]) => (
@@ -419,7 +420,6 @@ export function TodayScreen({
             label="Registros"
             accessibilityLabel="Ver todos los registros"
             variant="ghost"
-            icon={ChevronRight}
             onPress={() => onOpen('Registros')}
           />
         </View>
@@ -452,7 +452,7 @@ export function TodayScreen({
         <ModuleCard
           label="COMIDA"
           icon={Utensils}
-          value={nutrition ? `${Math.round(nutrition.kcal)} kcal` : 'Nada aún'}
+          value={nutrition ? `${thousands(nutrition.kcal)} kcal` : 'Nada aún'}
           detail={
             nutrition
               ? `${Math.round(nutrition.proteinG)} g de proteína`
@@ -493,20 +493,17 @@ export function TodayScreen({
         <Button
           label="Gráficas"
           accessibilityLabel="Ver las gráficas"
-          icon={ChevronRight}
           onPress={() => onOpen('Gráficas')}
         />
         <Button
           label="Resumen de la semana"
           accessibilityLabel="Ver el resumen de la semana"
-          icon={ChevronRight}
           onPress={() => onOpen('Resumen semanal')}
         />
         {/* Spec 12: the score has to be auditable, not just shown. */}
         <Button
           label="Por qué cuenta cada cosa"
           accessibilityLabel="Ver por que cuenta cada cosa"
-          icon={ChevronRight}
           onPress={() => onOpen('Lecturas')}
         />
       </View>

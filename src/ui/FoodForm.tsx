@@ -453,11 +453,13 @@ const styles = sheet((theme) => ({
     fontFamily: font.black,
     color: theme.text,
   },
+  // Casillas de vidrio, como en la receta y en Ajustes: las cajas casi negras eran una
+  // superficie que el diseno no tiene (2026-10-25).
   text: {
     borderWidth: shape.border,
     borderColor: theme.line,
     borderRadius: shape.radiusSmall,
-    backgroundColor: theme.bg,
+    backgroundColor: theme.surface,
     paddingHorizontal: 10,
     paddingVertical: 9,
     fontSize: 15,
@@ -528,7 +530,7 @@ const styles = sheet((theme) => ({
     borderWidth: shape.border,
     borderColor: theme.line,
     borderRadius: shape.radiusSmall,
-    backgroundColor: theme.bg,
+    backgroundColor: theme.surface,
     paddingHorizontal: 10,
     paddingVertical: 9,
     fontSize: 15,

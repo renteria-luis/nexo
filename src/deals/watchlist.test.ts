@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import type { DealsDealRow } from '../db/types.ts';
 
 import type { DealWithContext } from './queries.ts';
-import { liveDeals, newestFetch, watchedDeals, watchWords } from './watchlist.ts';
+import { liveDeals, newestFetch, plainDescription, watchedDeals, watchWords } from './watchlist.ts';
 
 test('the same offer from two flyers counts once without collapsing distinct products or sources', () => {
   const fields = {
@@ -148,4 +148,14 @@ test('lo vencido sigue en el aviso, pero despues de lo vigente y sin contar', ()
   );
   assert.equal(found.length, 3, 'spec 16.3 rule 7: never hidden');
   assert.equal(liveDeals(found).length, 2);
+});
+
+test('the small print loses the store item number and keeps the rest', () => {
+  assert.equal(
+    plainDescription('Each. Selected varieties. 410 g. #30468465.'),
+    'Each. Selected varieties. 410 g.',
+  );
+  assert.equal(plainDescription('Each\n#30965088.\nFrozen. 624 g'), 'Each · Frozen. 624 g');
+  assert.equal(plainDescription('#50995458'), '');
+  assert.equal(plainDescription('18 pk or 12 pk'), '18 pk or 12 pk');
 });

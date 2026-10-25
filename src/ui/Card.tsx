@@ -98,7 +98,7 @@ const styles = sheet((theme) => ({
     borderColor: theme.line,
     borderRadius: shape.radius,
     borderCurve: 'continuous',
-    padding: 16,
+    padding: shape.cardPadding,
     gap: 8,
   },
   flat: {

@@ -71,14 +71,18 @@ export function potOf(
 
     const food = item.foodId === null ? undefined : byFood.get(item.foodId);
     if (food === undefined || food.base_unit_g === null) {
-      blocked.push(`${item.name}, sin ficha con peso`);
+      blocked.push(
+        food === undefined
+          ? `${item.name} no está en Alimentos`
+          : `${item.name} no dice en su ficha lo que pesa una unidad`,
+      );
       if (food !== undefined) needsWeight.push({ foodId: food.id, name: food.name });
       continue;
     }
     // La receta y la despensa cuentan en la unidad del articulo y la olla en la del
     // alimento: con unidades distintas, tres piezas de pollo pesaban 3 g.
     if (item.unit !== food.base_unit) {
-      blocked.push(`${item.name}, que está en ${item.unit} y su ficha en ${food.base_unit}`);
+      blocked.push(`${item.name} se cuenta en ${item.unit} y su ficha en ${food.base_unit}`);
       continue;
     }
 
@@ -97,6 +101,58 @@ export function potOf(
   return { ok: true, pot };
 }
 
+/** An ingredient that keeps a recipe from saying what a portion gives, and why, in his words. */
+export type Unfigured = { name: string; foodId: string | null; why: string };
+
+export type PortionOutcome =
+  { ok: true; portion: { proteinG: number; kcal: number } } | { ok: false; blocked: Unfigured[] };
+
+/**
+ * What one portion gives, from the ingredients' own catalogue figures. It needs no weight: the
+ * catalogue gives each food per its own unit, so three burgers are three times one, and only
+ * making the pot a batch needs grams (spec 21.4). A whey counted by the scoop left the whole
+ * recipe without its protein per portion, behind "sin ficha con peso" (2026-10-25). For the same
+ * ingredients it is the pot's figures divided, so what it promises is what the batch gives.
+ */
+export function portionFigures(
+  ingredients: readonly Ingredient[],
+  items: readonly PantryItem[],
+  foods: readonly NutritionFoodRow[],
+  portions: number,
+): PortionOutcome {
+  const byItem = new Map(items.map((item) => [item.id, item]));
+  const byFood = new Map(foods.map((food) => [food.id, food]));
+  let kcal = 0;
+  let proteinG = 0;
+  let measured = 0;
+  const blocked: Unfigured[] = [];
+  for (const ingredient of ingredients) {
+    const item = byItem.get(ingredient.itemId);
+    if (item === undefined || item.kind === 'durable' || item.kind === 'spice') continue;
+    const amount = ingredient.amount ?? 0;
+    if (amount <= 0) continue;
+    const food = item.foodId === null ? undefined : byFood.get(item.foodId);
+    if (food === undefined) {
+      blocked.push({ name: item.name, foodId: null, why: 'no está en Alimentos' });
+      continue;
+    }
+    if (item.unit !== food.base_unit) {
+      blocked.push({
+        name: item.name,
+        foodId: food.id,
+        why: `se cuenta en ${item.unit} y su ficha en ${food.base_unit}`,
+      });
+      continue;
+    }
+    kcal += amount * food.kcal;
+    proteinG += amount * food.protein_g;
+    measured++;
+  }
+  if (blocked.length > 0) return { ok: false, blocked };
+  if (measured === 0 || !(portions >= 1)) return { ok: false, blocked: [] };
+  return { ok: true, portion: { proteinG: proteinG / portions, kcal: kcal / portions } };
+}
+
 /** Lo mismo por gramo, que es como se guarda un alimento del catalogo. */
 export function perGram(pot: Pot): Omit<Pot, 'grams'> {
   const share = (value: number | null) => (value === null ? null : value / pot.grams);
@@ -109,9 +165,4 @@ export function perGram(pot: Pot): Omit<Pot, 'grams'> {
     fibreG: share(pot.fibreG),
     sodiumMg: share(pot.sodiumMg),
   };
-}
-
-/** Una porcion de la olla, que es como se come: la olla se reparte en partes iguales. */
-export function portionOf(pot: Pot, portions: number): { proteinG: number; kcal: number } {
-  return { proteinG: pot.proteinG / portions, kcal: pot.kcal / portions };
 }

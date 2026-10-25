@@ -34,6 +34,7 @@ export function DayBars({
   width,
   band,
   max,
+  filling = false,
   format,
   selected = null,
   onSelect,
@@ -55,6 +56,11 @@ export function DayBars({
   width: number;
   band?: Band | null;
   max?: number;
+  /**
+   * Un deposito que se llena: lo que va camino de la banda en verde tenue y no en gris, que
+   * dejaba la creatina toda gris hasta llenarse (2026-10-25).
+   */
+  filling?: boolean;
   format: (value: number) => string;
   /** El dia abierto en el globito, o null. Lo lleva la pantalla para que solo haya uno. */
   selected?: number | null;
@@ -129,7 +135,9 @@ export function DayBars({
                         ? 'none'
                         : inside(point.value)
                           ? theme.ok
-                          : theme.lineSoft
+                          : filling
+                            ? theme.okBg
+                            : theme.lineSoft
                   }
                   stroke={estimate ? theme.textFaint : theme.line}
                   strokeWidth={stroke}
@@ -162,7 +170,7 @@ export function DayBars({
         </>
       );
     },
-    [slots, step, top, band, open, onSelect],
+    [slots, step, top, band, filling, open, onSelect],
   );
 
   if (slots.length === 0 || width <= 0) {

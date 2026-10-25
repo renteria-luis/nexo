@@ -12,7 +12,7 @@ import type {
 import { inTransaction } from '../db/transaction.ts';
 import { createBatch } from '../nutrition/queries.ts';
 
-import { perGram, potOf, type NeedsWeight, type PotOutcome } from './cook.ts';
+import { perGram, portionFigures, potOf, type NeedsWeight, type PortionOutcome } from './cook.ts';
 import type { PantryCommand } from '../core/commands.ts';
 
 import {
@@ -216,9 +216,16 @@ function kitchen(db: SQLiteDatabase) {
  * Lo que daria cada receta si se cocinara ahora, con las mismas cuentas que cocinar (spec
  * 21.3): asi se ve lo que deja una porcion antes de gastar los ingredientes.
  */
-export async function previewRecipePots(db: SQLiteDatabase): Promise<Map<string, PotOutcome>> {
+export async function previewRecipePortions(
+  db: SQLiteDatabase,
+): Promise<Map<string, PortionOutcome>> {
   const [recipes, items, foods] = await kitchen(db);
-  return new Map(recipes.map((recipe) => [recipe.id, potOf(recipe.ingredients, items, foods)]));
+  return new Map(
+    recipes.map((recipe) => [
+      recipe.id,
+      portionFigures(recipe.ingredients, items, foods, recipe.portions),
+    ]),
+  );
 }
 
 /**

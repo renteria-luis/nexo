@@ -3,13 +3,8 @@ import { test } from 'node:test';
 
 import type { CoreDailyLogRow } from '../db/types.ts';
 
-import {
-  hoursAndMinutes,
-  reportDay,
-  scoreText,
-  thousands,
-  type ReportInput,
-} from './day-report.ts';
+import { hoursAndMinutes, reportDay, scoreText, type ReportInput } from './day-report.ts';
+import { thousands } from './numbers.ts';
 import { scoreDay, type DisciplineDay } from './discipline.ts';
 import { computeTargets, type TargetProfile } from './targets.ts';
 

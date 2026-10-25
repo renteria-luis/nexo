@@ -11,8 +11,6 @@ import {
 import type { DealsDiscountRow } from '../db/types.ts';
 
 import { Button } from './Button.tsx';
-import { X } from './icons.ts';
-import { IconButton } from './IconButton.tsx';
 import { font, glass, sheet, shape } from './theme.ts';
 
 /**
@@ -54,7 +52,6 @@ export function DealAlert({
           {live} {live === 1 ? 'oferta tuya' : 'ofertas tuyas'}
           {expired > 0 ? ` y ${expired} ${expired === 1 ? 'vencida' : 'vencidas'}` : ''}
         </Text>
-        <IconButton icon={X} accessibilityLabel="Cerrar las ofertas" onPress={onClose} />
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.list}>

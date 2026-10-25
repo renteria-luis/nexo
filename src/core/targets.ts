@@ -5,6 +5,7 @@
 // phase are inputs, because this repository is public and the spec that holds
 // those figures deliberately is not.
 
+import { thousands } from './numbers.ts';
 import type { IsoDate } from './dates.ts';
 import { daysBetween, trailingDays } from './dates.ts';
 
@@ -125,20 +126,31 @@ export function kcalBand(targets: TargetValues): { from: number; to: number } {
  * 2026-09-30): 2,600 sobre una meta de 2,400 esta dentro, y la cabecera de Comida decia
  * "200 de mas", que es justo lo que lo hacia sentir que se pasaba.
  */
-export function kcalAgainstBand(kcal: number, band: { from: number; to: number }): string {
-  // Con el numero y no con "la banda": la palabra obligaba a recordar cual era.
-  if (kcal < band.from) return `faltan ${band.from - kcal} para ${band.from}`;
-  if (kcal > band.to) return `${kcal - band.to} sobre ${band.to}`;
-  return `entre ${band.from} y ${band.to}`;
+export function kcalAgainstBand(
+  kcal: number,
+  band: { from: number; to: number },
+  finished = false,
+): string {
+  // Con el numero y no con "la banda": la palabra obligaba a recordar cual era. Un dia que
+  // ya paso dice lo que falto, no lo que falta (2026-10-25).
+  const [from, to] = [thousands(band.from), thousands(band.to)];
+  if (kcal < band.from)
+    return `${finished ? 'faltaron' : 'faltan'} ${thousands(band.from - kcal)} para ${from}`;
+  if (kcal > band.to) return `${thousands(kcal - band.to)} sobre ${to}`;
+  return `entre ${from} y ${to}`;
 }
 
 /**
  * La proteina contra su piso, el de abajo de su banda (spec 3.6): pasarse no es un
  * problema, asi que arriba no hay techo que avisar.
  */
-export function proteinAgainstBand(proteinG: number, band: { from: number; to: number }): string {
+export function proteinAgainstBand(
+  proteinG: number,
+  band: { from: number; to: number },
+  finished = false,
+): string {
   return proteinG < band.from
-    ? `faltan ${band.from - proteinG} para ${band.from} g`
+    ? `${finished ? 'faltaron' : 'faltan'} ${band.from - proteinG} para ${band.from} g`
     : `cumplido: ${band.from} g o más`;
 }
 

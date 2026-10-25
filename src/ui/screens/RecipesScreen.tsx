@@ -1,4 +1,5 @@
 import { useNavigation } from '@react-navigation/native';
+import { thousands } from '../../core/numbers.ts';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
@@ -6,12 +7,11 @@ import { proteinBand } from '../../core/targets.ts';
 import { roundAmount } from '../../nutrition/index.ts';
 import {
   cookableNow,
-  portionOf,
   type Cookable,
   type Missing,
   type NeedsWeight,
   type PantryItem,
-  type PotOutcome,
+  type PortionOutcome,
   type Recipe,
 } from '../../pantry/index.ts';
 import { useAppData } from '../../shell/AppData.tsx';
@@ -22,7 +22,7 @@ import { IconButton } from '../IconButton.tsx';
 import { ConfirmButton } from '../InfoBubble.tsx';
 import { ChefHat, Pencil, Plus, Trash } from '../icons.ts';
 import { RecipeForm } from '../RecipeForm.tsx';
-import { font, sheet, shape } from '../theme.ts';
+import { font, headBleed, sheet, shape } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
 
@@ -34,7 +34,7 @@ function lackingLine(missing: readonly Missing[]): string {
   const short = missing.filter((one) => one.why !== 'poco').map((one) => one.name);
   const low = missing.filter((one) => one.why === 'poco').map((one) => one.name);
   return [
-    short.length > 0 ? `Falta ${short.join(', ')}` : null,
+    short.length > 0 ? `${short.length === 1 ? 'Falta' : 'Faltan'} ${short.join(', ')}` : null,
     low.length > 0 ? `Queda poco: ${low.join(', ')}` : null,
   ]
     .filter((part) => part !== null)
@@ -57,7 +57,7 @@ export function RecipesScreen() {
     state,
     loadPantry,
     loadRecipes,
-    loadRecipePots,
+    loadRecipePortions,
     savePantryItem,
     saveRecipe,
     removeRecipe,
@@ -65,7 +65,7 @@ export function RecipesScreen() {
   } = useAppData();
   const [pantry, setPantry] = useState<PantryItem[]>([]);
   const [recipes, setRecipes] = useState<Recipe[] | null>(null);
-  const [pots, setPots] = useState<Map<string, PotOutcome>>(new Map());
+  const [portions, setPortions] = useState<Map<string, PortionOutcome>>(new Map());
   const [open, setOpen] = useState<string | null>(null);
   const [editing, setEditing] = useState<Recipe | null>(null);
   const [creating, setCreating] = useState(false);
@@ -77,14 +77,14 @@ export function RecipesScreen() {
   const [cooking, setCooking] = useState<string | null>(null);
 
   const reload = useCallback(() => {
-    Promise.all([loadPantry(), loadRecipes(), loadRecipePots()])
+    Promise.all([loadPantry(), loadRecipes(), loadRecipePortions()])
       .then(([items, saved, previews]) => {
         setPantry(items);
         setRecipes(saved);
-        setPots(previews);
+        setPortions(previews);
       })
       .catch((error: unknown) => console.error(error));
-  }, [loadPantry, loadRecipes, loadRecipePots]);
+  }, [loadPantry, loadRecipes, loadRecipePortions]);
 
   // Spec 21.3: lo que hace una porcion al dia, contra el piso de proteina, que es la meta.
   const today = state.phase === 'ready' ? state.loaded.today : null;
@@ -200,8 +200,8 @@ export function RecipesScreen() {
       {list.map((entry) => {
         const ready = entry.short.length === 0;
         const shown = open === entry.recipe.id;
-        const pot = pots.get(entry.recipe.id);
-        const portion = pot?.ok ? portionOf(pot.pot, entry.recipe.portions) : null;
+        const figures = portions.get(entry.recipe.id);
+        const portion = figures?.ok ? figures.portion : null;
         // El aceite de la sarten y la sal no se midieron (spec 21.1): no estan en la cuenta,
         // y se dice cuales para que el numero diga de donde sale.
         const unmeasured = entry.recipe.ingredients
@@ -218,6 +218,7 @@ export function RecipesScreen() {
               accessibilityRole="button"
               accessibilityLabel={entry.recipe.name}
               onPress={() => setOpen(shown ? null : entry.recipe.id)}
+              style={styles.tap}
             >
               <View style={styles.head}>
                 <Text style={styles.name}>{entry.recipe.name}</Text>
@@ -232,7 +233,7 @@ export function RecipesScreen() {
               <Text style={styles.meta}>
                 {entry.recipe.portions} porciones
                 {portion !== null &&
-                  ` · ${roundAmount(portion.proteinG)} g de proteína y ${Math.round(portion.kcal)} kcal cada una`}
+                  ` · ${roundAmount(portion.proteinG)} g de proteína y ${thousands(portion.kcal)} kcal cada una`}
               </Text>
               {entry.missing.length > 0 && (
                 <Text style={styles.lacking}>{lackingLine(entry.missing)}</Text>
@@ -266,11 +267,30 @@ export function RecipesScreen() {
                     {unmeasured.length > 0 && ` No cuenta ${unmeasured.join(', ')}: no se miden.`}
                   </Text>
                 ) : (
-                  pot !== undefined &&
-                  !pot.ok && (
-                    <Text style={styles.day}>
-                      Sin cifras por porción: {pot.blocked.join('; ')}.
-                    </Text>
+                  figures !== undefined &&
+                  !figures.ok && (
+                    <>
+                      <Text style={styles.day}>
+                        {figures.blocked.length === 0
+                          ? 'Sin cifras por porción: ningún ingrediente medido.'
+                          : `Sin cifras por porción: ${figures.blocked
+                              .map((one) => `${one.name} ${one.why}`)
+                              .join('; ')}.`}
+                      </Text>
+                      {/* Spec 21.4: un aviso que nombra un arreglo que no se alcanza no
+                          ayuda; lo que se arregla en la ficha, la abre. */}
+                      {figures.blocked.map(
+                        (one) =>
+                          one.foodId !== null && (
+                            <Button
+                              key={one.foodId}
+                              label={`Abrir la ficha de ${one.name}`}
+                              accessibilityLabel={`Abrir la ficha de ${one.name}`}
+                              onPress={() => navigation.navigate('Alimentos', { edit: one.foodId })}
+                            />
+                          ),
+                      )}
+                    </>
                   )
                 )}
 
@@ -318,6 +338,8 @@ export function RecipesScreen() {
 }
 
 const styles = sheet((theme) => ({
+  // La tarjeta entera abre y cierra la receta, no solo sus renglones de texto.
+  tap: headBleed,
   empty: {
     fontSize: 13,
     fontFamily: font.regular,

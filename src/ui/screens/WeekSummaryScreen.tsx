@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { addDays, shortDate, todayIso, weekStart } from '../../core/dates.ts';
-import { hoursAndMinutes, thousands } from '../../core/day-report.ts';
+import { hoursAndMinutes, litres } from '../../core/day-report.ts';
+import { thousands } from '../../core/numbers.ts';
+import { kcalBand, proteinBand } from '../../core/targets.ts';
 import { fromKg } from '../../core/units.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 import { SET_BAND, type Comparison, type MuscleWeek, type WeekSummary } from '../../shell/week.ts';
@@ -10,6 +12,7 @@ import { SET_BAND, type Comparison, type MuscleWeek, type WeekSummary } from '..
 import { Card } from '../Card.tsx';
 import { ChevronLeft, ChevronRight } from '../icons.ts';
 import { IconButton } from '../IconButton.tsx';
+import { InfoDot, InfoText } from '../InfoBubble.tsx';
 import { MUSCLE_ES } from '../muscles.ts';
 import { font, sheet, shape } from '../theme.ts';
 
@@ -39,11 +42,25 @@ function compare(value: Comparison, digits: number, suffix: string): string {
 }
 
 /** Un dato de la semana: el nombre a la izquierda y el numero a la derecha. */
-function Line({ label, value, first = false }: { label: string; value: string; first?: boolean }) {
+function Line({
+  label,
+  value,
+  note,
+  first = false,
+}: {
+  label: string;
+  value: string;
+  /** Under the value, quieter: the goal it is read against. */
+  note?: string | null;
+  first?: boolean;
+}) {
   return (
     <View style={[styles.line, !first && styles.ruled]}>
       <Text style={styles.lineLabel}>{label}</Text>
-      <Text style={styles.lineValue}>{value}</Text>
+      <View style={styles.lineRight}>
+        <Text style={styles.lineValue}>{value}</Text>
+        {note ? <Text style={styles.lineNote}>{note}</Text> : null}
+      </View>
     </View>
   );
 }
@@ -73,6 +90,9 @@ export function WeekSummaryScreen() {
   }, [anchor, loadWeek]);
 
   const unit = state.phase === 'ready' ? state.loaded.unit : 'lb';
+  // Cada promedio junto a su meta: «6 h 01» solo no decia si la semana fue buena
+  // (2026-10-25). Las metas de hoy, que son las que tiene ahora.
+  const targets = state.phase === 'ready' ? state.loaded.today.targets : null;
   // Una semana que no ha terminado no esta bajo la banda: le faltan series. Un jueves,
   // todos los musculos salian "bajo la banda" y el aviso no decia nada (2026-10-23).
   const open = summary !== null && summary.range.to >= todayIso();
@@ -103,10 +123,14 @@ export function WeekSummaryScreen() {
         <>
           {/* "de la semana" porque Gráficas cuenta los ultimos 7 dias y los dos numeros
               se leian como el mismo (2026-10-23). */}
-          <Card title="Series por músculo de la semana">
-            <Text style={styles.note}>
-              La banda útil va de {SET_BAND.from} a {SET_BAND.to} series directas por semana.
-            </Text>
+          <Card
+            title="Series por músculo de la semana"
+            action={
+              <InfoDot accessibilityLabel="Qué es la banda">
+                <InfoText>{`La banda útil va de ${SET_BAND.from} a ${SET_BAND.to} series directas por semana.\nLas ponderadas cuentan también las de músculo secundario, a media serie.`}</InfoText>
+              </InfoDot>
+            }
+          >
             {summary.muscles.length === 0 ? (
               <Text style={styles.empty}>Sin series registradas esta semana.</Text>
             ) : (
@@ -148,19 +172,39 @@ export function WeekSummaryScreen() {
                   ? '—'
                   : hoursAndMinutes(summary.averages.sleepMinutes)
               }
+              note={targets && `de ${hoursAndMinutes(targets.sleepMinutes)}`}
             />
             <Line
               label="Proteína"
-              value={`${show(summary.averages.proteinG, 0, ' g')} · ${summary.averages.foodDays} días con comida`}
+              value={show(summary.averages.proteinG, 0, ' g')}
+              note={[
+                targets && `de ${proteinBand(targets).from} g o más`,
+                `${summary.averages.foodDays} ${summary.averages.foodDays === 1 ? 'día' : 'días'} con comida`,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             />
-            <Line label="Calorías" value={show(summary.averages.kcal, 0, ' kcal')} />
-            <Line label="Pasos" value={show(summary.averages.steps)} />
+            <Line
+              label="Calorías"
+              value={
+                summary.averages.kcal === null ? '—' : `${thousands(summary.averages.kcal)} kcal`
+              }
+              note={
+                targets &&
+                `de ${thousands(kcalBand(targets).from)} a ${thousands(kcalBand(targets).to)}`
+              }
+            />
+            <Line
+              label="Pasos"
+              value={summary.averages.steps === null ? '—' : thousands(summary.averages.steps)}
+              note={targets && `de ${thousands(targets.steps)}`}
+            />
             <Line
               label="Agua"
-              value={
-                summary.averages.waterMl === null
-                  ? '—'
-                  : `${(summary.averages.waterMl / 1000).toFixed(2)} L`
+              value={summary.averages.waterMl === null ? '—' : litres(summary.averages.waterMl)}
+              note={
+                targets &&
+                `de ${litres(targets.waterMlRest)}, ${litres(targets.waterMlTraining)} con entreno`
               }
             />
             {known(summary.weightKg) && (
@@ -179,9 +223,11 @@ export function WeekSummaryScreen() {
               }
             />
             <Line label="Jr. Bacon Cheeseburgers" value={String(summary.jbcCount)} />
+            {/* «19 de 23 anotados» no decia de que: dias tomada, de los anotados. */}
             <Line
-              label={`Creatina, ${summary.creatine.windowDays} días`}
-              value={`${summary.creatine.taken} de ${summary.creatine.logged} anotados`}
+              label={`Creatina, últimos ${summary.creatine.windowDays} días`}
+              value={`${summary.creatine.taken} ${summary.creatine.taken === 1 ? 'día tomada' : 'días tomada'}`}
+              note={`de ${summary.creatine.logged} ${summary.creatine.logged === 1 ? 'día anotado' : 'días anotados'}`}
             />
           </Card>
 
@@ -219,11 +265,6 @@ const styles = sheet((theme) => ({
     fontFamily: font.black,
     color: theme.text,
     fontVariant: ['tabular-nums'],
-  },
-  note: {
-    fontSize: 12,
-    fontFamily: font.regular,
-    color: theme.textFaint,
   },
   empty: {
     fontSize: 13,
@@ -302,9 +343,20 @@ const styles = sheet((theme) => ({
   line: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'baseline',
+    alignItems: 'flex-start',
     gap: 12,
     paddingTop: 2,
+  },
+  lineRight: {
+    flexShrink: 1,
+    alignItems: 'flex-end',
+  },
+  lineNote: {
+    textAlign: 'right',
+    fontSize: 12,
+    fontFamily: font.regular,
+    color: theme.textFaint,
+    fontVariant: ['tabular-nums'],
   },
   lineLabel: {
     flexShrink: 1,

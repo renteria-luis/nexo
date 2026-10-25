@@ -77,7 +77,7 @@ import {
   cookRecipe,
   listPantry,
   listRecipes,
-  previewRecipePots,
+  previewRecipePortions,
   removePantryItem,
   runPantryCommand,
   removeRecipe,
@@ -88,7 +88,7 @@ import {
   type NewRecipe,
   type PantryItem,
   type PantryRemoval,
-  type PotOutcome,
+  type PortionOutcome,
   type Recipe,
 } from '../pantry/index.ts';
 import { listStudies } from '../core/studies.ts';
@@ -451,7 +451,7 @@ export type AppData = {
   changePantry: (command: PantryCommand) => Promise<string>;
   loadRecipes: () => Promise<Recipe[]>;
   /** Lo que daria cada receta cocinada ahora, por id: las mismas cuentas que cocinar. */
-  loadRecipePots: () => Promise<Map<string, PotOutcome>>;
+  loadRecipePortions: () => Promise<Map<string, PortionOutcome>>;
   /** La ultima tanda de un alimento, para proponer su peso y sus porciones. */
   loadLastBatch: (foodId: string) => Promise<LastBatch | null>;
   saveRecipe: (recipe: NewRecipe) => Promise<void>;
@@ -681,7 +681,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   const loadPantry = useCallback(() => openDatabase().then(listPantry), []);
   const loadRecipes = useCallback(() => openDatabase().then(listRecipes), []);
-  const loadRecipePots = useCallback(() => openDatabase().then(previewRecipePots), []);
+  const loadRecipePortions = useCallback(() => openDatabase().then(previewRecipePortions), []);
   const loadLastBatch = useCallback(
     (foodId: string) => openDatabase().then((db) => lastBatchOf(db, foodId)),
     [],
@@ -1383,7 +1383,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         openDatabase().then((db) => recordsOfSession(db, sessionId)),
       loadPantry,
       loadRecipes,
-      loadRecipePots,
+      loadRecipePortions,
       loadLastBatch,
       savePantryItem: async (item) => {
         await savePantryItem(await openDatabase(), item);
@@ -1473,7 +1473,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     loadStudies,
     loadPantry,
     loadRecipes,
-    loadRecipePots,
+    loadRecipePortions,
     loadLastBatch,
     loadChats,
     lastChatId,

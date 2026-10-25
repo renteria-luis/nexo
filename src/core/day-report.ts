@@ -14,6 +14,7 @@ import {
   type DisciplineResult,
   type SessionEffort,
 } from './discipline.ts';
+import { thousands } from './numbers.ts';
 import { kcalBand, proteinBand, type TargetValues } from './targets.ts';
 
 export const CRITERION_LABELS: Record<CriterionId, string> = {
@@ -74,13 +75,6 @@ export function litres(ml: number): string {
 /** Los tragos de un dia, dichos igual en Hoy y en el detalle: «ninguno», «1 trago». */
 export function drinksText(drinks: number): string {
   return drinks === 0 ? 'ninguno' : `${drinks} ${drinks === 1 ? 'trago' : 'tragos'}`;
-}
-
-/** Miles con espacio fino, que es lo que se lee de un vistazo en una columna. */
-export function thousands(value: number): string {
-  return Math.round(value)
-    .toString()
-    .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 
 export type ReportInput = {
@@ -161,8 +155,8 @@ function lines(input: ReportInput): CriterionLine[] {
       label: CRITERION_LABELS.calories,
       weight: CRITERION_WEIGHTS.calories,
       earned: earned('calories'),
-      value: nutrition === null ? MISSING : `${Math.round(nutrition.kcal)} kcal`,
-      target: kcal === null ? MISSING : `${Math.round(kcal.from)} a ${Math.round(kcal.to)}`,
+      value: nutrition === null ? MISSING : `${thousands(nutrition.kcal)} kcal`,
+      target: kcal === null ? MISSING : `${thousands(kcal.from)} a ${thousands(kcal.to)}`,
     },
     {
       id: 'alcohol',

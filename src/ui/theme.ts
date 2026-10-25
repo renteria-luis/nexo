@@ -91,7 +91,21 @@ export const shape = {
   radiusSmall: 14,
   /** La barra flotante de abajo y la bola: capsulas enteras. */
   radiusLarge: 31,
+  /** El relleno de una tarjeta. */
+  cardPadding: 16,
 } as const;
+
+/**
+ * Lo que se toca dentro de una tarjeta llega hasta su borde: el relleno de la tarjeta era
+ * una orilla muerta alrededor de cada fila y de cada encabezado plegable, y el toque solo
+ * entraba si caia en el texto (2026-10-25). `rowBleed` para las filas de una lista, a lo
+ * ancho; `headBleed` para lo que ocupa la tarjeta entera, tambien por arriba y por abajo.
+ */
+export const rowBleed = {
+  marginHorizontal: -shape.cardPadding,
+  paddingHorizontal: shape.cardPadding,
+} as const;
+export const headBleed = { margin: -shape.cardPadding, padding: shape.cardPadding } as const;
 
 /**
  * Lo que hace que algo se lea como vidrio y no como un recorte mate (2026-10-18, a

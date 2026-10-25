@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { clockTime, shortDay, type IsoDate } from '../core/dates.ts';
-import { hoursAndMinutes, thousands } from '../core/day-report.ts';
+import { hoursAndMinutes } from '../core/day-report.ts';
+import { thousands } from '../core/numbers.ts';
 import { HEALTH_SOURCE_LABEL, type HealthResult } from '../core/health-import.ts';
 import type { HealthMetric } from '../db/types.ts';
 import type { HealthArrival } from '../shell/AppData.tsx';

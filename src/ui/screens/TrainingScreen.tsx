@@ -15,7 +15,6 @@ import { AppState, Text, useWindowDimensions, View } from 'react-native';
 import { useAppData, type AppData } from '../../shell/AppData.tsx';
 import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
-import { ChevronRight } from '../icons.ts';
 import { restingSince } from '../../training/calculations.ts';
 import { nextPendingExercise, suggestedRest } from '../../training/routines.ts';
 import type { SessionRecord } from '../../training/calculations.ts';
@@ -568,7 +567,6 @@ export function TrainingScreen() {
           <Button
             label="Recomendaciones de rutina"
             accessibilityLabel="Ver recomendaciones de rutina"
-            icon={ChevronRight}
             onPress={() =>
               navigation.navigate('Recomendaciones', {
                 routineId: session?.routine_id ?? undefined,

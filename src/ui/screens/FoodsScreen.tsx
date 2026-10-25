@@ -1,4 +1,5 @@
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { thousands } from '../../core/numbers.ts';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
@@ -11,7 +12,7 @@ import { Card } from '../Card.tsx';
 import { FoodForm } from '../FoodForm.tsx';
 import { ChevronDown, ChevronRight, ChevronUp, Plus, RotateCcw } from '../icons.ts';
 import { SearchField } from '../SearchField.tsx';
-import { font, sheet, shape, theme } from '../theme.ts';
+import { font, rowBleed, shape, sheet, theme } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
 
@@ -27,7 +28,11 @@ function macros(food: NutritionFoodRow): { head: string; tail: string } {
   const per = referenceAmount(food);
   const unit = food.unit_kind === 'count' ? food.base_unit : `100 ${food.base_unit}`;
   const of = (value: number | null, suffix: string) =>
-    value === null ? '—' : `${roundAmount(Math.round(value * per * 100) / 100)}${suffix}`;
+    value === null
+      ? '—'
+      : value * per >= 1_000
+        ? `${thousands(value * per)}${suffix}`
+        : `${roundAmount(Math.round(value * per * 100) / 100)}${suffix}`;
 
   return {
     head: `${unit} · ${of(food.kcal, '')} kcal · ${of(food.protein_g, ' g')} P · ${of(food.carbs_g, ' g')} C`,
@@ -223,6 +228,7 @@ const styles = sheet((theme) => ({
     alignItems: 'center',
     gap: 10,
     paddingVertical: 9,
+    ...rowBleed,
   },
   ruled: {
     borderTopWidth: shape.border,

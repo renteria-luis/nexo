@@ -3,7 +3,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { shortDate } from '../../core/dates.ts';
-import { scoreText, thousands } from '../../core/day-report.ts';
+import { scoreText } from '../../core/day-report.ts';
+import { thousands } from '../../core/numbers.ts';
 import { colorForScore, scoreScaleFrom } from '../../core/palettes.ts';
 import { fromKg } from '../../core/units.ts';
 import { useAppData } from '../../shell/AppData.tsx';
@@ -19,7 +20,7 @@ import {
 import { Card } from '../Card.tsx';
 import { Chip } from '../Chip.tsx';
 import { ChevronRight } from '../icons.ts';
-import { font, sheet, shape, theme } from '../theme.ts';
+import { font, rowBleed, shape, sheet, theme } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
 
@@ -157,7 +158,7 @@ export function RecordsScreen() {
                         : 'sin entreno',
                     row.volume > 0 ? `${thousands(fromKg(row.volume, unit))} ${unit}` : null,
                     row.proteinG === null ? null : `${Math.round(row.proteinG)} g prot`,
-                    row.kcal === null ? null : `${Math.round(row.kcal)} kcal`,
+                    row.kcal === null ? null : `${thousands(row.kcal)} kcal`,
                   ]
                     .filter(Boolean)
                     .join(' · ')}
@@ -195,6 +196,7 @@ const styles = sheet((theme) => ({
     alignItems: 'center',
     gap: 12,
     paddingVertical: 10,
+    ...rowBleed,
   },
   ruled: {
     borderTopWidth: shape.border,

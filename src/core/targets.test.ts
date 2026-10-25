@@ -169,14 +169,16 @@ test('recalculation triggers at a kilo of drift, not before', () => {
 test('las calorias de Comida se dicen contra la banda, no contra la meta pelada', () => {
   const band = { from: 2250, to: 2950 };
   // 2,600 sobre una meta de 2,400: la cabecera decia "200 de mas".
-  assert.equal(kcalAgainstBand(2600, band), 'entre 2250 y 2950');
-  assert.equal(kcalAgainstBand(2000, band), 'faltan 250 para 2250');
-  assert.equal(kcalAgainstBand(3000, band), '50 sobre 2950');
+  assert.equal(kcalAgainstBand(2600, band), 'entre 2 250 y 2 950');
+  assert.equal(kcalAgainstBand(2000, band), 'faltan 250 para 2 250');
+  assert.equal(kcalAgainstBand(3000, band), '50 sobre 2 950');
+  assert.equal(kcalAgainstBand(2000, band, true), 'faltaron 250 para 2 250', 'a past day');
 });
 
 test('protein is told against its floor, with no ceiling to warn about', () => {
   const band = { from: 130, to: 160 };
   assert.equal(proteinAgainstBand(112, band), 'faltan 18 para 130 g');
+  assert.equal(proteinAgainstBand(112, band, true), 'faltaron 18 para 130 g');
   assert.equal(proteinAgainstBand(130, band), 'cumplido: 130 g o más');
   assert.equal(proteinAgainstBand(190, band), 'cumplido: 130 g o más');
 });

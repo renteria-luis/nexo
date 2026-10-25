@@ -4,7 +4,8 @@ import { Text, useWindowDimensions, View } from 'react-native';
 
 import { FULL_LEVEL, sayLevel } from '../../core/creatine.ts';
 import { daysBetween, todayIso } from '../../core/dates.ts';
-import { hoursAndMinutes, scoreText, thousands } from '../../core/day-report.ts';
+import { hoursAndMinutes, scoreText } from '../../core/day-report.ts';
+import { thousands } from '../../core/numbers.ts';
 import { GRID_HISTORY_START } from '../../core/grid-history.ts';
 import { fromKg } from '../../core/units.ts';
 import { useAppData } from '../../shell/AppData.tsx';
@@ -338,7 +339,7 @@ export function ChartsScreen() {
                 to={data.to}
                 width={width}
                 band={data.kcalBand}
-                format={(value) => `${Math.round(value)} kcal`}
+                format={(value) => `${thousands(value)} kcal`}
                 {...bubble('kcal')}
               />
             </Card>
@@ -380,6 +381,7 @@ export function ChartsScreen() {
                     width={width}
                     band={{ from: FULL_LEVEL * 100, to: 100 }}
                     max={100}
+                    filling
                     // Al tocar una barra importa si la tomo ese dia, no el porcentaje.
                     format={() => ''}
                     {...bubble('creatine')}
@@ -399,7 +401,8 @@ export function ChartsScreen() {
                 format={(value) => `${value.toFixed(1)} kg`}
                 series={[
                   { points: data.weight, color: theme.surfaceHigh, dots: true },
-                  { points: data.weightAverage, color: theme.accent },
+                  // Periwinkle y no ambar: el ambar es lo que se toca (2026-10-25).
+                  { points: data.weightAverage, color: theme.info },
                 ]}
                 {...bubble('weight')}
               />

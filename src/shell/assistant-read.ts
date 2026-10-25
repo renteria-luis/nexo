@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { thousands } from '../core/numbers.ts';
 import { listDailyLogs, listScoreHistory } from '../core/daily-log.ts';
 import { scoreText } from '../core/day-report.ts';
 import { daysBetween, shortDate, type DateRange, type IsoDate } from '../core/dates.ts';
@@ -200,7 +201,7 @@ async function nutrition(
   let answer = `${label}: ${protein}.`;
   if (request.question === 'nutricion') {
     const gap = totals.missing.some((item) => ['kcal', 'fat_g', 'carbs_g'].includes(item.nutrient));
-    answer += ` ${Math.round(totals.kcal)} kcal, ${Math.round(totals.carbsG)} g de carbohidratos y ${Math.round(totals.fatG)} g de grasa${gap ? ' (totales incompletos: faltan datos nutricionales)' : ''}.`;
+    answer += ` ${thousands(totals.kcal)} kcal, ${Math.round(totals.carbsG)} g de carbohidratos y ${Math.round(totals.fatG)} g de grasa${gap ? ' (totales incompletos: faltan datos nutricionales)' : ''}.`;
     answer += ` Comidas registradas: ${[...new Set(portions.map((portion) => portion.food.name))].join(', ')}.`;
   }
   if (range.from === range.to) {

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { shortDate } from '../core/dates.ts';
-import { hoursAndMinutes, litres, scoreText, thousands } from '../core/day-report.ts';
+import { hoursAndMinutes, litres, scoreText } from '../core/day-report.ts';
+import { thousands } from '../core/numbers.ts';
 import { fromKg, type WeightUnit } from '../core/units.ts';
 import type { DayDetail } from '../shell/records.ts';
 
@@ -66,7 +67,7 @@ export function DayDialog({ date, unit, load, onOpenDetail }: DayDialogProps) {
       value:
         day?.nutrition == null
           ? MISSING
-          : `${Math.round(day.nutrition.kcal)} kcal · ${Math.round(day.nutrition.proteinG)} g prot`,
+          : `${thousands(day.nutrition.kcal)} kcal · ${Math.round(day.nutrition.proteinG)} g prot`,
     },
     {
       label: 'sueño',

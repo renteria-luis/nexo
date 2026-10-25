@@ -4,7 +4,8 @@ import { Text, View } from 'react-native';
 
 import { undoLastTap } from '../../core/water-taps.ts';
 import { addDays, shortDate, todayIso } from '../../core/dates.ts';
-import { scoreText, thousands } from '../../core/day-report.ts';
+import { scoreText } from '../../core/day-report.ts';
+import { thousands } from '../../core/numbers.ts';
 import { fatBand, kcalBand, proteinBand } from '../../core/targets.ts';
 import { WEEKLY_SESSION_TARGET } from '../../core/discipline.ts';
 import type { DayDetail } from '../../shell/records.ts';
@@ -261,6 +262,7 @@ export function DayScreen() {
       {/* La comida trae sus propias cartillas, asi que no va dentro de otra. */}
       <FoodLog
         record
+        finished={date < todayIso()}
         foods={loaded.foods}
         portions={day.portions}
         totals={day.nutrition}

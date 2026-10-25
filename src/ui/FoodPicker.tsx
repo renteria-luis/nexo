@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { thousands } from '../core/numbers.ts';
 import { Pressable, Text, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../db/types.ts';
@@ -58,7 +59,8 @@ function macros(food: NutritionFoodRow, quantity = 0): string {
       ? food.base_unit
       : `100 ${food.base_unit}`;
   const round = (value: number) => roundAmount(Math.round(value * 10) / 10);
-  return `${unit} · ${round(food.kcal * per)} kcal · ${round(food.protein_g * per)} g P`;
+  const kcal = food.kcal * per;
+  return `${unit} · ${kcal >= 1_000 ? thousands(kcal) : round(kcal)} kcal · ${round(food.protein_g * per)} g P`;
 }
 
 function Row({

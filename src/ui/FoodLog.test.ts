@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { thousands } from '../core/numbers.ts';
 import { test } from 'node:test';
 
 import { SODIUM_FLAG_MG } from '../nutrition/totals.ts';
@@ -35,6 +36,7 @@ test('both food layouts show the same totals, goals first, and the gap warning',
       portions: [],
       totals,
       record,
+      finished: record,
       proteinBand: { from: 135, to: 160 },
       kcalBand: { from: 1800, to: 2200 },
       fatBand: { from: 58, to: 75, hardFloor: 58 },
@@ -56,16 +58,18 @@ test('both food layouts show the same totals, goals first, and the gap warning',
       [...order].sort((a, b) => a - b),
     );
     assert.ok(order.every((at) => at >= 0));
+    // A day that is over says what was missing, not what still is.
+    const short = record ? 'faltaron' : 'faltan';
     for (const label of [
-      'Calorías1500',
-      'faltan 300 para 1800',
+      'Calorías1 500',
+      `${short} 300 para 1 800`,
       'Proteína100 g',
-      'faltan 35 para 135 g',
+      `${short} 35 para 135 g`,
       'Carbos120 + g',
       'fibra 5 g',
       'Grasa50 g',
-      `Sodio${SODIUM_FLAG_MG + 1} mg`,
-      `sobre ${SODIUM_FLAG_MG}`,
+      `Sodio${thousands(SODIUM_FLAG_MG + 1)} mg`,
+      `sobre ${thousands(SODIUM_FLAG_MG)}`,
       'Avena no trae todos los datos',
     ]) {
       assert.ok(text.includes(label), `${record}: ${label}`);

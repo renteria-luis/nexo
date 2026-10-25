@@ -18,7 +18,7 @@ import {
   updateFood,
 } from '../nutrition/queries.ts';
 
-import { portionOf, potOf } from './cook.ts';
+import { portionFigures, potOf } from './cook.ts';
 import { parseCommand, type PantryCommand } from '../core/commands.ts';
 
 import {
@@ -33,7 +33,7 @@ import {
   cookRecipe,
   listPantry,
   listRecipes,
-  previewRecipePots,
+  previewRecipePortions,
   removePantryItem,
   runPantryCommand,
   savePantryItem,
@@ -167,7 +167,7 @@ test('un ingrediente sin ficha no se puede pesar y lo dice', () => {
   const stock = [item({ id: 'pollo', kind: 'weighed', quantity: 800, unit: 'g' })];
   const outcome = potOf([{ itemId: 'pollo', amount: 600 }], stock, []);
   assert.equal(outcome.ok, false);
-  assert.deepEqual(outcome.ok ? [] : outcome.blocked, ['pollo, sin ficha con peso']);
+  assert.deepEqual(outcome.ok ? [] : outcome.blocked, ['pollo no está en Alimentos']);
 });
 
 test('piezas de un alimento que se anota en gramos no pesan la olla: lo dice en vez de dar 3 g', () => {
@@ -185,7 +185,45 @@ test('piezas de un alimento que se anota en gramos no pesan la olla: lo dice en 
   const outcome = potOf([{ itemId: 'pollo', amount: 3 }], stock, [pechuga] as never);
   assert.equal(outcome.ok, false);
   assert.deepEqual(outcome.ok ? [] : outcome.blocked, [
-    'Pechugas, que está en pieza y su ficha en g',
+    'Pechugas se cuenta en pieza y su ficha en g',
+  ]);
+});
+
+test('una porcion dice su proteina aunque un alimento se cuente por unidad sin peso', () => {
+  const whey = { id: 'whey', base_unit: 'unidad', base_unit_g: null, kcal: 130, protein_g: 24 };
+  const leche = { id: 'leche', base_unit: 'ml', base_unit_g: 1.03, kcal: 0.4, protein_g: 0.036 };
+  const stock = [
+    item({ id: 'w', name: 'Whey', kind: 'counted', quantity: 0, unit: 'unidad', foodId: 'whey' }),
+    item({ id: 'l', name: 'Leche', kind: 'weighed', quantity: 0, unit: 'ml', foodId: 'leche' }),
+    item({ id: 'a', name: 'Avena', kind: 'durable', state: 'hay' }),
+  ];
+  const ingredients = [
+    { itemId: 'w', amount: 1 },
+    { itemId: 'l', amount: 300 },
+    { itemId: 'a', amount: null },
+  ];
+  const outcome = portionFigures(ingredients, stock, [whey, leche] as never, 2);
+  assert.ok(outcome.ok);
+  assert.equal(outcome.portion.proteinG, (24 + 300 * 0.036) / 2);
+  assert.equal(outcome.portion.kcal, (130 + 300 * 0.4) / 2);
+  assert.equal(potOf(ingredients, stock, [whey, leche] as never).ok, false, 'a batch still weighs');
+
+  const pieces = [
+    item({ id: 'p', name: 'Pechugas', kind: 'counted', quantity: 6, unit: 'pieza', foodId: 'c' }),
+  ];
+  const chicken = { id: 'c', base_unit: 'g', base_unit_g: 1, kcal: 1.2, protein_g: 0.224 };
+  const odd = portionFigures([{ itemId: 'p', amount: 3 }], pieces, [chicken] as never, 2);
+  assert.deepEqual(odd.ok ? [] : odd.blocked, [
+    { name: 'Pechugas', foodId: 'c', why: 'se cuenta en pieza y su ficha en g' },
+  ]);
+  const loose = portionFigures(
+    [{ itemId: 'x', amount: 2 }],
+    [item({ id: 'x', name: 'Tortillas', kind: 'counted', quantity: 2, unit: 'unidad' })],
+    [],
+    2,
+  );
+  assert.deepEqual(loose.ok ? [] : loose.blocked, [
+    { name: 'Tortillas', foodId: null, why: 'no está en Alimentos' },
   ]);
 });
 
@@ -535,17 +573,20 @@ test('una receta dice lo que da cada porcion antes de cocinarla, igual que la ol
     ingredients: [{ itemId: pollo, amount: 3 }],
   });
 
-  const preview = (await previewRecipePots(db)).get(recipe);
+  const preview = (await previewRecipePortions(db)).get(recipe);
   assert.ok(preview?.ok);
-  const portion = portionOf(preview.pot, 3);
+  const portion = preview.portion;
+  const foods = await db.getAllAsync<never>('SELECT * FROM nutrition_food;');
+  const pot = potOf([{ itemId: pollo, amount: 3 }], await listPantry(db), foods);
+  assert.ok(pot.ok);
   // Lo que se ve antes es justo lo que se come despues: la porcion de la olla cocinada.
   const cooked = await cookRecipe(db, recipe, '2026-09-30');
   const food = await db.getFirstAsync<{ protein_g: number; kcal: number }>(
     'SELECT f.protein_g, f.kcal FROM nutrition_batch b JOIN nutrition_food f ON f.id = b.food_id WHERE b.id = ?;',
     [cooked.batchId!],
   );
-  assert.ok(Math.abs((food!.protein_g * preview.pot.grams) / 3 - portion.proteinG) < 1e-9);
-  assert.ok(Math.abs((food!.kcal * preview.pot.grams) / 3 - portion.kcal) < 1e-9);
+  assert.ok(Math.abs((food!.protein_g * pot.pot.grams) / 3 - portion.proteinG) < 1e-9);
+  assert.ok(Math.abs((food!.kcal * pot.pot.grams) / 3 - portion.kcal) < 1e-9);
 
   // Sin hamburguesas en la despensa la cuenta sigue: es lo que daria si las tuviera.
   await savePantryItem(db, {
@@ -558,7 +599,7 @@ test('una receta dice lo que da cada porcion antes de cocinarla, igual que la ol
     hasIt: null,
     foodId: 'chicken-burger',
   });
-  assert.ok((await previewRecipePots(db)).get(recipe)?.ok);
+  assert.ok((await previewRecipePortions(db)).get(recipe)?.ok);
 });
 
 test('la ultima tanda de un alimento es la que se propone para la siguiente', async () => {

@@ -114,3 +114,16 @@ export function newestFetch(deals: readonly DealWithContext[]): number | null {
 export function liveDeals(found: readonly WatchedDeal[]): WatchedDeal[] {
   return found.filter(({ item }) => !item.stale);
 }
+
+/**
+ * The flyer's small print as he reads it: its lines joined, without the store's item number
+ * ("#30468465"), which only the store's till uses (2026-10-25).
+ */
+export function plainDescription(text: string): string {
+  return text
+    .replace(/\s*\n\s*/g, ' · ')
+    .replace(/#\d{5,}\.?/g, '')
+    .replace(/(\s*·\s*)+/g, ' · ')
+    .replace(/^\s*·\s*|\s*·\s*$/g, '')
+    .trim();
+}

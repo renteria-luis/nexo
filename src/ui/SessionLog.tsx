@@ -3,7 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 import { Check, Circle, Minus, Plus, Trash } from './icons.ts';
 
 import { shortDate } from '../core/dates.ts';
-import { thousands } from '../core/day-report.ts';
+import { thousands } from '../core/numbers.ts';
 import { formatWeight, fromKg, stepWeight, toKg, type WeightUnit } from '../core/units.ts';
 import {
   estimatedRestSeconds,

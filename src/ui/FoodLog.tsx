@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { thousands } from '../core/numbers.ts';
 import { Text, View } from 'react-native';
 
 import { fatAgainstBand, kcalAgainstBand, proteinAgainstBand } from '../core/targets.ts';
@@ -113,6 +114,8 @@ export type FoodLogProps = {
    * esta anotando todo el rato.
    */
   record?: boolean;
+  /** Un dia que ya termino: dice lo que falto, no lo que falta. */
+  finished?: boolean;
   /**
    * El espacio en el que se anota, cuando lo comparte con otra cartilla (las tandas de
    * Comida). Sin esto lleva el suyo, que sigue el reloj.
@@ -134,10 +137,10 @@ function NutritionStats({
   proteinBand,
   kcalBand,
   fatBand,
-  record = false,
+  finished = false,
 }: {
   totals: NutritionTotals;
-} & Pick<FoodLogProps, 'proteinBand' | 'kcalBand' | 'fatBand' | 'record'>) {
+} & Pick<FoodLogProps, 'proteinBand' | 'kcalBand' | 'fatBand' | 'finished'>) {
   const mark = (nutrient: string) => totalMark(totals, nutrient);
   // Only warn about missing figures whose displayed total carries a +.
   const shownGaps = totals.missing.filter((gap) =>
@@ -148,7 +151,7 @@ function NutritionStats({
 
   const kcal = Math.round(totals.kcal);
   const protein = Math.round(totals.proteinG);
-  const fat = fatBand === null ? null : fatAgainstBand(totals.fatG, fatBand, record);
+  const fat = fatBand === null ? null : fatAgainstBand(totals.fatG, fatBand, finished);
 
   return (
     <>
@@ -157,15 +160,17 @@ function NutritionStats({
       <View style={styles.stats}>
         <Stat
           label="Calorías"
-          value={`${kcal}${mark('kcal')}`}
-          note={kcalBand === null ? undefined : kcalAgainstBand(kcal, kcalBand)}
+          value={`${thousands(kcal)}${mark('kcal')}`}
+          note={kcalBand === null ? undefined : kcalAgainstBand(kcal, kcalBand, finished)}
           tint={theme.info}
           wide
         />
         <Stat
           label="Proteína"
           value={`${protein}${mark('protein_g')} g`}
-          note={proteinBand === null ? undefined : proteinAgainstBand(protein, proteinBand)}
+          note={
+            proteinBand === null ? undefined : proteinAgainstBand(protein, proteinBand, finished)
+          }
           tint={theme.protein}
         />
         <Stat
@@ -181,8 +186,8 @@ function NutritionStats({
         />
         <Stat
           label="Sodio"
-          value={`${roundAmount(totals.sodiumMg)}${mark('sodium_mg')} mg`}
-          note={totals.sodiumOverLimit ? `sobre ${SODIUM_FLAG_MG}` : undefined}
+          value={`${thousands(totals.sodiumMg)}${mark('sodium_mg')} mg`}
+          note={totals.sodiumOverLimit ? `sobre ${thousands(SODIUM_FLAG_MG)}` : undefined}
           alert={totals.sodiumOverLimit}
         />
         {/* Spec 7.5: glycemic load needs an index. */}
@@ -220,6 +225,7 @@ export function FoodLog({
   onNewFood,
   history,
   record = false,
+  finished = false,
   slot: sharedSlot,
   onPickSlot,
 }: FoodLogProps) {
@@ -461,7 +467,7 @@ export function FoodLog({
               proteinBand={proteinBand}
               kcalBand={kcalBand}
               fatBand={fatBand}
-              record={record}
+              finished={finished}
             />
           )}
           {eaten}
@@ -492,7 +498,7 @@ export function FoodLog({
             proteinBand={proteinBand}
             kcalBand={kcalBand}
             fatBand={fatBand}
-            record={record}
+            finished={finished}
           />
         </Card>
       )}

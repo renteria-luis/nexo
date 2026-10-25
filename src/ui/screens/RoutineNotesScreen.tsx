@@ -8,7 +8,7 @@ import { Card } from '../Card.tsx';
 import { Chip } from '../Chip.tsx';
 import { ChevronDown, ChevronUp } from '../icons.ts';
 
-import { font, sheet, shape, theme } from '../theme.ts';
+import { font, headBleed, sheet, shape, theme } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
 
@@ -208,7 +208,8 @@ const styles = sheet((theme) => ({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
-    minHeight: 32,
+    ...headBleed,
+    minHeight: 32 + 2 * shape.cardPadding,
   },
   foldPressed: {
     opacity: 0.7,

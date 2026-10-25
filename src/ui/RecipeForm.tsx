@@ -178,7 +178,7 @@ export function RecipeForm({
                   <Text style={styles.unit}>{item.unit}</Text>
                 </>
               ) : (
-                <Text style={styles.unit}>sin medir</Text>
+                <Text style={styles.unit}>al gusto</Text>
               )}
               <ConfirmButton
                 icon={Trash}

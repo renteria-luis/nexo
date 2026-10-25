@@ -9,6 +9,7 @@ import {
   proteinPerDollar,
   unitPrice,
   type DealWithContext,
+  plainDescription,
 } from '../../deals/index.ts';
 import type { DealsDiscountRow } from '../../db/types.ts';
 import { useAppData } from '../../shell/AppData.tsx';
@@ -19,7 +20,7 @@ import { Card } from '../Card.tsx';
 import { Chip } from '../Chip.tsx';
 import { IconButton } from '../IconButton.tsx';
 import { ChevronDown, ChevronUp, Pencil, RotateCcw } from '../icons.ts';
-import { font, sheet, shape, theme } from '../theme.ts';
+import { font, headBleed, sheet, shape, theme } from '../theme.ts';
 
 import { useNow } from '../useNow.ts';
 
@@ -84,12 +85,15 @@ const DealRow = memo(function DealRow({
   item,
   discounts,
   showStore,
+  showList,
   answering,
   onAnswer,
 }: {
   item: DealWithContext;
   discounts: DealsDiscountRow[];
   showStore: boolean;
+  /** "de tu lista" on the row; grouped by product the group says it once. */
+  showList: boolean;
   /** Con el lapiz prendido: solo entonces se pregunta si es su alimento. */
   answering: boolean;
   onAnswer: (item: DealWithContext, confirmed: boolean | null) => void;
@@ -119,7 +123,7 @@ const DealRow = memo(function DealRow({
       <Text style={styles.meta}>
         {[
           showStore ? (retailer?.name ?? MISSING) : null,
-          deal.description === null ? null : deal.description.replace(/\s*\n\s*/g, ' · '),
+          deal.description === null ? null : plainDescription(deal.description) || null,
           deal.original_price_cents === null ? null : `antes ${money(deal.original_price_cents)}`,
           deal.valid_to === null ? null : `hasta ${shortDay(deal.valid_to)}`,
         ]
@@ -175,7 +179,7 @@ const DealRow = memo(function DealRow({
       )}
 
       <View style={styles.marks}>
-        {deal.staple === 1 && <Text style={styles.mark}>de tu lista</Text>}
+        {showList && deal.staple === 1 && <Text style={styles.mark}>de tu lista</Text>}
         {stale && <Text style={styles.markWarn}>posiblemente vencido</Text>}
         {/* Spec 16.3 rule 2: la insignia de la fuente va en cada oferta. */}
         <Text style={styles.mark}>{source.name}</Text>
@@ -372,8 +376,11 @@ export function DealsScreen() {
         const shown = name === null || open_.includes(name);
         // Cerrado, el grupo dice su primera oferta, que es la mejor: con solo "18 ofertas"
         // habia que abrir cada producto para saber donde estaba barato. La dudosa no
-        // cuenta, que un precio por kilo leido como peso no es el mejor de nada.
-        const lead = rows.find((row) => !row.suspect)?.item ?? null;
+        // cuenta, que un precio por kilo leido como peso no es el mejor de nada. Y solo una
+        // que es uno de sus alimentos: lo mas barato de "Queso" era una margarina, y de
+        // "Proteína en polvo", colageno (2026-10-25).
+        const lead = rows.find((row) => !row.suspect && row.item.food !== null)?.item ?? null;
+        const staple = listed === 'product' && rows.some((row) => row.item.deal.staple === 1);
         const leadPrice = lead === null ? null : unitPrice(lead.deal);
         const count = `${rows.length} ${rows.length === 1 ? 'oferta' : 'ofertas'}`;
         const leadCost =
@@ -385,15 +392,15 @@ export function DealsScreen() {
                 ? null
                 : money(lead.deal.price_cents);
         // Por producto, cuanto y donde; por tienda, que y cuanto.
-        const line =
+        const line = (
           lead === null
-            ? count
-            : (listed === 'store'
-                ? [productName(lead), leadCost, count]
-                : [leadCost, lead.retailer?.name ?? null, count]
-              )
-                .filter(Boolean)
-                .join(' · ');
+            ? [count, 'ninguna es de tus alimentos']
+            : listed === 'store'
+              ? [productName(lead), leadCost, count]
+              : [leadCost, lead.retailer?.name ?? null, count, staple ? 'de tu lista' : null]
+        )
+          .filter(Boolean)
+          .join(' · ');
         return (
           <Card key={name ?? 'todas'}>
             {name !== null && (
@@ -421,6 +428,7 @@ export function DealsScreen() {
                   item={item}
                   discounts={discounts}
                   showStore={listed !== 'store'}
+                  showList={listed !== 'product'}
                   answering={answering}
                   onAnswer={answerDealMatch}
                 />
@@ -437,7 +445,8 @@ const styles = sheet((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingVertical: 2,
+    ...headBleed,
+    paddingVertical: shape.cardPadding + 2,
   },
   groupPressed: {
     opacity: 0.7,

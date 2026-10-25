@@ -134,7 +134,11 @@ function Summary({
     {
       icon: Droplets,
       label: 'Agua',
-      value: `${litres(log?.water_ml ?? 0)}${waterTargetMl === null ? '' : ` de ${litres(waterTargetMl)}`}`,
+      // Sin anotar no es cero, como con el alcohol: «0.00 L» decia algo que no anoto (2026-10-25).
+      value:
+        log?.water_ml == null
+          ? `sin anotar${waterTargetMl === null ? '' : ` · meta ${litres(waterTargetMl)}`}`
+          : `${litres(log.water_ml)}${waterTargetMl === null ? '' : ` de ${litres(waterTargetMl)}`}`,
     },
     {
       icon: Pill,
@@ -258,7 +262,6 @@ export function TodayLog({
     setSleepMinutes(String(total % 60));
   };
 
-  const waterMl = log?.water_ml ?? 0;
   const drinks = log?.alcohol_drinks ?? 0;
 
   if (!editing) {
@@ -278,10 +281,16 @@ export function TodayLog({
   return (
     <View style={styles.wrapper}>
       <Field title="Agua" icon={Droplets} first>
-        <Text style={styles.value}>
-          {litres(waterMl)}
-          {waterTargetMl === null ? '' : ` de ${litres(waterTargetMl)}`}
-        </Text>
+        {log?.water_ml == null ? (
+          <Text style={styles.unset}>
+            sin anotar{waterTargetMl === null ? '' : ` · meta ${litres(waterTargetMl)}`}
+          </Text>
+        ) : (
+          <Text style={styles.value}>
+            {litres(log.water_ml)}
+            {waterTargetMl === null ? '' : ` de ${litres(waterTargetMl)}`}
+          </Text>
+        )}
         <View style={styles.row}>
           {containers.map((container) => (
             <Chip
@@ -392,6 +401,9 @@ export function TodayLog({
             onCommit={commitSleep}
             style={styles.input}
           />
+          {/* Con su unidad al lado, como en Ajustes: escritos, «7» «8» se leian como de 7 a 8
+              (2026-10-25). */}
+          <Text style={styles.note}>h</Text>
           <NumericField
             value={sleepMinutes}
             onChange={(next) => {
@@ -404,6 +416,7 @@ export function TodayLog({
             onCommit={commitSleep}
             style={styles.input}
           />
+          <Text style={styles.note}>min</Text>
         </View>
         {sleepFrom && <Text style={styles.note}>{sleepFrom}</Text>}
       </Field>

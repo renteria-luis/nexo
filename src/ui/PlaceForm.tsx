@@ -178,7 +178,7 @@ const styles = sheet((theme) => ({
     borderWidth: shape.border,
     borderColor: theme.line,
     borderRadius: shape.radiusSmall,
-    backgroundColor: theme.bg,
+    backgroundColor: theme.surface,
     paddingHorizontal: 10,
     paddingVertical: 9,
     fontSize: 15,

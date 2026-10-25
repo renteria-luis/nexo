@@ -14,13 +14,14 @@ import type { TimeBudget } from '../../training/routines.ts';
 import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
 import { Chip } from '../Chip.tsx';
+import { ConfirmAction } from '../InfoBubble.tsx';
 import { ChevronRight, Plus } from '../icons.ts';
 import { MUSCLE_ES } from '../muscles.ts';
 import { NumericField } from '../NumericField.tsx';
 import { SearchField } from '../SearchField.tsx';
 import { TextField } from '../TextField.tsx';
 import { Toggle } from '../Toggle.tsx';
-import { font, sheet, shape, theme } from '../theme.ts';
+import { font, rowBleed, shape, sheet, theme } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
 
@@ -199,9 +200,35 @@ function NewExerciseForm({
           void save();
         }}
       />
-      <Button label="Cancelar creación" variant="ghost" disabled={busy} onPress={onCancel} />
+      {/* Apagado sin decir por que obligaba a buscar que faltaba (2026-10-25). */}
+      {!ready && <Text style={styles.missing}>{missingText(name, equipment, muscle)}</Text>}
+      {/* Con algo escrito, cancelar pregunta: un toque tiraba el formulario lleno. */}
+      {name.trim() !== '' || muscle !== null || equipment !== null || note.trim() !== '' ? (
+        <ConfirmAction
+          label="Cancelar creación"
+          variant="ghost"
+          accessibilityLabel="Cancelar creación"
+          question="¿Dejar este ejercicio sin guardar?"
+          yes="Sí, descartar"
+          onConfirm={onCancel}
+        />
+      ) : (
+        <Button label="Cancelar creación" variant="ghost" disabled={busy} onPress={onCancel} />
+      )}
     </Card>
   );
+}
+
+/** Lo que le falta al ejercicio nuevo para poder guardarse, dicho por su nombre. */
+function missingText(name: string, equipment: EquipmentType | null, muscle: string | null) {
+  const missing = [
+    name.trim() === '' ? 'el nombre' : null,
+    equipment === null ? 'el equipo' : null,
+    muscle === null ? 'el músculo principal' : null,
+  ].filter((part): part is string => part !== null);
+  const list =
+    missing.length > 1 ? `${missing.slice(0, -1).join(', ')} y ${missing.at(-1)}` : missing[0];
+  return `Falta ${list}.`;
 }
 
 /** Un dato con su nombre encima, como en el registro del dia. */
@@ -783,11 +810,18 @@ const styles = sheet((theme) => ({
     fontFamily: font.bold,
     color: theme.danger,
   },
+  missing: {
+    fontSize: 12,
+    fontFamily: font.regular,
+    color: theme.textFaint,
+    textAlign: 'center',
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingVertical: 10,
+    ...rowBleed,
   },
   ruled: {
     borderTopWidth: shape.border,
