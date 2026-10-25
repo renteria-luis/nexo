@@ -379,7 +379,13 @@ export function DealsScreen() {
         // cuenta, que un precio por kilo leido como peso no es el mejor de nada. Y solo una
         // que es uno de sus alimentos: lo mas barato de "Queso" era una margarina, y de
         // "Proteína en polvo", colageno (2026-10-25).
-        const lead = rows.find((row) => !row.suspect && row.item.food !== null)?.item ?? null;
+        // Una de sus palabras vigiladas tambien vale: la carne molida no esta en su catalogo
+        // y "ground beef" es suya.
+        const lead =
+          (
+            rows.find((row) => !row.suspect && row.item.food !== null) ??
+            rows.find((row) => !row.suspect && row.item.deal.staple === 1)
+          )?.item ?? null;
         const staple = listed === 'product' && rows.some((row) => row.item.deal.staple === 1);
         const leadPrice = lead === null ? null : unitPrice(lead.deal);
         const count = `${rows.length} ${rows.length === 1 ? 'oferta' : 'ofertas'}`;

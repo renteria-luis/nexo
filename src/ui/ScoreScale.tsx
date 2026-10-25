@@ -13,8 +13,10 @@ import {
 import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
 import { ScoreCell } from './DisciplineGrid.tsx';
+import { Check } from './icons.ts';
+import { InfoDot, InfoText } from './InfoBubble.tsx';
 import { NumericField } from './NumericField.tsx';
-import { font, sheet, shape } from './theme.ts';
+import { font, gloss, sheet, shape, theme } from './theme.ts';
 
 export function ScoreScale({
   value,
@@ -56,11 +58,17 @@ export function ScoreScale({
   };
   const preview = problem ? { ...value, palette } : draft;
   return (
-    <Card title="Colores de cumplimiento">
-      <Text style={styles.help}>
-        Elige los tonos y sus límites. Solo cambia el color: tu puntuación y tus rachas siguen
-        igual.
-      </Text>
+    <Card
+      title="Colores de cumplimiento"
+      action={
+        <InfoDot accessibilityLabel="Qué cambian los colores">
+          <InfoText>
+            Elige los tonos y sus límites. Solo cambia el color: tu puntuación y tus rachas siguen
+            igual.
+          </InfoText>
+        </InfoDot>
+      }
+    >
       {(Object.keys(SCORE_PALETTES) as ScorePalette[]).map((id) => (
         <Pressable
           key={id}
@@ -77,6 +85,11 @@ export function ScoreScale({
           {SCORE_PALETTES[id].colors.map((color) => (
             <ScoreCell key={color} color={color} size={18} />
           ))}
+          {/* La elegida lleva su palomita ambar: un renglon apenas mas claro no se notaba
+              (2026-10-25). */}
+          <View style={[styles.mark, palette === id && styles.markOn]}>
+            {palette === id && <Check size={13} color={theme.accentInk} strokeWidth={3} />}
+          </View>
         </Pressable>
       ))}
       {['Bajo hasta', 'Medio hasta', 'Muy alto desde'].map((label, index) => (
@@ -156,6 +169,17 @@ const styles = sheet((theme) => ({
     borderRadius: shape.radiusSmall,
   },
   selected: { borderColor: theme.line, backgroundColor: theme.surfaceWarm },
+  mark: {
+    width: 22,
+    height: 22,
+    marginLeft: 6,
+    borderRadius: 11,
+    borderWidth: shape.border,
+    borderColor: theme.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markOn: gloss(theme.accent),
   name: { flex: 1, fontSize: 13, fontFamily: font.bold, color: theme.text },
   label: { flex: 1, fontSize: 12, fontFamily: font.bold, color: theme.textDim },
   labelUnit: { fontSize: 12, fontFamily: font.bold, color: theme.textDim },

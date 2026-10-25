@@ -52,6 +52,7 @@ function fixture(surface: 'today' | 'training' | 'transit') {
     '../transit/store.ts': { sortPlaces, nearestPlace: () => null },
     '../transit/index.ts': { TRANSIT_ENABLED: true },
     './Combobox.tsx': { Combobox: 'Combobox' },
+    './InfoBubble.tsx': { InfoDot: 'InfoDot', InfoText: 'InfoText' },
     './NumericField.tsx': { NumericField: 'NumericField' },
     './Button.tsx': { Button: 'Button' },
     './TransitActiveTrip.tsx': { TransitActiveTrip: 'TransitActiveTrip' },

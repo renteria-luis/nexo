@@ -164,9 +164,12 @@ function pullHealth(): Promise<void> {
 export function TodayScreen({
   onOpen,
   onOpenDay,
+  onOpenProfile,
 }: {
   onOpen: (tab: string) => void;
   onOpenDay: (date: string) => void;
+  /** Ajustes en su seccion del perfil, donde se llenan los datos de las metas. */
+  onOpenProfile: () => void;
 }) {
   const {
     state,
@@ -328,6 +331,27 @@ export function TodayScreen({
           </View>
         </View>
       </Card>
+
+      {/* La app vacia no decia por donde empezar: sin estatura, fecha de nacimiento y peso
+          no hay metas, y la unica pista era «Faltan tus metas» en la tarjeta de Comida
+          (2026-10-25). */}
+      {targets === null && (
+        <Card tone="info">
+          <Text style={styles.noticeTitle}>Faltan tus metas</Text>
+          <Text style={styles.noticeText}>
+            Con tu estatura, tu fecha de nacimiento y tu peso se calculan solas, y los días empiezan
+            a tener nota.
+          </Text>
+          <View style={styles.noticeButtons}>
+            <Button
+              label="Completar perfil"
+              accessibilityLabel="Completar el perfil en Ajustes"
+              variant="primary"
+              onPress={onOpenProfile}
+            />
+          </View>
+        </Card>
+      )}
 
       {healthArrival && (
         <HealthArrivalCard

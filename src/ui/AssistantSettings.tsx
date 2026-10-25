@@ -96,7 +96,8 @@ export function AssistantSettings() {
   };
 
   return (
-    <Card title="Asistente">
+    // Sin titulo: la pantalla de su seccion ya se llama Asistente.
+    <Card>
       <View style={styles.field}>
         <Text style={styles.label}>Interpreta tus mensajes</Text>
         <View style={styles.options}>

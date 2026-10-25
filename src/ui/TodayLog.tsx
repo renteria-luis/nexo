@@ -396,7 +396,6 @@ export function TodayLog({
             }}
             allowDecimal
             accessibilityLabel="Horas de sueño"
-            placeholder="horas"
             onBlur={() => done('sleep')}
             onCommit={commitSleep}
             style={styles.input}
@@ -411,7 +410,6 @@ export function TodayLog({
               typing('sleep');
             }}
             accessibilityLabel="Minutos de sueño"
-            placeholder="min"
             onBlur={() => done('sleep')}
             onCommit={commitSleep}
             style={styles.input}

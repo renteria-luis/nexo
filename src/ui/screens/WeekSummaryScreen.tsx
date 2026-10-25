@@ -226,7 +226,7 @@ export function WeekSummaryScreen() {
             {/* «19 de 23 anotados» no decia de que: dias tomada, de los anotados. */}
             <Line
               label={`Creatina, últimos ${summary.creatine.windowDays} días`}
-              value={`${summary.creatine.taken} ${summary.creatine.taken === 1 ? 'día tomada' : 'días tomada'}`}
+              value={`tomada ${summary.creatine.taken} ${summary.creatine.taken === 1 ? 'día' : 'días'}`}
               note={`de ${summary.creatine.logged} ${summary.creatine.logged === 1 ? 'día anotado' : 'días anotados'}`}
             />
           </Card>

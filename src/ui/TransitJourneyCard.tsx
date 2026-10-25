@@ -18,6 +18,7 @@ import { TRANSIT_ENABLED } from '../transit/index.ts';
 import type { TravelPreferences } from '../transit/journey.ts';
 import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
+import { InfoDot, InfoText } from './InfoBubble.tsx';
 import { Combobox } from './Combobox.tsx';
 import { NumericField } from './NumericField.tsx';
 import { placeOptions } from './placeIcons.ts';
@@ -144,7 +145,18 @@ export function TransitTravelSettings() {
         ] as const
       ).map(([key, label]) => (
         <View style={styles.setting} key={key}>
-          <Text style={styles.label}>{label}</Text>
+          <View style={styles.labelRow}>
+            <Text style={styles.label}>{label}</Text>
+            {/* El nombre no decia que es el sonido de los avisos del viaje (2026-10-25). */}
+            {key === 'sound' && (
+              <InfoDot accessibilityLabel="Qué hace el sonido normal">
+                <InfoText>
+                  Encendido, los avisos de Transit suenan como cualquier notificación; apagado,
+                  llegan en silencio.
+                </InfoText>
+              </InfoDot>
+            )}
+          </View>
           <Toggle
             value={preferences[key]}
             accessibilityLabel={label}
@@ -518,6 +530,7 @@ const styles = sheet((theme) => ({
   },
   value: { fontFamily: font.black, fontSize: 18, color: theme.text, fontVariant: ['tabular-nums'] },
   label: { fontFamily: font.bold, fontSize: 14, color: theme.text, flexShrink: 1 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
   note: { fontFamily: font.regular, fontSize: 12, color: theme.textDim, lineHeight: 18 },
   error: { fontFamily: font.bold, fontSize: 13, color: theme.danger, lineHeight: 18 },
   minutesRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

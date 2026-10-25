@@ -4,6 +4,8 @@ import {
   NavigationContainer,
   useNavigation,
   useNavigationContainerRef,
+  useRoute,
+  type RouteProp,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -30,7 +32,7 @@ import { FoodsScreen } from './src/ui/screens/FoodsScreen.tsx';
 import { RecordsScreen } from './src/ui/screens/RecordsScreen.tsx';
 import { RoutineNotesScreen } from './src/ui/screens/RoutineNotesScreen.tsx';
 import { Screen } from './src/ui/screens/Screen.tsx';
-import { SettingsScreen } from './src/ui/screens/SettingsScreen.tsx';
+import { SettingsScreen, type SettingsSection } from './src/ui/screens/SettingsScreen.tsx';
 import { TodayScreen } from './src/ui/screens/TodayScreen.tsx';
 import { TrainingScreen } from './src/ui/screens/TrainingScreen.tsx';
 import { TransitScreen } from './src/ui/screens/TransitScreen.tsx';
@@ -118,12 +120,13 @@ const TAB_ICONS: Record<string, LucideIcon> = {
  */
 function TodayTab() {
   const navigation = useNavigation<{
-    navigate: (name: string, params?: { date: string }) => void;
+    navigate: (name: string, params?: { date: string } | { section: SettingsSection }) => void;
   }>();
   return (
     <TodayScreen
       onOpen={(name) => navigation.navigate(name)}
       onOpenDay={(date) => navigation.navigate('Día', { date })}
+      onOpenProfile={() => navigation.navigate('Ajustes', { section: 'perfil' })}
     />
   );
 }
@@ -187,16 +190,22 @@ function SettingsRoute() {
     exportData,
     importData,
   } = useAppData();
-  const navigation = useNavigation<{ navigate: (name: string) => void }>();
+  const navigation = useNavigation<{
+    navigate: (name: string) => void;
+    push: (name: string, params: { section: SettingsSection }) => void;
+  }>();
+  const section =
+    useRoute<RouteProp<{ Ajustes: { section?: SettingsSection } }, 'Ajustes'>>().params?.section;
   // Con Screen y no en blanco: un borrado que falla deja aqui su aviso y sus botones.
   if (state.phase !== 'ready') return <Screen title="Ajustes">{null}</Screen>;
 
   return (
     <SettingsScreen
       transitSettings={TRANSIT_ENABLED ? <TransitTravelSettings /> : undefined}
-      onOpenExercises={() => navigation.navigate('Ejercicios')}
+      section={section}
+      // Cada seccion se apila sobre la lista, y Listo vuelve a ella.
+      onOpenSection={(next) => navigation.push('Ajustes', { section: next })}
       onOpenBackgrounds={() => navigation.navigate('Fondos')}
-      onOpenFoods={() => navigation.navigate('Alimentos')}
       settings={state.loaded.settings}
       onSaveScoreScale={saveScoreScale}
       onSaveSetting={saveSetting}

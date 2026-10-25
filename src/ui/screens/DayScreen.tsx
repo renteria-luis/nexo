@@ -16,6 +16,7 @@ import { TrainingTiming } from '../TrainingTiming.tsx';
 import { DayTraining } from '../DayTraining.tsx';
 import { FoodLog } from '../FoodLog.tsx';
 import { ChevronLeft, ChevronRight, Pencil } from '../icons.ts';
+import { Button } from '../Button.tsx';
 import { IconButton } from '../IconButton.tsx';
 import { TodayLog } from '../TodayLog.tsx';
 import { font, sheet, shape } from '../theme.ts';
@@ -78,7 +79,7 @@ export function DayScreen() {
     editSessionMinutes,
   } = useAppData();
   const navigation = useNavigation<{
-    navigate: (name: string) => void;
+    navigate: (name: string, params?: { section: 'perfil' }) => void;
     setParams: (params: { date: string }) => void;
   }>();
   const [detail, setDetail] = useState<DayDetail | null>(null);
@@ -145,9 +146,14 @@ export function DayScreen() {
       {report.noScore === 'sin-metas' && (
         <Card tone="warn">
           <Text style={styles.noticeText}>
-            Gris porque no hay metas todavía: llena estatura, fecha de nacimiento y tu peso en
-            Ajustes y todos los días se vuelven a calcular solos.
+            Sin nota porque no hay metas todavía: con tu estatura, tu fecha de nacimiento y tu peso,
+            todos los días se vuelven a calcular solos.
           </Text>
+          <Button
+            label="Completar perfil"
+            accessibilityLabel="Completar el perfil en Ajustes"
+            onPress={() => navigation.navigate('Ajustes', { section: 'perfil' })}
+          />
         </Card>
       )}
       {day.log?.rest_day === 1 && (

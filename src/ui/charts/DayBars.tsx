@@ -133,12 +133,12 @@ export function DayBars({
                       ? theme.accent
                       : estimate
                         ? 'none'
-                        : inside(point.value)
+                        : inside(point.value) || filling
                           ? theme.ok
-                          : filling
-                            ? theme.okBg
-                            : theme.lineSoft
+                          : theme.lineSoft
                   }
+                  // Camino de la banda, el verde a media luz: se ve que se llena.
+                  fillOpacity={filling && !inside(point.value) && open !== start + offset ? 0.4 : 1}
                   stroke={estimate ? theme.textFaint : theme.line}
                   strokeWidth={stroke}
                   strokeDasharray={estimate ? '3,2' : undefined}
