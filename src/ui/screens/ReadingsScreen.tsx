@@ -44,7 +44,25 @@ function reference(study: CoreStudyRow): string {
   return [study.authors, study.year, study.journal].filter(Boolean).join(' · ');
 }
 
-function Study({ study, first }: { study: CoreStudyRow; first: boolean }) {
+/**
+ * "Calorías · 10 de 100 puntos": lo que sostiene en la nota y cuanto pesa. Bajo un titulo
+ * que ya lo nombra ("Sueño"), solo los puntos.
+ */
+function weight(criterion: CriterionId, title?: string): string {
+  const points = `${CRITERION_WEIGHTS[criterion]} de 100 puntos`;
+  return CRITERION_ES[criterion] === title ? points : `${CRITERION_ES[criterion]} · ${points}`;
+}
+
+function Study({
+  study,
+  first,
+  shared,
+}: {
+  study: CoreStudyRow;
+  first: boolean;
+  /** El criterio ya dicho arriba, una vez para todo el tema. */
+  shared: boolean;
+}) {
   const criterion = study.criterion as CriterionId | null;
   const link =
     study.open_access_url ?? (study.pmid ? `https://pubmed.ncbi.nlm.nih.gov/${study.pmid}/` : null);
@@ -54,13 +72,7 @@ function Study({ study, first }: { study: CoreStudyRow; first: boolean }) {
       <Text style={styles.summary}>{study.summary}</Text>
       <Text style={styles.title}>{study.title}</Text>
       {reference(study) !== '' && <Text style={styles.reference}>{reference(study)}</Text>}
-      {criterion && (
-        // Lo que sostiene y cuanto pesa, que es lo que lo ata a la nota y no a una
-        // lista de lecturas sueltas.
-        <Text style={styles.criterion}>
-          {CRITERION_ES[criterion]} · {CRITERION_WEIGHTS[criterion]} de 100 puntos
-        </Text>
-      )}
+      {criterion && !shared && <Text style={styles.criterion}>{weight(criterion)}</Text>}
       {link && (
         <Button
           label="Leerlo"
@@ -110,13 +122,28 @@ export function ReadingsScreen() {
 
       {problem && <Text style={styles.problem}>{problem}</Text>}
 
-      {topics?.map((topic) => (
-        <Card key={topic.topic} title={TOPIC_ES[topic.topic] ?? topic.topic}>
-          {topic.studies.map((study, index) => (
-            <Study key={study.id} study={study} first={index === 0} />
-          ))}
-        </Card>
-      ))}
+      {topics?.map((topic) => {
+        // Lo que sostiene y cuanto pesa, que es lo que lo ata a la nota y no a una lista
+        // de lecturas sueltas. Una vez por tema cuando todos sostienen lo mismo: debajo de
+        // cada estudio, Sueño lo decia cuatro veces seguidas.
+        const title = TOPIC_ES[topic.topic] ?? topic.topic;
+        const criteria = new Set(topic.studies.map((study) => study.criterion));
+        const shared =
+          criteria.size === 1 ? (topic.studies[0].criterion as CriterionId | null) : null;
+        return (
+          <Card key={topic.topic} title={title}>
+            {shared && <Text style={styles.criterion}>{weight(shared, title)}</Text>}
+            {topic.studies.map((study, index) => (
+              <Study
+                key={study.id}
+                study={study}
+                first={index === 0}
+                shared={criteria.size === 1}
+              />
+            ))}
+          </Card>
+        );
+      })}
     </Screen>
   );
 }

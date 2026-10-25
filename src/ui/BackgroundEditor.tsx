@@ -79,7 +79,7 @@ function without(all: Backgrounds, screen: string): Backgrounds {
  * Todo lo que se toca aqui apaga el carrusel y el menu lateral, que si no se llevaban el
  * deslizador o el arrastre de la foto.
  */
-export function BackgroundEditorPanel() {
+export function BackgroundEditorPanel({ onDone }: { onDone: () => void }) {
   const session = useEditingBackground();
   const { change, end } = useBackgroundEditing();
   const { state, saveSetting } = useAppData();
@@ -150,6 +150,7 @@ export function BackgroundEditorPanel() {
     prunePhotos(new Set(inUse));
     unlock();
     end();
+    onDone();
   };
 
   const choosePhoto = async () => {
@@ -325,6 +326,7 @@ export function BackgroundEditorPanel() {
             onPress={() => {
               unlock();
               end();
+              onDone();
             }}
           />
           {own && (

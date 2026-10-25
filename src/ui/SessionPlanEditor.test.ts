@@ -38,6 +38,7 @@ function fixture() {
       { id: 'press', name_es: 'Press', primary_muscle: 'pecho', default_rest_seconds: 180 },
       { id: 'pull', name_es: 'Dominadas', primary_muscle: 'espalda', default_rest_seconds: 180 },
       { id: 'peck', name_es: 'Pec deck', primary_muscle: 'pecho', default_rest_seconds: 120 },
+      { id: 'fly', name_es: 'Aperturas', primary_muscle: 'pecho', default_rest_seconds: 120 },
     ],
     onLoad: () => actions.load(),
     onSave: (edit: SessionPlanEdit) => actions.save(edit),
@@ -107,13 +108,14 @@ test('replacement moves only pending sets, keeps completed sets and preserves th
   );
 });
 
-test('a replacement offers the same muscle first', async () => {
+test('a replacement offers the same muscle first, and what is planned after its group', async () => {
   const { screen, press } = fixture();
   (await press('Cambiar ejercicio Press')).onPress();
   const offered = nodes(await screen.settle())
     .filter((node) => /^Elegir .* para el plan$/.test(node.props.accessibilityLabel ?? ''))
     .map((node) => node.props.label);
-  assert.deepEqual(offered, ['Pec deck', 'Dominadas']);
+  // Aperturas and Pec deck share the chest; Pec deck is already in today's plan.
+  assert.deepEqual(offered, ['Aperturas', 'Pec deck', 'Dominadas']);
 });
 
 test('adding, merging a replacement, omitting and reordering persist the reviewed counts', async () => {

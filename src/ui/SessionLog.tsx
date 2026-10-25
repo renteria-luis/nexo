@@ -626,7 +626,14 @@ export const SessionLog = memo(function SessionLog({
                       {restingSince === null ? (
                         clock(restSeconds ?? exercise.default_rest_seconds)
                       ) : (
-                        <Elapsed key={restingSince} since={restingSince} />
+                        // En verde al llegar a lo sugerido: desde el banco se ve sin
+                        // comparar dos numeros. No es un aviso, empezar antes no cambia nada.
+                        <Elapsed
+                          key={restingSince}
+                          since={restingSince}
+                          target={restSeconds ?? exercise.default_rest_seconds}
+                          reachedStyle={styles.restClockReached}
+                        />
                       )}
                     </Text>
                     {restingSince !== null && (
@@ -1097,6 +1104,9 @@ const styles = sheet((theme) => ({
   },
   restClockIdle: {
     color: theme.textFaint,
+  },
+  restClockReached: {
+    color: theme.ok,
   },
   restOf: {
     fontSize: 14,

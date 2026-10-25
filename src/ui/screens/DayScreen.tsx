@@ -149,13 +149,6 @@ export function DayScreen() {
           </Text>
         </Card>
       )}
-      {report.noScore === 'pocos-datos' && (
-        <Card tone="warn">
-          <Text style={styles.noticeText}>
-            Gris porque ese día no quedó nada anotado. Con un solo criterio ya hay nota.
-          </Text>
-        </Card>
-      )}
       {day.log?.rest_day === 1 && (
         <Card tone="ok">
           <Text style={styles.noticeText}>

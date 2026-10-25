@@ -2,7 +2,7 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View, type StyleProp, type TextStyle } from 'react-native';
 
-import { matchesSearch } from '../../nutrition/index.ts';
+import { fold, matchesSearch } from '../../nutrition/index.ts';
 import { useAppData } from '../../shell/AppData.tsx';
 import type { CatalogEntry, ExerciseCard, ExerciseRoutine } from '../../training/catalog.ts';
 import { SWAPPABLE, type Swappable } from '../../training/queries.ts';
@@ -584,7 +584,15 @@ export function ExerciseScreen() {
           {card.variants.map((variant) => (
             <Chip
               key={variant.id}
-              label={`${variant.name_es} · ${variantLabel(variant)}${variant.archived ? ' · archivado' : ''}`}
+              // El equipo solo cuando el nombre no lo dice: "Curl martillo · mancuernas ·
+              // Mancuernas" lo repetia.
+              label={`${variant.name_es}${
+                fold(variant.name_es).includes(fold(EQUIPMENT_NAMES[variant.equipment_type]))
+                  ? variant.unilateral
+                    ? ' · unilateral'
+                    : ''
+                  : ` · ${variantLabel(variant)}`
+              }${variant.archived ? ' · archivado' : ''}`}
               selected={variant.id === exercise.id}
               onPress={() => {
                 if (variant.id !== exercise.id) {

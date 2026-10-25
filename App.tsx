@@ -48,7 +48,7 @@ import { InfoProvider } from './src/ui/InfoBubble.tsx';
 import { KeyboardBar } from './src/ui/KeyboardBar.tsx';
 import { Assistant } from './src/ui/Assistant.tsx';
 import { AssistantDockProvider, AssistantDockSlot } from './src/ui/assistant-dock.tsx';
-import { goTo, nudgeDestination, type Navigate } from './src/ui/navigation.ts';
+import { fromMenu, goTo, nudgeDestination, type Navigate } from './src/ui/navigation.ts';
 import { SidebarProvider, useSidebar } from './src/ui/Sidebar.tsx';
 import { SwipeLockProvider, useSwipeLocked } from './src/ui/SwipeLock.tsx';
 import { Backdrop, PagerPositionProvider } from './src/ui/Backdrop.tsx';
@@ -366,8 +366,15 @@ export default function App() {
                   {/* Encima de todo menos del menu lateral, que si la tapa. */}
                   <Assistant />
                 </AssistantDockProvider>
-                {/* Y el editor de fondos encima de la bola, sobre la pantalla que prueba. */}
-                <BackgroundEditorPanel />
+                {/* Y el editor de fondos encima de la bola, sobre la pantalla que prueba. Se
+                  entra desde Fondos, y al guardar o cancelar se vuelve ahi: se quedaba en la
+                  pantalla probada y el siguiente fondo era menu, Ajustes y Fondos otra vez. */}
+                <BackgroundEditorPanel
+                  onDone={() => {
+                    const root = navigation.getRootState();
+                    if (root) navigation.dispatch(fromMenu(root, 'Fondos'));
+                  }}
+                />
               </BackgroundEditingProvider>
             </SidebarProvider>
           </SwipeLockProvider>

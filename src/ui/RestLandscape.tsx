@@ -1,7 +1,7 @@
 import { Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { clock, Elapsed } from './Elapsed.tsx';
+import { clock, useSecondsSince } from './Elapsed.tsx';
 import { font, sheet, shape } from './theme.ts';
 
 /**
@@ -61,17 +61,49 @@ export function RestLandscape({
         )}
       </View>
 
-      <View style={styles.clockSide}>
-        <Text style={styles.label}>DESCANSANDO</Text>
-        <Text
-          style={[styles.clock, { fontSize: clockSize, lineHeight: Math.round(clockSize * 1.08) }]}
-        >
-          {since === null ? '0:00' : <Elapsed since={since} />}
-        </Text>
-        {suggestedRestSeconds !== null && (
-          <Text style={styles.suggested}>de {clock(suggestedRestSeconds)} sugeridos</Text>
-        )}
-      </View>
+      {since === null ? (
+        <RestClock seconds={0} suggested={suggestedRestSeconds} size={clockSize} />
+      ) : (
+        <TickingRestClock since={since} suggested={suggestedRestSeconds} size={clockSize} />
+      )}
+    </View>
+  );
+}
+
+/** Aparte, para que lo que se repinte cada segundo sea solo el reloj. */
+function TickingRestClock({
+  since,
+  suggested,
+  size,
+}: {
+  since: number;
+  suggested: number | null;
+  size: number;
+}) {
+  return <RestClock seconds={useSecondsSince(since)} suggested={suggested} size={size} />;
+}
+
+/**
+ * El bloque del reloj, que pasa de ambar a verde al llegar a lo sugerido: desde el banco
+ * se ve el color antes que el numero. No es un aviso, empezar antes no cambia nada.
+ */
+function RestClock({
+  seconds,
+  suggested,
+  size,
+}: {
+  seconds: number;
+  suggested: number | null;
+  size: number;
+}) {
+  const rested = suggested !== null && Math.round(seconds) >= suggested;
+  return (
+    <View style={[styles.clockSide, rested && styles.clockRested]}>
+      <Text style={styles.label}>DESCANSANDO</Text>
+      <Text style={[styles.clock, { fontSize: size, lineHeight: Math.round(size * 1.08) }]}>
+        {clock(seconds)}
+      </Text>
+      {suggested !== null && <Text style={styles.suggested}>de {clock(suggested)} sugeridos</Text>}
     </View>
   );
 }
@@ -125,6 +157,9 @@ const styles = sheet((theme) => ({
     backgroundColor: theme.accent,
     paddingHorizontal: 28,
     paddingVertical: 18,
+  },
+  clockRested: {
+    backgroundColor: theme.ok,
   },
   label: {
     fontSize: 12,

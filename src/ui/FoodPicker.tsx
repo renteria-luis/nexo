@@ -3,6 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 
 import type { NutritionFoodRow } from '../db/types.ts';
 import {
+  fold,
   matchesSearch,
   referenceAmount,
   roundAmount,
@@ -12,7 +13,7 @@ import {
 
 import { Button } from './Button.tsx';
 import { IconButton } from './IconButton.tsx';
-import { ChevronDown, ChevronUp, Pencil } from './icons.ts';
+import { ChevronDown, ChevronUp, Pencil, Plus } from './icons.ts';
 import { SearchField } from './SearchField.tsx';
 import { font, pressed as pressedInto, sheet, shape } from './theme.ts';
 
@@ -33,8 +34,10 @@ export type FoodPickerProps = {
   /** Lo que lleva escrito para el elegido: su fila dice lo que trae esa porcion. */
   quantity: number;
   onSelect: (food: NutritionFoodRow) => void;
-  /** Lleva al catalogo, que es donde se crean y se corrigen. */
+  /** Lleva al catalogo, que es donde se corrigen. */
   onOpenCatalogue: () => void;
+  /** Abre la ficha de uno nuevo con el nombre que busco. Sin esto no se ofrece. */
+  onNewFood?: (name: string) => void;
 };
 
 /** Cuantos salen arriba sin que la pantalla se vuelva otra lista larga (decision 2026-10-10). */
@@ -98,16 +101,21 @@ export function FoodPicker({
   quantity,
   onSelect,
   onOpenCatalogue,
+  onNewFood,
 }: FoodPickerProps) {
   const [search, setSearch] = useState('');
   const [showAll, setShowAll] = useState(false);
 
   const byId = new Map(foods.map((food) => [food.id, food]));
   const searching = search.trim() !== '';
+  // Con mayuscula, como los demas del catalogo: en la busqueda se escribe en minusculas.
+  const named = search.trim().charAt(0).toUpperCase() + search.trim().slice(1);
 
   const found = foods.filter((food) =>
     matchesSearch([food.name, food.brand, food.store, food.keywords], search),
   );
+  // Con uno que ya se llama justo asi, crear otro igual no es lo que busca.
+  const exact = found.some((food) => fold(food.name) === fold(named));
 
   const pick = (
     ids: readonly string[],
@@ -137,6 +145,10 @@ export function FoodPicker({
     const store = food.store ?? 'otros';
     stores.set(store, [...(stores.get(store) ?? []), food]);
   }
+  // "otros" al final: con la lista abierta de entrada (sin nada anotado) salia primero.
+  const groups = [...stores.entries()].sort(
+    ([a], [b]) => Number(a === 'otros') - Number(b === 'otros'),
+  );
 
   const row = (food: NutritionFoodRow) => (
     <Row
@@ -175,13 +187,22 @@ export function FoodPicker({
       </View>
 
       {searching ? (
-        found.length === 0 ? (
-          <Text style={styles.empty}>
-            Nada con ese nombre. Con el lápiz lo agregas o le pones palabras clave.
-          </Text>
-        ) : (
-          found.map(row)
-        )
+        <>
+          {found.map(row)}
+          {/* Lo que no esta se crea aqui mismo, con lo escrito de nombre: antes era el
+              lapiz, otra pantalla, la busqueda perdida y el nombre otra vez a mano. */}
+          {onNewFood
+            ? !exact && (
+                <Button
+                  label={`Alimento nuevo: ${named}`}
+                  accessibilityLabel={`Crear ${named} como alimento nuevo`}
+                  icon={Plus}
+                  block
+                  onPress={() => onNewFood(named)}
+                />
+              )
+            : found.length === 0 && <Text style={styles.empty}>Nada con ese nombre.</Text>}
+        </>
       ) : (
         <>
           {usual.length > 0 && (
@@ -200,16 +221,20 @@ export function FoodPicker({
 
           {rest.length > 0 && (
             <>
-              <Button
-                label={showAll ? 'Esconder el resto' : `Ver los otros ${rest.length}`}
-                accessibilityLabel={showAll ? 'Esconder el resto' : 'Ver todos los alimentos'}
-                variant="ghost"
-                icon={showAll ? ChevronUp : ChevronDown}
-                style={styles.more}
-                onPress={() => setShowAll((open) => !open)}
-              />
-              {showAll &&
-                [...stores.entries()].map(([store, items]) => (
+              {/* Sin nada anotado todavia no hay sugerencias detras de las que esconderlos:
+                  "Ver los otros 14" era lo unico bajo la busqueda. */}
+              {taken.size > 0 && (
+                <Button
+                  label={showAll ? 'Esconder el resto' : `Ver los otros ${rest.length}`}
+                  accessibilityLabel={showAll ? 'Esconder el resto' : 'Ver todos los alimentos'}
+                  variant="ghost"
+                  icon={showAll ? ChevronUp : ChevronDown}
+                  style={styles.more}
+                  onPress={() => setShowAll((open) => !open)}
+                />
+              )}
+              {(showAll || taken.size === 0) &&
+                groups.map(([store, items]) => (
                   <View key={store} style={styles.store}>
                     <Text style={styles.section}>{store}</Text>
                     {items.map(row)}

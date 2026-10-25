@@ -25,6 +25,7 @@ import { Chip } from './Chip.tsx';
 import { FoodPicker } from './FoodPicker.tsx';
 import { ConfirmButton, InfoDot } from './InfoBubble.tsx';
 import {
+  Check,
   Coffee,
   Moon,
   Pencil,
@@ -94,10 +95,16 @@ export type FoodLogProps = {
   /** La banda de calorias, que es contra lo que se dicen: no contra la meta pelada. */
   kcalBand: { from: number; to: number } | null;
   fatBand: { from: number; to: number; hardFloor: number } | null;
-  onAdd: (entry: Omit<NewFoodEntry, 'date'>) => void;
+  /** Hoy vuelve con el id de la porcion, para poder deshacerla; un dia de Registros no. */
+  onAdd: (entry: Omit<NewFoodEntry, 'date'>) => Promise<string> | void;
   onRemove: (entryId: string) => void;
-  /** Lleva al catalogo: crear y corregir viven aparte de anotar. */
+  /** Lleva al catalogo: corregir vive aparte de anotar. */
   onOpenCatalogue: () => void;
+  /**
+   * Abre la ficha de uno nuevo con lo que busco de nombre, y vuelve con el creado (o
+   * null si cancelo) para dejarlo elegido.
+   */
+  onNewFood?: (name: string) => Promise<{ id: string; counted: boolean } | null>;
   /** Lo que ya anoto, que es lo que decide el orden de la lista. */
   history: FoodHistory;
   /**
@@ -210,12 +217,23 @@ export function FoodLog({
   onAdd,
   onRemove,
   onOpenCatalogue,
+  onNewFood,
   history,
   record = false,
   slot: sharedSlot,
   onPickSlot,
 }: FoodLogProps) {
   const [foodId, setFoodId] = useState<string | null>(null);
+  // Lo ultimo que anoto, dicho donde estaba el boton: al agregar, la lista volvia igual
+  // que al soltar el alimento, y el total cambiaba fuera de la vista. Se va al elegir el
+  // siguiente o cuando el reloj pasa a otro espacio de comida.
+  const [last, setLast] = useState<{
+    label: string;
+    slot: string;
+    entryId: string | null;
+  } | null>(null);
+  // Cuantas veces anoto: la busqueda vuelve vacia despues de cada una.
+  const [added, setAdded] = useState(0);
   // Solo en un dia de Registros: ahi el lapiz decide si se ven los botones.
   const [writing, setWriting] = useState(false);
   const [quantity, setQuantity] = useState('1');
@@ -259,7 +277,10 @@ export function FoodLog({
                   icon={Trash}
                   question={`¿Quitar ${portion.food.name}?`}
                   accessibilityLabel={`Quitar ${portion.food.name}`}
-                  onConfirm={() => onRemove(portion.entryId)}
+                  onConfirm={() => {
+                    if (portion.entryId === last?.entryId) setLast(null);
+                    onRemove(portion.entryId);
+                  }}
                 />
               )}
             </View>
@@ -287,19 +308,55 @@ export function FoodLog({
         ))}
       </View>
 
+      {last !== null && last.slot === slot && foodId === null && (
+        <View style={styles.done}>
+          <Check size={16} color={theme.ok} strokeWidth={2.5} />
+          <Text style={styles.doneText} numberOfLines={2}>
+            Anotado: {last.label}
+          </Text>
+          <Button
+            label="Deshacer"
+            accessibilityLabel={`Deshacer ${last.label}`}
+            variant="ghost"
+            disabled={last.entryId === null}
+            onPress={() => {
+              if (last.entryId === null) return;
+              onRemove(last.entryId);
+              setLast(null);
+            }}
+          />
+        </View>
+      )}
+
       <FoodPicker
+        key={added}
         foods={foods}
         history={history}
         slot={slot}
         selectedId={foodId}
         quantity={parsed}
         onOpenCatalogue={onOpenCatalogue}
+        onNewFood={
+          onNewFood &&
+          ((name) => {
+            onNewFood(name)
+              .then((made) => {
+                if (made === null) return;
+                setLast(null);
+                setFoodId(made.id);
+                // Nuevo no tiene ultima vez: en gramos no se supone nada, contado empieza en 1.
+                setQuantity(made.counted ? '1' : '');
+              })
+              .catch((error: unknown) => console.error(error));
+          })
+        }
         onSelect={(food) => {
           // El mismo otra vez lo suelta: es como se deshace un toque sin querer.
           if (food.id === foodId) {
             setFoodId(null);
             return;
           }
+          setLast(null);
           setFoodId(food.id);
           // Con la cantidad de la ultima vez ya puesta, anotar son dos toques. La primera
           // vez, uno si se cuenta por unidad; en gramos o mililitros no hay cantidad que
@@ -347,15 +404,32 @@ export function FoodLog({
             style={styles.add}
             onPress={() => {
               if (!canAdd) return;
-              onAdd({
+              const entry = onAdd({
                 foodId: selected.id,
                 quantity: parsed,
                 unit: selected.base_unit,
                 mealSlot: slot,
               });
+              if (entry) {
+                const label = `${portionLabel(selected, parsed)}, ${slot}`;
+                setLast({ label, slot, entryId: null });
+                entry
+                  .then((entryId) =>
+                    setLast((current) =>
+                      current?.label === label && current.entryId === null
+                        ? { ...current, entryId }
+                        : current,
+                    ),
+                  )
+                  .catch((error: unknown) => {
+                    console.error(error);
+                    setLast(null);
+                  });
+              }
               // Anotado es terminado: se suelta el alimento y vuelve la lista, que es lo
               // que hace falta para anotar lo siguiente. El espacio se queda.
               setFoodId(null);
+              setAdded((count) => count + 1);
             }}
           />
         </View>
@@ -533,6 +607,17 @@ const styles = sheet((theme) => ({
     fontSize: 13,
     fontFamily: font.regular,
     color: theme.textFaint,
+  },
+  done: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  doneText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: theme.textDim,
   },
   entry: {
     gap: 6,

@@ -125,15 +125,18 @@ export function SessionPlanEditor({
   // Para cambiar uno, primero los de su familia y despues los del mismo musculo: casi
   // siempre se cambia porque la maquina esta ocupada, y en orden alfabetico los ocho de
   // la lista eran curls para reemplazar un remo.
+  // Dentro de cada grupo, lo que ya esta en el plan de hoy va despues: para un remo,
+  // tras las dominadas salian cuatro curls y elevaciones que ya tocaban mas tarde.
   const replaced = catalog.find((entry) => entry.id === picker?.from);
+  const planned = new Set(draft?.exercises.map((entry) => entry.exerciseId));
   const closeness = (exercise: CatalogExercise) =>
-    replaced === undefined
+    (replaced === undefined
       ? 0
       : replaced.familyId !== undefined && exercise.familyId === replaced.familyId
         ? 0
         : exercise.primary_muscle === replaced.primary_muscle
-          ? 1
-          : 2;
+          ? 2
+          : 4) + (planned.has(exercise.id) ? 1 : 0);
   const candidates = catalog
     .filter(
       (exercise) =>

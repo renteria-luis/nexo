@@ -312,9 +312,13 @@ export type AppData = {
   tapWater: (ml: number) => void;
   /** Quita el ultimo toque de agua de hoy que quede. */
   undoWater: () => void;
-  addFood: (entry: Omit<NewFoodEntry, 'date'>) => void;
-  /** Un alimento nuevo copiado de su envase, que queda en su catalogo y en su respaldo. */
-  createFood: (food: NewFood) => Promise<void>;
+  /** Con el id de la porcion, que es lo que "Deshacer" necesita para quitarla. */
+  addFood: (entry: Omit<NewFoodEntry, 'date'>) => Promise<string>;
+  /**
+   * Un alimento nuevo copiado de su envase, que queda en su catalogo y en su respaldo.
+   * Vuelve con su id cuando ya esta en la lista cargada, para poder elegirlo al momento.
+   */
+  createFood: (food: NewFood) => Promise<string>;
   /** Corrige la ficha de un alimento y rehace la nota de los dias que lo comieron. */
   editFood: (id: string, food: FoodEdit) => Promise<void>;
   /** Lo saca del catalogo: borrado si nunca lo comio, archivado si si. */
@@ -999,11 +1003,22 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         today.taps = undone.taps;
         addToday({ waterMl: -undone.ml }, serializeWaterTaps(today.date, today.taps));
       },
-      addFood: (entry) =>
-        run((db) => addFoodEntry(db, { ...entry, date: todayIso() }), false, REREAD_FOODS),
+      addFood: (entry) => {
+        const added = openDatabase().then((db) => addFoodEntry(db, { ...entry, date: todayIso() }));
+        // Se relee tambien si fallo; el fallo lo atiende quien anoto.
+        const reread = () => refresh(false, REREAD_FOODS);
+        added.then(reread, reread);
+        return added;
+      },
       // Se pueden esperar: la ficha no se cierra hasta que la base la acepto, y si no la
       // acepta dice por que. Antes se cerraba primero y el error solo iba a la consola.
-      createFood: (food) => write((db) => addFoodToCatalog(db, food), true, REREAD_FOODS),
+      // Y hasta que esta en la lista: Comida lo elige en cuanto la ficha se cierra.
+      createFood: async (food) => {
+        const db = await openDatabase();
+        const id = await addFoodToCatalog(db, food);
+        await refresh(true, REREAD_FOODS);
+        return id;
+      },
       deleteFood: async (id) => {
         const db = await openDatabase();
         const outcome = await removeFoodFromCatalogue(db, id);

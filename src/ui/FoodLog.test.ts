@@ -177,3 +177,56 @@ test('a first portion is never guessed in grams, only counted in units', () => {
   assert.deepEqual(pick(egg), { amount: '1', add: false });
   assert.deepEqual(pick(chicken), { amount: '200', add: false });
 });
+
+test('an added food says so where it was added, and Deshacer takes that entry back out', async () => {
+  const chicken = {
+    id: 'pollo',
+    name: 'Pechuga de pollo',
+    base_unit: 'g',
+    unit_kind: 'mass',
+    base_unit_g: 1,
+    quick_amounts: null,
+  } as any;
+  const egg = { ...chicken, id: 'huevo', name: 'Huevo', base_unit: 'huevo', unit_kind: 'count' };
+  const removed: string[] = [];
+  const log = renderModule('src/ui/FoodLog.tsx', {
+    './Button.tsx': { Button: 'Button' },
+    './Card.tsx': { Card: 'Card' },
+    './Chip.tsx': { Chip: 'Chip' },
+    './FoodPicker.tsx': { FoodPicker: 'FoodPicker' },
+    './InfoBubble.tsx': { ConfirmButton: 'ConfirmButton', InfoDot: 'InfoDot' },
+    './IconButton.tsx': { IconButton: 'IconButton' },
+    './NumericField.tsx': { NumericField: 'NumericField' },
+    './icons.ts': new Proxy({}, { get: (_, name) => name }),
+  }).mount('FoodLog', {
+    foods: [chicken, egg],
+    portions: [],
+    totals: null,
+    proteinBand: null,
+    kcalBand: null,
+    fatBand: null,
+    history: { recent: [], usualBySlot: new Map(), lastQuantity: new Map([['pollo', 200]]) },
+    onAdd: async () => 'entry-1',
+    onRemove: (entryId: string) => removed.push(entryId),
+    onOpenCatalogue() {},
+    slot: 'cena',
+  });
+  const tree = async () => nodes(await log.settle());
+  const button = async (label: string) =>
+    (await tree()).find((node) => node.type === 'Button' && node.props.label === label);
+  const pick = async (food: unknown) =>
+    (await tree()).find((node) => node.type === 'FoodPicker')!.props.onSelect(food);
+
+  await pick(chicken);
+  (await button('Agregar'))!.props.onPress();
+  assert.ok(textOf(await log.settle()).includes('Anotado: 200 g · Pechuga de pollo, cena'));
+  (await button('Deshacer'))!.props.onPress();
+  assert.deepEqual(removed, ['entry-1']);
+  assert.ok(!textOf(await log.settle()).includes('Anotado'));
+
+  // Picking the next food lets the last one go.
+  await pick(chicken);
+  (await button('Agregar'))!.props.onPress();
+  await pick(egg);
+  assert.ok(!textOf(await log.settle()).includes('Anotado'));
+});

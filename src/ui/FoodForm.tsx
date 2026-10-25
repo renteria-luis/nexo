@@ -39,6 +39,8 @@ type MeasureId = (typeof MEASURES)[number]['id'];
 export type FoodFormProps = {
   /** La ficha que corrige, o null cuando es uno nuevo. */
   food: NutritionFoodRow | null;
+  /** El nombre con el que empieza uno nuevo: lo que buscaba en Comida y no estaba. */
+  name?: string;
   onCancel: () => void;
   /** Rechaza con el motivo; la ficha se queda abierta y lo dice. */
   onCreate: (food: NewFood) => Promise<void>;
@@ -57,10 +59,17 @@ function shown(value: number | null, per: number): string {
   return value === null ? '' : roundAmount(Math.round(value * per * 100) / 100);
 }
 
-export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFormProps) {
+export function FoodForm({
+  food,
+  name: typed = '',
+  onCancel,
+  onCreate,
+  onEdit,
+  onDelete,
+}: FoodFormProps) {
   const per = food ? referenceAmount(food) : 1;
   const [step, setStep] = useState<'datos' | 'resumen' | 'borrar'>('datos');
-  const [name, setName] = useState(food?.name ?? '');
+  const [name, setName] = useState(food?.name ?? typed);
   const [measureId, setMeasureId] = useState<MeasureId>(food ? measureOf(food) : 'unidad');
   // De cuanto habla la etiqueta, en gramos o mililitros: 40 si dice "por 40 g".
   const [serving, setServing] = useState('100');
@@ -256,12 +265,12 @@ export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFor
 
             <View style={styles.grid}>
               <Field label="kcal" value={kcal} onChange={setKcal} />
-              <Field label="proteína g" value={protein} onChange={setProtein} />
-              <Field label="grasa g" value={fat} onChange={setFat} />
-              <Field label="carbos g" value={carbs} onChange={setCarbs} />
-              <Field label="azúcar g" value={sugar} onChange={setSugar} />
-              <Field label="sodio mg" value={sodium} onChange={setSodium} />
-              <Field label="fibra g" value={fibre} onChange={setFibre} />
+              <Field label="proteína" unit="g" value={protein} onChange={setProtein} />
+              <Field label="grasa" unit="g" value={fat} onChange={setFat} />
+              <Field label="carbos" unit="g" value={carbs} onChange={setCarbs} />
+              <Field label="azúcar" unit="g" value={sugar} onChange={setSugar} />
+              <Field label="sodio" unit="mg" value={sodium} onChange={setSodium} />
+              <Field label="fibra" unit="g" value={fibre} onChange={setFibre} />
               <Field label="índice glucémico" value={index} onChange={setIndex} />
             </View>
             <Text style={styles.hint}>
@@ -388,21 +397,27 @@ export function FoodForm({ food, onCancel, onCreate, onEdit, onDelete }: FoodFor
 
 function Field({
   label,
+  unit,
   value,
   onChange,
 }: {
   label: string;
+  /** Fuera de las mayusculas de la etiqueta: decia "SODIO MG". */
+  unit?: string;
   value: string;
   onChange: (next: string) => void;
 }) {
   return (
     <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+      <Text style={styles.fieldLabel}>
+        {label}
+        {unit && <Text style={styles.fieldUnit}> {unit}</Text>}
+      </Text>
       <NumericField
         value={value}
         onChange={onChange}
         allowDecimal
-        accessibilityLabel={label}
+        accessibilityLabel={unit ? `${label} ${unit}` : label}
         style={styles.input}
         focusedStyle={styles.inputWriting}
       />
@@ -491,6 +506,9 @@ const styles = sheet((theme) => ({
     letterSpacing: 0.6,
     color: theme.textFaint,
     textTransform: 'uppercase',
+  },
+  fieldUnit: {
+    textTransform: 'none',
   },
   serving: {
     flexDirection: 'row',

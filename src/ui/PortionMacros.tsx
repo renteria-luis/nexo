@@ -59,7 +59,11 @@ export function PortionMacros({ food, quantity }: PortionMacrosProps) {
           ) : (
             <Text style={styles.value}>
               {round(row.perUnit * quantity)}
-              {same ? '' : ` (${round(row.perUnit * per)})`} {row.unit}
+              {/* "0 (0) g" repetia el cero: sin parentesis cuando dirian lo mismo. */}
+              {same || round(row.perUnit * quantity) === round(row.perUnit * per)
+                ? ''
+                : ` (${round(row.perUnit * per)})`}{' '}
+              {row.unit}
             </Text>
           )}
         </View>
@@ -73,12 +77,11 @@ const styles = sheet((theme) => ({
     gap: 3,
     alignSelf: 'stretch',
   },
+  // Sin mayusculas: es una cantidad con su unidad, y en mayusculas decia "200 G".
   head: {
-    fontSize: 11,
+    fontSize: 12,
     fontFamily: font.black,
-    letterSpacing: 0.6,
     color: theme.textFaint,
-    textTransform: 'uppercase',
     marginBottom: 2,
   },
   row: {
