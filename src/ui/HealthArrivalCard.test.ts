@@ -49,7 +49,7 @@ test('saved, empty and replaced values say how much, from where and what was the
   const text = textOf(tree);
   assert.ok(text.includes('Llegó del Atajo'), text);
   assert.ok(text.includes('Sueño: 7 h 45 de AutoSleep, de 23:40 a 07:25.'), text);
-  assert.ok(text.includes('Pasos del jue 08-oct: 9 000 de Salud. Antes: 5 000.'), text);
+  assert.ok(text.includes('Pasos del jue, 08-oct: 9 000 de Salud. Antes: 5 000.'), text);
   assert.deepEqual(buttons(tree), ['Listo']);
 
   const empty = await card({

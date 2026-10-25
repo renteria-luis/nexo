@@ -220,6 +220,8 @@ export type ActiveTrip = {
     liveAt: number | null;
     options: TripAlternative[];
   };
+  /** Walks timed on this trip, which wait for his review in Transit. Older trips lack it. */
+  measured?: number;
   /** What following the trip cost, for measuring it on the phone. */
   stats: {
     fixes: number;
@@ -706,6 +708,7 @@ function observe(
     );
   const accuracy =
     track.accuracy === null || endAccuracy === null ? null : Math.max(track.accuracy, endAccuracy);
+  trip.measured = (trip.measured ?? 0) + 1;
   step.observations.push({
     tripId: trip.id,
     kind: walk.kind,

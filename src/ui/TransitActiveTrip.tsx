@@ -18,6 +18,7 @@ import {
 import { agencyClock } from '../transit/schedule.ts';
 import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
+import { InfoDot, InfoText } from './InfoBubble.tsx';
 import { relative, TransitTripTimeline } from './TransitDepartures.tsx';
 import { RouteBadge } from './TransitStatus.tsx';
 import { TransitTripMap } from './TransitTripMap.tsx';
@@ -38,6 +39,10 @@ const GPS: Record<GpsStatus, string> = {
   unavailable: 'La ubicación del iPhone está apagada o falló: avanza con los botones.',
   off: 'GPS en pausa; vuelve al seguir el viaje con Nexo abierto.',
 };
+// Lo que pide que haga algo se queda en la tarjeta; lo demas es como funciona y va en la (i).
+const GPS_PROBLEM: readonly GpsStatus[] = ['denied', 'unavailable', 'off'];
+const MAP_KEY =
+  'En el mapa, tu bus va en el color de su línea, con una bolita por parada: gris si LTC dice que no para, la grande donde bajas. El punto azul eres tú.';
 
 /** What to do now and what it rests on, in his words. */
 export function tripLines(
@@ -91,7 +96,7 @@ export function tripLines(
               .length
           : ride!.along.filter((at, i) => i > 0 && at > progress + 20).length;
       return {
-        title: `En el ${ride!.route} hacia ${ride!.headsign}`,
+        title: `En el ${ride!.route} hacia ${ride!.headsign.replace(/ via /i, ' vía ')}`,
         lines: [
           `Bajas en ${stopLabel(ride!.stops[last])} a las ${when(last)}.`,
           `${left === 1 ? 'Es la próxima parada' : `Quedan ${left} paradas`}.`,
@@ -111,23 +116,51 @@ export function tripLines(
       };
     default: {
       const minutes = Math.round(((trip.endedAt ?? now) - trip.startedAt) / 60_000);
-      const { fixes, ignored, liveReads, liveBytes } = trip.stats;
+      const measured = trip.measured ?? 0;
       return {
+        // «Llegaste» solo si llego: con el GPS o con «Llegué» en la ultima caminata. Terminar
+        // a medio camino decia que habia llegado sin moverse de donde salio (2026-10-25).
         title:
           trip.phase === 'completed'
-            ? `Llegaste a ${trip.destination.name}`
+            ? arrived(trip)
+              ? `Llegaste a ${trip.destination.name}`
+              : 'Viaje terminado'
             : trip.phase === 'canceled'
               ? 'Viaje cancelado'
               : 'Viaje terminado por tiempo',
         lines: [
           `${minutes} min desde que saliste${trip.endedAt ? `, hasta las ${agencyClock(trip.endedAt)}` : ''}.`,
-          `${fixes} lecturas de GPS${ignored ? ` (${ignored} imprecisas)` : ''} · ${liveReads} consultas en vivo con Nexo en segundo plano (${Math.round(liveBytes / 1_024)} KB).`,
-          'Las caminatas medidas esperan tu revisión en Transit.',
+          ...(measured === 0
+            ? []
+            : [
+                measured === 1
+                  ? 'Una caminata medida espera tu revisión en Transit.'
+                  : `${measured} caminatas medidas esperan tu revisión en Transit.`,
+              ]),
         ],
         ride: null,
       };
     }
   }
+}
+
+/** Whether the trip ended where it was going, not wherever he stopped following it. */
+function arrived(trip: ActiveTrip): boolean {
+  const last = trip.log.at(-1);
+  const before = trip.log.at(-2)?.phase;
+  return (
+    last?.source === 'gps' || before === 'final' || (before === 'walking' && !trip.rides.length)
+  );
+}
+
+/** What following it cost, for measuring it on the phone; behind the (i), not on the card. */
+function costText(trip: ActiveTrip): string {
+  const { fixes, ignored, liveReads, liveBytes } = trip.stats;
+  return (
+    `${fixes === 1 ? '1 lectura' : `${fixes} lecturas`} de GPS` +
+    `${ignored ? ` (${ignored === 1 ? '1 imprecisa' : `${ignored} imprecisas`})` : ''}.\n` +
+    `${liveReads === 1 ? '1 consulta' : `${liveReads} consultas`} en vivo con Nexo en segundo plano, ${Math.round(liveBytes / 1_024)} KB.`
+  );
 }
 
 /**
@@ -207,8 +240,27 @@ export function TransitActiveTrip({
   const doubt = trip.boarding.doubt;
   const fix = trip.lastFix;
   const others = trip.alternatives?.leg === trip.leg ? trip.alternatives.options : [];
+  const lastReading = fix
+    ? `Última lectura ${relative(fix.at, now)}${fix.accuracy === null ? '' : `, ±${Math.round(fix.accuracy)} m`}.`
+    : null;
+  const info = active
+    ? [
+        ...(map ? [MAP_KEY] : []),
+        ...(GPS_PROBLEM.includes(gps) ? [] : [GPS[gps]]),
+        ...(lastReading ? [lastReading] : []),
+      ].join('\n')
+    : costText(trip);
   return (
-    <Card title={active ? 'Viaje en curso' : 'Último viaje'}>
+    <Card
+      title={active ? 'Viaje en curso' : 'Último viaje'}
+      action={
+        info === '' ? undefined : (
+          <InfoDot accessibilityLabel={active ? 'Cómo se sigue el viaje' : 'Lo que costó seguirlo'}>
+            <InfoText>{info}</InfoText>
+          </InfoDot>
+        )
+      }
+    >
       <Text style={styles.label}>
         {trip.origin.name} → {trip.destination.name}
       </Text>
@@ -262,14 +314,7 @@ export function TransitActiveTrip({
           onInteraction={onMapInteraction}
         />
       )}
-      {active && (
-        <Text style={styles.note}>
-          {GPS[gps]}
-          {fix
-            ? ` Última lectura ${relative(fix.at, now)}${fix.accuracy === null ? '' : ` · ±${Math.round(fix.accuracy)} m`}.`
-            : ''}
-        </Text>
-      )}
+      {active && GPS_PROBLEM.includes(gps) && <Text style={styles.warn}>{GPS[gps]}</Text>}
       {active && ride && (
         <>
           <Button
@@ -293,9 +338,7 @@ export function TransitActiveTrip({
         </>
       )}
       {active && ahead && tripLive?.snapshot == null && (
-        <Text style={styles.note}>
-          Sin datos en vivo: horas del horario y tu GPS, sin cambios nuevos de LTC.
-        </Text>
+        <Text style={styles.note}>Sin datos en vivo: horas del horario.</Text>
       )}
       {(problem ?? tripProblem) && (
         <Text accessibilityRole="alert" style={styles.error}>

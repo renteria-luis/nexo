@@ -111,12 +111,15 @@ export function shortDate(date: IsoDate): string {
   return `${WEEKDAYS_ES[weekday(date) - 1]}, ${day}-${MONTHS_ES[index]}-${year}`;
 }
 
-/** "dom 28-sep", para una lista de dias donde el ano se da por supuesto. */
+/**
+ * "dom, 28-sep", para una lista de dias donde el ano se da por supuesto. Con la coma de
+ * `shortDate`: sin ella las dos formas de escribir un dia no se parecian (2026-10-25).
+ */
 export function shortDay(date: IsoDate): string {
   const [, month, day] = date.split('-');
   const index = Number(month) - 1;
   if (!MONTHS_ES[index]) throw new Error(`${date} is not a date`);
-  return `${WEEKDAYS_ES[weekday(date) - 1]} ${day}-${MONTHS_ES[index]}`;
+  return `${WEEKDAYS_ES[weekday(date) - 1]}, ${day}-${MONTHS_ES[index]}`;
 }
 
 /** "viernes, 30 de setiembre", que es como se dice un dia en voz alta. */
@@ -140,6 +143,11 @@ export function daysBetween(from: IsoDate, to: IsoDate): number {
 export function weekday(date: IsoDate): number {
   const sundayFirst = new Date(toUtcMs(date)).getUTCDay();
   return sundayFirst === 0 ? 7 : sundayFirst;
+}
+
+/** "lun" through "dom", for a strip of days whose numbers say the rest. */
+export function weekdayShort(date: IsoDate): string {
+  return WEEKDAYS_ES[weekday(date) - 1];
 }
 
 /** Monday of the week containing the date. Weeks run Monday to Sunday (spec 6.1). */

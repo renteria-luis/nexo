@@ -63,5 +63,5 @@ test('a deal too cheap to be real goes last in the alert and says why', () => {
   assert.ok(text.indexOf('CHICKEN THIGHS') < text.indexOf('BREADED CUTLETS'));
   assert.match(text, /¿97% bajo lo tuyo\? Revisa el tamaño/);
   assert.doesNotMatch(text, /2026-10-28/);
-  assert.match(text, /hasta mié 28-oct/);
+  assert.match(text, /hasta mié, 28-oct/);
 });

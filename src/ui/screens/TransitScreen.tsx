@@ -17,7 +17,7 @@ import {
 import { ActivityIndicator, LayoutAnimation, Pressable, Text, View } from 'react-native';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { addDays, daysBetween } from '../../core/dates.ts';
+import { addDays, daysBetween, shortDate, shortDay } from '../../core/dates.ts';
 import { distanceMetres, type Coordinates } from '../../core/geo.ts';
 import { sameBusStops } from '../../core/settings.ts';
 import { useAppData } from '../../shell/AppData.tsx';
@@ -62,6 +62,7 @@ import { Chip } from '../Chip.tsx';
 import { Combobox } from '../Combobox.tsx';
 import { ChevronDown, ChevronRight, Pencil, Plus, Radio, RefreshCw, X } from '../icons.ts';
 import { IconButton } from '../IconButton.tsx';
+import { GlassButton } from '../TopBar.tsx';
 import { ExploreIcon } from '../ExploreIcon.tsx';
 import { PopupSheet } from '../PopupSheet.tsx';
 import { PlaceForm, type PlaceDraft } from '../PlaceForm.tsx';
@@ -593,21 +594,23 @@ function TransitContent() {
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
+        // Con su palabra, como Ajustes: un globo con lupa y una antena no decian que abren
+        // tus lugares y la conexion en vivo (2026-10-25).
         <View style={styles.row}>
-          <IconButton
+          <GlassButton
             icon={ExploreIcon}
+            label="Explorar"
             accessibilityLabel="Explorar Transit"
-            selected={panel === 'explore'}
             disabled={!data || !!draft}
             onPress={() => {
               setPanel('explore');
               setExploreMapActive(false);
             }}
           />
-          <IconButton
+          <GlassButton
             icon={Radio}
+            label="En vivo"
             accessibilityLabel="Conexión en vivo y horario"
-            selected={panel === 'live'}
             disabled={!data || !live.loaded || !!draft}
             onPress={() => {
               setPanel('live');
@@ -617,7 +620,7 @@ function TransitContent() {
         </View>
       ),
     });
-  }, [navigation, panel, data, draft, live.loaded]);
+  }, [navigation, data, draft, live.loaded]);
 
   const refreshLive = live.refresh;
   const refreshAll = useCallback(async () => {
@@ -777,19 +780,20 @@ function TransitContent() {
                 />
               }
             >
-              <Text style={styles.body}>{schedule.feedVersion}</Text>
-              <Text style={styles.note}>
-                Válido {schedule.validFrom} a {schedule.validTo} · {schedule.stops.length} paradas
+              {/* En sus palabras: el nombre del archivo de LTC, la huella del archivo y las
+                  fechas aaaa-mm-dd eran para quien lo programa (2026-10-25). */}
+              <Text style={styles.body}>
+                Vale del {shortDay(schedule.validFrom)} al {shortDay(schedule.validTo)}
               </Text>
               <Text style={styles.note}>
-                Preparado {agencyDate(schedule.createdAt)} ({ageDays} días) · versión{' '}
-                {data.cache.sha256.slice(0, 12)}
-              </Text>
-              <Text style={styles.note}>
-                Última revisión:{' '}
+                {ageDays === 0
+                  ? 'Preparado hoy'
+                  : ageDays === 1
+                    ? 'Preparado ayer'
+                    : `Preparado hace ${ageDays} días`}
                 {data.cache.checked_at
-                  ? `${agencyDate(data.cache.checked_at)} ${agencyClock(data.cache.checked_at)}`
-                  : 'incluido con esta versión de Nexo'}
+                  ? ` · revisado ${agencyDate(data.cache.checked_at) === today ? 'hoy' : shortDay(agencyDate(data.cache.checked_at))} a las ${agencyClock(data.cache.checked_at)}`
+                  : ' · viene con esta versión de Nexo'}
               </Text>
               {data.cache.last_error && (
                 <Text style={styles.error}>
@@ -992,10 +996,10 @@ function TransitContent() {
       )}
       {shows('stops') && (
         <Card title="Paradas">
+          {/* Encima de los chips: al lado se partia en tres renglones y repetia el lugar que
+              el chip elegido ya dice (2026-10-25). */}
+          <Text style={styles.note}>Cerca de</Text>
           <View style={styles.wrap}>
-            <Text style={[styles.note, styles.flex]}>
-              Cerca de: {stopsAtHere && here ? 'Tu ubicación' : place.name}
-            </Text>
             {here && (
               <Chip
                 label="Tu ubicación"
@@ -1069,8 +1073,8 @@ function TransitContent() {
           {liveMode && live.state.reason && <Text style={styles.note}>{live.state.reason}</Text>}
           {!liveMode && (
             <Text style={styles.note}>
-              Horario guardado desde {agencyDate(from)} {agencyClock(from)}, hora de London; lo en
-              vivo es solo para ahora.
+              Horario guardado desde el {shortDay(agencyDate(from))} a las {agencyClock(from)}; lo
+              en vivo es solo para ahora.
             </Text>
           )}
           {snapshot && Object.entries(snapshot.health).some(([, h]) => h.status !== 'ok') && (
@@ -1080,8 +1084,8 @@ function TransitContent() {
           )}
           {expired && (
             <Text style={styles.error}>
-              El horario guardado venció el {schedule.validTo}. Actualízalo en Conexión en vivo y
-              horario, arriba, antes de confiar en el servicio.
+              El horario guardado venció el {shortDate(schedule.validTo)}. Actualízalo en «En vivo»,
+              arriba, antes de confiar en el servicio.
             </Text>
           )}
           {outsideDate && (
@@ -1128,7 +1132,9 @@ function TransitContent() {
                     label={
                       walkOpen
                         ? 'Cerrar tu caminata'
-                        : `Tu caminata con ${place.name}${savedWalk ? `: ${savedWalk.minutes} min` : ''}`
+                        : savedWalk
+                          ? `A pie desde ${place.name}: ${savedWalk.minutes} min`
+                          : `Anotar los minutos a pie desde ${place.name}`
                     }
                     variant="ghost"
                     onPress={() => setWalkOpen(!walkOpen)}

@@ -95,8 +95,8 @@ test('sin un solo dia anotado no hay nada que estimar', () => {
 
 test('cada tramo del deposito se dice con palabras, y el dia en que se llena', () => {
   assert.match(sayLevel(0.95, null), /^llena/);
-  assert.equal(sayLevel(0.75, '2026-10-20'), 'casi llena: se estima llena el mar 20-oct');
-  assert.equal(sayLevel(0.5, '2026-10-25'), 'a medio llenar: se estima llena el dom 25-oct');
+  assert.equal(sayLevel(0.75, '2026-10-20'), 'casi llena: se estima llena el mar, 20-oct');
+  assert.equal(sayLevel(0.5, '2026-10-25'), 'a medio llenar: se estima llena el dom, 25-oct');
   assert.match(sayLevel(0.2, '2026-11-01'), /^baja: se estima llena/);
   assert.match(sayLevel(0.02, '2026-11-02'), /^vacía: se estima llena/);
 });

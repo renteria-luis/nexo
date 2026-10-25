@@ -110,6 +110,12 @@ export function destination(d: Departure) {
   return { text, main: main.trim(), via: via?.trim() ?? null };
 }
 
+/** Where the bus goes as he would say it: LTC writes "via" without its accent. */
+export function spoken(d: Departure) {
+  const { main, via } = destination(d);
+  return via ? `${main} vía ${via}` : main;
+}
+
 export function dayOf(at: number, now: number) {
   const day = agencyDate(at);
   const today = agencyDate(now);
@@ -544,7 +550,7 @@ export function TransitTripTimeline({
       <View style={styles.tripHead}>
         <RouteBadge route={departure.route} size={32} />
         <Text style={styles.headsign} numberOfLines={2}>
-          {departure.stopTime[7] || departure.trip[3] || departure.route[2]}
+          {spoken(departure)}
         </Text>
         <Pressable
           accessibilityRole="button"

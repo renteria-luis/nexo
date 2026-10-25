@@ -11,18 +11,20 @@ import {
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import type { IsoDate } from '../core/dates.ts';
+import { shortDay, type IsoDate } from '../core/dates.ts';
 import { distanceMetres, headingTo, type Coordinates } from '../core/geo.ts';
 import type { TripPoint, TripWalk } from '../transit/active-trip.ts';
 import { itineraryPaths } from '../transit/map.ts';
 import {
   ACCESS_RADIUS_M,
+  FIRST_WINDOW_MIN,
   liveOptions,
   planLiveStops,
   rideAlerts,
   runPlan,
   sharedPlannerIndex,
   startPlan,
+  walkedMinutes,
   type PlanMode,
   type PlanOption,
   type PlanRequest,
@@ -45,6 +47,7 @@ import {
   agencyClock,
   agencyDate,
   departures,
+  nearbyStops,
   queryInstant,
   type buildStopIndex,
   type Departure,
@@ -612,6 +615,19 @@ export function TransitPlanner({
   useEffect(() => () => onLive({ stops: [], ride: null }), [onLive]);
 
   const refreshNow = useCallback(() => setApplied({ mode: 'now', at: Date.now() }), []);
+  // A bus of the morning opens as «Salir a las…» at its time, where the trip can be chosen.
+  const later = useCallback((at: number) => {
+    setMode('depart');
+    setDate(agencyDate(at));
+    setTime(agencyClock(at));
+    setApplied({ mode: 'depart', at });
+    setOpenRide(null);
+    setOpenKey(null);
+    setMapFocus(null);
+    setStopPick(null);
+    setLine(null);
+    setProblem(null);
+  }, []);
   const pick = (which: Side, id: string | null) => {
     setProblem(null);
     if (id === MAP) {
@@ -995,6 +1011,7 @@ export function TransitPlanner({
           onMapOption={setMapOption}
           onLeave={leave}
           onSelect={select}
+          onLater={later}
         />
       ) : (
         <PlanList
@@ -1077,11 +1094,11 @@ function issueText(result: PlanResult, originName: string, targetName: string): 
   const { validFrom, validTo } = result.context.index.schedule;
   switch (result.issue) {
     case 'outside-validity':
-      return `Esa fecha está fuera del horario guardado (${validFrom} a ${validTo}).`;
+      return `Esa fecha está fuera del horario guardado (del ${shortDay(validFrom)} al ${shortDay(validTo)}).`;
     case 'no-origin-stops':
-      return `No hay paradas a 600 m de ${originName}. Guarda en Tu caminata los minutos a una parada más lejana.`;
+      return `No hay paradas a 600 m de ${originName}. En Paradas, anota los minutos a pie hasta una parada más lejana.`;
     case 'no-destination-stops':
-      return `No hay paradas a 600 m de ${targetName}. Guarda en Tu caminata los minutos desde una parada más lejana.`;
+      return `No hay paradas a 600 m de ${targetName}. En Paradas, anota los minutos a pie desde una parada más lejana.`;
     case 'none':
       return 'No encontré viaje directo ni con un transbordo en esas horas. Puede necesitar dos transbordos, que todavía no se calculan.';
     default:
@@ -1295,6 +1312,145 @@ function StopPopup({
  * Leaving now, the three stops with the bus that suits him best there, and the nearby ones LTC has
  * closed; a stop opens on its lines or its buses. It keeps its own clock, like the list.
  */
+// With nothing leaving from the stops near him for this long, the service has stopped for the
+// night (or not started yet), and the list says so instead of "ahora no sale ningún bus".
+const QUIET_MS = 60 * 60_000;
+
+/** Leaving now with no bus that takes him there: whether it is because LTC stopped for the night. */
+type Night = {
+  result: PlanResult;
+  quiet: boolean;
+  /** When the last bus that took him there left, if it was in the last hour and a half. */
+  lastAt: number | null;
+  /** The first buses after the pause, ranked as the stops are now. */
+  morning: StopChoice[];
+};
+
+/**
+ * At night the answer is not "no bus" but when the last one left and which are the first in the
+ * morning, from the same stops he would board at now (his ask, 2026-10-25). The first departure
+ * from the stops near him says whether service stopped; one search back finds the last bus, and a
+ * search from the first departure ranks the morning's stops the way the list ranks them now.
+ */
+function useNight(
+  schedule: Schedule,
+  stopIndex: ReturnType<typeof buildStopIndex>,
+  result: PlanResult,
+  wanted: boolean,
+): Night | null {
+  const [night, setNight] = useState<Night | null>(null);
+  useEffect(() => {
+    if (!wanted) return;
+    let gone = false;
+    const cancelled = () => gone;
+    void (async () => {
+      const request = result.request;
+      const from = request.at;
+      const near = nearbyStops(schedule, request.origin, 40).filter(
+        (stop) => stop.distanceM <= STOP_REACH_M[0],
+      );
+      let firstAt: number | null = null;
+      for (const stop of near) {
+        const [next] = departures(schedule, stopIndex, stop.index, from, 1);
+        if (next && (firstAt === null || next.at < firstAt)) firstAt = next.at;
+      }
+      const quiet = firstAt === null || firstAt - from > QUIET_MS;
+      if (!quiet || firstAt === null) {
+        if (!gone) setNight({ result, quiet, lastAt: null, morning: [] });
+        return;
+      }
+      const index = sharedPlannerIndex(schedule);
+      const nearby = { ...request, accessRadiusM: STOP_REACH_M[0], egressRadiusM: undefined };
+      const before = await runPlan(
+        startPlan(index, { ...nearby, mode: 'depart', at: from - FIRST_WINDOW_MIN * 60_000 }),
+        { pause, cancelled },
+      );
+      if (!before) return;
+      const left = liveOptions(before, null, from)
+        .filter((option) => option.leaveAt < from && option.itinerary.rides.length > 0)
+        .map((option) => option.leaveAt);
+      const at = firstAt - 60_000;
+      let morning: StopChoice[] = [];
+      for (const reach of STOP_REACH_M) {
+        const found = await runPlan(startPlan(index, { ...nearby, accessRadiusM: reach, at }), {
+          pause,
+          cancelled,
+        });
+        if (!found) return;
+        morning = distinctStops(stopChoices(found, null, at)).slice(0, STOP_CHOICES);
+        if (morning.length >= STOP_CHOICES) break;
+      }
+      if (!gone)
+        setNight({ result, quiet, lastAt: left.length ? Math.max(...left) : null, morning });
+    })();
+    return () => {
+      gone = true;
+    };
+  }, [schedule, stopIndex, result, wanted]);
+  return night?.result === result ? night : null;
+}
+
+/** A stop he can board at, its best bus first, as the list and the morning both show it. */
+function StopRow({
+  schedule,
+  choice,
+  rank,
+  from,
+  when,
+  chosen,
+  onPress,
+}: {
+  schedule: Schedule;
+  choice: StopChoice;
+  rank: number;
+  from: Coordinates;
+  /** What follows the times: "sal en 5 min", or nothing for a bus in the morning. */
+  when: string;
+  chosen: boolean;
+  onPress: () => void;
+}) {
+  const stop = schedule.stops[choice.stop];
+  const { best } = choice;
+  const walked = walkedMinutes(best.itinerary);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Paradero ${rank}, ${stopName(stop)}, sales ${clock(best.leaveAt)}, llegas ${clock(best.arriveAt)}`}
+      onPress={onPress}
+      style={({ pressed }) => [styles.option, chosen && styles.chosen, pressed && styles.pressed]}
+    >
+      <View style={styles.optionHead}>
+        <StopBadge rank={rank} />
+        {/* Primero cuando sale y cuando llega, como las filas de buses: en la calle eso es lo
+            que se mira, y venia en la tercera linea en letra chica (2026-10-24). */}
+        <View style={styles.grow}>
+          <Text style={styles.optionTime}>
+            {clock(best.leaveAt)} → {clock(best.arriveAt)}
+            {when !== '' && <Text style={styles.note}> {when}</Text>}
+          </Text>
+          <Text style={styles.note}>
+            {best.itinerary.rides.length > 1 ? 'Con transbordo' : 'Directo'}:{' '}
+            {best.itinerary.rides.map((r) => r.route[1]).join(' → ')} a las{' '}
+            {clock(best.live[0].board.at)}
+          </Text>
+          <Text style={styles.body} numberOfLines={2}>
+            {stopName(stop)} #{stop[1] || stop[0]}
+          </Text>
+          <Text style={styles.note}>
+            {walkText(choice.walk, from, stop)}
+            {walked > choice.walk.minutes && ` · ${walked} min a pie en todo el viaje`}
+          </Text>
+        </View>
+        <View style={styles.lines}>
+          {choice.routes.map((route) => (
+            <RouteBadge key={route[0]} route={route} size={22} />
+          ))}
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
 const StopList = memo(function StopList({
   schedule,
   stopIndex,
@@ -1329,6 +1485,7 @@ const StopList = memo(function StopList({
   onMapOption,
   onLeave,
   onSelect,
+  onLater,
 }: {
   schedule: Schedule;
   stopIndex: ReturnType<typeof buildStopIndex>;
@@ -1364,6 +1521,8 @@ const StopList = memo(function StopList({
   onMapOption: (option: PlanOption | null) => void;
   onLeave?: (option: PlanOption) => Promise<void>;
   onSelect?: (option: PlanOption) => Promise<void>;
+  /** Search the trips leaving at this time instead, for a bus in the morning. */
+  onLater: (at: number) => void;
 }) {
   const now = useLiveClock(active, snapshot);
   const minute = Math.floor(now / 60_000) * 60_000;
@@ -1441,6 +1600,15 @@ const StopList = memo(function StopList({
   const walking = result.pool.find((plan) => !plan.rides.length);
   const reach = result.request.accessRadiusM ?? ACCESS_RADIUS_M;
   const issue = issueText(result, originName, targetName);
+  // Asked once the search has looked as far as it goes and still has no bus.
+  // No bus at all in the window is also "none": at night that said a trip might need two
+  // transfers, when the buses had only stopped (2026-10-25).
+  const noTrip = !issue || result.issue === 'none';
+  const nightWanted =
+    final && !choices.length && noTrip && reach >= STOP_REACH_M[STOP_REACH_M.length - 1];
+  const night = useNight(schedule, stopIndex, result, nightWanted);
+  // Until it is known, "no trip" waits: it is often only the night.
+  const nightPending = nightWanted && !night;
   if (pick && pick.view !== 'menu' && picked) {
     const stop = schedule.stops[picked.stop];
     return (
@@ -1510,7 +1678,9 @@ const StopList = memo(function StopList({
   }
   return (
     <View style={styles.list}>
-      {issue && <Text style={result.issue === 'none' ? styles.body : styles.note}>{issue}</Text>}
+      {issue && !night?.quiet && !nightPending && (
+        <Text style={result.issue === 'none' ? styles.body : styles.note}>{issue}</Text>
+      )}
       {searching && <Text style={styles.note}>Actualizando…</Text>}
       {reach > ACCESS_RADIUS_M && shown.length > 0 && (
         <Text style={styles.note}>
@@ -1520,18 +1690,54 @@ const StopList = memo(function StopList({
       )}
       {/* Sin bus y con la caminata a mano, la respuesta es caminar: decirlo como un
           fracaso y la caminata en letra chica al final, para 8 min, era al reves. */}
-      {!shown.length && !issue && !searching && walking && (
-        <>
-          <Text style={styles.body}>
-            Caminando: {walking.access.minutes} min ({walkSource(walking.access)}).
-          </Text>
-          <Text style={styles.note}>Ahora no sale ningún bus desde los paraderos cercanos.</Text>
-        </>
-      )}
-      {!shown.length && !issue && !searching && !walking && (
+      {!shown.length && noTrip && !searching && walking && (
         <Text style={styles.body}>
-          Ahora no sale ningún bus que te lleve desde los paraderos cercanos. Prueba «Salir a las…».
+          Caminando: {walking.access.minutes} min ({walkSource(walking.access)}).
         </Text>
+      )}
+      {!shown.length && noTrip && !searching && night?.quiet ? (
+        <>
+          <Text style={walking ? styles.note : styles.body}>
+            A esta hora no sale ningún bus de los paraderos cercanos.
+            {night.lastAt !== null &&
+              ` El último que te llevaba salió a las ${clock(night.lastAt)}.`}
+          </Text>
+          {night.morning.length > 0 ? (
+            <Text style={styles.body}>
+              {Number(clock(night.morning[0].best.leaveAt).slice(0, 2)) < 12
+                ? 'Los primeros buses de la mañana:'
+                : 'Los siguientes buses:'}
+            </Text>
+          ) : (
+            <Text style={styles.note}>Prueba «Salir a las…».</Text>
+          )}
+          {night.morning.map((choice, i) => (
+            <StopRow
+              key={choice.stop}
+              schedule={schedule}
+              choice={choice}
+              rank={i + 1}
+              from={from}
+              when={dayOf(choice.best.leaveAt, minute)}
+              chosen={false}
+              onPress={() => onLater(choice.best.leaveAt)}
+            />
+          ))}
+        </>
+      ) : (
+        !shown.length &&
+        noTrip &&
+        !searching &&
+        (nightPending ? (
+          <Text style={styles.note}>Buscando los próximos buses…</Text>
+        ) : (
+          !issue && (
+            <Text style={walking ? styles.note : styles.body}>
+              Ahora no sale ningún bus que te lleve desde los paraderos cercanos.
+              {!walking && ' Prueba «Salir a las…».'}
+            </Text>
+          )
+        ))
       )}
       {shown.length > 0 && (
         <View style={styles.walkLine}>
@@ -1543,53 +1749,22 @@ const StopList = memo(function StopList({
           />
         </View>
       )}
-      {shown.map((choice, i) => {
-        const stop = schedule.stops[choice.stop];
-        const { best } = choice;
-        return (
-          <Pressable
-            key={choice.stop}
-            accessibilityRole="button"
-            accessibilityLabel={`Paradero ${i + 1}, ${stopName(stop)}, sales ${clock(best.leaveAt)}, llegas ${clock(best.arriveAt)}`}
-            onPress={() => onPick(choice.stop, 'buses')}
-            style={({ pressed }) => [
-              styles.option,
-              pick?.stop === choice.stop && styles.chosen,
-              pressed && styles.pressed,
-            ]}
-          >
-            <View style={styles.optionHead}>
-              <StopBadge rank={i + 1} />
-              {/* Primero cuando sale y cuando llega, como las filas de buses: en la calle
-                  eso es lo que se mira, y venia en la tercera linea en letra chica
-                  (2026-10-24). */}
-              <View style={styles.grow}>
-                <Text style={styles.optionTime}>
-                  {clock(best.leaveAt)} → {clock(best.arriveAt)}
-                  <Text style={styles.note}>
-                    {'  '}
-                    {best.leaveAt <= minute ? 'sal ya' : `sal ${relative(best.leaveAt, minute)}`}
-                  </Text>
-                </Text>
-                <Text style={styles.note}>
-                  {best.itinerary.rides.length > 1 ? 'Con transbordo' : 'Directo'}:{' '}
-                  {best.itinerary.rides.map((r) => r.route[1]).join(' → ')} a las{' '}
-                  {clock(best.live[0].board.at)}
-                </Text>
-                <Text style={styles.body} numberOfLines={2}>
-                  {stopName(stop)} #{stop[1] || stop[0]}
-                </Text>
-                <Text style={styles.note}>{walkText(choice.walk, from, stop)}</Text>
-              </View>
-              <View style={styles.lines}>
-                {choice.routes.map((route) => (
-                  <RouteBadge key={route[0]} route={route} size={22} />
-                ))}
-              </View>
-            </View>
-          </Pressable>
-        );
-      })}
+      {shown.map((choice, i) => (
+        <StopRow
+          key={choice.stop}
+          schedule={schedule}
+          choice={choice}
+          rank={i + 1}
+          from={from}
+          when={
+            choice.best.leaveAt <= minute
+              ? 'sal ya'
+              : `sal ${relative(choice.best.leaveAt, minute)}`
+          }
+          chosen={pick?.stop === choice.stop}
+          onPress={() => onPick(choice.stop, 'buses')}
+        />
+      ))}
       {closed.map((stop) => {
         const row = schedule.stops[stop.stop];
         return (
@@ -1688,7 +1863,11 @@ function StopLines({
               accessibilityState={{ expanded: opened }}
               accessibilityLabel={`Línea ${first.departure.route[1]} hacia ${where.main}; ver su recorrido`}
               onPress={() => onLine(opened ? null : first.departure)}
-              style={({ pressed }) => [styles.optionHead, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.optionTap,
+                styles.optionHead,
+                pressed && styles.pressed,
+              ]}
             >
               <RouteBadge route={first.departure.route} size={26} />
               <View style={styles.grow}>
@@ -1942,12 +2121,16 @@ const PlanRow = memo(function PlanRow({
             ? 'sal ya'
             : `sal ${relative(option.leaveAt, now)}`
           : day;
+  // Lo que decide primero: si el transbordo es justo y cuando sale; despues lo que explica el
+  // orden, que cuenta cada minuto a pie. «justo» iba al final y se cortaba (2026-10-25).
+  const walked = walkedMinutes(option.itinerary);
   const summary = [
     chosen ? 'elegido' : '',
-    `${minutesOf(option.arriveAt - option.leaveAt)} min`,
-    ridesLabel(option),
-    when,
     option.tight && !option.missed ? 'justo' : '',
+    when,
+    rides.length && walked ? `${walked} min a pie` : '',
+    ridesLabel(option),
+    `${minutesOf(option.arriveAt - option.leaveAt)} min`,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -1959,6 +2142,8 @@ const PlanRow = memo(function PlanRow({
         (option.notice || option.missed) && styles.notice,
       ]}
     >
+      {/* Toda la fila responde: el relleno de la tarjeta y las notas de abajo quedaban fuera
+          del toque y habia que atinarle al renglon de la hora (2026-10-25). */}
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded }}
@@ -1966,45 +2151,47 @@ const PlanRow = memo(function PlanRow({
           rides.map((r) => `línea ${r.route[1]}`).join(' y ') || 'caminando'
         }, ${summary}`}
         onPress={onToggle}
-        style={({ pressed }) => [styles.optionHead, pressed && styles.pressed]}
+        style={({ pressed }) => [styles.optionTap, pressed && styles.pressed]}
       >
-        <View style={styles.grow}>
-          <Text style={styles.optionTime}>
-            {clock(option.leaveAt)} → {clock(option.arriveAt)}
-          </Text>
-          <Text style={styles.note} numberOfLines={1}>
-            {summary}
-          </Text>
+        <View style={styles.optionHead}>
+          <View style={styles.grow}>
+            <Text style={styles.optionTime}>
+              {clock(option.leaveAt)} → {clock(option.arriveAt)}
+            </Text>
+            <Text style={styles.note} numberOfLines={2}>
+              {summary}
+            </Text>
+          </View>
+          <View style={styles.lines}>
+            {rides.length ? (
+              rides.map((ride, i) => (
+                <Fragment key={`${ride.trip[0]}-${i}`}>
+                  {i > 0 && <ChevronRight size={14} color={theme.text} strokeWidth={2.5} />}
+                  <RouteBadge route={ride.route} size={24} />
+                </Fragment>
+              ))
+            ) : (
+              <Footprints size={18} color={theme.text} strokeWidth={2.5} />
+            )}
+          </View>
+          {chosen && <Check size={18} color={theme.text} strokeWidth={3} />}
+          {option.live[0] && <StatusIcons live={option.live[0].board} />}
+          <Chevron size={18} color={theme.text} strokeWidth={2.5} />
         </View>
-        <View style={styles.lines}>
-          {rides.length ? (
-            rides.map((ride, i) => (
-              <Fragment key={`${ride.trip[0]}-${i}`}>
-                {i > 0 && <ChevronRight size={14} color={theme.text} strokeWidth={2.5} />}
-                <RouteBadge route={ride.route} size={24} />
-              </Fragment>
-            ))
-          ) : (
-            <Footprints size={18} color={theme.text} strokeWidth={2.5} />
-          )}
-        </View>
-        {chosen && <Check size={18} color={theme.text} strokeWidth={3} />}
-        {option.live[0] && <StatusIcons live={option.live[0].board} />}
-        <Chevron size={18} color={theme.text} strokeWidth={2.5} />
+        {option.notice && <Text style={styles.warn}>{noticeText(option)}</Text>}
+        {option.reportedOutsideCalendar && (
+          <Text style={styles.note}>
+            LTC reporta este bus aunque su calendario no lo incluya hoy. Sin predicción, la hora es
+            la del horario.
+          </Text>
+        )}
+        {option.tight && option.backup && !option.missed && !expanded && (
+          <Text style={styles.note}>
+            Si pierdes el transbordo: {option.backup.ride.route[1]} de las{' '}
+            {clock(option.backup.ride.departure.at)}, llegas {clock(option.backup.arriveAt)}.
+          </Text>
+        )}
       </Pressable>
-      {option.notice && <Text style={styles.warn}>{noticeText(option)}</Text>}
-      {option.reportedOutsideCalendar && (
-        <Text style={styles.note}>
-          LTC reporta este bus aunque su calendario no lo incluya hoy. Sin predicción, la hora es la
-          del horario.
-        </Text>
-      )}
-      {option.tight && option.backup && !option.missed && !expanded && (
-        <Text style={styles.note}>
-          Si pierdes el transbordo: {option.backup.ride.route[1]} de las{' '}
-          {clock(option.backup.ride.departure.at)}, llegas {clock(option.backup.arriveAt)}.
-        </Text>
-      )}
       {children}
     </View>
   );
@@ -2297,7 +2484,7 @@ function RideStep({
             </Text>
             <Text style={styles.note}>
               Bajas en {stopName(stops[ride.arrival.stopTime[0]])} · {clock(live.alight.at)} ·{' '}
-              {ride.alight - ride.board} paradas
+              {ride.alight - ride.board === 1 ? '1 parada' : `${ride.alight - ride.board} paradas`}
             </Text>
           </View>
           <StatusIcons live={live.board} />
@@ -2369,6 +2556,8 @@ const styles = sheet((theme) => ({
   },
   chosen: { borderWidth: 3, backgroundColor: theme.okBg },
   optionHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  // Hasta el borde de la tarjeta: el relleno de `option` tambien es la fila.
+  optionTap: { margin: -10, padding: 10, gap: 8 },
   pressed: { opacity: 0.7 },
   optionTime: { fontFamily: font.black, fontSize: 16, color: theme.text },
   lines: { flexDirection: 'row', alignItems: 'center', gap: 2 },

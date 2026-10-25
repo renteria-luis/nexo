@@ -108,8 +108,8 @@ test('un dia dicho en voz alta lleva su dia de la semana y su mes entero', () =>
 });
 
 test('un dia de una lista va sin ano, que se da por supuesto', () => {
-  assert.equal(shortDay('2026-09-27'), 'dom 27-sep');
-  assert.equal(shortDay('2026-01-01'), 'jue 01-ene');
+  assert.equal(shortDay('2026-09-27'), 'dom, 27-sep');
+  assert.equal(shortDay('2026-01-01'), 'jue, 01-ene');
 });
 
 test('local midnight scheduling handles both daylight saving transitions', async () => {

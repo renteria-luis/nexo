@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { plannerFixture } from '../transit/fixtures.ts';
 import * as realtime from '../transit/realtime.ts';
-import { nodes, renderModule } from './test-render.ts';
+import { nodes, renderModule, textOf } from './test-render.ts';
 
 function fixture() {
   const props = {
@@ -30,8 +30,6 @@ function fixture() {
     '../transit/realtime.ts': realtime,
     './TransitDepartures.tsx': { useLiveClock: () => 0 },
     './icons.ts': {
-      Check: 'Check',
-      Minus: 'Minus',
       ChevronDown: 'ChevronDown',
       ChevronRight: 'ChevronRight',
     },
@@ -40,8 +38,14 @@ function fixture() {
   const map = async () => (await current()).find((n) => n.type === 'TransitMap')!.props;
   const control = async (label: string) =>
     (await current()).find((n) => n.props.accessibilityLabel === label)!.props;
-  const click = async (label: string) => (await control(label)).onPress();
-  return { props, map, control, click };
+  // A layer is a switch and a route or category a chip.
+  const click = async (label: string) => {
+    const props = await control(label);
+    if (props.onPress) props.onPress();
+    else (props.onChange ?? props.onValueChange)(!props.value);
+  };
+  const text = async () => textOf(await screen.settle());
+  return { props, map, control, click, text };
 }
 
 test('offline route checkboxes show both directions, union routes and preserve the camera', async () => {
@@ -51,7 +55,8 @@ test('offline route checkboxes show both directions, union routes and preserve t
   assert.deepEqual((await f.map()).stops, []);
   await f.click('Mostrar rutas');
   await f.click('Paraderos de la ruta 16');
-  assert.equal((await f.control('Paraderos')).accessibilityState.checked, 'mixed');
+  assert.equal((await f.control('Paraderos')).value, false, 'partly shown reads off');
+  assert.match(await f.text(), /Paraderos · algunas/);
   const ids = async () => (await f.map()).stops.map((stop: string[]) => stop[0]).sort();
   assert.deepEqual(await ids(), [
     'CORNER_NB',
@@ -66,11 +71,7 @@ test('offline route checkboxes show both directions, union routes and preserve t
   await f.click('Ocultar rutas');
   assert.equal((await ids()).length, 12, 'folding only hides the controls');
   await f.click('Paraderos');
-  assert.equal(
-    (await f.control('Paraderos')).accessibilityState.checked,
-    true,
-    'the parent restores all routes',
-  );
+  assert.equal((await f.control('Paraderos')).value, true, 'the parent restores all routes');
   assert.deepEqual((await f.map()).center, original.center);
   assert.deepEqual((await f.map()).places, original.places);
 });
@@ -98,7 +99,7 @@ test('category and trip filters handle zero, one or two endpoints without affect
   await a.click('Lugares de categoría Sin categoría');
   assert.deepEqual(await ids(), ['home']);
   a.props.places = a.props.places.map((p) => (p.id === 'store' ? { ...p, category: 'Nueva' } : p));
-  assert.equal((await a.control('Lugares de categoría Nueva')).accessibilityState.checked, false);
+  assert.equal((await a.control('Lugares de categoría Nueva')).accessibilityState.selected, false);
   await a.click('Lugares de categoría Nueva');
   assert.deepEqual(await ids(), ['store', 'home'], 'a newly saved category becomes selectable');
 });

@@ -3,39 +3,36 @@ import { Pressable, Text, View } from 'react-native';
 
 import { layerState, toggleLayer, type LayerSelection } from '../transit/map-layers.ts';
 import type { Route } from '../transit/schedule.ts';
-import { Check, ChevronDown, ChevronRight, Minus } from './icons.ts';
+import { Chip } from './Chip.tsx';
+import { ChevronDown, ChevronRight } from './icons.ts';
 import { routeColor } from './routeColors.ts';
-import { font, sheet, shape, theme } from './theme.ts';
+import { font, sheet, theme } from './theme.ts';
+import { Toggle } from './Toggle.tsx';
 
-function Checkbox({
+/**
+ * A layer that turns on and off, as every on/off in the app: the iOS switch. Partly shown, it
+ * reads off with the word saying so, and turning it on shows every one again.
+ */
+function Layer({
   label,
-  checked,
-  onPress,
-  accessibilityLabel = label,
-  color,
+  state,
+  onChange,
+  note,
 }: {
   label: string;
-  checked: boolean | 'mixed';
-  onPress: () => void;
-  accessibilityLabel?: string;
-  color?: string;
+  state: boolean | 'mixed';
+  onChange: (next: boolean) => void;
+  note?: string;
 }) {
-  const Icon = checked === 'mixed' ? Minus : Check;
   return (
-    <Pressable
-      accessibilityRole="checkbox"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ checked }}
-      aria-checked={checked}
-      onPress={onPress}
-      style={({ pressed }) => [styles.check, pressed && styles.pressed]}
-    >
-      <View style={[styles.box, !!checked && styles.checked]}>
-        {!!checked && <Icon size={13} color={theme.accentInk} strokeWidth={3} />}
-      </View>
-      {color && <View style={[styles.routeColor, { backgroundColor: color }]} />}
-      <Text style={styles.label}>{label}</Text>
-    </Pressable>
+    <View style={styles.layer}>
+      <Text style={styles.label}>
+        {label}
+        {state === 'mixed' ? <Text style={styles.hint}> · algunas</Text> : null}
+        {note ? <Text style={styles.hint}> · {note}</Text> : null}
+      </Text>
+      <Toggle value={state === true} onChange={onChange} accessibilityLabel={label} />
+    </View>
   );
 }
 
@@ -94,50 +91,50 @@ export function TransitMapFilters({
   return (
     <View style={styles.filters}>
       <View style={styles.row}>
-        <Checkbox
-          label="Paraderos"
-          checked={routeState}
-          onPress={() => onRoutes(routeState === true ? new Set() : null)}
-        />
         <Disclosure label="rutas" open={routesOpen} onPress={() => setRoutesOpen(!routesOpen)} />
+        <Layer
+          label="Paraderos"
+          state={routeState}
+          onChange={(next) => onRoutes(next ? null : new Set())}
+        />
       </View>
       {routesOpen && (
         <View style={styles.children}>
           {routes.map((route) => (
-            <Checkbox
+            <Chip
               key={route[0]}
               label={route[1] || route[2]}
               accessibilityLabel={`Paraderos de la ruta ${route[1] || route[2]}`}
-              color={routeColor(route[3])}
-              checked={selectedRoutes === null || selectedRoutes.has(route[0])}
+              dot={routeColor(route[3])}
+              selected={selectedRoutes === null || selectedRoutes.has(route[0])}
               onPress={() => onRoutes(toggleLayer(selectedRoutes, routeIds, route[0]))}
             />
           ))}
         </View>
       )}
       <View style={styles.row}>
-        <Checkbox
-          label="Mis lugares"
-          checked={categoryState}
-          onPress={() => {
-            onTripOnly(false);
-            onCategories(categoryState === true ? new Set() : null);
-          }}
-        />
         <Disclosure
           label="categorías"
           open={categoriesOpen}
           onPress={() => setCategoriesOpen(!categoriesOpen)}
         />
+        <Layer
+          label="Mis lugares"
+          state={categoryState}
+          onChange={(next) => {
+            onTripOnly(false);
+            onCategories(next ? null : new Set());
+          }}
+        />
       </View>
       {categoriesOpen && (
         <View style={styles.children}>
           {categories.map((category) => (
-            <Checkbox
+            <Chip
               key={category.id}
               label={category.label}
               accessibilityLabel={`Lugares de categoría ${category.label}`}
-              checked={visibleCategories === null || visibleCategories.has(category.id)}
+              selected={visibleCategories === null || visibleCategories.has(category.id)}
               onPress={() => {
                 onTripOnly(false);
                 onCategories(toggleLayer(visibleCategories, categoryIds, category.id));
@@ -147,8 +144,8 @@ export function TransitMapFilters({
         </View>
       )}
       <View style={styles.row}>
-        <Checkbox label="Viaje" checked={tripOnly} onPress={() => onTripOnly(!tripOnly)} />
-        <Text style={styles.hint}>Solo Desde y Hasta</Text>
+        <View style={styles.disclosure} />
+        <Layer label="Viaje" note="solo Desde y Hasta" state={tripOnly} onChange={onTripOnly} />
       </View>
     </View>
   );
@@ -156,38 +153,23 @@ export function TransitMapFilters({
 
 const styles = sheet((theme) => ({
   filters: { gap: 2, marginBottom: 8 },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  check: {
-    minHeight: 36,
+  row: { flexDirection: 'row', alignItems: 'center' },
+  layer: {
+    flex: 1,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    paddingRight: 8,
-    flexShrink: 1,
+    justifyContent: 'space-between',
+    gap: 8,
   },
-  box: {
-    width: 19,
-    height: 19,
-    borderWidth: shape.border,
-    borderColor: theme.line,
-    borderRadius: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.surface,
-  },
-  checked: { backgroundColor: theme.accent },
-  label: { fontSize: 13, fontFamily: font.bold, color: theme.text, flexShrink: 1 },
-  hint: { fontSize: 11, fontFamily: font.regular, color: theme.textFaint },
+  label: { fontSize: 14, fontFamily: font.bold, color: theme.text, flexShrink: 1 },
+  hint: { fontSize: 12, fontFamily: font.regular, color: theme.textFaint },
   disclosure: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   children: {
-    marginLeft: 9,
-    paddingLeft: 16,
-    borderLeftWidth: 1,
-    borderLeftColor: theme.lineSoft,
+    paddingLeft: 36,
+    paddingBottom: 6,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    columnGap: 12,
+    gap: 6,
   },
-  routeColor: { width: 6, height: 15, borderRadius: 3 },
-  pressed: { opacity: 0.65 },
 }));

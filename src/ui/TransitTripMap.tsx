@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 
 import type { Coordinates } from '../core/geo.ts';
 import { departureOf, type ActiveTrip, type TripLive } from '../transit/active-trip.ts';
@@ -10,7 +10,7 @@ import { Button } from './Button.tsx';
 import { TransitMap } from './TransitMap';
 import { followedMarker } from './TransitLiveMap.tsx';
 import { routeColor } from './routeColors.ts';
-import { font, sheet } from './theme.ts';
+import { sheet } from './theme.ts';
 
 const none = () => undefined;
 
@@ -128,10 +128,6 @@ export const TransitTripMap = memo(function TransitTripMap({
           />
         )}
       </View>
-      <Text style={styles.note}>
-        Tu bus en el color de su línea, una bolita por parada: gris si LTC dice que no para, la
-        grande donde bajas. Punto azul: tú.
-      </Text>
     </View>
   );
 });
@@ -139,5 +135,4 @@ export const TransitTripMap = memo(function TransitTripMap({
 const styles = sheet((theme) => ({
   block: { gap: 8 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  note: { fontFamily: font.regular, fontSize: 12, color: theme.textDim, lineHeight: 18 },
 }));

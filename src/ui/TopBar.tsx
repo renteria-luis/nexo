@@ -99,32 +99,38 @@ export function TopBar({
 
 /**
  * Un boton de vidrio de la barra. Al presionarlo solo se encoge: Apple pide no bajarle
- * la opacidad al vidrio ni a lo que lo contiene, porque deja de dibujarse.
+ * la opacidad al vidrio ni a lo que lo contiene, porque deja de dibujarse. Apagado, el
+ * icono y la palabra se apagan y el vidrio se queda.
  */
-function GlassButton({
+export function GlassButton({
   icon: Icon,
   label,
   tint = theme.text,
   accessibilityLabel,
+  disabled = false,
   onPress,
 }: {
   icon: LucideIcon;
   label?: string;
   tint?: string;
   accessibilityLabel: string;
+  disabled?: boolean;
   onPress: () => void;
 }) {
+  const ink = disabled ? theme.textGhost : tint;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
       onPress={onPress}
       hitSlop={4}
       style={({ pressed }) => pressed && styles.pressed}
     >
       <Glass interactive style={[styles.glass, label ? styles.withLabel : styles.round]}>
-        <Icon size={19} color={tint} strokeWidth={2.25} />
-        {label && <Text style={styles.label}>{label}</Text>}
+        <Icon size={19} color={ink} strokeWidth={2.25} />
+        {label && <Text style={[styles.label, disabled && styles.labelOff]}>{label}</Text>}
       </Glass>
     </Pressable>
   );
@@ -175,6 +181,9 @@ const styles = sheet((theme) => ({
     fontSize: 14,
     fontFamily: font.black,
     color: theme.text,
+  },
+  labelOff: {
+    color: theme.textGhost,
   },
   pressed: {
     transform: [{ scale: 0.95 }],

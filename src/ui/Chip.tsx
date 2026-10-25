@@ -15,6 +15,8 @@ export type ChipProps = {
   selected?: boolean;
   onPress: () => void;
   icon?: LucideIcon;
+  /** Un punto de color antes de la palabra, como el de una linea de bus. */
+  dot?: string;
   disabled?: boolean;
   accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;
@@ -25,6 +27,7 @@ export function Chip({
   selected = false,
   onPress,
   icon: Icon,
+  dot,
   disabled = false,
   accessibilityLabel,
   style,
@@ -48,6 +51,7 @@ export function Chip({
     >
       <View style={styles.inner}>
         {Icon ? <Icon size={14} color={tint} strokeWidth={2.5} /> : null}
+        {dot ? <View style={[styles.dot, { backgroundColor: dot }]} /> : null}
         {/* Un chip que es solo un icono no lleva texto vacio: dejaria el hueco a su lado. */}
         {label !== '' && <Text style={[styles.label, { color: tint }]}>{label}</Text>}
       </View>
@@ -68,6 +72,13 @@ const styles = sheet((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  dot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: shape.border,
+    borderColor: theme.line,
   },
   label: {
     fontSize: 13,

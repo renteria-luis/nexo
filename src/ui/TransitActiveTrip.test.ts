@@ -67,6 +67,7 @@ function render(journey: Record<string, unknown>, props: Record<string, unknown>
     './TransitTripMap.tsx': { TransitTripMap: 'TransitTripMap' },
     './Button.tsx': { Button: 'Button' },
     './Card.tsx': { Card: 'Card' },
+    './InfoBubble.tsx': { InfoDot: 'InfoDot', InfoText: 'InfoText' },
   }).mount('TransitActiveTrip', props);
   const press = async (label: string) => {
     const button = nodes(await screen.settle()).find((node) => node.props.label === label);
@@ -75,6 +76,12 @@ function render(journey: Record<string, unknown>, props: Record<string, unknown>
     await screen.settle();
   };
   return { screen, taps, press, view };
+}
+
+/** What the card keeps behind its (i). */
+function infoOf(tree: unknown): string {
+  const card = nodes(tree).find((node) => node.type === 'Card');
+  return textOf(card?.props.action);
 }
 
 test('waiting at the stop says which bus, when, and lets him confirm boarding', async () => {
@@ -87,8 +94,9 @@ test('waiting at the stop says which bus, when, and lets him confirm boarding', 
   const text = textOf(await f.screen.settle());
   assert.match(text, /Espera el 16 en ORIGIN SB \(#109\)/);
   assert.match(text, /Sale a las 08:30 \(horario, en 2 min\)/);
-  assert.match(text, /también con la pantalla bloqueada/);
-  assert.match(text, /Sin datos en vivo/);
+  assert.doesNotMatch(text, /pantalla bloqueada/, 'how the GPS works is behind the (i)');
+  assert.match(infoOf(await f.screen.settle()), /también con la pantalla bloqueada/);
+  assert.match(text, /Sin datos en vivo: horas del horario\./);
   await f.press('Ya subí');
   assert.deepEqual(f.taps, ['boarded']);
 });
@@ -118,12 +126,31 @@ test('without permission the buttons carry the trip, and a finished trip shows w
   ended.stats = { ...ended.stats, fixes: 240, ignored: 3, liveReads: 12, liveBytes: 96 * 1_024 };
   const f = render({ trip: ended });
   const summary = textOf(await f.screen.settle());
-  assert.match(summary, /Llegaste a Trabajo/);
+  assert.match(summary, /Viaje terminado/);
+  assert.doesNotMatch(summary, /Llegaste/, 'ended before the last walk, it did not arrive');
   assert.match(summary, /32 min desde que saliste, hasta las 08:57/);
-  assert.match(summary, /240 lecturas de GPS \(3 imprecisas\) · 12 consultas en vivo/);
-  assert.match(summary, /96 KB/);
+  assert.doesNotMatch(summary, /caminata/, 'no walk was timed, so none waits for review');
+  const cost = infoOf(await f.screen.settle());
+  assert.match(cost, /240 lecturas de GPS \(3 imprecisas\)/);
+  assert.match(cost, /12 consultas en vivo con Nexo en segundo plano, 96 KB/);
   await f.press('Cerrar');
   assert.deepEqual(f.taps, ['dismiss']);
+});
+
+test('a trip that reaches its last walk and arrives says so, with the walks to review', async () => {
+  let next = trip();
+  for (const [action, clock] of [
+    ['boarded', '08:30'],
+    ['alighted', '08:38'],
+    ['boarded', '08:45'],
+    ['alighted', '08:52'],
+    ['arrived', '08:57'],
+  ] as const)
+    next = activeTrip.applyAction(next, action, at(clock)).trip;
+  next.measured = 2;
+  const summary = textOf(await render({ trip: next }).screen.settle());
+  assert.match(summary, /Llegaste a Trabajo/);
+  assert.match(summary, /2 caminatas medidas esperan tu revisión en Transit/);
 });
 
 test('on Transit the trip in progress has its own map, and an ended trip does not', async () => {

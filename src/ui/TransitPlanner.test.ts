@@ -140,7 +140,7 @@ test('choosing where to go lists the options with their lines, and a tight one n
   tree = await openStop(screen, tree, 1, 'buses');
   const text = textOf(tree);
   assert.match(text, /08:17 → 08:41/);
-  assert.match(text, /24 min · 1 transbordo · sal en 17 min · justo/);
+  assert.match(text, /justo · sal en 17 min · 4 min a pie · 1 transbordo · 24 min/);
   assert.match(text, /Si pierdes el transbordo: 20 de las 08:45, llegas 08:56/);
   assert.ok(byLabel(tree, 'Línea 92'), 'the line badge carries its number');
   assert.deepEqual(lives.at(-1), {
@@ -396,8 +396,8 @@ test('leaving now, the bus he just missed comes first, says so and cannot be cho
     picker(tree, 'Elegir el destino').onChange('end');
     tree = await searched(screen, (current) => !!byLabel(current, /^Paradero 1,/));
     tree = await openStop(screen, tree, 1, 'buses');
-    assert.match(textOf(tree), new RegExp(`24 min · 1 transbordo · ${says}`));
-    assert.doesNotMatch(textOf(tree), new RegExp(`${says} · justo`));
+    assert.match(textOf(tree), new RegExp(`${says} · 4 min a pie · 1 transbordo · 24 min`));
+    assert.doesNotMatch(textOf(tree), new RegExp(`justo · ${says}`));
     byLabel(tree, /^Sales 08:17, llegas 08:41/).props.onPress();
     tree = await screen.settle();
     assert.equal(byLabel(tree, 'Elegir este viaje').props.disabled, true);
@@ -436,7 +436,7 @@ test('choosing a trip marks it at once and keeps the list; one chosen elsewhere 
   tree = await screen.settle();
   assert.equal(chosen.length, 1);
   assert.match(textOf(tree), /Viaje elegido/);
-  assert.match(textOf(tree), /elegido · 24 min/);
+  assert.match(textOf(tree), /elegido · justo · sal en 17 min/);
   assert.doesNotMatch(textOf(tree), /Actualizando…/, 'no new search');
   assert.equal(picker(tree, 'Elegir el destino').value, 'end');
 
@@ -603,4 +603,25 @@ test('a destination found by its address and a start tapped on the map can be lo
   tree = await screen.settle();
   assert.match(textOf(tree), /Desde un punto del mapa solo puedes mirar/);
   assert.equal(byLabel(tree, 'Salgo ahora'), undefined);
+});
+
+test('at night, no bus is said as night, with the first buses of the morning to look at', async (t) => {
+  const now = queryInstant('2026-10-13', '03:00');
+  t.mock.method(Date, 'now', () => now);
+  const screen = mount([], props([]));
+  let tree = await screen.settle();
+  picker(tree, 'Elegir el destino').onChange('end');
+  tree = await searched(screen, (current) => /primeros buses de la mañana/.test(textOf(current)));
+  const text = textOf(tree);
+  assert.match(text, /A esta hora no sale ningún bus de los paraderos cercanos\./);
+  assert.doesNotMatch(text, /Ahora no sale ningún bus/);
+  const first = byLabel(tree, /^Paradero 1,/);
+  assert.match(first.props.accessibilityLabel, /sales 0[5-9]:\d\d/);
+  first.props.onPress();
+  const later = (current: unknown) =>
+    byLabel(current, 'Salir a las…')?.props.accessibilityState?.selected === true;
+  tree = await searched(screen, later);
+  assert.ok(later(tree), 'the morning bus opens as Salir a las… at its time');
+  tree = await searched(screen, (current) => !!byLabel(current, /^Sales 0[5-9]:\d\d/));
+  assert.doesNotMatch(textOf(tree), /A esta hora/);
 });

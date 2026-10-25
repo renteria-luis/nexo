@@ -139,6 +139,7 @@ test('a trip walks, boards, gets off, transfers and arrives from his readings al
   const walked = run(trip, walkToStop);
   assert.equal(walked.trip.phase, 'waiting');
   assert.equal(walked.observations.length, 1);
+  assert.equal(walked.trip.measured, 1, 'the ended trip can say a walk waits for review');
   const access = walked.observations[0];
   assert.equal(access.kind, 'access');
   assert.equal(access.placeId, 'origin');

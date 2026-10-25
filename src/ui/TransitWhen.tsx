@@ -1,20 +1,13 @@
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
-import {
-  addDays,
-  daysBetween,
-  shortDay,
-  shortMonth,
-  weekday,
-  type IsoDate,
-} from '../core/dates.ts';
+import { addDays, daysBetween, shortDay, weekdayShort, type IsoDate } from '../core/dates.ts';
 import { Button } from './Button.tsx';
 import { CalendarClock, ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from './icons.ts';
 import { TextField } from './TextField.tsx';
 import { font, shape, sheet, theme } from './theme.ts';
 
-const WEEK = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+const SPAN = 7;
 
 function stepClock(clock: string, minutes: number) {
   const match = /^(\d{1,2}):(\d{2})$/.exec(clock);
@@ -25,7 +18,11 @@ function stepClock(clock: string, minutes: number) {
 
 /**
  * When the departures are for: now, live, or a chosen day and time from the saved schedule.
- * Closed it is one line; open it shows the month and the hour.
+ * Closed it is one line; open it shows seven days from today and the hour.
+ *
+ * Seven days from today and not a calendar week or a month: what he plans is tomorrow or the day
+ * after, and on Sunday the Monday of the next week (2026-10-25). The month took half the screen
+ * for days he never picks.
  */
 export function TransitWhen({
   live,
@@ -57,12 +54,12 @@ export function TransitWhen({
   initiallyOpen?: boolean;
 }) {
   const [open, setOpen] = useState(initiallyOpen);
-  const [month, setMonth] = useState(() => `${date.slice(0, 7)}-01`);
-  const lead = weekday(month) - 1;
-  const length = daysBetween(month, `${addDays(month, 32).slice(0, 7)}-01`);
-  const days = Array.from({ length: lead + length }, (_, i) =>
-    i < lead ? null : addDays(month, i - lead),
+  // The first day there is to show: today, unless the saved schedule starts later or ended.
+  const first = validFrom > today || today > validTo ? validFrom : today;
+  const [start, setStart] = useState(() =>
+    date < first ? first : addDays(first, SPAN * Math.floor(daysBetween(first, date) / SPAN)),
   );
+  const days = Array.from({ length: SPAN }, (_, i) => addDays(start, i));
   const Chevron = open ? ChevronUp : ChevronDown;
   return (
     <View style={styles.when}>
@@ -81,62 +78,56 @@ export function TransitWhen({
       </Pressable>
       {open && (
         <View style={styles.panel}>
-          <View style={styles.monthHead}>
+          <View style={styles.weekHead}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Mes anterior"
+              accessibilityLabel="Días anteriores"
               hitSlop={8}
-              disabled={month <= `${validFrom.slice(0, 7)}-01`}
-              onPress={() => setMonth(`${addDays(month, -1).slice(0, 7)}-01`)}
-              style={styles.monthStep}
+              disabled={start <= first}
+              onPress={() => setStart(addDays(start, -SPAN))}
+              style={[styles.step, start <= first && styles.outside]}
             >
               <ChevronLeft size={18} color={theme.text} strokeWidth={2.5} />
             </Pressable>
-            <Text style={[styles.monthTitle, styles.grow]}>
-              {shortMonth(month)} {month.slice(0, 4)}
-            </Text>
+            <View style={styles.days}>
+              {days.map((day) => {
+                const outside = day < validFrom || day > validTo;
+                const chosen = day === date;
+                return (
+                  <Pressable
+                    key={day}
+                    accessibilityRole="button"
+                    accessibilityLabel={shortDay(day)}
+                    accessibilityState={{ selected: chosen, disabled: outside }}
+                    disabled={outside}
+                    onPress={() => onDate(day)}
+                    style={[
+                      styles.day,
+                      day === today && styles.today,
+                      chosen && styles.chosen,
+                      outside && styles.outside,
+                    ]}
+                  >
+                    <Text style={[styles.dayName, chosen && styles.chosenText]}>
+                      {day === today ? 'hoy' : weekdayShort(day)}
+                    </Text>
+                    <Text style={[styles.dayText, chosen && styles.chosenText]}>
+                      {Number(day.slice(8))}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Mes siguiente"
+              accessibilityLabel="Días siguientes"
               hitSlop={8}
-              disabled={addDays(month, length) > validTo}
-              onPress={() => setMonth(addDays(month, length))}
-              style={styles.monthStep}
+              disabled={addDays(start, SPAN) > validTo}
+              onPress={() => setStart(addDays(start, SPAN))}
+              style={[styles.step, addDays(start, SPAN) > validTo && styles.outside]}
             >
               <ChevronRight size={18} color={theme.text} strokeWidth={2.5} />
             </Pressable>
-          </View>
-          <View style={styles.grid}>
-            {WEEK.map((name, i) => (
-              <Text key={`w${i}`} style={styles.weekday}>
-                {name}
-              </Text>
-            ))}
-            {days.map((day, i) =>
-              day === null ? (
-                <View key={`e${i}`} style={styles.cell} />
-              ) : (
-                <Pressable
-                  key={day}
-                  accessibilityRole="button"
-                  accessibilityLabel={shortDay(day)}
-                  accessibilityState={{ selected: day === date }}
-                  disabled={day < validFrom || day > validTo}
-                  onPress={() => onDate(day)}
-                  style={[
-                    styles.cell,
-                    styles.day,
-                    day === today && styles.today,
-                    day === date && styles.chosen,
-                    (day < validFrom || day > validTo) && styles.outside,
-                  ]}
-                >
-                  <Text style={[styles.dayText, day === date && styles.chosenText]}>
-                    {Number(day.slice(8))}
-                  </Text>
-                </Pressable>
-              ),
-            )}
           </View>
           <View style={styles.time}>
             <Button
@@ -182,8 +173,6 @@ export function TransitWhen({
   );
 }
 
-const CELL = `${100 / 7}%` as const;
-
 const styles = sheet((theme) => ({
   when: { gap: 8 },
   grow: { flex: 1 },
@@ -207,24 +196,22 @@ const styles = sheet((theme) => ({
     borderRadius: shape.radius,
     backgroundColor: theme.surface,
   },
-  monthHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  monthStep: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  monthTitle: { fontFamily: font.black, fontSize: 15, color: theme.text, textAlign: 'center' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  weekday: {
-    width: CELL,
-    textAlign: 'center',
-    fontFamily: font.bold,
-    fontSize: 12,
-    color: theme.textFaint,
-    paddingBottom: 4,
+  weekHead: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  step: { width: 28, height: 52, alignItems: 'center', justifyContent: 'center' },
+  days: { flex: 1, flexDirection: 'row', gap: 4 },
+  day: {
+    flex: 1,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    borderRadius: shape.radiusSmall,
   },
-  cell: { width: CELL, height: 38, alignItems: 'center', justifyContent: 'center' },
-  day: { borderRadius: shape.radiusSmall },
   today: { borderWidth: shape.border, borderColor: theme.lineSoft },
   chosen: { backgroundColor: theme.accent, borderWidth: shape.border, borderColor: theme.line },
   outside: { opacity: 0.3 },
-  dayText: { fontFamily: font.bold, fontSize: 14, color: theme.text },
+  dayName: { fontFamily: font.bold, fontSize: 11, color: theme.textFaint },
+  dayText: { fontFamily: font.bold, fontSize: 15, color: theme.text },
   chosenText: { fontFamily: font.black, color: theme.accentInk },
   time: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   clock: {

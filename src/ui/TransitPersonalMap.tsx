@@ -312,8 +312,8 @@ export function TransitPersonalMap({
                   </Text>
                   {!chosen && (
                     <Text style={styles.note}>
-                      Para guardar este recorrido, acepta antes la caminata o guarda sus minutos en
-                      «Tu caminata» o en el transbordo de «Cómo llegar».
+                      Para guardar este recorrido, acepta antes la caminata o anota sus minutos en
+                      Paradas o en el transbordo de «Cómo llegar».
                     </Text>
                   )}
                   <View style={styles.row}>
