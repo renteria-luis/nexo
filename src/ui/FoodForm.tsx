@@ -15,6 +15,7 @@ import {
 import { Button } from './Button.tsx';
 import { Chip } from './Chip.tsx';
 import { Trash } from './icons.ts';
+import { InfoDot, InfoText } from './InfoBubble.tsx';
 import { NumericField } from './NumericField.tsx';
 import { TextField } from './TextField.tsx';
 import { Toggle } from './Toggle.tsx';
@@ -271,11 +272,13 @@ export function FoodForm({
               <Field label="azúcar" unit="g" value={sugar} onChange={setSugar} />
               <Field label="sodio" unit="mg" value={sodium} onChange={setSodium} />
               <Field label="fibra" unit="g" value={fibre} onChange={setFibre} />
-              <Field label="índice glucémico" value={index} onChange={setIndex} />
+              <Field
+                label="índice glucémico"
+                info="No viene en la etiqueta: sale de una tabla de índice glucémico."
+                value={index}
+                onChange={setIndex}
+              />
             </View>
-            <Text style={styles.hint}>
-              El índice glucémico no viene en la etiqueta: sale de una tabla de índice glucémico.
-            </Text>
             {weighs && (
               <View style={styles.serving}>
                 <Text style={styles.hint}>1 {measure.unit} pesa</Text>
@@ -291,30 +294,50 @@ export function FoodForm({
               </View>
             )}
             <View style={styles.serving}>
-              <Text style={styles.toggleLabel}>Es un lácteo</Text>
+              <View style={styles.toggleLabel}>
+                <Text style={styles.toggleText}>Es un lácteo</Text>
+                <InfoDot accessibilityLabel="Para qué sirve marcarlo como lácteo">
+                  <InfoText>Lo usa Experimentos para la prueba de lácteos y piel.</InfoText>
+                </InfoDot>
+              </View>
               <Toggle value={dairy} onChange={setDairy} accessibilityLabel="Es un lácteo" />
             </View>
             {problem && <Text style={styles.problem}>{problem}</Text>}
 
-            <TextField
-              value={keywords}
-              onChange={setKeywords}
-              accessibilityLabel="Palabras clave"
-              placeholder="egg, costco, desayuno"
-              autoCapitalize="none"
-              style={styles.text}
-              focusedStyle={styles.inputWriting}
-            />
+            {/* Las dos ultimas casillas no tenian nombre: «rice, carbs» y un «1, 3, 6» que no
+            decia que son los botones de cantidad al anotar (2026-10-25). */}
+            <View style={styles.textField}>
+              <Label
+                label="palabras clave"
+                info="Otros nombres con los que lo buscas, separados por coma."
+              />
+              <TextField
+                value={keywords}
+                onChange={setKeywords}
+                accessibilityLabel="Palabras clave"
+                placeholder="egg, costco, desayuno"
+                autoCapitalize="none"
+                style={styles.text}
+                focusedStyle={styles.inputWriting}
+              />
+            </View>
             {/* Es una lista, no un numero: la coma vive en la pagina de numeros del
                 teclado de letras, no en el de numeros. */}
-            <TextField
-              value={amounts}
-              onChange={setAmounts}
-              accessibilityLabel="Cantidades frecuentes"
-              placeholder="1, 3, 6"
-              style={styles.text}
-              focusedStyle={styles.inputWriting}
-            />
+            <View style={styles.textField}>
+              <Label
+                label="cantidades rápidas"
+                unit={measure.unit}
+                info="Los botones de cantidad que salen al anotarlo, separados por coma. Vacía, salen los de siempre."
+              />
+              <TextField
+                value={amounts}
+                onChange={setAmounts}
+                accessibilityLabel="Cantidades rápidas"
+                placeholder="1, 3, 6"
+                style={styles.text}
+                focusedStyle={styles.inputWriting}
+              />
+            </View>
           </>
         ) : (
           <>
@@ -395,24 +418,41 @@ export function FoodForm({
   );
 }
 
+function Label({ label, unit, info }: { label: string; unit?: string; info?: string }) {
+  return (
+    <View style={styles.labelRow}>
+      <Text style={styles.fieldLabel}>
+        {label}
+        {unit && <Text style={styles.fieldUnit}> {unit}</Text>}
+      </Text>
+      {info && (
+        // Sin margen propio la (i) haria mas alta su etiqueta que la de al lado, y las
+        // casillas de una misma fila quedarian a distinta altura.
+        <InfoDot accessibilityLabel={`Qué es ${label}`} style={styles.labelDot}>
+          <InfoText>{info}</InfoText>
+        </InfoDot>
+      )}
+    </View>
+  );
+}
+
 function Field({
   label,
   unit,
+  info,
   value,
   onChange,
 }: {
   label: string;
   /** Fuera de las mayusculas de la etiqueta: decia "SODIO MG". */
   unit?: string;
+  info?: string;
   value: string;
   onChange: (next: string) => void;
 }) {
   return (
     <View style={styles.field}>
-      <Text style={styles.fieldLabel}>
-        {label}
-        {unit && <Text style={styles.fieldUnit}> {unit}</Text>}
-      </Text>
+      <Label label={label} unit={unit} info={info} />
       <NumericField
         value={value}
         onChange={onChange}
@@ -512,6 +552,17 @@ const styles = sheet((theme) => ({
   fieldUnit: {
     textTransform: 'none',
   },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  labelDot: {
+    marginVertical: -7,
+  },
+  textField: {
+    gap: 4,
+  },
   serving: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -522,6 +573,11 @@ const styles = sheet((theme) => ({
   },
   toggleLabel: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  toggleText: {
     fontSize: 14,
     fontFamily: font.bold,
     color: theme.text,

@@ -63,6 +63,14 @@ test('el catalogo dice con que se hace cada ejercicio y en cuantas rutinas entra
   assert.deepEqual(lateral?.implements, []);
   assert.equal(catalog.filter((entry) => entry.familyId === 'lateral-raise').length, 3);
   assert.ok((lateral?.routines ?? 0) > 0);
+  const machine = catalog.find((item) => item.id === 'lateral-raise-machine');
+  assert.equal(
+    machine?.routines,
+    lateral?.routines,
+    'a gym variant belongs to the same routine family',
+  );
+  const machineCard = await loadExerciseCard(db, 'lateral-raise-machine');
+  assert.ok(machineCard.familyRoutines.some((routine) => routine.id === 'push'));
 
   // El press inclinado no se hace en polea, y por eso no lleva nada que elegir.
   const press = catalog.find((item) => item.id === 'incline-db-press');

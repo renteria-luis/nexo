@@ -151,8 +151,8 @@ export function WeekSummaryScreen() {
                       <Text style={[styles.tag, styles[muscle.band]]}>{BAND_ES[muscle.band]}</Text>
                     )}
                     <Text style={styles.muscleDetail}>
-                      {muscle.weightedSets} ponderadas · {thousands(fromKg(muscle.volumeKg, unit))}{' '}
-                      {unit}
+                      {muscle.weightedSets} {muscle.weightedSets === 1 ? 'ponderada' : 'ponderadas'}{' '}
+                      · {thousands(fromKg(muscle.volumeKg, unit))} {unit}
                       {muscle.priorAverageVolumeKg === null
                         ? ''
                         : `, antes ${thousands(fromKg(muscle.priorAverageVolumeKg, unit))}`}

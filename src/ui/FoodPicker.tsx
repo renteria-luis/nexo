@@ -113,9 +113,19 @@ export function FoodPicker({
   // Con mayuscula, como los demas del catalogo: en la busqueda se escribe en minusculas.
   const named = search.trim().charAt(0).toUpperCase() + search.trim().slice(1);
 
-  const found = foods.filter((food) =>
-    matchesSearch([food.name, food.brand, food.store, food.keywords], search),
+  const familiar = new Map(
+    [...new Set([...(history.usualBySlot.get(slot) ?? []), ...history.recent])].map((id, index) => [
+      id,
+      index,
+    ]),
   );
+  const found = foods
+    .filter((food) => matchesSearch([food.name, food.brand, food.store, food.keywords], search))
+    .sort(
+      (a, b) =>
+        Number(fold(b.name) === fold(named)) - Number(fold(a.name) === fold(named)) ||
+        (familiar.get(a.id) ?? familiar.size) - (familiar.get(b.id) ?? familiar.size),
+    );
   // Con uno que ya se llama justo asi, crear otro igual no es lo que busca.
   const exact = found.some((food) => fold(food.name) === fold(named));
 

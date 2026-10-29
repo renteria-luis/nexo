@@ -115,7 +115,7 @@ export function tripLines(
         ride: null,
       };
     default: {
-      const minutes = Math.round(((trip.endedAt ?? now) - trip.startedAt) / 60_000);
+      const minutes = Math.max(0, Math.round(((trip.endedAt ?? now) - trip.startedAt) / 60_000));
       const measured = trip.measured ?? 0;
       return {
         // «Llegaste» solo si llego: con el GPS o con «Llegué» en la ultima caminata. Terminar
@@ -129,7 +129,7 @@ export function tripLines(
               ? 'Viaje cancelado'
               : 'Viaje terminado por tiempo',
         lines: [
-          `${minutes} min desde que saliste${trip.endedAt ? `, hasta las ${agencyClock(trip.endedAt)}` : ''}.`,
+          `${minutes === 0 ? 'Menos de 1 min' : `${minutes} min`} de seguimiento · ${agencyClock(trip.startedAt)}${trip.endedAt ? `–${agencyClock(trip.endedAt)}` : ''}.`,
           ...(measured === 0
             ? []
             : [
@@ -248,6 +248,7 @@ export function TransitActiveTrip({
         ...(map ? [MAP_KEY] : []),
         ...(GPS_PROBLEM.includes(gps) ? [] : [GPS[gps]]),
         ...(lastReading ? [lastReading] : []),
+        'Terminar cierra el viaje y conserva las caminatas medidas para revisarlas. Cancelar detiene el seguimiento y conserva el viaje elegido para volver a intentarlo.',
       ].join('\n')
     : costText(trip);
   return (
@@ -320,6 +321,7 @@ export function TransitActiveTrip({
           <Button
             label={showStops ? 'Ocultar paradas del viaje' : 'Ver paradas del viaje'}
             variant="ghost"
+            block
             onPress={() => setShowStops(!showStops)}
           />
           {showStops &&
@@ -350,6 +352,7 @@ export function TransitActiveTrip({
           <Button
             label="Ya subí"
             variant="primary"
+            style={styles.full}
             disabled={busy}
             onPress={() => tap('boarded')}
           />
@@ -418,6 +421,7 @@ export function TransitActiveTrip({
 
 const styles = sheet((theme) => ({
   row: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  full: { width: '100%' },
   value: { fontFamily: font.black, fontSize: 18, color: theme.text, flexShrink: 1 },
   label: { fontFamily: font.bold, fontSize: 14, color: theme.text },
   note: { fontFamily: font.regular, fontSize: 12, color: theme.textDim, lineHeight: 18 },

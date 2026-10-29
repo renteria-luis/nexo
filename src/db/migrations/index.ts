@@ -68,6 +68,8 @@ import { sql as transitActiveTrip } from './067_transit_active_trip.ts';
 import { sql as transitTripNotice } from './068_transit_trip_notice.ts';
 import { sql as transitPlaceCategory } from './069_transit_place_category.ts';
 import { sql as spanishAccents } from './070_spanish_accents.ts';
+import { sql as unloggedDayScore } from './071_unlogged_day_score.ts';
+import { sql as emptySessionScore } from './072_empty_session_score.ts';
 
 export type Migration = {
   id: string;
@@ -147,4 +149,6 @@ export const migrations: Migration[] = [
   { id: '068_transit_trip_notice', sql: transitTripNotice },
   { id: '069_transit_place_category', sql: transitPlaceCategory },
   { id: '070_spanish_accents', sql: spanishAccents },
+  { id: '071_unlogged_day_score', sql: unloggedDayScore },
+  { id: '072_empty_session_score', sql: emptySessionScore },
 ];

@@ -71,6 +71,7 @@ import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
 import { Chip } from './Chip.tsx';
 import { Combobox, type Option } from './Combobox.tsx';
+import { InfoDot, InfoText } from './InfoBubble.tsx';
 import {
   ArrowUpDown,
   Check,
@@ -96,6 +97,7 @@ import { Toggle } from './Toggle.tsx';
 import {
   dayOf,
   destination,
+  leavingIn,
   relative,
   stopName,
   TransitTripTimeline,
@@ -835,7 +837,9 @@ export function TransitPlanner({
       <PlaceRow
         onClear={() => pick('target', null)}
         label="Hasta"
-        options={targetOptions}
+        options={targetOptions.filter(
+          (option) => option.id === POINT || option.id !== (origin?.id ?? originId),
+        )}
         selected={targetId === POINT && !targetPoint ? null : targetId}
         placeholder="Elige a dónde vas"
         accessibilityLabel="Elegir el destino"
@@ -1181,6 +1185,7 @@ const PlanList = memo(function PlanList({
           option={option}
           now={minute}
           mode={result.request.mode}
+          requestedAt={result.request.at}
           chosen={option.scheduleKey === chosenKey}
           expanded={open === option.scheduleKey}
           onToggle={() => onToggle(open === option.scheduleKey ? null : option.scheduleKey)}
@@ -1402,7 +1407,7 @@ function StopRow({
 }: {
   schedule: Schedule;
   choice: StopChoice;
-  rank: number;
+  rank: number | null;
   from: Coordinates;
   /** What follows the times: "sal en 5 min", or nothing for a bus in the morning. */
   when: string;
@@ -1415,12 +1420,12 @@ function StopRow({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Paradero ${rank}, ${stopName(stop)}, sales ${clock(best.leaveAt)}, llegas ${clock(best.arriveAt)}`}
+      accessibilityLabel={`Paradero ${rank === null ? '' : `${rank}, `}${stopName(stop)}, sales ${clock(best.leaveAt)}, llegas ${clock(best.arriveAt)}`}
       onPress={onPress}
       style={({ pressed }) => [styles.option, chosen && styles.chosen, pressed && styles.pressed]}
     >
       <View style={styles.optionHead}>
-        <StopBadge rank={rank} />
+        {rank !== null && <StopBadge rank={rank} />}
         {/* Primero cuando sale y cuando llega, como las filas de buses: en la calle eso es lo
             que se mira, y venia en la tercera linea en letra chica (2026-10-24). */}
         <View style={styles.grow}>
@@ -1711,12 +1716,12 @@ const StopList = memo(function StopList({
           ) : (
             <Text style={styles.note}>Prueba «Salir a las…».</Text>
           )}
-          {night.morning.map((choice, i) => (
+          {night.morning.map((choice) => (
             <StopRow
               key={choice.stop}
               schedule={schedule}
               choice={choice}
-              rank={i + 1}
+              rank={null}
               from={from}
               when={dayOf(choice.best.leaveAt, minute)}
               chosen={false}
@@ -1731,7 +1736,8 @@ const StopList = memo(function StopList({
         (nightPending ? (
           <Text style={styles.note}>Buscando los próximos buses…</Text>
         ) : (
-          !issue && (
+          !issue &&
+          !walking && (
             <Text style={walking ? styles.note : styles.body}>
               Ahora no sale ningún bus que te lleve desde los paraderos cercanos.
               {!walking && ' Prueba «Salir a las…».'}
@@ -1758,8 +1764,8 @@ const StopList = memo(function StopList({
           from={from}
           when={
             choice.best.leaveAt <= minute
-              ? 'sal ya'
-              : `sal ${relative(choice.best.leaveAt, minute)}`
+              ? 'sal ahora'
+              : `sal ${leavingIn(choice.best.leaveAt, minute)}`
           }
           chosen={pick?.stop === choice.stop}
           onPress={() => onPick(choice.stop, 'buses')}
@@ -2017,20 +2023,22 @@ function StopBuses({
                       onPress={() => run(() => onSelect(option))}
                     />
                   )}
+                  {/* Era una linea fija debajo de los botones (2026-10-25). */}
+                  {onLeave && (
+                    <InfoDot accessibilityLabel="Qué hace Salgo ahora">
+                      <InfoText>
+                        Sigue tu viaje con el GPS desde donde estás: el mapa te lleva al paradero y
+                        se actualiza mientras caminas.
+                      </InfoText>
+                    </InfoDot>
+                  )}
                 </View>
-                {onLeave ? (
+                {!onLeave && !onSelect && (
                   <Text style={styles.note}>
-                    Sigue tu viaje con el GPS desde donde estás: el mapa te lleva al paradero y se
-                    actualiza mientras caminas.
+                    {savable.access
+                      ? 'Hacia una dirección o punto del mapa solo puedes mirar o salir desde Tu ubicación.'
+                      : 'Desde un punto del mapa solo puedes mirar. Para seguir el viaje, sal desde Tu ubicación.'}
                   </Text>
-                ) : (
-                  !onSelect && (
-                    <Text style={styles.note}>
-                      {savable.access
-                        ? 'Hacia una dirección o punto del mapa solo puedes mirar o salir desde Tu ubicación.'
-                        : 'Desde un punto del mapa solo puedes mirar. Para seguir el viaje, sal desde Tu ubicación.'}
-                    </Text>
-                  )
                 )}
                 {onSelect && option.scheduleKey === chosenKey && (
                   <Text style={styles.body}>
@@ -2091,6 +2099,7 @@ const PlanRow = memo(function PlanRow({
   option,
   now,
   mode,
+  requestedAt,
   chosen,
   expanded,
   onToggle,
@@ -2099,6 +2108,7 @@ const PlanRow = memo(function PlanRow({
   option: PlanOption;
   now: number;
   mode: PlanMode;
+  requestedAt?: number;
   chosen: boolean;
   expanded: boolean;
   onToggle: () => void;
@@ -2106,7 +2116,10 @@ const PlanRow = memo(function PlanRow({
 }) {
   const rides = option.itinerary.rides;
   const Chevron = expanded ? ChevronUp : ChevronDown;
-  const day = dayOf(option.leaveAt, now);
+  const day =
+    requestedAt !== undefined && agencyDate(option.leaveAt) === agencyDate(requestedAt)
+      ? ''
+      : dayOf(option.leaveAt, now);
   // `now` is the start of the minute, so a bus that left within it can read as still to come.
   const passed = option.live[0] && relative(option.live[0].board.at, now);
   const when =
@@ -2118,8 +2131,8 @@ const PlanRow = memo(function PlanRow({
         ? 'probablemente no llegues'
         : mode === 'now'
           ? option.leaveAt <= now
-            ? 'sal ya'
-            : `sal ${relative(option.leaveAt, now)}`
+            ? 'sal ahora'
+            : `sal ${leavingIn(option.leaveAt, now)}`
           : day;
   // Lo que decide primero: si el transbordo es justo y cuando sale; despues lo que explica el
   // orden, que cuenta cada minuto a pie. «justo» iba al final y se cortaba (2026-10-25).
@@ -2155,6 +2168,7 @@ const PlanRow = memo(function PlanRow({
       >
         <View style={styles.optionHead}>
           <View style={styles.grow}>
+            {option.missed === 'passed' && <Text style={styles.note}>Último bus que pasó</Text>}
             <Text style={styles.optionTime}>
               {clock(option.leaveAt)} → {clock(option.arriveAt)}
             </Text>
@@ -2581,11 +2595,16 @@ const styles = sheet((theme) => ({
     minHeight: 44,
     backgroundColor: theme.surface,
   },
-  more: { alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 2 },
+  more: {
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 2,
+  },
   moreText: {
     fontFamily: font.bold,
     fontSize: 13,
     color: theme.text,
-    textDecorationLine: 'underline',
   },
 }));

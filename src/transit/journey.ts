@@ -1,6 +1,12 @@
 import type { WorkoutFinish } from '../training/read.ts';
 import { agencyClock } from './schedule.ts';
-import { ARRIVE_EARLY_MIN, boardMargin, type PlanMode, type PlanOption } from './planner.ts';
+import {
+  ARRIVE_EARLY_MIN,
+  MAX_TRIP_MIN,
+  boardMargin,
+  type PlanMode,
+  type PlanOption,
+} from './planner.ts';
 
 export type TravelPreferences = {
   preparationMinutes: number;
@@ -28,6 +34,17 @@ export type NextTrip = {
   reminders: boolean;
 };
 export type JourneyState = { preferences: TravelPreferences; next: NextTrip | null };
+
+/** "Now" must not silently roll into another trip after its whole search window has passed. */
+export function journeyNeedsReview(
+  trip: NextTrip | null,
+  workout: WorkoutFinish | null,
+  now: number,
+): boolean {
+  if (!trip || trip.mode !== 'now' || workout?.endedAt === null) return false;
+  const from = Math.max(workout?.endedAt ?? 0, trip.selectedAt ?? trip.at);
+  return now > from + MAX_TRIP_MIN * 60_000;
+}
 
 export function travelPreferencesProblem(value: TravelPreferences): string | null {
   if (
@@ -76,6 +93,7 @@ export function parseJourneyState(content: string): JourneyState {
 export const LEAVE_GRACE_MS = 60_000;
 
 export type TravelAdvice = {
+  workoutActive: boolean;
   option: PlanOption;
   finishBy: number;
   leaveAt: number;
@@ -156,6 +174,7 @@ export function travelAdvice(
               ? 'Horario · sin bus asignado'
               : 'Horario programado';
   return {
+    workoutActive: workout?.endedAt === null,
     option,
     finishBy,
     leaveAt: option.leaveAt,
@@ -211,7 +230,7 @@ export function travelReminders(
         expiresAt: advice.leaveAt,
         title:
           kind === 'prepare'
-            ? trip.workoutId
+            ? advice.workoutActive
               ? 'Termina y prepárate para salir'
               : 'Prepárate para salir'
             : 'Es hora de salir',

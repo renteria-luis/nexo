@@ -265,6 +265,19 @@ test('a saved journey whose workout is gone cancels its reminders instead of wai
 
 const leavingNow = { selectedKey: null, selectedAt: null, workoutId: null, reminders: false };
 
+test('an obsolete now journey preserves its places but does not search or renew reminders', async (t) => {
+  const f = await fixture(t, false, null, {
+    trip: { ...leavingNow, at: queryInstant('2026-10-10', '20:36'), reminders: true },
+  });
+  const view = await f.settle();
+  assert.equal(view.needsReview, true);
+  assert.equal(view.saved.next.originId, 'from');
+  assert.equal(view.saved.next.destinationId, 'to');
+  assert.equal(view.advice, null);
+  assert.equal(f.searches(), 0);
+  assert.ok(f.syncs.length > 0 && f.syncs.every((reminders) => reminders.length === 0));
+});
+
 test('leaving now, the minute re-judges the buses found and the search runs again every ten minutes', async (t) => {
   const f = await fixture(t, false, null, { trip: leavingNow });
   assert.ok((await f.settle()).advice?.feasible);

@@ -42,6 +42,7 @@ export function SessionPlanEditor({
   const [revision, setRevision] = useState(0);
   const [picker, setPicker] = useState<{ from: string | null } | null>(null);
   const [search, setSearch] = useState('');
+  const [changedId, setChangedId] = useState<string | null>(null);
   const writing = useRef(false);
   // El buscador se abre debajo de toda la lista, una pantalla mas abajo de la fila que se
   // toco: se lleva a la vista al abrirse, si no solo cambiaba de color el boton (2026-10-24).
@@ -92,6 +93,7 @@ export function SessionPlanEditor({
     if (entry) setCount(id, entry.sets + direction);
   };
   const swap = (id: string) => {
+    setChangedId(null);
     revealPicker.current = picker?.from !== id;
     setPicker((current) => (current?.from === id ? null : { from: id }));
     setSearch('');
@@ -100,6 +102,7 @@ export function SessionPlanEditor({
     if (!draft || !picker || writing.current) return;
     const from = picker.from;
     change((entries) => replacePendingSets(entries, done, from, exercise));
+    setChangedId(exercise.id);
     setPicker(null);
     setSearch('');
   };
@@ -235,6 +238,7 @@ export function SessionPlanEditor({
             )}
             <Text style={styles.title}>{pending} series pendientes</Text>
             <OrderList
+              revealId={changedId}
               items={items}
               onReorder={reorder}
               onNudge={nudge}

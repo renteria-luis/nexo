@@ -15,6 +15,7 @@ import type { SessionTiming } from '../training/timing.ts';
 import {
   DEFAULT_TRAVEL_PREFERENCES,
   departureReadyAt,
+  journeyNeedsReview,
   travelAdvice,
   travelReminders,
   travelPreferencesProblem,
@@ -89,6 +90,7 @@ type ViewState = {
   workout: WorkoutFinish | null;
   gymId: string | null;
   sessionId: string | null;
+  needsReview: boolean;
   advice: TravelAdvice | null;
   alternative: TravelAdvice | null;
   result: PlanResult | null;
@@ -308,6 +310,9 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
     [timing, loaded, now, workoutId, sessionId],
   );
   const origin = places.find((p) => p.id === trip?.originId);
+  const awaitingWorkout =
+    !!workoutId && workoutId === sessionId && timing?.session.id !== workoutId;
+  const needsReview = !following && !awaitingWorkout && journeyNeedsReview(trip, workout, now);
   const destination = places.find((p) => p.id === trip?.destinationId);
   const schedule = cache?.schedule;
   const snapshot =
@@ -320,7 +325,10 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
   const index = schedule ? sharedPlannerIndex(schedule) : null;
   const minute = Math.floor(now / 60_000) * 60_000;
   const plan =
-    result && result.tripId === tripId && result.value.context.index.schedule === schedule
+    !needsReview &&
+    result &&
+    result.tripId === tripId &&
+    result.value.context.index.schedule === schedule
       ? result.value
       : null;
   const adviceFor = useCallback(
@@ -365,11 +373,11 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
   } | null>(null);
   useEffect(() => {
     let alive = true;
-    if (!tripId || !index || !origin || !destination || at === undefined) return;
     void (async () => {
       try {
         await pause();
         if (!alive) return;
+        if (needsReview || !tripId || !index || !origin || !destination || at === undefined) return;
         setSearching(true);
         const key = `${origin.id}/${destination.id}/${walkRevision}`;
         if (walks.current?.key !== key) {
@@ -418,7 +426,7 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
     return () => {
       alive = false;
     };
-  }, [tripId, trip?.mode, index, origin, destination, at, walkRevision, observedKey]);
+  }, [tripId, trip?.mode, index, origin, destination, at, walkRevision, observedKey, needsReview]);
   const selected = useMemo(() => {
     const itinerary = plan?.pool.find((option) => option.key === trip?.selectedKey);
     if (!plan || !itinerary) return null;
@@ -499,6 +507,7 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
     if (loading) return;
     if (
       trip?.reminders &&
+      !needsReview &&
       (!plan || searching || (!!workoutId && workoutId === sessionId && !timing)) &&
       !problem &&
       !missingPlace
@@ -531,6 +540,7 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
     timing,
     problem,
     missingPlace,
+    needsReview,
   ]);
 
   const write = useCallback(async (next: JourneyState) => {
@@ -672,6 +682,7 @@ export function TransitJourneyProvider({ children }: { children: ReactNode }) {
     workout,
     gymId: session?.gym_id ?? null,
     sessionId,
+    needsReview,
     advice:
       blockedWorkout && advice
         ? {

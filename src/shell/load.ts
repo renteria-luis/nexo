@@ -5,6 +5,7 @@
 // cuatrocientas ofertas y noventa dias de comidas que una botella no puede cambiar.
 
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { inTransaction } from '../db/transaction.ts';
 
 import {
   listDailyLogs,
@@ -272,14 +273,18 @@ export async function load(
     await listSessionDates(db, { from: '0000-01-01', to: today }),
     today,
   );
-  const dealSlice: DealSlice | null =
-    everything || reread.deals
-      ? {
-          deals: await listDeals(db, today, watchWords(dealBlocklistFrom(settings))),
-          discounts: await listDiscounts(db),
-          dealSources: await listSources(db),
-        }
-      : null;
+  let dealSlice: DealSlice | null = null;
+  if (everything || reread.deals) {
+    // A download may start after the day's reads. Read the deals and source status together,
+    // queued with snapshot replacement, so a refresh never publishes its temporary empty table.
+    await inTransaction(db, async () => {
+      dealSlice = {
+        deals: await listDeals(db, today, watchWords(dealBlocklistFrom(settings))),
+        discounts: await listDiscounts(db),
+        dealSources: await listSources(db),
+      };
+    });
+  }
 
   const batches: OpenBatch[] = openBatches.map(({ batch, food }) => ({
     batch,

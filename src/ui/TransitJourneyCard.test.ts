@@ -109,6 +109,30 @@ test('the next-trip card explicitly labels two buses as a transfer', async () =>
   assert.match(text, /1 transbordo/);
 });
 
+test('an obsolete journey is dated and explicitly searched again without presenting it as upcoming', async () => {
+  const f = fixture('today');
+  f.journey.needsReview = true;
+  f.journey.saved.next = {
+    originId: 'gym',
+    destinationId: 'end',
+    workoutId: 'session',
+    mode: 'now',
+    at: schedule.queryInstant('2026-10-10', '20:36'),
+    selectedAt: null,
+    reminders: true,
+  };
+  const tree = await f.screen.settle();
+  assert.match(textOf(tree), /Viaje anterior.*Elegido el.*20:36/);
+  assert.doesNotMatch(textOf(tree), /Próximo viaje|Prepárate|Calculando el viaje/);
+  assert.equal(
+    nodes(tree).some((node) => node.props.label === 'Salgo ahora'),
+    false,
+  );
+  (await f.control('Volver a buscar este viaje')).onPress();
+  await f.screen.settle();
+  assert.deepEqual(f.calls, [{ originId: 'gym', destinationId: 'end', workoutId: null }]);
+});
+
 test('alerts follow the frozen remaining rides, then the next option, then the browsed stop', async () => {
   const f = fixture('today');
   const { data, option, trip, now } = plannedTrip();

@@ -79,6 +79,7 @@ import {
 } from '../TransitDepartures.tsx';
 import { TransitPlanner, type PlannerLive } from '../TransitPlanner.tsx';
 import { TransitLegend } from '../TransitStatus.tsx';
+import { InfoDot, InfoText } from '../InfoBubble.tsx';
 import { TransitJourneyAlerts, TransitJourneyCard } from '../TransitJourneyCard.tsx';
 import { TransitWhen } from '../TransitWhen.tsx';
 import { TransitLiveSettings } from '../TransitLiveSettings.tsx';
@@ -771,13 +772,21 @@ function TransitContent() {
             <Card
               title="Horario guardado"
               action={
-                <Button
-                  label="Actualizar"
-                  icon={RefreshCw}
-                  variant="ghost"
-                  loading={syncing}
-                  onPress={() => void refresh(data)}
-                />
+                <View style={styles.row}>
+                  <InfoDot accessibilityLabel="Qué funciona sin conexión">
+                    <InfoText>
+                      Lugares, caminatas y horarios disponibles sin conexión. El fondo del mapa
+                      puede necesitar internet.
+                    </InfoText>
+                  </InfoDot>
+                  <Button
+                    label="Actualizar"
+                    icon={RefreshCw}
+                    variant="ghost"
+                    loading={syncing}
+                    onPress={() => void refresh(data)}
+                  />
+                </View>
               }
             >
               {/* En sus palabras: el nombre del archivo de LTC, la huella del archivo y las
@@ -800,10 +809,6 @@ function TransitContent() {
                   Falló la última actualización. El horario guardado sigue disponible.
                 </Text>
               )}
-              <Text style={styles.note}>
-                Lugares, caminatas y horarios disponibles sin conexión. El fondo del mapa puede
-                necesitar internet.
-              </Text>
             </Card>
           </TransitLiveSettings>
         ) : panel === 'explore' ? (
@@ -1305,11 +1310,16 @@ const styles = sheet((theme) => ({
     backgroundColor: theme.surface,
   },
   busy: { opacity: 0.5 },
-  more: { alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 2 },
+  more: {
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 2,
+  },
   moreText: {
     fontFamily: font.bold,
     fontSize: 13,
     color: theme.text,
-    textDecorationLine: 'underline',
   },
 }));

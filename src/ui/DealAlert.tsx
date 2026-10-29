@@ -67,7 +67,9 @@ export function DealAlert({
               key={item.deal.id}
               style={[styles.deal, index > 0 && styles.ruled, item.stale && styles.stale]}
             >
-              <Text style={styles.word}>{word}</Text>
+              {(index === 0 || ordered[index - 1].word !== word) && (
+                <Text style={styles.word}>{word}</Text>
+              )}
               {item.stale && <Text style={styles.markWarn}>posiblemente vencido</Text>}
               {doubt && (
                 <Text style={styles.markWarn}>

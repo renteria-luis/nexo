@@ -111,8 +111,8 @@ export const TransitTripMap = memo(function TransitTripMap({
         onStop={none}
         onInteraction={onInteraction}
       />
+      <Button label="Todo el viaje" variant="ghost" block onPress={() => setFits((n) => n + 1)} />
       <View style={styles.row}>
-        <Button label="Todo el viaje" variant="ghost" onPress={() => setFits((n) => n + 1)} />
         {fix && (
           <Button
             label="Dónde estoy"

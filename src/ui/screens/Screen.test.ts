@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { nodes, renderModule, textOf } from '../test-render.ts';
 
-function fixture() {
+function fixture(platform = 'ios') {
   let calls = 0;
   let finish!: () => void;
   let fail!: (error: Error) => void;
@@ -32,7 +32,7 @@ function fixture() {
       Text: 'Text',
       Easing: { out: (f: unknown) => f, in: (f: unknown) => f, cubic: () => 0 },
       StyleSheet: { absoluteFill: {} },
-      Platform: { OS: 'ios' },
+      Platform: { OS: platform },
       Keyboard: {
         addListener: (name: string, fn: (event: any) => void) => {
           listeners.set(name, fn);
@@ -188,3 +188,29 @@ test('opening the keyboard shrinks the active overlay sheet frame to fit above t
     transform: [{ translateY: -168 }],
   });
 });
+
+for (const resized of [false, true]) {
+  test(`Android sheets use the keyboard's position${resized ? ' after system resizing' : ' including the navigation bar'}`, async () => {
+    const f = fixture('android');
+    f.props.overlay = 'recipe editor';
+    let tree = await f.screen.settle();
+    const layoutViews = () =>
+      nodes(tree).filter((n) => n.type === 'View' && typeof n.props.onLayout === 'function');
+    const height = resized ? 404 : 740;
+    layoutViews()[0].props.ref.current = {
+      measureInWindow: (measure: (...values: number[]) => void) => measure(0, 60, 400, height),
+    };
+    layoutViews()[0].props.onLayout({ nativeEvent: { layout: { height } } });
+    layoutViews()[1].props.onLayout({ nativeEvent: { layout: { height: 560 } } });
+    tree = await f.screen.settle();
+    f.listeners.get('keyboardDidShow')!({
+      endCoordinates: { height: 312, screenY: 464 },
+      duration: 0,
+    });
+    tree = await f.screen.settle();
+    assert.deepEqual(layoutViews()[1].props.style.at(-1), resized ? false : { maxHeight: 376 });
+    f.listeners.get('keyboardDidHide')!({ duration: 0 });
+    tree = await f.screen.settle();
+    assert.equal(layoutViews()[1].props.style.at(-1), false);
+  });
+}

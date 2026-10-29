@@ -15,7 +15,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { AppState as Lifecycle, Linking } from 'react-native';
+import { Alert, AppState as Lifecycle, Linking } from 'react-native';
 
 import {
   addToDailyLog,
@@ -1296,7 +1296,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       resetDatabase: () => {
         setState({ phase: 'opening' });
         resetDatabase()
-          .then(() => refresh(true, REREAD_ALL))
+          .then(() => {
+            refresh(true, REREAD_ALL);
+            Alert.alert('Datos borrados', 'Se borró todo lo registrado. Puedes empezar de nuevo.');
+          })
           .catch((error: unknown) => {
             console.error(error);
             const message = error instanceof Error ? error.message : String(error);

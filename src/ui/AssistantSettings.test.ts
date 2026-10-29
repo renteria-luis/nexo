@@ -25,6 +25,7 @@ function fixture(fail = false) {
     './Card.tsx': { Card: 'Card' },
     './Chip.tsx': { Chip: 'Chip' },
     './Button.tsx': { Button: 'Button' },
+    './InfoBubble.tsx': { InfoDot: 'InfoDot', InfoText: 'InfoText' },
   }).mount('AssistantSettings');
   return { screen, writes, clears: () => clears };
 }

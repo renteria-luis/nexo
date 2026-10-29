@@ -324,41 +324,57 @@ export function Screen({
   useEffect(() => {
     // El sistema avisa antes de mover el teclado, y trae su alto y lo que va a tardar:
     // con eso la pantalla se mueve con el y no detras de el.
-    const shown = Keyboard.addListener('keyboardWillShow', (event) => {
-      const height = event.endCoordinates.height;
-      tall.current = height;
-      setKeyboard(height);
-      Animated.timing(rise, {
-        toValue: 1,
-        duration: event.duration > 0 ? event.duration : 250,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }).start();
-      const target = pending.current;
-      pending.current = null;
-      // Un cuadro de espera: el contenido acaba de crecer por debajo para hacerle sitio
-      // al teclado, y sin ese hueco el desplazamiento se queda corto.
-      if (target) requestAnimationFrame(() => raise(target, height));
-    });
+    const shown = Keyboard.addListener(
+      Platform.OS === 'android' ? 'keyboardDidShow' : 'keyboardWillShow',
+      (event) => {
+        const show = (height: number) => {
+          tall.current = height;
+          setKeyboard(height);
+          Animated.timing(rise, {
+            toValue: 1,
+            duration: event.duration > 0 ? event.duration : 250,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }).start();
+          const target = pending.current;
+          pending.current = null;
+          // Un cuadro de espera: el contenido acaba de crecer por debajo para hacerle sitio
+          // al teclado, y sin ese hueco el desplazamiento se queda corto.
+          if (target) requestAnimationFrame(() => raise(target, height));
+        };
+        if (Platform.OS === 'android' && frame.current) {
+          // Android's reported height excludes the navigation bar. Measure actual overlap;
+          // an already resized window must not lose the keyboard's height a second time.
+          frame.current.measureInWindow((_x, y, _width, frameHeight) =>
+            show(Math.max(0, y + frameHeight - event.endCoordinates.screenY)),
+          );
+        } else {
+          show(event.endCoordinates.height);
+        }
+      },
+    );
 
-    const hidden = Keyboard.addListener('keyboardWillHide', (event) => {
-      tall.current = 0;
-      setKeyboard(0);
-      pending.current = null;
-      revealed.current = null;
-      Animated.timing(rise, {
-        toValue: 0,
-        duration: event.duration > 0 ? event.duration : 200,
-        easing: Easing.in(Easing.cubic),
-        useNativeDriver: true,
-      }).start();
-      // Y el contenido vuelve por donde subio, a la vez que el teclado baja.
-      const back = lifted.current;
-      lifted.current = 0;
-      if (back > 0) {
-        list.current?.scrollTo({ y: Math.max(0, offset.current - back), animated: true });
-      }
-    });
+    const hidden = Keyboard.addListener(
+      Platform.OS === 'android' ? 'keyboardDidHide' : 'keyboardWillHide',
+      (event) => {
+        tall.current = 0;
+        setKeyboard(0);
+        pending.current = null;
+        revealed.current = null;
+        Animated.timing(rise, {
+          toValue: 0,
+          duration: event.duration > 0 ? event.duration : 200,
+          easing: Easing.in(Easing.cubic),
+          useNativeDriver: true,
+        }).start();
+        // Y el contenido vuelve por donde subio, a la vez que el teclado baja.
+        const back = lifted.current;
+        lifted.current = 0;
+        if (back > 0) {
+          list.current?.scrollTo({ y: Math.max(0, offset.current - back), animated: true });
+        }
+      },
+    );
 
     return () => {
       shown.remove();

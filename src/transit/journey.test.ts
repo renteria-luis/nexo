@@ -4,6 +4,7 @@ import type { WorkoutFinish } from '../training/read.ts';
 import {
   DEFAULT_TRAVEL_PREFERENCES,
   LEAVE_GRACE_MS,
+  journeyNeedsReview,
   parseJourneyState,
   travelAdvice,
   travelReminders,
@@ -51,6 +52,69 @@ const workout: WorkoutFinish = {
   fewestSessions: null,
   overdue: false,
 };
+
+test('a now journey expires with its search window, retaining overnight and explicitly dated trips', () => {
+  assert.equal(journeyNeedsReview(trip, null, now + 180 * 60_000), false);
+  assert.equal(journeyNeedsReview(trip, null, now + 181 * 60_000), true);
+  assert.equal(
+    journeyNeedsReview(
+      { ...trip, selectedKey: null, selectedAt: null },
+      null,
+      now + 4 * 86_400_000,
+    ),
+    true,
+  );
+  const midnight = queryInstant('2026-10-14', '00:05');
+  assert.equal(
+    journeyNeedsReview({ ...trip, at: midnight - 10 * 60_000, selectedAt: null }, null, midnight),
+    false,
+  );
+  assert.equal(journeyNeedsReview({ ...trip, mode: 'depart' }, null, now + 86_400_000), false);
+  assert.equal(journeyNeedsReview({ ...trip, mode: 'arrive' }, null, now + 86_400_000), false);
+  assert.equal(
+    journeyNeedsReview(trip, workout, now + 5 * 3_600_000),
+    false,
+    'an ongoing workout remains linked',
+  );
+  assert.equal(
+    journeyNeedsReview(trip, { ...workout, endedAt: now + 4 * 3_600_000 }, now + 5 * 3_600_000),
+    false,
+  );
+  const later = now + 5 * 3_600_000;
+  assert.equal(
+    journeyNeedsReview(
+      { ...trip, at: later, selectedAt: null },
+      { ...workout, endedAt: now },
+      later,
+    ),
+    false,
+    'searching again after an old workout starts a fresh window',
+  );
+  assert.equal(
+    journeyNeedsReview({ ...trip, selectedAt: later }, { ...workout, endedAt: now }, later),
+    false,
+    'choosing a different bus also refreshes the window',
+  );
+});
+
+test('preparation reminders ask to finish only while the linked workout is still active', () => {
+  const linked = { ...trip, workoutId: workout.sessionId };
+  const active = travelAdvice(option, 5, workout, now);
+  const completed = travelAdvice(
+    option,
+    5,
+    { ...workout, endedAt: now, evidence: 'complete' },
+    now,
+  );
+  assert.equal(
+    travelReminders(linked, active, DEFAULT_TRAVEL_PREFERENCES, 'Casa', now)[0].title,
+    'Termina y prepárate para salir',
+  );
+  assert.equal(
+    travelReminders(linked, completed, DEFAULT_TRAVEL_PREFERENCES, 'Casa', now)[0].title,
+    'Prepárate para salir',
+  );
+});
 
 test('workout deadline subtracts preparation once from the planner door departure', () => {
   const advice = travelAdvice(option, 5, workout, now);

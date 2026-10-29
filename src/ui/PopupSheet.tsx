@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Keyboard, ScrollView, View, useWindowDimensions } from 'react-native';
+import { Keyboard, Platform, ScrollView, View, useWindowDimensions } from 'react-native';
 
 import { glass, sheet, shape } from './theme.ts';
 
@@ -18,10 +18,14 @@ export function PopupSheet({
   const { height } = useWindowDimensions();
   const [keyboard, setKeyboard] = useState(0);
   useEffect(() => {
-    const shown = Keyboard.addListener?.('keyboardWillShow', (event) =>
-      setKeyboard(event.endCoordinates.height),
+    const shown = Keyboard.addListener?.(
+      Platform.OS === 'android' ? 'keyboardDidShow' : 'keyboardWillShow',
+      (event) => setKeyboard(event.endCoordinates.height),
     );
-    const hidden = Keyboard.addListener?.('keyboardWillHide', () => setKeyboard(0));
+    const hidden = Keyboard.addListener?.(
+      Platform.OS === 'android' ? 'keyboardDidHide' : 'keyboardWillHide',
+      () => setKeyboard(0),
+    );
     return () => {
       shown?.remove();
       hidden?.remove();

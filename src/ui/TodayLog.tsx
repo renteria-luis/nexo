@@ -344,12 +344,12 @@ export function TodayLog({
           />
           {/* Siempre en kilos (spec 20.2): Libras en Ajustes es para el gym, y sin unidad
               el numero se leia en lo que dijera Ajustes. */}
-          <Text style={styles.note}>
+          <Text style={[styles.note, styles.weightNote]}>
             {log?.weight_kg != null
               ? 'kg · de hoy'
               : lastWeight
                 ? `kg · del ${shortDate(lastWeight.date)}`
-                : 'sin pesarte todavía'}
+                : 'Anota tu peso en kg para calcular tus metas.'}
           </Text>
         </View>
       </Field>
@@ -539,6 +539,7 @@ const styles = sheet((theme) => ({
     color: theme.textFaint,
     fontFamily: font.regular,
   },
+  weightNote: { flex: 1, minWidth: 140 },
   // A la derecha del titulo, y metido en el relleno para no hacer mas alto este dato que
   // los demas sin quitarle area de toque.
   pull: {

@@ -75,6 +75,7 @@ const PROFILE_FIELDS: FieldSpec[] = [
     key: 'activity_factor',
     label: 'Factor de actividad',
     keyboard: 'numeric',
+    placeholder: 'Por defecto: 1.58',
     info: 'Cuánto te mueves en el día. Multiplica lo que gastas en reposo para calcular tus calorías: con trabajo de escritorio y cinco entrenos a la semana va de 1.55 a 1.60. Vacío, usa 1.58.',
   },
 ];
@@ -120,11 +121,22 @@ export const SETTINGS_SECTIONS: { id: SettingsSection; title: string; icon: Luci
 ];
 
 /** Los cinco que puede apagar por su lado. El resumen del domingo va con el cierre. */
-const NUDGE_SWITCHES: { kind: NudgeKind; label: string; info?: string }[] = [
-  { kind: 'comida', label: 'Comida' },
-  { kind: 'entreno', label: 'Entreno' },
-  { kind: 'agua', label: 'Agua' },
-  // Spec 18.1: los dos cuyo nombre no dice de que avisan.
+const NUDGE_SWITCHES: { kind: NudgeKind; label: string; info: string }[] = [
+  {
+    kind: 'comida',
+    label: 'Comida',
+    info: '40 minutos después de la hora a la que sueles anotar cada comida, si ese espacio sigue vacío.',
+  },
+  {
+    kind: 'entreno',
+    label: 'Entreno',
+    info: 'A la hora a la que sueles entrenar, si hoy no entrenaste y te faltan sesiones para las cinco de la semana.',
+  },
+  {
+    kind: 'agua',
+    label: 'Agua',
+    info: 'A las 16:30, si llevas menos de la mitad del agua del día.',
+  },
   {
     kind: 'manana',
     label: 'Mañana',
@@ -135,7 +147,11 @@ const NUDGE_SWITCHES: { kind: NudgeKind; label: string; info?: string }[] = [
     label: 'Cierre del día',
     info: 'A las 21:00, si el día tiene menos de tres cosas anotadas. Los domingos trae el resumen de la semana.',
   },
-  { kind: 'creatina', label: 'Creatina' },
+  {
+    kind: 'creatina',
+    label: 'Creatina',
+    info: 'A las 11:30 y a las 22:00, mientras no anotes la creatina del día.',
+  },
 ];
 
 /** El nombre de un dato encima de su casilla, en mayusculas como en el catalogo. */
@@ -169,10 +185,25 @@ function Field({
 }
 
 /** El titulo de una cartilla con su interruptor o su boton al lado. */
-function Head({ title, children }: { title: string; children: React.ReactNode }) {
+function Head({
+  title,
+  info,
+  children,
+}: {
+  title: string;
+  info?: string;
+  children: React.ReactNode;
+}) {
   return (
     <View style={styles.head}>
-      <Text style={styles.headTitle}>{title}</Text>
+      <View style={styles.labelRow}>
+        <Text style={styles.headTitle}>{title}</Text>
+        {info && (
+          <InfoDot accessibilityLabel={`Qué es ${title.toLowerCase()}`}>
+            <InfoText>{info}</InfoText>
+          </InfoDot>
+        )}
+      </View>
       {children}
     </View>
   );
@@ -367,7 +398,10 @@ export function SettingsScreen({
 
             {PROFILE_FIELDS.map(renderField)}
 
-            <Field label="Fase">
+            <Field
+              label="Fase"
+              info="Cuántas calorías te tocan: recomposición come un 8% menos de lo que gastas, déficit un 20% menos, mantenimiento lo mismo y volumen un 10% más."
+            >
               <View style={styles.options}>
                 {PHASES.map((option) => (
                   <Chip
@@ -380,7 +414,10 @@ export function SettingsScreen({
               </View>
             </Field>
 
-            <Field label="Unidad de peso">
+            <Field
+              label="Unidad de peso"
+              info="La de las cargas del gym. Tu peso corporal va siempre en kilos."
+            >
               <View style={styles.options}>
                 {(['lb', 'kg'] as const).map((option) => (
                   <Chip
@@ -426,13 +463,21 @@ export function SettingsScreen({
               )}
             </Field>
 
-            {renderField({ key: 'steps_target', label: 'Pasos', keyboard: 'numeric' })}
+            {renderField({
+              key: 'steps_target',
+              label: 'Pasos',
+              keyboard: 'numeric',
+              placeholder: 'Por defecto: 7 000',
+            })}
           </Card>
 
           {/* Cartilla con interruptor, como las paletas: el interruptor es el dato. Con el
           apagado no hay readaptacion que configurar, asi que los campos no estan. */}
           <Card>
-            <Head title="Readaptación">
+            <Head
+              title="Readaptación"
+              info="Para volver después de una pausa. Mientras dura, tus series se comparan solo con las de este periodo, no hay avisos de récords y faltar a un entreno no resta."
+            >
               <Toggle
                 value={readapting}
                 accessibilityLabel={readapting ? 'Terminar la readaptación' : 'Estoy readaptando'}
@@ -449,19 +494,19 @@ export function SettingsScreen({
       )}
       {section === 'avisos' && (
         <>
-          <Card title="Avisos de salud">
-            <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>Avisos de salud y creatina</Text>
+          <Card>
+            {/* El interruptor de todos va en el titulo, como Readaptación: en su propia fila
+            decia «Avisos de salud y creatina» debajo de «Avisos de salud» y encima de
+            «Creatina». */}
+            <Head title="Avisos de salud">
               <Toggle
                 value={nudgesOn}
                 accessibilityLabel={
-                  nudgesOn
-                    ? 'Apagar avisos de salud y creatina'
-                    : 'Encender avisos de salud y creatina'
+                  nudgesOn ? 'Apagar todos los avisos de salud' : 'Encender los avisos de salud'
                 }
                 onChange={(next) => onSaveSetting('nudges_enabled', next ? 'true' : 'false')}
               />
-            </View>
+            </Head>
             {/* Con el interruptor general apagado se quedan a la vista pero muertos: asi
             se sabe que existen y la lista no salta de alto al prenderlos. */}
             {NUDGE_SWITCHES.map((nudge) => {
@@ -472,11 +517,9 @@ export function SettingsScreen({
                     <Text style={[styles.switchLabel, !nudgesOn && styles.switchLabelOff]}>
                       {nudge.label}
                     </Text>
-                    {nudge.info && (
-                      <InfoDot accessibilityLabel={`Cuándo avisa ${nudge.label.toLowerCase()}`}>
-                        <InfoText>{nudge.info}</InfoText>
-                      </InfoDot>
-                    )}
+                    <InfoDot accessibilityLabel={`Cuándo avisa ${nudge.label.toLowerCase()}`}>
+                      <InfoText>{nudge.info}</InfoText>
+                    </InfoDot>
                   </View>
                   <Toggle
                     value={on}

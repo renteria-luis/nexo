@@ -12,8 +12,16 @@ import {
 import { Button } from './Button.tsx';
 import { Card } from './Card.tsx';
 import { Chip } from './Chip.tsx';
+import { InfoDot, InfoText } from './InfoBubble.tsx';
 import { TextField } from './TextField.tsx';
 import { font, sheet, shape } from './theme.ts';
+
+// Lo que antes era un parrafo debajo de las casillas: va en la (i) de la clave (2026-10-25).
+const KEYS_NOTE = `${
+  Platform.OS === 'web'
+    ? 'En este navegador las claves duran solo hasta cerrar o recargar la pestaña.'
+    : 'Las claves se quedan en este teléfono y no van en tus respaldos.'
+} Usa los planes gratuitos, con el pago por uso apagado.`;
 
 export function AssistantSettings() {
   const [status, setStatus] = useState<CredentialStatus | null>(null);
@@ -116,7 +124,12 @@ export function AssistantSettings() {
         </View>
       </View>
       <View style={styles.field}>
-        <Text style={styles.label}>Clave de Groq{status?.hasGroq ? ' · guardada' : ''}</Text>
+        <View style={styles.labelRow}>
+          <Text style={styles.label}>Clave de Groq{status?.hasGroq ? ' · guardada' : ''}</Text>
+          <InfoDot accessibilityLabel="Dónde quedan las claves">
+            <InfoText>{KEYS_NOTE}</InfoText>
+          </InfoDot>
+        </View>
         <TextField
           value={groq}
           onChange={setGroq}
@@ -152,12 +165,6 @@ export function AssistantSettings() {
           {note}
         </Text>
       )}
-      <Text style={styles.note}>
-        {Platform.OS === 'web'
-          ? 'En este navegador las claves duran solo hasta cerrar o recargar la pestaña.'
-          : 'Las claves se quedan en este teléfono y no van en tus respaldos.'}{' '}
-        Usa los planes gratuitos, con el pago por uso apagado.
-      </Text>
       <Button
         label="Importar archivo de claves"
         accessibilityLabel="Importar archivo de claves"
@@ -224,6 +231,7 @@ const styles = sheet((theme) => ({
   },
   writing: { backgroundColor: theme.surfaceHigh },
   field: { gap: 5 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   options: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   confirm: { gap: 8 },
 }));

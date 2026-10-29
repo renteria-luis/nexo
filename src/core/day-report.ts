@@ -121,9 +121,11 @@ function lines(input: ReportInput): CriterionLine[] {
           : trained === null
             ? 'el día no terminó'
             : !trained
-              ? 'no entrenó'
+              ? earned('trained') === null
+                ? 'sin entreno anotado'
+                : 'no entrenó'
               : effort
-                ? `${effort.sets} series${effort.sessions && effort.sessions.length > 1 ? ` · ${effort.sessions.length} entrenos` : ''}`
+                ? `${effort.sets} ${effort.sets === 1 ? 'serie' : 'series'}${effort.sessions && effort.sessions.length > 1 ? ` · ${effort.sessions.length} entrenos` : ''}`
                 : 'entrenó',
       // Spec 4.1: los puntos salen de lo hecho contra lo planeado, asi que la linea
       // tiene que decir contra que se midio.

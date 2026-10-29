@@ -177,13 +177,26 @@ export function TransitTravelSettings() {
 export function TransitJourneyCard({
   surface,
   onMapInteraction,
+  finished = false,
 }: {
   surface: 'today' | 'training' | 'transit';
   onMapInteraction?: (active: boolean) => void;
+  finished?: boolean;
 }) {
   const journey = useTransitJourney();
-  const { saved, places, workout, sessionId, gymId, advice, alternative, loading, busy, actions } =
-    journey;
+  const {
+    saved,
+    places,
+    workout,
+    sessionId,
+    gymId,
+    advice,
+    alternative,
+    loading,
+    busy,
+    actions,
+    needsReview,
+  } = journey;
   const focused = useIsFocused();
   const navigation = useNavigation<{ navigate: (...args: Navigate) => void }>();
   const trip = saved.next;
@@ -265,10 +278,14 @@ export function TransitJourneyCard({
       <Card
         title={
           surface === 'training'
-            ? 'Viaje al terminar'
-            : surface === 'transit'
-              ? 'Tu viaje'
-              : 'Próximo viaje'
+            ? finished || workout?.endedAt != null
+              ? 'Viaje de vuelta'
+              : 'Viaje al terminar'
+            : needsReview
+              ? 'Viaje anterior'
+              : surface === 'transit'
+                ? 'Tu viaje'
+                : 'Próximo viaje'
         }
       >
         {selecting ? (
@@ -294,14 +311,20 @@ export function TransitJourneyCard({
               />
             )}
             <Combobox
-              options={options}
+              options={options.filter((option) => option.id !== from)}
               value={to}
               onChange={setDestinationId}
               accessibilityLabel="Destino del próximo viaje"
               placeholder="A dónde vas"
             />
             <Button
-              label={surface === 'training' ? 'Ver bus al terminar' : 'Ver próximo viaje'}
+              label={
+                surface === 'training'
+                  ? finished || workout?.endedAt != null
+                    ? 'Ver bus de vuelta'
+                    : 'Ver bus al terminar'
+                  : 'Ver próximo viaje'
+              }
               disabled={busy || !from || !to || from === to}
               onPress={() =>
                 void act(async () => {
@@ -325,138 +348,176 @@ export function TransitJourneyCard({
             <Text style={styles.label}>
               {originName} → {targetName}
             </Text>
-            {advice && agencyDate(advice.leaveAt) !== agencyDate(journey.now) && (
-              <Text style={styles.label}>{shortDay(agencyDate(advice.leaveAt))}</Text>
-            )}
-            {trip.mode === 'arrive' && (
-              <Text style={styles.note}>
-                Llegar antes de {agencyClock(trip.at)} · margen de llegada 3 min.
-              </Text>
-            )}
-            {linkedWorkout && (
+            {needsReview ? (
               <>
-                <Text style={styles.label}>
-                  {linkedWorkout.finishAt === null
-                    ? 'Sin hora de fin estimada'
-                    : linkedWorkout.endedAt !== null
-                      ? `Terminaste ${agencyClock(linkedWorkout.endedAt)}`
-                      : `Fin del entreno ~${agencyClock(linkedWorkout.finishAt)}`}
-                </Text>
-              </>
-            )}
-            {advice ? (
-              <>
-                <View style={styles.row}>
-                  {advice.option.itinerary.rides.map((ride, i) => (
-                    <Fragment key={`${ride.trip[0]}-${i}`}>
-                      {i > 0 && <Text style={styles.note}>→</Text>}
-                      <RouteBadge route={ride.route} />
-                    </Fragment>
-                  ))}
-                  <Text style={styles.value}>
-                    {advice.boardAt === null ? 'Caminando' : `Bus ${agencyClock(advice.boardAt)}`}
-                  </Text>
-                </View>
-                {advice.option.itinerary.rides.length > 0 && (
-                  <Text style={styles.note}>
-                    {advice.option.itinerary.rides.length === 1 ? 'Directo' : '1 transbordo'}
-                  </Text>
-                )}
-                <Text style={styles.value}>
-                  {trip.workoutId ? 'Termina' : 'Prepárate'} {agencyClock(advice.finishBy)} · sal{' '}
-                  {agencyClock(advice.leaveAt)}
-                </Text>
                 <Text style={styles.note}>
-                  Llegas {agencyClock(advice.option.arriveAt)} · {advice.source}
-                </Text>
-                {details && (
-                  <Text style={styles.note}>
-                    {advice.preparationMinutes} min para prepararte + {advice.walkMinutes} min
-                    caminando
-                    {advice.option.itinerary.access.source === 'estimate'
-                      ? ' (estimados)'
-                      : advice.option.itinerary.access.source === 'learned'
-                        ? ' (según tus caminatas)'
-                        : ' (tus minutos)'}
-                    {advice.boardingMinutes ? ` + ${advice.boardingMinutes} min antes del bus` : ''}
-                    .
-                  </Text>
-                )}
-                {advice.reason && <Text style={styles.error}>{advice.reason}</Text>}
-                {advice.option.tight && (
-                  <Text style={styles.error}>
-                    Transbordo justo: margen {Math.floor((advice.option.slack ?? 0) / 60_000)} min.
-                  </Text>
-                )}
-              </>
-            ) : (
-              <Text style={styles.note}>
-                {loading
-                  ? 'Calculando el viaje…'
-                  : alternative
-                    ? 'El viaje elegido ya no aparece. Puedes elegir esta alternativa.'
-                    : 'No hay una salida alcanzable en esta búsqueda. Cambia la hora o busca en Transit.'}
-              </Text>
-            )}
-            {alternative && (details || !advice) && (
-              <Button
-                variant="ghost"
-                label={`Alternativa: ${alternative.option.itinerary.rides.map((r) => r.route[1]).join(' → ') || 'a pie'} · sal ${agencyClock(alternative.leaveAt)}`}
-                disabled={busy}
-                onPress={() => void act(() => actions.select(alternative.option))}
-              />
-            )}
-            {advice && !advice.option.problem && (
-              <Button
-                label="Salgo ahora"
-                variant="primary"
-                disabled={busy}
-                onPress={() => void act(() => actions.startTrip())}
-              />
-            )}
-            {details && advice && !advice.option.problem && (
-              <Text style={styles.note}>
-                Sigue tu viaje con el GPS hasta que llegues: avisa cuándo bajarte y mide tus
-                caminatas.
-              </Text>
-            )}
-            {(advice || trip.reminders) && (
-              <Button
-                label={trip.reminders ? 'Quitar avisos de este viaje' : 'Avisarme de este viaje'}
-                disabled={
-                  busy ||
-                  (!trip.reminders &&
-                    (!advice?.feasible || (!saved.preferences.prepare && !saved.preferences.leave)))
-                }
-                onPress={() => void act(() => actions.arm(!trip.reminders))}
-              />
-            )}
-            {trip.reminders && (
-              <Text style={styles.note}>
-                Avisos con el último cálculo; sin cambios con la app cerrada.
-              </Text>
-            )}
-            {trip.reminders && saved.preferences.quiet && (
-              <Text style={styles.note}>
-                Silencio activado: los avisos entre 21:30 y 07:30 se omiten.
-              </Text>
-            )}
-            {journey.notificationStatus === 'denied' && (
-              <>
-                <Text style={styles.error}>
-                  iOS no permite los avisos. El viaje sigue disponible aquí.
+                  Elegido el {shortDay(agencyDate(trip.selectedAt ?? trip.at))} a las{' '}
+                  {agencyClock(trip.selectedAt ?? trip.at)}. Vuelve a buscar para ver las salidas
+                  actuales.
                 </Text>
                 <Button
-                  label="Abrir ajustes del iPhone"
-                  variant="ghost"
-                  onPress={() => void act(() => Linking.openSettings())}
+                  label="Volver a buscar este viaje"
+                  variant="primary"
+                  disabled={busy}
+                  onPress={() =>
+                    void act(() =>
+                      actions.choose({
+                        originId: trip.originId,
+                        destinationId: trip.destinationId,
+                        // A stale trip's workout ended hours ago; preparation starts again now.
+                        workoutId: null,
+                      }),
+                    )
+                  }
                 />
               </>
-            )}
-            {trip.reminders && Platform.OS === 'web' && (
-              <Text style={styles.note}>
-                Los avisos locales se entregan en el iPhone; el navegador permite revisar el plan.
-              </Text>
+            ) : (
+              <>
+                {advice && agencyDate(advice.leaveAt) !== agencyDate(journey.now) && (
+                  <Text style={styles.label}>{shortDay(agencyDate(advice.leaveAt))}</Text>
+                )}
+                {trip.mode === 'arrive' && (
+                  <Text style={styles.note}>
+                    Llegar antes de {agencyClock(trip.at)} · margen de llegada 3 min.
+                  </Text>
+                )}
+                {linkedWorkout && (
+                  <>
+                    <Text style={styles.label}>
+                      {linkedWorkout.finishAt === null
+                        ? 'Sin hora de fin estimada'
+                        : linkedWorkout.endedAt !== null
+                          ? `Terminaste ${agencyClock(linkedWorkout.endedAt)}`
+                          : `Fin del entreno ~${agencyClock(linkedWorkout.finishAt)}`}
+                    </Text>
+                  </>
+                )}
+                {advice ? (
+                  <>
+                    <View style={styles.row}>
+                      {advice.option.itinerary.rides.map((ride, i) => (
+                        <Fragment key={`${ride.trip[0]}-${i}`}>
+                          {i > 0 && <Text style={styles.note}>→</Text>}
+                          <RouteBadge route={ride.route} />
+                        </Fragment>
+                      ))}
+                      <Text style={styles.value}>
+                        {advice.boardAt === null
+                          ? 'Caminando'
+                          : `Bus ${agencyClock(advice.boardAt)}`}
+                      </Text>
+                    </View>
+                    {advice.option.itinerary.rides.length > 0 && (
+                      <Text style={styles.note}>
+                        {advice.option.itinerary.rides.length === 1 ? 'Directo' : '1 transbordo'}
+                      </Text>
+                    )}
+                    <Text style={styles.value}>
+                      {linkedWorkout && linkedWorkout.endedAt === null ? 'Termina' : 'Prepárate'}{' '}
+                      {agencyClock(advice.finishBy)} · sal {agencyClock(advice.leaveAt)}
+                    </Text>
+                    <Text style={styles.note}>
+                      Llegas {agencyClock(advice.option.arriveAt)} · {advice.source}
+                    </Text>
+                    {details && (
+                      <Text style={styles.note}>
+                        {advice.preparationMinutes} min para prepararte + {advice.walkMinutes} min
+                        caminando
+                        {advice.option.itinerary.access.source === 'estimate'
+                          ? ' (estimados)'
+                          : advice.option.itinerary.access.source === 'learned'
+                            ? ' (según tus caminatas)'
+                            : ' (tus minutos)'}
+                        {advice.boardingMinutes
+                          ? ` + ${advice.boardingMinutes} min antes del bus`
+                          : ''}
+                        .
+                      </Text>
+                    )}
+                    {advice.reason && <Text style={styles.error}>{advice.reason}</Text>}
+                    {advice.option.tight && (
+                      <Text style={styles.error}>
+                        Transbordo justo: margen {Math.floor((advice.option.slack ?? 0) / 60_000)}{' '}
+                        min.
+                      </Text>
+                    )}
+                  </>
+                ) : (
+                  <Text style={styles.note}>
+                    {loading
+                      ? 'Calculando el viaje…'
+                      : alternative
+                        ? 'El viaje elegido ya no aparece. Puedes elegir esta alternativa.'
+                        : 'No hay una salida alcanzable en esta búsqueda. Cambia la hora o busca en Transit.'}
+                  </Text>
+                )}
+                {alternative && (details || !advice) && (
+                  <Button
+                    variant="ghost"
+                    label={`Alternativa: ${alternative.option.itinerary.rides.map((r) => r.route[1]).join(' → ') || 'a pie'} · sal ${agencyClock(alternative.leaveAt)}`}
+                    disabled={busy}
+                    onPress={() => void act(() => actions.select(alternative.option))}
+                  />
+                )}
+                {advice && !advice.option.problem && (
+                  <View style={styles.row}>
+                    <Button
+                      label="Salgo ahora"
+                      variant="primary"
+                      disabled={busy}
+                      onPress={() => void act(() => actions.startTrip())}
+                    />
+                    <InfoDot accessibilityLabel="Qué hace Salgo ahora">
+                      <InfoText>
+                        Sigue tu viaje con el GPS hasta que llegues: avisa cuándo bajarte y mide tus
+                        caminatas.
+                      </InfoText>
+                    </InfoDot>
+                  </View>
+                )}
+                {(advice || trip.reminders) && (
+                  <Button
+                    label={
+                      trip.reminders ? 'Quitar avisos de este viaje' : 'Avisarme de este viaje'
+                    }
+                    disabled={
+                      busy ||
+                      (!trip.reminders &&
+                        (!advice?.feasible ||
+                          (!saved.preferences.prepare && !saved.preferences.leave)))
+                    }
+                    onPress={() => void act(() => actions.arm(!trip.reminders))}
+                  />
+                )}
+                {trip.reminders && (
+                  <Text style={styles.note}>
+                    Avisos con el último cálculo; sin cambios con la app cerrada.
+                  </Text>
+                )}
+                {trip.reminders && saved.preferences.quiet && (
+                  <Text style={styles.note}>
+                    Silencio activado: los avisos entre 21:30 y 07:30 se omiten.
+                  </Text>
+                )}
+                {journey.notificationStatus === 'denied' && (
+                  <>
+                    <Text style={styles.error}>
+                      iOS no permite los avisos. El viaje sigue disponible aquí.
+                    </Text>
+                    <Button
+                      label="Abrir ajustes del iPhone"
+                      variant="ghost"
+                      onPress={() => void act(() => Linking.openSettings())}
+                    />
+                  </>
+                )}
+                {trip.reminders && Platform.OS === 'web' && (
+                  <Text style={styles.note}>
+                    Los avisos locales se entregan en el iPhone; el navegador permite revisar el
+                    plan.
+                  </Text>
+                )}
+              </>
             )}
             {details && (
               <View style={styles.row}>

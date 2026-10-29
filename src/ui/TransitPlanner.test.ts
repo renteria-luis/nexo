@@ -34,6 +34,48 @@ const place = (id: string, name: string, lat: number, lng: number): Place => ({
 });
 const places = [place('start', 'Start', 43, -81.2), place('end', 'End', 42.9878, -81.17)];
 
+test('equal displayed departure minutes have equal countdowns without changing live timestamps', () => {
+  const { leavingIn, relative } = renderModule('src/ui/TransitDepartures.tsx', {
+    '../transit/realtime.ts': realtime,
+    '../transit/schedule.ts': scheduleModule,
+    './icons.ts': new Proxy({}, { get: (_, name) => String(name) }),
+  }).exports;
+  const now = queryInstant('2026-10-13', '16:44');
+  const at = queryInstant('2026-10-13', '16:48');
+  assert.equal(leavingIn(at + 2_000, now), 'en 4 min');
+  assert.equal(leavingIn(at + 58_000, now), 'en 4 min');
+  assert.equal(leavingIn(at + 58_000, at), 'ahora');
+  assert.equal(relative(at + 58_000, now), 'en 5 min', 'live freshness keeps second precision');
+});
+
+test('offline stop departures explain the shared source once and keep every departure selectable', async (t) => {
+  const now = queryInstant('2026-10-13', '08:00');
+  t.mock.method(Date, 'now', () => now);
+  const departures = scheduleModule.departures(schedule, buildStopIndex(schedule), 0, now, 5);
+  const picked: unknown[] = [];
+  const screen = renderModule('src/ui/TransitDepartures.tsx', {
+    '../transit/realtime.ts': realtime,
+    '../transit/schedule.ts': scheduleModule,
+    './icons.ts': new Proxy({}, { get: (_, name) => String(name) }),
+    './TransitStatus.tsx': { RouteBadge: 'RouteBadge', StatusIcons: 'StatusIcons' },
+  }).mount('TransitStopDepartures', {
+    schedule,
+    departures,
+    snapshot: null,
+    current: true,
+    active: false,
+    onSelect: (departure: unknown) => picked.push(departure),
+  });
+  const tree = await screen.settle();
+  assert.equal((textOf(tree).match(/Horario programado · sin datos en vivo/g) ?? []).length, 1);
+  assert.equal(nodes(tree).filter((node) => node.type === 'StatusIcons').length, 0);
+  const rows = nodes(tree).filter((node) => node.props.accessibilityLabel?.includes(', línea '));
+  assert.ok(rows.length > 1);
+  assert.ok(rows.every((row) => row.props.accessibilityLabel.includes('Horario')));
+  rows[0].props.onPress();
+  assert.ok(departures.includes(picked[0] as (typeof departures)[number]));
+});
+
 function mount(saved: unknown[], changes: Record<string, unknown>) {
   // Modules with type parameters are passed in already loaded: the renderer reads every file as
   // TSX, where `<T>` would parse as markup.
@@ -48,6 +90,7 @@ function mount(saved: unknown[], changes: Record<string, unknown>) {
     './icons.ts': new Proxy({}, { get: (_, name) => String(name) }),
     './TextField.tsx': { TextField: 'TextField' },
     './Toggle.tsx': { Toggle: 'Toggle' },
+    './InfoBubble.tsx': { InfoDot: 'InfoDot', InfoText: 'InfoText' },
     './Combobox.tsx': { Combobox: 'Combobox' },
     './TransitPlanMap.tsx': { TransitPlanMap: 'TransitPlanMap' },
     './screens/Screen.tsx': { useScrollIntoView: () => () => undefined },
@@ -201,11 +244,17 @@ test('the pickers offer his places by importance, with their icon and the tags t
   const options = saved('Elegir el destino');
   assert.deepEqual(
     options.map((o: { label: string }) => o.label),
-    ['End', 'Zoo', 'Start'],
+    ['End', 'Zoo'],
   );
   assert.equal(options[0].keywords, 'gym, fit');
-  assert.equal(options[2].icon, 'House', 'each place keeps its icon');
-  assert.deepEqual(saved('Elegir el origen'), options);
+  const origins = saved('Elegir el origen');
+  assert.equal(origins[2].icon, 'House', 'each place keeps its icon');
+  assert.deepEqual(origins.slice(0, 2), options);
+  assert.equal(origins[2].id, 'start', 'the current place stays available as an origin');
+  assert.ok(
+    !options.some((option: { id: string }) => option.id === 'start'),
+    'a saved place matching Tu ubicación is not offered as its own destination',
+  );
   assert.deepEqual(
     picker(tree, 'Elegir el origen')
       .options.filter((o: { hidden?: boolean }) => !o.hidden)
@@ -382,6 +431,25 @@ test('pull refresh preserves an explicitly scheduled departure time', async (t) 
   assert.deepEqual(rowLabels(tree), before);
   assert.equal(picker(tree, 'Elegir el origen').value, 'start');
   assert.equal(picker(tree, 'Elegir el destino').value, 'end');
+});
+
+test('a dated search does not repeat tomorrow on every departure row', async (t) => {
+  t.mock.method(Date, 'now', () => queryInstant('2026-10-12', '16:00'));
+  const screen = mount(
+    [],
+    props([], {
+      journey: {
+        originId: 'start',
+        destinationId: 'end',
+        mode: 'depart',
+        at: queryInstant('2026-10-13', '08:00'),
+      },
+    }),
+  );
+  const tree = await searched(screen, (current) => !!byLabel(current, /^Sales /));
+  const rows = nodes(tree).filter((node) => /^Sales /.test(node.props.accessibilityLabel ?? ''));
+  assert.ok(rows.length > 0);
+  for (const row of rows) assert.doesNotMatch(row.props.accessibilityLabel, /mañana/);
 });
 
 test('leaving now, the bus he just missed comes first, says so and cannot be chosen', async (t) => {
@@ -615,7 +683,12 @@ test('at night, no bus is said as night, with the first buses of the morning to 
   const text = textOf(tree);
   assert.match(text, /A esta hora no sale ningún bus de los paraderos cercanos\./);
   assert.doesNotMatch(text, /Ahora no sale ningún bus/);
-  const first = byLabel(tree, /^Paradero 1,/);
+  const first = byLabel(tree, /^Paradero [^0-9]/);
+  assert.equal(
+    byLabel(tree, /^Paradero 1,/),
+    undefined,
+    'morning stops have no matching map numbers',
+  );
   assert.match(first.props.accessibilityLabel, /sales 0[5-9]:\d\d/);
   first.props.onPress();
   const later = (current: unknown) =>

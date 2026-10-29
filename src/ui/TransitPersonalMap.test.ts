@@ -55,6 +55,7 @@ async function fixture() {
     './TransitLiveMap.tsx': { TransitLiveMap: 'TransitLiveMap' },
     './Button.tsx': { Button: 'Button' },
     './Chip.tsx': { Chip: 'Chip' },
+    './InfoBubble.tsx': { InfoDot: 'InfoDot', InfoText: 'InfoText' },
     './Combobox.tsx': { Combobox: 'Combobox' },
     './TextField.tsx': { TextField: 'TextField' },
   }).mount('TransitPersonalMap', props);

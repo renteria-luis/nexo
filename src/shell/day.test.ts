@@ -11,7 +11,9 @@ import { computeTargets, type TargetProfile } from '../core/targets.ts';
 import { migrations } from '../db/migrations/index.ts';
 import { addSet, startSession } from '../training/index.ts';
 import { trainingFraction } from '../core/discipline.ts';
-import { rescoreMissing } from './records.ts';
+import { listDayRows, loadDayDetail, rescoreDays, rescoreMissing } from './records.ts';
+import { loadScorePeriod } from './score-days.ts';
+import { averageScore, buildGrid } from '../core/heatmap.ts';
 
 import { assembleDay, exerciseContext, withTappedSet } from './day.ts';
 
@@ -137,6 +139,67 @@ test('a day with nothing logged has no score at all', async () => {
   assert.equal(day.log, null);
   assert.equal(day.result?.score, null);
   assert.ok(day.targets);
+});
+
+test('empty past days stay blank in detail, records, grid and averages but keep the miss run', async () => {
+  const { db, raw } = await fixture();
+  await writeSetting(db, 're_entry_started_on', '');
+  raw.exec(`INSERT INTO training_session (id, date, start_time, time_budget)
+    VALUES ('before-gap', '2026-09-10', 1000, 'completo');`);
+  await addSet(db, { sessionId: 'before-gap', exerciseId: 'peck-deck', weightKg: 30, reps: 10 });
+  await upsertDailyLog(db, {
+    date: '2026-09-13',
+    sleepMinutes: 480,
+    sleepSource: 'manual',
+    alcoholDrinks: 0,
+    steps: 7000,
+  });
+  const dates = ['2026-09-10', '2026-09-11', '2026-09-12', '2026-09-13'];
+  await rescoreDays(db, dates, '2026-09-14');
+  for (const date of dates.slice(1, 3)) {
+    const { report } = await loadDayDetail(db, date, '2026-09-14');
+    assert.equal(report.score, null);
+    assert.equal(report.penalty, 0);
+    assert.equal(report.pointsWithoutData, 100);
+    assert.equal(report.lines[0].value, 'sin entreno anotado');
+    assert.equal(report.lines[0].earned, null);
+    assert.equal(report.missedScheduledSession, true);
+  }
+  const measured = await assembleDay(db, '2026-09-13', '2026-09-14');
+  assert.equal(measured.result?.penalty, -30);
+  const range = { from: dates[0], to: dates[3] };
+  const rows = await listDayRows(db, range);
+  assert.deepEqual(
+    rows.map((row) => row.date),
+    [dates[3], dates[0]],
+  );
+  const { days } = await loadScorePeriod(db, range);
+  assert.equal(averageScore(days), rows.reduce((sum, row) => sum + row.score!, 0) / 2);
+  const cells = buildGrid(days, range).flatMap((week) => week.cells);
+  for (const date of dates.slice(1, 3)) {
+    assert.equal(cells.find((cell) => cell.date === date)?.score, null);
+    assert.equal(cells.find((cell) => cell.date === date)?.hasData, false);
+  }
+  await upsertDailyLog(db, { date: dates[1], creatineTaken: false });
+  await rescoreDays(db, [dates[1]], '2026-09-14');
+  assert.equal((await assembleDay(db, dates[1], '2026-09-14')).result?.score, 0);
+  await db.runAsync(
+    'UPDATE core_daily_log SET creatine_taken = NULL, has_data = 0 WHERE date = ?;',
+    [dates[1]],
+  );
+  await rescoreDays(db, [dates[1]], '2026-09-14');
+  assert.equal((await assembleDay(db, dates[1], '2026-09-14')).result?.score, null);
+});
+
+test('weight alone is unscored and an explicit past rest day has no missed-session penalty', async () => {
+  const { db } = await fixture();
+  await upsertDailyLog(db, { date: TODAY, weightKg: 74 });
+  assert.equal((await assembleDay(db, TODAY, TODAY)).result?.score, null);
+  await upsertDailyLog(db, { date: TODAY, restDay: true });
+  const rest = await assembleDay(db, TODAY, '2026-09-14');
+  assert.equal(rest.result?.score, 0);
+  assert.equal(rest.result?.penalty, 0);
+  assert.equal(rest.result?.criteriaWithData, 1);
 });
 
 test('logging three things is enough for the day to get a score', async () => {

@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, Text, View } from 'react-native';
 
 import { ArrowLeftRight, GripLines } from './icons.ts';
+import { useScrollIntoView } from './screens/Screen.tsx';
 import { font, sheet, shape, theme } from './theme.ts';
 
 /** Una fila de la lista: lo que se lee y si todavia se le puede quitar una serie. */
@@ -63,6 +64,7 @@ const OrderRow = memo(function OrderRow({
   canRemove,
   canSwap,
   swapping,
+  reveal,
   index,
   lifted,
   onPlace,
@@ -79,6 +81,7 @@ const OrderRow = memo(function OrderRow({
   canSwap: boolean;
   /** Amarillo mientras abajo se elige por cual cambiarlo. */
   swapping: boolean;
+  reveal: boolean;
   index: number;
   lifted: boolean;
   /** Le da al orden el sitio de la fila, para moverlo con el dedo o con una animacion. */
@@ -90,6 +93,13 @@ const OrderRow = memo(function OrderRow({
   onSwap?: (id: string) => void;
 }) {
   const [place] = useState<Place>(() => ({ y: new Animated.Value(index * ROW), to: index * ROW }));
+  const row = useRef<View>(null);
+  const scrollIntoView = useScrollIntoView();
+  useEffect(() => {
+    if (!reveal) return;
+    const timer = setTimeout(() => scrollIntoView(row.current), SLIDE_MS + 32);
+    return () => clearTimeout(timer);
+  }, [reveal, index, scrollIntoView]);
   useEffect(() => onPlace(id, place), [id, place, onPlace]);
   const drag = useMemo(
     () =>
@@ -115,6 +125,7 @@ const OrderRow = memo(function OrderRow({
 
   return (
     <Animated.View
+      ref={row}
       // Mientras se mueve, la fila se dibuja una vez y se desplaza esa imagen: la sombra
       // dura, que iOS recalcula en cada cuadro, es lo que hacia que el arrastre se
       // sintiera pesado.
@@ -144,6 +155,7 @@ const OrderRow = memo(function OrderRow({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Cambiar ejercicio ${name}`}
+          hitSlop={4}
           accessibilityState={{ selected: swapping }}
           onPress={() => onSwap(id)}
           style={({ pressed }) => [styles.nudge, (pressed || swapping) && styles.nudgePressed]}
@@ -158,6 +170,7 @@ const OrderRow = memo(function OrderRow({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Una serie menos de ${name}`}
+        hitSlop={4}
         accessibilityState={{ disabled: !canRemove }}
         disabled={!canRemove}
         onPress={() => onNudge(id, -1)}
@@ -172,6 +185,7 @@ const OrderRow = memo(function OrderRow({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Una serie más de ${name}`}
+        hitSlop={4}
         onPress={() => onNudge(id, 1)}
         style={({ pressed }) => [styles.nudge, pressed && styles.nudgePressed]}
       >
@@ -203,6 +217,7 @@ export function OrderList({
   onDragging,
   onSwap,
   swapping = null,
+  revealId = null,
 }: {
   items: readonly OrderItem[];
   onReorder: (from: number, to: number) => void;
@@ -211,6 +226,8 @@ export function OrderList({
   onSwap?: (id: string) => void;
   /** La fila que se esta cambiando, si hay una. */
   swapping?: string | null;
+  /** Bring the changed exercise back into view after closing its picker. */
+  revealId?: string | null;
 }) {
   const count = items.length;
   // Despegado se guarda por fila y no por sitio. Por sitio, si el orden nuevo llegaba un
@@ -349,6 +366,7 @@ export function OrderList({
           canRemove={item.canRemove ?? true}
           canSwap={item.canSwap ?? false}
           swapping={item.id === swapping}
+          reveal={item.id === revealId}
           index={index}
           lifted={item.id === held}
           onPlace={keep}

@@ -8,8 +8,10 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  BackHandler,
   Keyboard,
   LayoutAnimation,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -46,6 +48,8 @@ type Spot = { x: number; y: number; width: number; height: number };
 
 const WIDE = 280;
 const GAP = 8;
+/** El margen de la pantalla: el globo no sale de la columna de las tarjetas. */
+const EDGE = 20;
 
 type InfoApi = { show: (content: ReactNode, from: Spot) => void; hide: () => void };
 
@@ -64,20 +68,35 @@ export function InfoProvider({ children }: { children: ReactNode }) {
   const [keyboard, setKeyboard] = useState(0);
 
   useEffect(() => {
-    const up = Keyboard.addListener('keyboardWillShow', (event) => {
-      LayoutAnimation.configureNext({
-        duration: event.duration > 0 ? event.duration : 250,
-        update: { type: LayoutAnimation.Types.keyboard },
-      });
-      setKeyboard(event.endCoordinates.height);
+    if (Platform.OS !== 'android' || shown === null) return;
+    const back = BackHandler.addEventListener('hardwareBackPress', () => {
+      setShown(null);
+      return true;
     });
-    const down = Keyboard.addListener('keyboardWillHide', (event) => {
-      LayoutAnimation.configureNext({
-        duration: event.duration > 0 ? event.duration : 200,
-        update: { type: LayoutAnimation.Types.keyboard },
-      });
-      setKeyboard(0);
-    });
+    return () => back.remove();
+  }, [shown]);
+
+  useEffect(() => {
+    const up = Keyboard.addListener(
+      Platform.OS === 'android' ? 'keyboardDidShow' : 'keyboardWillShow',
+      (event) => {
+        LayoutAnimation.configureNext({
+          duration: event.duration > 0 ? event.duration : 250,
+          update: { type: LayoutAnimation.Types.keyboard },
+        });
+        setKeyboard(event.endCoordinates.height);
+      },
+    );
+    const down = Keyboard.addListener(
+      Platform.OS === 'android' ? 'keyboardDidHide' : 'keyboardWillHide',
+      (event) => {
+        LayoutAnimation.configureNext({
+          duration: event.duration > 0 ? event.duration : 200,
+          update: { type: LayoutAnimation.Types.keyboard },
+        });
+        setKeyboard(0);
+      },
+    );
     return () => {
       up.remove();
       down.remove();
@@ -95,8 +114,8 @@ export function InfoProvider({ children }: { children: ReactNode }) {
   const place = (from: Spot) => {
     // Nunca mas angosto que lo que lo abre: la lista de un combobox salia mas chica que
     // su campo y corrida a un lado (2026-10-24). La (i) es chica y no cambia.
-    const wide = Math.min(Math.max(WIDE, from.width), width - 2 * GAP);
-    const left = Math.min(Math.max(from.x + from.width / 2 - wide / 2, GAP), width - wide - GAP);
+    const wide = Math.min(Math.max(WIDE, from.width), width - 2 * EDGE);
+    const left = Math.min(Math.max(from.x + from.width / 2 - wide / 2, EDGE), width - wide - EDGE);
     const floor = height - (keyboard > 0 ? keyboard : insets.bottom);
     const under = floor - (from.y + from.height) - GAP;
     const over = from.y - insets.top - GAP;

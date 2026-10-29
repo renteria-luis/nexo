@@ -190,7 +190,7 @@ const styles = sheet((theme) => ({
   },
   icons: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   legend: { gap: 8, borderTopWidth: 1, borderTopColor: theme.lineSoft, paddingTop: 10 },
-  legendHead: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 36 },
+  legendHead: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },
   legendTitle: { fontFamily: font.bold, fontSize: 14, color: theme.text },
   grow: { flex: 1 },
   legendRows: { gap: 10 },

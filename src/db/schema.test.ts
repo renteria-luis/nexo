@@ -413,3 +413,49 @@ test('070 accents the seeded text and leaves what he edited alone', () => {
     .get() as { n: number };
   assert.equal(unaccented.n, 0);
 });
+
+test('071 clears the zero of a day with nothing logged and keeps a real zero', () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys = ON;');
+  const cleared = migrations.findIndex((migration) => migration.id === '071_unlogged_day_score');
+  for (const migration of migrations.slice(0, cleared)) db.exec(migration.sql);
+  db.exec(`INSERT INTO core_daily_log (date, score) VALUES ('2026-10-22', 0);
+           INSERT INTO core_daily_log (date, weight_kg, has_data, score)
+             VALUES ('2026-10-23', 73.3, 1, 0);
+           INSERT INTO core_daily_log (date, creatine_taken, has_data, score)
+             VALUES ('2026-10-24', 0, 1, 0);`);
+  for (const migration of migrations.slice(cleared)) db.exec(migration.sql);
+
+  const score = (date: string) =>
+    (
+      db.prepare('SELECT score FROM core_daily_log WHERE date = ?;').get(date) as {
+        score: number | null;
+      }
+    ).score;
+  assert.equal(score('2026-10-22'), null);
+  assert.equal(score('2026-10-23'), null);
+  assert.equal(score('2026-10-24'), 0);
+});
+
+test('072 clears historical empty-session zeros and preserves working sets and explicit misses', () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys = ON;');
+  for (const migration of migrations.slice(0, -1)) db.exec(migration.sql);
+  db.exec(`INSERT INTO core_daily_log (date, score) VALUES
+    ('2026-09-01', 0), ('2026-09-02', 0), ('2026-09-03', 0), ('2026-09-04', 0);
+    INSERT INTO training_session (id, date, time_budget) VALUES
+    ('empty', '2026-09-01', 'completo'), ('warm', '2026-09-02', 'completo'),
+    ('working', '2026-09-03', 'completo');
+    INSERT INTO training_set_entry (id, session_id, exercise_id, set_index, weight_kg, reps, timestamp, is_warmup)
+    VALUES ('warm-set', 'warm', 'peck-deck', 1, 10, 10, 1, 1),
+    ('work-set', 'working', 'peck-deck', 1, 30, 10, 2, 0);
+    UPDATE core_daily_log SET creatine_taken = 0, has_data = 1 WHERE date = '2026-09-04';`);
+  db.exec(migrations.at(-1)!.sql);
+  assert.deepEqual(
+    db
+      .prepare('SELECT score FROM core_daily_log ORDER BY date')
+      .all()
+      .map((row) => row.score),
+    [null, null, 0, 0],
+  );
+});

@@ -281,7 +281,7 @@ export const TrainingTiming = memo(function TrainingTiming({
   const current = data?.session.id === session.id ? data : null;
   const flagged = current?.exercises.reduce((sum, exercise) => sum + exercise.flagged, 0) ?? 0;
   return (
-    <Card title="Tiempos por ejercicio">
+    <Card title={session.end_time === null ? 'Tiempos por ejercicio' : undefined}>
       {problem !== null && (
         <View style={styles.block}>
           <Text style={styles.hint}>{problem}</Text>

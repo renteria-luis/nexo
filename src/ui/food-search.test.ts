@@ -15,6 +15,42 @@ const controls = {
   './icons.ts': {},
 };
 
+test('search puts usual and recent matching foods before unfamiliar keyword matches', async () => {
+  const foods = [
+    { id: 'brioche', name: 'Chicken & Bacon on Brioche' },
+    { id: 'burger', name: 'Hamburguesa' },
+    { id: 'nuggets', name: 'Nuggets' },
+    { id: 'chicken', name: 'Pechuga de pollo' },
+  ].map((food) => ({
+    ...food,
+    brand: null,
+    store: null,
+    keywords: 'pollo',
+    unit_kind: 'mass',
+    base_unit: 'g',
+    kcal: 1,
+    protein_g: 0.1,
+  }));
+  const picker = renderModule('src/ui/FoodPicker.tsx', controls).mount('FoodPicker', {
+    foods,
+    history: { usualBySlot: new Map([['Comida', ['chicken']]]), recent: ['nuggets'] },
+    slot: 'Comida',
+    selectedId: null,
+    quantity: 0,
+    onSelect() {},
+    onOpenCatalogue() {},
+  });
+  nodes(await picker.settle())
+    .find((node) => node.type === 'SearchField')!
+    .props.onChange('pollo');
+  assert.deepEqual(
+    nodes(await picker.settle())
+      .filter((node) => node.props.accessibilityRole === 'radio')
+      .map((node) => node.props.accessibilityLabel),
+    ['Pechuga de pollo', 'Nuggets', 'Chicken & Bacon on Brioche', 'Hamburguesa'],
+  );
+});
+
 test('pantry food search finds keywords, accents, brands, stores and separated words', () => {
   const foods = [
     { id: 'egg', name: 'Huevo blanco', keywords: 'egg eggs', brand: 'Kirkland', store: 'Costco' },

@@ -415,6 +415,12 @@ export function TrainingScreen() {
             <>
               <View style={planOpen ? styles.hidden : undefined}>
                 <SessionLog
+                  visible={!planOpen}
+                  afterSummary={
+                    session.end_time !== null && TRANSIT_ENABLED ? (
+                      <TransitJourneyCard surface="training" finished />
+                    ) : undefined
+                  }
                   exercises={loaded.exercise.exercises}
                   selectedExerciseId={exerciseId}
                   onSelectExercise={selectExercise}
@@ -452,64 +458,68 @@ export function TrainingScreen() {
               {/* La rutina y el gentio: dos cosas que se miran al llegar y ninguna
               despues, asi que comparten una cartilla y van debajo de anotar, igual que
               los tiempos y el viaje: entre serie y serie no se miran (2026-10-23). */}
-              <Card>
-                <View style={styles.topRow}>
-                  <View style={styles.routineSide}>
-                    <Text style={styles.label}>RUTINA DE HOY</Text>
-                    <Text style={styles.routineText}>{routine ? routine.name : 'Sin rutina'}</Text>
+              {session.end_time === null && (
+                <Card>
+                  <View style={styles.topRow}>
+                    <View style={styles.routineSide}>
+                      <Text style={styles.label}>RUTINA DE HOY</Text>
+                      <Text style={styles.routineText}>
+                        {routine ? routine.name : 'Sin rutina'}
+                      </Text>
+                    </View>
+                    <Button
+                      label={changingRoutine ? 'Dejar así' : 'Cambiar'}
+                      accessibilityLabel="Cambiar la rutina de hoy"
+                      variant="ghost"
+                      disabled={pendingAction !== null || planOpen || session.end_time !== null}
+                      onPress={() => setChangingRoutine((open) => !open)}
+                    />
                   </View>
-                  <Button
-                    label={changingRoutine ? 'Dejar así' : 'Cambiar'}
-                    accessibilityLabel="Cambiar la rutina de hoy"
-                    variant="ghost"
-                    disabled={pendingAction !== null || planOpen || session.end_time !== null}
-                    onPress={() => setChangingRoutine((open) => !open)}
-                  />
-                </View>
 
-                {changingRoutine && (
-                  <View style={styles.chips}>
-                    {loaded.routines.map((item) => (
-                      <Chip
-                        key={item.id}
-                        label={item.name}
-                        accessibilityLabel={`Cambiar a ${item.name}`}
-                        selected={item.id === session.routine_id}
-                        disabled={
-                          pendingAction !== null || planOpen || item.id === session.routine_id
-                        }
-                        onPress={() => {
-                          setEditingPlan({ sessionId: session.id, routineId: item.id });
-                          setChangingRoutine(false);
-                        }}
-                      />
-                    ))}
-                  </View>
-                )}
+                  {changingRoutine && (
+                    <View style={styles.chips}>
+                      {loaded.routines.map((item) => (
+                        <Chip
+                          key={item.id}
+                          label={item.name}
+                          accessibilityLabel={`Cambiar a ${item.name}`}
+                          selected={item.id === session.routine_id}
+                          disabled={
+                            pendingAction !== null || planOpen || item.id === session.routine_id
+                          }
+                          onPress={() => {
+                            setEditingPlan({ sessionId: session.id, routineId: item.id });
+                            setChangingRoutine(false);
+                          }}
+                        />
+                      ))}
+                    </View>
+                  )}
 
-                {/* Spec 8.5: se pregunta al llegar y aparte de empezar, asi que no esta en
+                  {/* Spec 8.5: se pregunta al llegar y aparte de empezar, asi que no esta en
                 el camino critico. Spec 5.4 la deja fuera de una sesion escrita despues. */}
-                <View style={styles.crowdRow}>
-                  <Text style={styles.label}>GENTÍO</Text>
-                  <View style={styles.chips}>
-                    {(
-                      [
-                        ['empty', 'vacío'],
-                        ['normal', 'normal'],
-                        ['full', 'lleno'],
-                      ] as const
-                    ).map(([id, label]) => (
-                      <Chip
-                        key={id}
-                        label={label}
-                        accessibilityLabel={`Gimnasio ${label}`}
-                        selected={session.crowding === id}
-                        onPress={() => describeSession({ crowding: id })}
-                      />
-                    ))}
+                  <View style={styles.crowdRow}>
+                    <Text style={styles.label}>GENTÍO</Text>
+                    <View style={styles.chips}>
+                      {(
+                        [
+                          ['empty', 'vacío'],
+                          ['normal', 'normal'],
+                          ['full', 'lleno'],
+                        ] as const
+                      ).map(([id, label]) => (
+                        <Chip
+                          key={id}
+                          label={label}
+                          accessibilityLabel={`Gimnasio ${label}`}
+                          selected={session.crowding === id}
+                          onPress={() => describeSession({ crowding: id })}
+                        />
+                      ))}
+                    </View>
                   </View>
-                </View>
-              </Card>
+                </Card>
+              )}
 
               {!planOpen && session.end_time === null && (
                 <Button
@@ -559,7 +569,9 @@ export function TrainingScreen() {
                       }
                 }
               />
-              {TRANSIT_ENABLED && <TransitJourneyCard surface="training" />}
+              {TRANSIT_ENABLED && session.end_time === null && (
+                <TransitJourneyCard surface="training" />
+              )}
             </>
           )}
 

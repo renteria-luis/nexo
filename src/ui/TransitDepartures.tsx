@@ -98,6 +98,11 @@ export function relative(at: number, now: number) {
   return minutes === 0 ? 'ahora' : minutes > 0 ? `en ${minutes} min` : `hace ${-minutes} min`;
 }
 
+/** Match the displayed HH:mm; seconds must not give equal departure times different labels. */
+export function leavingIn(at: number, now: number) {
+  return relative(Math.floor(at / 60_000) * 60_000, Math.floor(now / 60_000) * 60_000);
+}
+
 function ago(at: number | null, now: number) {
   if (at === null) return null;
   const seconds = Math.max(0, Math.floor((now - at) / 1000));
@@ -149,11 +154,13 @@ function DepartureRow({
   line: { departure: d, live, departed },
   heading,
   now,
+  showStatus,
   onSelect,
 }: {
   line: DepartureLine;
   heading: string;
   now: number;
+  showStatus: boolean;
   onSelect: (departure: Departure) => void;
 }) {
   const where = destination(d);
@@ -182,7 +189,7 @@ function DepartureRow({
           </Text>
         )}
       </View>
-      <StatusIcons live={live} />
+      {showStatus && <StatusIcons live={live} />}
     </Pressable>
   );
 }
@@ -276,8 +283,10 @@ export function TransitStopDepartures({
   }, [departures, schedule, snapshot, current, now]);
   if (!groups.length)
     return <Text style={styles.body}>No hay salidas para abordar con este horario.</Text>;
+  const showStatus = current && snapshot !== null;
   return (
     <View style={styles.groups}>
+      {!showStatus && <Text style={styles.note}>Horario programado · sin datos en vivo</Text>}
       {groups.map(({ key, previous, ahead }) => {
         const route = ahead[0].departure.route;
         const where = destination(ahead[0].departure);
@@ -302,6 +311,7 @@ export function TransitStopDepartures({
                 line={line}
                 heading={where.main}
                 now={now}
+                showStatus={showStatus}
                 onSelect={onSelect}
               />
             ))}
@@ -757,12 +767,17 @@ const styles = sheet((theme) => ({
   pressedRow: { backgroundColor: theme.surfaceHigh },
   departureTime: { minWidth: 46, fontFamily: font.black, fontSize: 16, color: theme.text },
   departureWhere: { fontFamily: font.bold, fontSize: 13, color: theme.text },
-  more: { alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 2 },
+  more: {
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 2,
+  },
   moreText: {
     fontFamily: font.bold,
     fontSize: 13,
     color: theme.text,
-    textDecorationLine: 'underline',
   },
   body: { fontFamily: font.bold, fontSize: 14, color: theme.text },
   note: { fontFamily: font.regular, fontSize: 12, color: theme.textFaint },

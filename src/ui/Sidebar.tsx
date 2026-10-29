@@ -133,7 +133,7 @@ const SECTIONS: Section[] = [
         label: 'Cocina',
         icon: ChefHat,
         children: [
-          { label: 'Recetas', icon: ChefHat, route: 'Recetas' },
+          { label: 'Recetas', icon: BookOpen, route: 'Recetas' },
           { label: 'Despensa', icon: Refrigerator, route: 'Despensa' },
         ],
       },

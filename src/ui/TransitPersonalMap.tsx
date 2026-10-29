@@ -27,6 +27,7 @@ import {
   type WalkObservation,
 } from '../transit/walks.ts';
 import { Button } from './Button.tsx';
+import { InfoDot, InfoText } from './InfoBubble.tsx';
 import { Chip } from './Chip.tsx';
 import { Combobox } from './Combobox.tsx';
 import { TextField } from './TextField.tsx';
@@ -274,10 +275,12 @@ export function TransitPersonalMap({
           onPress={() => setPointFocus({ key: Date.now(), point: following.lastFix! })}
         />
       )}
-      <Text style={styles.note}>
-        Verde discontinuo: tus caminos. Los cruces son notas personales; su espera ya cuenta en los
-        minutos de caminata.
-      </Text>
+      <InfoDot accessibilityLabel="Cómo leer tus caminos y cruces">
+        <InfoText>
+          Verde discontinuo: tus caminos. Los cruces son notas personales; su espera ya cuenta en
+          los minutos de caminata.
+        </InfoText>
+      </InfoDot>
       {!map.onPoint && (
         <>
           {!note && (

@@ -16,7 +16,7 @@ import { migrations } from '../db/migrations/index.ts';
 import { addFoodEntry } from '../nutrition/index.ts';
 import { addSet, finishSession, startSession } from '../training/index.ts';
 
-import { load, REREAD_ALL, REREAD_FOODS, REREAD_NOTHING, withFresh } from './load.ts';
+import { load, REREAD_ALL, REREAD_DEALS, REREAD_FOODS, REREAD_NOTHING, withFresh } from './load.ts';
 
 type SqlValue = string | number | null;
 
@@ -77,6 +77,49 @@ async function seeded() {
 
 const touches = (reads: { source: string }[], table: string, also = '') =>
   reads.filter(({ source }) => source.includes(`FROM ${table}`) && source.includes(also));
+
+test('refreshing during snapshot replacement reads deals and source status only after the replacement finishes', async () => {
+  const { db, reads } = await seeded();
+  const snapshot = parseSnapshot(readFileSync('deals/flipp.json', 'utf8'));
+  snapshot.fetchedAt += 1_000;
+  snapshot.deals = snapshot.deals.slice(0, 3);
+  let release!: () => void;
+  let deleted!: () => void;
+  const paused = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const replacing = new Promise<void>((resolve) => {
+    deleted = resolve;
+  });
+  const run = db.runAsync.bind(db);
+  db.runAsync = (async (sql: string, params: SqlValue[] = []) => {
+    const result = await run(sql, params);
+    if (sql.startsWith('DELETE FROM deals_deal')) {
+      deleted();
+      await paused;
+    }
+    return result;
+  }) as typeof db.runAsync;
+  const update = applySnapshot(db, snapshot);
+  await replacing;
+  reads.length = 0;
+  let published = false;
+  const reading = load(db, null, false, REREAD_DEALS, today).then((fresh) => {
+    published = true;
+    return fresh;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(published, false, 'the empty table must never reach the UI');
+  assert.equal(touches(reads, 'deals_deal').length, 0);
+  release();
+  await update;
+  const fresh = await reading;
+  assert.equal(fresh.dealSlice?.deals.length, 3);
+  assert.equal(
+    fresh.dealSlice?.dealSources.find((source) => source.id === snapshot.source)?.last_success_at,
+    snapshot.fetchedAt,
+  );
+});
 
 test('una botella no vuelve a leer las ofertas ni lo comido en los ultimos noventa dias', async () => {
   const { db, reads } = await seeded();

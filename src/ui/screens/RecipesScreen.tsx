@@ -19,7 +19,7 @@ import { useAppData } from '../../shell/AppData.tsx';
 import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
 import { IconButton } from '../IconButton.tsx';
-import { ConfirmButton } from '../InfoBubble.tsx';
+import { ConfirmButton, InfoDot, InfoText } from '../InfoBubble.tsx';
 import { ChefHat, Pencil, Plus, Trash } from '../icons.ts';
 import { RecipeForm } from '../RecipeForm.tsx';
 import { font, headBleed, sheet, shape } from '../theme.ts';
@@ -95,8 +95,8 @@ export function RecipesScreen() {
     if (proteinGoal === null) return `Una porción te deja en ${after} g de proteína hoy.`;
     const short = proteinGoal - after;
     return short > 0
-      ? `Una porción te deja en ${after} g de proteína hoy, ${short} bajo la meta.`
-      : `Una porción te deja en ${after} g de proteína hoy, ya en la meta.`;
+      ? `Con una porción: ${after} g de proteína hoy; faltarían ${short} para ${proteinGoal} g.`
+      : `Con una porción: ${after} g de proteína hoy; alcanzarías la meta de ${proteinGoal} g.`;
   };
 
   useEffect(reload, [reload]);
@@ -130,6 +130,13 @@ export function RecipesScreen() {
   return (
     <Screen
       title="Recetas"
+      action={
+        <InfoDot accessibilityLabel="Cómo se ordenan las recetas">
+          <InfoText>
+            Se ordenan solas: primero lo que puedes hacer con lo que hay en la despensa.
+          </InfoText>
+        </InfoDot>
+      }
       onOverlayDismiss={
         editor
           ? () => {
@@ -190,10 +197,7 @@ export function RecipesScreen() {
 
       {recipes !== null && recipes.length === 0 && (
         <Card>
-          <Text style={styles.empty}>
-            Ninguna todavía. Lo que escribas aquí se ordena solo: primero lo que puedes hacer con lo
-            que hay en la despensa.
-          </Text>
+          <Text style={styles.empty}>Ninguna todavía.</Text>
         </Card>
       )}
 
@@ -222,13 +226,11 @@ export function RecipesScreen() {
             >
               <View style={styles.head}>
                 <Text style={styles.name}>{entry.recipe.name}</Text>
-                <View style={[styles.tag, ready ? styles.tagReady : styles.tagShort]}>
-                  <Text style={[styles.tagText, ready && styles.tagTextReady]}>
-                    {ready
-                      ? 'se puede'
-                      : `${entry.short.length === 1 ? 'falta' : 'faltan'} ${entry.short.length}`}
-                  </Text>
-                </View>
+                {ready && (
+                  <View style={[styles.tag, styles.tagReady]}>
+                    <Text style={[styles.tagText, styles.tagTextReady]}>se puede</Text>
+                  </View>
+                )}
               </View>
               <Text style={styles.meta}>
                 {entry.recipe.portions} porciones
@@ -245,7 +247,6 @@ export function RecipesScreen() {
                 {entry.recipe.ingredients.map((ingredient) => {
                   const item = pantry.find((one) => one.id === ingredient.itemId);
                   if (item === undefined) return null;
-                  const why = entry.missing.find((one) => one.itemId === ingredient.itemId)?.why;
                   return (
                     <View key={ingredient.itemId} style={styles.line}>
                       <Text style={styles.lineName}>{item.name}</Text>
@@ -253,9 +254,6 @@ export function RecipesScreen() {
                         {ingredient.amount === null
                           ? 'al gusto'
                           : `${ingredient.amount} ${item.unit ?? ''}`}
-                        {why !== undefined && (
-                          <Text style={styles.lacking}> · {why === 'poco' ? 'poco' : 'falta'}</Text>
-                        )}
                       </Text>
                     </View>
                   );
@@ -370,9 +368,6 @@ const styles = sheet((theme) => ({
   },
   tagReady: {
     backgroundColor: theme.ok,
-  },
-  tagShort: {
-    backgroundColor: theme.surface,
   },
   tagText: {
     fontSize: 11,

@@ -34,6 +34,7 @@ test('the displayed plan includes both arms and follows overrides and removed ex
     },
   ];
   const planner = renderModule('src/ui/SessionPlanner.tsx', {
+    './screens/Screen.tsx': { useScrollIntoView: () => () => {} },
     './Button.tsx': { Button: 'Button' },
     './Card.tsx': { Card: 'Card' },
     './Chip.tsx': { Chip: 'Chip' },
@@ -127,6 +128,7 @@ test('start stays disabled while saving or while the selected gym plan is still 
     startProblem: null as string | null,
   };
   const planner = renderModule('src/ui/SessionPlanner.tsx', {
+    './screens/Screen.tsx': { useScrollIntoView: () => () => {} },
     './Button.tsx': { Button: 'Button' },
     './Card.tsx': { Card: 'Card' },
     './Chip.tsx': { Chip: 'Chip' },
@@ -176,6 +178,7 @@ test('start stays disabled while saving or while the selected gym plan is still 
 
 function plannerWith(props: Record<string, unknown>) {
   return renderModule('src/ui/SessionPlanner.tsx', {
+    './screens/Screen.tsx': { useScrollIntoView: () => () => {} },
     './Button.tsx': { Button: 'Button' },
     './Card.tsx': { Card: 'Card' },
     './Chip.tsx': { Chip: 'Chip' },

@@ -168,7 +168,6 @@ export function FoodsScreen() {
                 <Text style={styles.name}>{food.name}</Text>
                 <Text style={styles.macros}>{macros(food).head}</Text>
                 <Text style={styles.macros}>{macros(food).tail}</Text>
-                {food.keywords !== null && <Text style={styles.keywords}>{food.keywords}</Text>}
               </View>
               <ChevronRight size={18} color={theme.textFaint} strokeWidth={2.5} />
             </Pressable>
@@ -251,11 +250,6 @@ const styles = sheet((theme) => ({
     fontFamily: font.regular,
     color: theme.textFaint,
     fontVariant: ['tabular-nums'],
-  },
-  keywords: {
-    fontSize: 11,
-    fontFamily: font.bold,
-    color: theme.textFaint,
   },
   archivedLink: {
     alignSelf: 'flex-start',

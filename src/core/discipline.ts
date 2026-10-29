@@ -374,15 +374,28 @@ export function scoreDay(
   targets: TargetValues,
   training: TrainingContext,
 ): DisciplineResult {
-  const criteria = scoreCriteria(day, targets, training);
+  const scored = scoreCriteria(day, targets, training);
 
   const missedScheduledSession =
     day.trained === false &&
     !training.isScheduledRestDay &&
     isScheduledToday(training.sessionsLastSevenDays);
 
+  // Spec 6.6: no entrenar no es algo que el anoto. Un dia pasado sin nada mas anotado
+  // queda sin nota, y la falta sigue contando para la racha de faltas de spec 4.3, que
+  // se lee de las fechas de sesion y no de esta nota.
+  const judged =
+    day.trained !== false ||
+    training.isScheduledRestDay ||
+    scored.some((criterion) => criterion.id !== 'trained' && criterion.fraction !== null);
+  const criteria = judged
+    ? scored
+    : scored.map((criterion) =>
+        criterion.id === 'trained' ? { ...criterion, fraction: null } : criterion,
+      );
+
   const penalty =
-    missedScheduledSession && !training.reEntryActive
+    judged && missedScheduledSession && !training.reEntryActive
       ? missedTrainingPenalty(training.consecutiveMissed + 1)
       : 0;
 

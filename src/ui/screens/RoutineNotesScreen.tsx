@@ -33,7 +33,7 @@ const CHANGES: Recommendation[] = [
     // Una opcion por renglon: corridas en un parrafo, el orden no se leia de una ojeada.
     why: 'Por orden, cuando hay de dónde elegir:\n1. Máquina sentado, la IPDR3 de Fit4Less: tensión pareja en todo el recorrido, cero impulso de cadera, y puedes llegar al fallo sin miedo.\n2. Polea a un brazo: mismo perfil, y es la única opción con tensión abajo en Fanshawe, pero cuesta el doble de reloj.\n3. Mancuernas sentado: te quita la trampa de la cadera.\n4. Mancuernas de pie: la que siempre hay.\nUn estudio de 2025 midió mancuerna contra polea igualando el recorrido y el deltoide creció igual, así que el orden importa menos que hacer el recorrido completo y sin impulso.',
     effect:
-      'el plan pide polea en push y mancuernas en pull, para que hagas dos variantes en la semana',
+      'La variante del plan depende del gimnasio. Puedes cambiarla si esa estación está ocupada.',
   },
   {
     title: 'Deltoide posterior dos veces por semana',

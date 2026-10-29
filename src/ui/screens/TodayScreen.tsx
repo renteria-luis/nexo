@@ -272,6 +272,10 @@ export function TodayScreen({
   const streak = currentStreak(loaded.scoreHistory, today);
 
   const targets = loaded.today.targets;
+  const missingProfile = [
+    !loaded.settings.get('height_cm') ? 'tu estatura' : null,
+    !loaded.settings.get('birth_date') ? 'tu fecha de nacimiento' : null,
+  ].filter(Boolean);
   const nutrition = loaded.today.nutrition;
   const band = targets ? proteinBand(targets) : null;
 
@@ -335,12 +339,12 @@ export function TodayScreen({
       {/* La app vacia no decia por donde empezar: sin estatura, fecha de nacimiento y peso
           no hay metas, y la unica pista era «Faltan tus metas» en la tarjeta de Comida
           (2026-10-25). */}
-      {targets === null && (
+      {targets === null && missingProfile.length > 0 && (
         <Card tone="info">
           <Text style={styles.noticeTitle}>Faltan tus metas</Text>
           <Text style={styles.noticeText}>
-            Con tu estatura, tu fecha de nacimiento y tu peso se calculan solas, y los días empiezan
-            a tener nota.
+            Falta{missingProfile.length > 1 ? 'n' : ''} {missingProfile.join(' y ')} en Ajustes.
+            {!loaded.lastWeight ? ' Tu peso se anota aquí, en Peso.' : ''}
           </Text>
           <View style={styles.noticeButtons}>
             <Button

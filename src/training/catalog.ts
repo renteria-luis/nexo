@@ -62,6 +62,8 @@ export type ExerciseCard = {
   notes: Record<string, string>;
   gyms: ExerciseGym[];
   routines: ExerciseRoutine[];
+  /** Routines containing this exercise family; their base exercise owns the editable plan. */
+  familyRoutines: { id: string; name: string }[];
   availableRoutines: TrainingRoutineRow[];
   variants: CatalogExercise[];
   familyId: string;
@@ -84,7 +86,9 @@ export async function listCatalog(db: SQLiteDatabase): Promise<CatalogEntry[]> {
     `SELECT e.id, e.name_es, e.primary_muscle, e.implements, e.archived, e.equipment_type, e.unilateral,
             coalesce(v.base_exercise_id, e.id) AS familyId,
             coalesce(b.family_name, b.name_es, e.family_name, e.name_es) AS familyName,
-            (SELECT count(*) FROM training_routine_exercise re WHERE re.exercise_id = e.id)
+            (SELECT count(DISTINCT re.routine_id) FROM training_routine_exercise re
+              LEFT JOIN training_exercise_variant rv ON rv.exercise_id = re.exercise_id
+             WHERE coalesce(rv.base_exercise_id, re.exercise_id) = coalesce(v.base_exercise_id, e.id))
               AS routines
        FROM training_exercise e
        LEFT JOIN training_exercise_variant v ON v.exercise_id = e.id
@@ -152,11 +156,19 @@ export async function loadExerciseCard(
   const here = new Set(mine.map((row) => row.gym_id));
   const selected = catalog.find((row) => row.id === exerciseId)!;
   const familyId = selected.familyId ?? exerciseId;
+  const familyRoutines = await db.getAllAsync<{ id: string; name: string }>(
+    `SELECT DISTINCT r.id, r.name FROM training_routine r
+       JOIN training_routine_exercise re ON re.routine_id = r.id
+       LEFT JOIN training_exercise_variant v ON v.exercise_id = re.exercise_id
+      WHERE coalesce(v.base_exercise_id, re.exercise_id) = ? ORDER BY r.name;`,
+    [familyId],
+  );
 
   return {
     exercise,
     familyId,
     familyName: selected.familyName ?? exercise.name_es,
+    familyRoutines,
     variants: catalog.filter((row) => row.familyId === familyId),
     availableRoutines: allRoutines.filter((row) => !routines.some((entry) => entry.id === row.id)),
     implements: parseImplements(exercise.implements),

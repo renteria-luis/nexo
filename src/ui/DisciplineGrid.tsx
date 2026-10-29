@@ -343,7 +343,7 @@ export const DisciplineGrid = memo(function DisciplineGrid({
       ) : !rangeKnown ? (
         <Text style={styles.small}>Cargando historial…</Text>
       ) : null}
-      <Text style={styles.small}>
+      <Text style={styles.summary}>
         Promedio del período: {average === null ? '—' : Math.round(average)}
       </Text>
     </View>
@@ -368,6 +368,12 @@ const styles = sheet((theme) => ({
   },
   legend: { alignSelf: 'flex-end', flexDirection: 'row', alignItems: 'center', gap: 4 },
   small: { fontSize: 10, color: theme.textDim, fontFamily: font.bold },
+  summary: {
+    fontSize: 12,
+    color: theme.textFaint,
+    fontFamily: font.bold,
+    fontVariant: ['tabular-nums'],
+  },
   touch: { width: '100%', aspectRatio: 1 },
   weekday: { fontSize: 11, color: theme.text, fontFamily: font.black },
   cell: { borderRadius: 4, borderWidth: 1, borderColor: theme.line, overflow: 'hidden' },

@@ -128,13 +128,23 @@ test('without permission the buttons carry the trip, and a finished trip shows w
   const summary = textOf(await f.screen.settle());
   assert.match(summary, /Viaje terminado/);
   assert.doesNotMatch(summary, /Llegaste/, 'ended before the last walk, it did not arrive');
-  assert.match(summary, /32 min desde que saliste, hasta las 08:57/);
+  assert.match(summary, /32 min de seguimiento · 08:25–08:57/);
   assert.doesNotMatch(summary, /caminata/, 'no walk was timed, so none waits for review');
   const cost = infoOf(await f.screen.settle());
   assert.match(cost, /240 lecturas de GPS \(3 imprecisas\)/);
   assert.match(cost, /12 consultas en vivo con Nexo en segundo plano, 96 KB/);
   await f.press('Cerrar');
   assert.deepEqual(f.taps, ['dismiss']);
+});
+
+test('a trip stopped immediately reports less than a minute of tracking, never a zero-minute journey', async () => {
+  const ended = activeTrip.applyAction(trip(), 'finish', at('08:25') + 10_000).trip;
+  const f = render({ trip: ended });
+  assert.match(textOf(await f.screen.settle()), /Menos de 1 min de seguimiento · 08:25–08:25/);
+  const running = render({ trip: trip() });
+  const info = infoOf(await running.screen.settle());
+  assert.match(info, /Terminar cierra el viaje/);
+  assert.match(info, /Cancelar detiene el seguimiento y conserva el viaje elegido/);
 });
 
 test('a trip that reaches its last walk and arrives says so, with the walks to review', async () => {

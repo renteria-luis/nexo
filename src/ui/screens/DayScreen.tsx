@@ -116,6 +116,10 @@ export function DayScreen() {
 
   const { day, report } = detail;
   const band = day.targets ? proteinBand(day.targets) : null;
+  const missingProfile = [
+    !loaded.settings.get('height_cm') && 'tu estatura',
+    !loaded.settings.get('birth_date') && 'tu fecha de nacimiento',
+  ].filter(Boolean);
 
   const after = (work: Promise<unknown>) => {
     work.then(reload).catch((error: unknown) => {
@@ -146,14 +150,22 @@ export function DayScreen() {
       {report.noScore === 'sin-metas' && (
         <Card tone="warn">
           <Text style={styles.noticeText}>
-            Sin nota porque no hay metas todavía: con tu estatura, tu fecha de nacimiento y tu peso,
-            todos los días se vuelven a calcular solos.
+            {missingProfile.length > 0
+              ? `Falta${missingProfile.length > 1 ? 'n' : ''} ${missingProfile.join(' y ')} en Ajustes. `
+              : ''}
+            {loaded.lastWeight === null
+              ? 'Anota tu peso en kg en Hoy → Peso para calcular tus metas.'
+              : missingProfile.length === 0
+                ? 'No hay metas guardadas para esta fecha.'
+                : ''}
           </Text>
-          <Button
-            label="Completar perfil"
-            accessibilityLabel="Completar el perfil en Ajustes"
-            onPress={() => navigation.navigate('Ajustes', { section: 'perfil' })}
-          />
+          {missingProfile.length > 0 && (
+            <Button
+              label="Completar perfil"
+              accessibilityLabel="Completar el perfil en Ajustes"
+              onPress={() => navigation.navigate('Ajustes', { section: 'perfil' })}
+            />
+          )}
         </Card>
       )}
       {day.log?.rest_day === 1 && (

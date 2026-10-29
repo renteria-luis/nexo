@@ -126,7 +126,25 @@ export function RecipeForm({
   };
 
   return (
-    <PopupSheet>
+    <PopupSheet
+      footer={
+        <View style={styles.actions}>
+          <Button
+            label="Guardar"
+            accessibilityLabel="Guardar la receta"
+            variant="primary"
+            disabled={!ready}
+            onPress={save}
+          />
+          <Button
+            label="Cancelar"
+            accessibilityLabel="Cancelar"
+            variant="ghost"
+            onPress={onCancel}
+          />
+        </View>
+      }
+    >
       <Text style={styles.title}>{recipe === null ? 'Receta nueva' : recipe.name}</Text>
       <Text style={styles.label}>Cómo se llama</Text>
       <TextField
@@ -245,17 +263,6 @@ export function RecipeForm({
         style={styles.steps}
         focusedStyle={styles.writing}
       />
-
-      <View style={styles.actions}>
-        <Button
-          label="Guardar"
-          accessibilityLabel="Guardar la receta"
-          variant="primary"
-          disabled={!ready}
-          onPress={save}
-        />
-        <Button label="Cancelar" accessibilityLabel="Cancelar" variant="ghost" onPress={onCancel} />
-      </View>
     </PopupSheet>
   );
 }
@@ -292,6 +299,7 @@ const styles = sheet((theme) => ({
     color: theme.text,
   },
   unit: {
+    width: 48,
     fontSize: 12,
     fontFamily: font.bold,
     color: theme.textDim,

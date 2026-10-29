@@ -127,6 +127,31 @@ test('un dia sin nada anotado no tiene nota', () => {
   close(result.pointsWithoutData, 100);
 });
 
+test('un dia pasado sin nada anotado tampoco tiene nota, aunque tocara entrenar', () => {
+  const missed: DisciplineDay = {
+    trained: false,
+    sleepMinutes: null,
+    proteinG: null,
+    kcal: null,
+    alcoholDrinks: null,
+    alcoholWithinSixHoursAfterTraining: false,
+    waterMl: null,
+    steps: null,
+    creatineTaken: null,
+    isTrainingDay: false,
+  };
+  const behind = { ...onTrack, sessionsLastSevenDays: 2 };
+  const result = scoreDay(missed, targets, behind);
+  assert.equal(result.score, null);
+  assert.equal(result.penalty, 0);
+  close(result.pointsWithoutData, 100);
+  assert.equal(result.missedScheduledSession, true);
+
+  const withCreatine = scoreDay({ ...missed, creatineTaken: true }, targets, behind);
+  assert.notEqual(withCreatine.score, null);
+  assert.ok(withCreatine.penalty < 0);
+});
+
 test('un descanso marcado con la semana cumplida vale como entrenar', () => {
   const resting: DisciplineDay = { ...perfectDay, trained: null, isTrainingDay: false };
   const restDay: TrainingContext = { ...onTrack, isScheduledRestDay: true };

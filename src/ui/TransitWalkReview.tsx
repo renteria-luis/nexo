@@ -85,6 +85,7 @@ export function TransitWalkReview({
       setBusy(false);
     }
   };
+  if (!walks.length && !problem) return null;
   return (
     <Card title="Tus caminatas medidas">
       <Button

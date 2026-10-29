@@ -116,7 +116,7 @@ export function DayTraining({
   if (sessionId === null) {
     return (
       <View style={styles.block}>
-        <Text style={styles.empty}>Sin entreno este día.</Text>
+        <Text style={styles.empty}>Sin entreno anotado este día.</Text>
         <Text style={styles.hint}>Si entrenaste y no lo anotaste, escríbelo ahora:</Text>
         <View style={styles.chips}>
           {routines.map((routine) => (

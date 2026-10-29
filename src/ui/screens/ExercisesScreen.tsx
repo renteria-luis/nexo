@@ -14,7 +14,7 @@ import type { TimeBudget } from '../../training/routines.ts';
 import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
 import { Chip } from '../Chip.tsx';
-import { ConfirmAction } from '../InfoBubble.tsx';
+import { ConfirmAction, InfoDot, InfoText } from '../InfoBubble.tsx';
 import { ChevronRight, Plus } from '../icons.ts';
 import { MUSCLE_ES } from '../muscles.ts';
 import { NumericField } from '../NumericField.tsx';
@@ -232,10 +232,27 @@ function missingText(name: string, equipment: EquipmentType | null, muscle: stri
 }
 
 /** Un dato con su nombre encima, como en el registro del dia. */
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  info,
+  children,
+}: {
+  label: string;
+  info?: string;
+  children: React.ReactNode;
+}) {
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
+      {info ? (
+        <View style={styles.labelRow}>
+          <Text style={styles.label}>{label}</Text>
+          <InfoDot accessibilityLabel={`Qué es ${label.toLowerCase()}`} style={styles.labelDot}>
+            <InfoText>{info}</InfoText>
+          </InfoDot>
+        </View>
+      ) : (
+        <Text style={styles.label}>{label}</Text>
+      )}
       {children}
     </View>
   );
@@ -471,7 +488,7 @@ export function ExercisesScreen() {
                   ? ` · ${item.implements.map((option) => IMPLEMENT_ES[option].toLowerCase()).join(', ')}`
                   : ''}
                 {item.routines > 0
-                  ? ` · en ${item.routines} rutina${item.routines > 1 ? 's' : ''}`
+                  ? ` · familia en ${item.routines} rutina${item.routines > 1 ? 's' : ''}`
                   : ' · suelto'}
               </Text>
             </View>
@@ -607,28 +624,30 @@ export function ExerciseScreen() {
         </Field>
         {/* La que esta abierta, elegida como en el resto de la app: como boton apagado
             parecia la unica que no se podia tocar. */}
-        <View style={styles.chips}>
-          {card.variants.map((variant) => (
-            <Chip
-              key={variant.id}
-              // El equipo solo cuando el nombre no lo dice: "Curl martillo · mancuernas ·
-              // Mancuernas" lo repetia.
-              label={`${variant.name_es}${
-                fold(variant.name_es).includes(fold(EQUIPMENT_NAMES[variant.equipment_type]))
-                  ? variant.unilateral
-                    ? ' · unilateral'
-                    : ''
-                  : ` · ${variantLabel(variant)}`
-              }${variant.archived ? ' · archivado' : ''}`}
-              selected={variant.id === exercise.id}
-              onPress={() => {
-                if (variant.id !== exercise.id) {
-                  navigation.navigate('Ejercicio', { exerciseId: variant.id });
-                }
-              }}
-            />
-          ))}
-        </View>
+        {card.variants.length > 1 && (
+          <View style={styles.chips}>
+            {card.variants.map((variant) => (
+              <Chip
+                key={variant.id}
+                // El equipo solo cuando el nombre no lo dice: "Curl martillo · mancuernas ·
+                // Mancuernas" lo repetia.
+                label={`${variant.name_es}${
+                  fold(variant.name_es).includes(fold(EQUIPMENT_NAMES[variant.equipment_type]))
+                    ? variant.unilateral
+                      ? ' · unilateral'
+                      : ''
+                    : ` · ${variantLabel(variant)}`
+                }${variant.archived ? ' · archivado' : ''}`}
+                selected={variant.id === exercise.id}
+                onPress={() => {
+                  if (variant.id !== exercise.id) {
+                    navigation.navigate('Ejercicio', { exerciseId: variant.id });
+                  }
+                }}
+              />
+            ))}
+          </View>
+        )}
         <Button label="Crear variante" onPress={() => setCreatingVariant(true)} />
         {creatingVariant && (
           <NewExerciseForm
@@ -679,19 +698,6 @@ export function ExerciseScreen() {
         ))}
       </Card>
 
-      <Card title="Añadir a una rutina">
-        {card.availableRoutines.map((routine) => (
-          <Button
-            key={routine.id}
-            label={`Añadir a ${routine.name}`}
-            disabled={Boolean(exercise.archived)}
-            onPress={() => after(editExerciseRoutine(exercise.id, routine.id, true))}
-          />
-        ))}
-        {card.availableRoutines.length === 0 && (
-          <Text style={styles.hint}>Ya está en todas tus rutinas.</Text>
-        )}
-      </Card>
       {card.routines.map((routine) => (
         <Card key={routine.routineId} title={`En ${routine.name}`}>
           <Text style={styles.hint}>Puesto {routine.position} de la rutina.</Text>
@@ -710,13 +716,14 @@ export function ExerciseScreen() {
             </View>
           </Field>
 
-          <Field label={routine.tier === 1 ? 'Series' : 'Series por tiempo'}>
-            {routine.tier === 1 && (
-              <Text style={styles.hint}>
-                Lo de núcleo no se recorta: hace las mismas series con cualquier tiempo. Para que se
-                recorte, bájale la importancia.
-              </Text>
-            )}
+          <Field
+            label={routine.tier === 1 ? 'Series' : 'Series por tiempo'}
+            info={
+              routine.tier === 1
+                ? 'Lo de núcleo no se recorta: hace las mismas series con cualquier tiempo. Para que se recorte, bájale la importancia.'
+                : undefined
+            }
+          >
             <View style={styles.sets}>
               {(routine.tier === 1 ? BUDGETS.slice(0, 1) : BUDGETS).map((budget) => (
                 <View key={budget.id} style={styles.setsCell}>
@@ -762,10 +769,13 @@ export function ExerciseScreen() {
           </Field>
 
           {/* Al final de lo suyo, no encima: era lo primero de cada rutina. */}
-          <Button
+          <ConfirmAction
             label={`Quitar de ${routine.name}`}
+            accessibilityLabel={`Quitar de ${routine.name}`}
+            question={`¿Quitar ${exercise.name_es} de ${routine.name}? Conserva sus series registradas.`}
+            yes="Sí, quitar"
             variant="ghost"
-            onPress={() => after(editExerciseRoutine(exercise.id, routine.routineId, false))}
+            onConfirm={() => after(editExerciseRoutine(exercise.id, routine.routineId, false))}
           />
         </Card>
       ))}
@@ -773,7 +783,9 @@ export function ExerciseScreen() {
       {card.routines.length === 0 && (
         <Card>
           <Text style={styles.hint}>
-            No está en ninguna rutina: solo aparece al ver todos los ejercicios dentro del entreno.
+            {card.familyRoutines.length > 0
+              ? `Variante de ${card.familyName}, familia incluida en ${card.familyRoutines.map((routine) => routine.name).join(', ')}. Puedes elegirla al cambiar la variante del plan.`
+              : 'No está en ninguna rutina: solo aparece al ver todos los ejercicios dentro del entreno.'}
           </Text>
         </Card>
       )}
@@ -781,6 +793,15 @@ export function ExerciseScreen() {
       {/* Al final de la ficha: estaba en medio, encima de las rutinas que se ajustan a
           menudo. Lo que conserva se dice porque archivar suena a borrar. */}
       <Card title="Catálogo">
+        {card.availableRoutines.map((routine) => (
+          <Button
+            key={routine.id}
+            label={`Añadir a ${routine.name}`}
+            variant="ghost"
+            disabled={Boolean(exercise.archived)}
+            onPress={() => after(editExerciseRoutine(exercise.id, routine.id, true))}
+          />
+        ))}
         <Text style={styles.hint}>Conserva sus series, notas e historial.</Text>
         <Button
           label={exercise.archived ? 'Restaurar ejercicio' : 'Archivar ejercicio'}
@@ -853,6 +874,14 @@ const styles = sheet((theme) => ({
     letterSpacing: 0.6,
     color: theme.textFaint,
     textTransform: 'uppercase',
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  labelDot: {
+    marginVertical: -7,
   },
   hint: {
     fontSize: 12,

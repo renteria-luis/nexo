@@ -9,6 +9,7 @@ import { useAppData } from '../../shell/AppData.tsx';
 import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
 import { ExternalLink } from '../icons.ts';
+import { InfoDot, InfoText } from '../InfoBubble.tsx';
 import { font, sheet, shape } from '../theme.ts';
 
 import { Screen } from './Screen.tsx';
@@ -114,12 +115,17 @@ export function ReadingsScreen() {
   }, [loadStudies]);
 
   return (
-    <Screen title="Lecturas">
-      <Text style={styles.intro}>
-        Cada criterio de la nota pesa lo que pesa por estos estudios. Aquí está de dónde sale, para
-        que se pueda revisar y no solo creer.
-      </Text>
-
+    <Screen
+      title="Lecturas"
+      action={
+        <InfoDot accessibilityLabel="Qué son las lecturas">
+          <InfoText>
+            Cada criterio de la nota pesa lo que pesa por estos estudios. Aquí está de dónde sale,
+            para que se pueda revisar y no solo creer.
+          </InfoText>
+        </InfoDot>
+      }
+    >
       {problem && <Text style={styles.problem}>{problem}</Text>}
 
       {topics?.map((topic) => {
@@ -149,11 +155,6 @@ export function ReadingsScreen() {
 }
 
 const styles = sheet((theme) => ({
-  intro: {
-    fontSize: 13,
-    fontFamily: font.regular,
-    color: theme.textFaint,
-  },
   problem: {
     fontSize: 13,
     fontFamily: font.bold,

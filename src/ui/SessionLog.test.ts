@@ -187,14 +187,14 @@ test('a finished session shows its recap with records and nothing left to log', 
     todaySets: [set(40.82)],
     lastSets: [],
     restingSince: 1,
-    plan: [],
+    plan: [{ exerciseId: 'press', sets: 3 }],
     marks: null,
     sessionVolume: 1306.24,
     unit: 'lb',
     onChangeUnit() {},
     plannedSets: 3,
     planExerciseIds: ['press'],
-    setsDoneByExercise: new Map([['press', 3]]),
+    setsDoneByExercise: new Map([['press', 1]]),
     plannedByExercise: new Map([['press', 3]]),
     onAddSet: async () => {},
     onRemoveSet() {},
@@ -212,21 +212,60 @@ test('a finished session shows its recap with records and nothing left to log', 
     onFinish() {},
     onReopen() {},
   };
-  const tree = await renderModule('src/ui/SessionLog.tsx', MOCKS)
-    .mount('SessionLog', props)
-    .settle();
+  const screen = renderModule('src/ui/SessionLog.tsx', MOCKS).mount('SessionLog', {
+    ...props,
+    afterSummary: 'Bus de vuelta',
+  });
+  const tree = await screen.settle();
   const text = textOf(tree);
   assert.match(text, /VOLUMEN.*2 880 lb/);
-  assert.match(text, /SERIES.*3/);
+  assert.match(text, /SERIES1 de 3/);
   assert.match(text, /DURÓ01h12m/);
   assert.match(text, /RÉCORDS.*1/);
   assert.match(text, /Press inclinado con mancuernas · 1RM 114 · antes 108 lb c\/u/);
-  assert.match(text, /Hiciste 1 de 3 series planeadas/);
+  assert.match(text, /Bus de vuelta/);
+  assert.doesNotMatch(text, /Hiciste 1 de 3 series planeadas/);
   assert.doesNotMatch(text, /DESCANSANDO|Terminar entreno|Llevas/);
   assert.equal(
     nodes(tree).filter((node) => node.props.accessibilityLabel === 'Agregar serie').length,
     0,
   );
+  nodes(tree)
+    .find((node) => node.props.label === 'Ver las series del entreno')!
+    .props.onPress();
+  const expanded = await screen.settle();
+  assert.match(textOf(expanded), /Hiciste 1 de 3 series planeadas/);
+  assert.equal(
+    nodes(expanded).filter((node) => node.props.accessibilityLabel === 'Quitar serie 1').length,
+    0,
+  );
+  props.records = [];
+  const noRecords = await renderModule('src/ui/SessionLog.tsx', MOCKS)
+    .mount('SessionLog', props)
+    .settle();
+  assert.doesNotMatch(textOf(noRecords), /RÉCORDS/);
+
+  const written: unknown[][] = [];
+  const active = renderModule('src/ui/SessionLog.tsx', MOCKS).mount('SessionLog', {
+    ...props,
+    finishedAt: null,
+    todaySets: [],
+    unit: 'kg',
+    lastSets: [{ ...set(20), rpe: 8.5 }],
+    onAddSet: async (...args: unknown[]) => {
+      written.push(args);
+    },
+  });
+  nodes(await active.settle())
+    .find((node) => node.props.accessibilityLabel === 'Copiar la serie 1 de la vez pasada')!
+    .props.onPress();
+  nodes(await active.settle())
+    .find((node) => node.props.accessibilityLabel === 'Agregar serie')!
+    .props.onPress();
+  await active.settle();
+  assert.equal(written[0][0], 20);
+  assert.equal(written[0][1], 8);
+  assert.equal((written[0][2] as { rpe: number }).rpe, 8.5);
 });
 
 test('logged sets sit under the set button, so it does not move as they are added', async () => {

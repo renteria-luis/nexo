@@ -13,7 +13,7 @@ import {
 } from '../../deals/index.ts';
 import type { DealsDiscountRow } from '../../db/types.ts';
 import { useAppData } from '../../shell/AppData.tsx';
-import { ago, sourceStatus } from '../../shell/deals.ts';
+import { sourceStatus } from '../../shell/deals.ts';
 
 import { Button } from '../Button.tsx';
 import { Card } from '../Card.tsx';
@@ -137,11 +137,11 @@ const DealRow = memo(function DealRow({
         <Text style={price === null ? styles.numberOff : styles.number}>
           {price === null ? `${MISSING} por medida` : `${money(price.cents)} ${price.per}`}
         </Text>
-        <Text style={value === null || suspect ? styles.numberOff : styles.numberGood}>
-          {value === null
-            ? `${MISSING} g proteína/$`
-            : `${Math.round(value.proteinPerDollar)} g proteína/$`}
-        </Text>
+        {value !== null && (
+          <Text style={suspect ? styles.numberOff : styles.numberGood}>
+            {Math.round(value.proteinPerDollar)} g proteína/$
+          </Text>
+        )}
         {suspect && versusUsual !== null ? (
           <Text style={styles.numberDoubt}>
             ¿{Math.round(versusUsual.savingPercent)}% bajo lo tuyo? Revisa el tamaño
@@ -346,12 +346,13 @@ export function DealsScreen() {
           setNote('Buscando…');
           refreshDeals()
             .then((outcome) => {
-              setNote(
-                outcome.kind === 'ok'
-                  ? `${outcome.count} ofertas, ${ago(outcome.fetchedAt, Date.now())}`
-                  : outcome.reason,
-              );
+              setNote(outcome.kind === 'ok' ? null : outcome.reason);
             })
+            .catch((error: unknown) =>
+              setNote(
+                error instanceof Error ? error.message : 'No se pudieron actualizar las ofertas.',
+              ),
+            )
             .finally(() => setBusy(false));
         }}
       />
@@ -364,7 +365,7 @@ export function DealsScreen() {
         ))}
       </Card>
 
-      {deals.length === 0 && (
+      {!busy && deals.length === 0 && (
         <Card>
           <Text style={styles.empty}>
             Todavía no hay ofertas guardadas. Toca Actualizar para traerlas.
